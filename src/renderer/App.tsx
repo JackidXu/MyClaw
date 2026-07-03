@@ -222,22 +222,6 @@ const App: React.FC = () => {
         let oneapiKey = oneapiConfig?.apiKey?.trim();
         let oneapiBaseUrl = oneapiConfig?.baseUrl?.trim() || 'https://token.chaohui.ai/v1';
 
-        // 平滑迁移：如果本地保存的还是旧的 IP，自动在本地更正并更新存储
-        if (oneapiBaseUrl.includes('101.96.234.167:3000')) {
-          oneapiBaseUrl = oneapiBaseUrl.replace('101.96.234.167:3000', 'token.chaohui.ai').replace(/^http:/, 'https:');
-          if (oneapiConfig) {
-            oneapiConfig = {
-              ...oneapiConfig,
-              baseUrl: oneapiBaseUrl
-            };
-            void configService.updateConfig({
-              providers: {
-                ...config.providers,
-                oneapi: oneapiConfig
-              }
-            });
-          }
-        }
 
         const apiKey = localStorage.getItem('heyclaw_api_key');
         const session = localStorage.getItem('heyclaw_session');
