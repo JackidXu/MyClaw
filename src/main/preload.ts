@@ -115,12 +115,54 @@ contextBridge.exposeInMainWorld('electron', {
   },
   api: {
     // 普通 API 请求（非流式）
-    fetch: (options: {
+    fetch: async (options: {
       url: string;
       method: string;
       headers: Record<string, string>;
       body?: string;
-    }) => ipcRenderer.invoke('api:fetch', options),
+    }) => {
+      // 依据端口及域名智能判断是否处于开发环境
+      const isDev = typeof window !== 'undefined' && 
+                    (window.location.port === '5175' || 
+                     window.location.hostname === 'localhost' || 
+                     window.location.hostname === '127.0.0.1');
+
+      if (isDev) {
+        console.groupCollapsed(`%c🌐 [Global API Request] ${options.method} ${options.url}`, 'color: #007acc; font-weight: bold; font-size: 11px;');
+        console.log('%cURL:', 'color: #888; font-weight: bold;', options.url);
+        console.log('%cMethod:', 'color: #888; font-weight: bold;', options.method);
+        console.log('%cHeaders:', 'color: #888; font-weight: bold;', options.headers);
+        if (options.body) {
+          try {
+            console.log('%cBody:', 'color: #888; font-weight: bold;', JSON.parse(options.body));
+          } catch {
+            console.log('%cBody:', 'color: #888; font-weight: bold;', options.body);
+          }
+        }
+        console.groupEnd();
+      }
+
+      try {
+        const resp = await ipcRenderer.invoke('api:fetch', options) as any;
+        if (isDev) {
+          const statusColor = resp && resp.ok ? 'color: #4caf50;' : 'color: #f44336;';
+          console.groupCollapsed(
+            `%c📥 [Global API Response] ${options.method} ${options.url} -> Status: ${resp?.status || 'Unknown'} (${resp?.ok ? 'Success' : 'Failed'})`,
+            `${statusColor} font-weight: bold; font-size: 11px;`
+          );
+          console.log('%cResponse Body:', 'color: #888; font-weight: bold;', resp?.data);
+          console.groupEnd();
+        }
+        return resp;
+      } catch (err: any) {
+        if (isDev) {
+          console.groupCollapsed(`%c❌ [Global API Error] ${options.method} ${options.url}`, 'color: #f44336; font-weight: bold; font-size: 11px;');
+          console.error('Error Details:', err);
+          console.groupEnd();
+        }
+        throw err;
+      }
+    },
 
     // 流式 API 请求
     stream: (options: {
