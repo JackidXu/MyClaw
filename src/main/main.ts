@@ -9367,9 +9367,14 @@ if (!gotTheLock) {
 
   ipcMain.handle(ArtifactPreviewIpc.ClearBrowserCookies, async () => {
     try {
-      await session.fromPartition(ArtifactBrowserPartition.Default).clearStorageData({
-        storages: ['cookies'],
-      });
+      await Promise.all([
+        session.fromPartition(ArtifactBrowserPartition.Default).clearStorageData({
+          storages: ['cookies'],
+        }),
+        session.defaultSession.clearStorageData({
+          storages: ['cookies'],
+        })
+      ]);
       return { success: true };
     } catch (error) {
       console.error('[ArtifactBrowser] failed to clear browser cookies:', error);
@@ -9379,7 +9384,10 @@ if (!gotTheLock) {
 
   ipcMain.handle(ArtifactPreviewIpc.ClearBrowserCache, async () => {
     try {
-      await session.fromPartition(ArtifactBrowserPartition.Default).clearCache();
+      await Promise.all([
+        session.fromPartition(ArtifactBrowserPartition.Default).clearCache(),
+        session.defaultSession.clearCache()
+      ]);
       return { success: true };
     } catch (error) {
       console.error('[ArtifactBrowser] failed to clear browser cache:', error);

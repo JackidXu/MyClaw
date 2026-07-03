@@ -24,6 +24,7 @@ import {
 import MyAgentSidebarTree from './agentSidebar/MyAgentSidebarTree';
 import BillingModal from './BillingModal';
 import Modal from './common/Modal';
+import { PasswordModal } from './PasswordModal';
 import { CoworkUiEvent } from './cowork/constants';
 import CoworkSearchModal from './cowork/CoworkSearchModal';
 import Cog6ToothIcon from './icons/Cog6ToothIcon';
@@ -66,6 +67,7 @@ const sidebarCreateIconClassName = 'h-4 w-4 shrink-0';
 
 const Sidebar: React.FC<SidebarProps> = ({
   onShowSettings,
+  onShowLogin,
   activeView,
   onShowSkills,
   onShowCowork,
@@ -94,6 +96,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   const [editNickname, setEditNickname] = useState('');
   const [editAvatar, setEditAvatar] = useState('');
   const [showConfirmDeactivate, setShowConfirmDeactivate] = useState(false);
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
 
   const userCardContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -148,63 +151,69 @@ const Sidebar: React.FC<SidebarProps> = ({
     setBalanceLoading(true);
     const minDelayPromise = new Promise((resolve) => setTimeout(resolve, 800));
     try {
-      const config = configService.getConfig();
-      const oneapiConfig = config.providers?.['oneapi'];
-      const apiKey = oneapiConfig?.apiKey?.trim();
-      const baseUrl = oneapiConfig?.baseUrl?.trim() || 'https://token.chaohui.ai/v1';
-
-      if (!apiKey) {
+      const apiKey = localStorage.getItem('heyclaw_api_key');
+      const session = localStorage.getItem('heyclaw_session');
+      const userId = localStorage.getItem('heyclaw_user_id');
+      if (!apiKey || !session || !userId) {
         await minDelayPromise;
-        if (showToast) {
-          window.dispatchEvent(new CustomEvent('app:showToast', { detail: '未激活系统，请先输入激活码' }));
-        }
+        onShowLogin?.();
         return;
       }
 
-      const cleanBase = baseUrl.replace(/\/+$/, '');
-      let hardLimitUsd = 0;
-      let totalUsageCents = 0;
+      let remainQuota = 0;
+      let dispName = 'HeyClaw 用户';
 
       const fetchPromise = (async () => {
-        // 1. 获取 subscription
-        try {
-          const subResp = await window.electron.api.fetch({
-            url: `${cleanBase}/dashboard/billing/subscription`,
-            method: 'GET',
-            headers: { 'Authorization': `Bearer ${apiKey}` }
-          }) as { ok: boolean; data?: any };
-          if (subResp.ok && subResp.data) {
-            hardLimitUsd = subResp.data.hard_limit_usd || 0;
-          }
-        } catch (e) {
-          console.error('[Sidebar] Balance sub fetch failed:', e);
-        }
+        const currentConfig = configService.getConfig();
+        const oneapiConfig = currentConfig.providers?.['oneapi'] || {};
+        const oneapiBaseUrl = oneapiConfig.baseUrl || 'https://token.chaohui.ai';
+        
+        // 自动剥离末尾的 /v1 或 /v1/ 以匹配管理自查接口
+        const cleanBaseUrl = oneapiBaseUrl.replace(/\/v1\/?$/, '').replace(/\/+$/, '');
+        const targetUrl = `${cleanBaseUrl}/api/user/self`;
+        const headers = {
+          'Cookie': session,
+          'New-Api-User': String(userId)
+        };
 
-        // 2. 获取 usage
-        try {
-          const now = new Date();
-          const startDate = '2020-01-01';
-          const endDate = new Date(now.getTime() + 24 * 3600 * 1000).toISOString().split('T')[0];
-          const usageResp = await window.electron.api.fetch({
-            url: `${cleanBase}/dashboard/billing/usage?start_date=${startDate}&end_date=${endDate}`,
-            method: 'GET',
-            headers: { 'Authorization': `Bearer ${apiKey}` }
-          }) as { ok: boolean; data?: any };
-          if (usageResp.ok && usageResp.data) {
-            totalUsageCents = usageResp.data.total_usage || 0;
+        // 客户端直接直连 New API 查询个人余额和信息
+        const selfResp = await window.electron.api.fetch({
+          url: targetUrl,
+          method: 'GET',
+          headers: headers
+        }) as { ok: boolean; status?: number; data?: any };
+
+        if (selfResp.ok && selfResp.data && selfResp.data.success) {
+          const userProfile = selfResp.data.data;
+          // 根据 New API 官方定义，用户的当前可用剩余配额即为 quota 字段
+          remainQuota = Number(userProfile.quota || 0);
+          dispName = userProfile.display_name || userProfile.username || 'HeyClaw 用户';
+        } else {
+          // 提取错误原因 (安全获取 message，避免 TypeError)
+          const errorMsg = selfResp.data?.message || 
+                           (typeof selfResp.data?.error === 'string' ? selfResp.data.error : selfResp.data?.error?.message) || 
+                           '请求未成功';
+
+          // 仅在明确返回 401 身份校验失效，或返回明确的未授权信息时才清空凭证并重新登录
+          const isUnauthorized = selfResp.status === 401 || errorMsg.includes('Unauthorized') || errorMsg.includes('对话令牌');
+          if (isUnauthorized) {
+            localStorage.removeItem('heyclaw_api_key');
+            localStorage.removeItem('heyclaw_user_id');
+            localStorage.removeItem('heyclaw_session');
+            onShowLogin?.();
           }
-        } catch (e) {
-          console.error('[Sidebar] Balance usage fetch failed:', e);
+          throw new Error(errorMsg);
         }
       })();
 
       await Promise.all([fetchPromise, minDelayPromise]);
 
-      const balanceUsd = hardLimitUsd - (totalUsageCents / 100);
-      const points = Math.max(0, Math.round(balanceUsd * 100));
+      const points = Math.max(0, Math.round(remainQuota / 5000));
       
       setBalance(points);
       localStorage.setItem('heyclaw_user_balance', String(points));
+
+
     } catch (err) {
       console.error('[Sidebar] Refresh balance error:', err);
       if (showToast) {
@@ -222,11 +231,33 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   // 从 localStorage 加载配置并做静默刷新
   useEffect(() => {
+    const apiKey = localStorage.getItem('heyclaw_api_key');
+    const session = localStorage.getItem('heyclaw_session');
+    const userId = localStorage.getItem('heyclaw_user_id');
+    if (!apiKey || !session || !userId) {
+      onShowLogin?.();
+      const currentConfig = configService.getConfig();
+      const currentOneapi = currentConfig.providers?.['oneapi'] || {};
+      if (currentOneapi.apiKey) {
+        void configService.updateConfig({
+          providers: {
+            ...currentConfig.providers,
+            oneapi: {
+              ...currentOneapi,
+              apiKey: '',
+              enabled: false
+            }
+          }
+        });
+      }
+    }
+
     const savedName = localStorage.getItem('heyclaw_user_name');
     if (savedName) {
       setUserNickname(savedName);
       setEditNickname(savedName);
     } else {
+      setUserNickname('HeyClaw 用户');
       setEditNickname('HeyClaw 用户');
     }
     const savedAvatar = localStorage.getItem('heyclaw_user_avatar');
@@ -241,11 +272,12 @@ const Sidebar: React.FC<SidebarProps> = ({
       setBalance(Number(savedBalance));
     }
     
-    // 延迟 1 秒静默刷新余额，以免影响启动加载
-    const timer = setTimeout(() => {
-      void handleRefreshBalanceRef.current(false);
-    }, 1000);
-    return () => clearTimeout(timer);
+    if (apiKey) {
+      const timer = setTimeout(() => {
+        void handleRefreshBalanceRef.current(false);
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
   }, []);
 
   // 监听对话流状态，成功响应后（streaming 结束）自动静默刷新余额
@@ -750,6 +782,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                       <ArrowPathIcon className="w-3.5 h-3.5" />
                     )}
                   </button>
+
                 </div>
               </div>
             </div>
@@ -793,6 +826,20 @@ const Sidebar: React.FC<SidebarProps> = ({
                 onClick={(e) => {
                   e.stopPropagation();
                   setShowUserMenu(false);
+                  setIsPasswordModalOpen(true);
+                }}
+                className="w-full flex items-center gap-2 px-2.5 py-1.5 text-left text-xs text-foreground/80 hover:bg-surface-raised rounded-lg transition-colors font-medium"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+                修改密码
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowUserMenu(false);
                   setIsBillingModalOpen(true);
                 }}
                 className="w-full flex items-center gap-2 px-2.5 py-1.5 text-left text-xs text-foreground/80 hover:bg-surface-raised rounded-lg transition-colors font-medium"
@@ -814,7 +861,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                 </svg>
-                退出激活
+                退出登录
               </button>
             </div>
           )}
@@ -938,11 +985,11 @@ const Sidebar: React.FC<SidebarProps> = ({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
               </svg>
             </div>
-            <h2 className="text-base font-semibold text-foreground">确认退出激活</h2>
+            <h2 className="text-base font-semibold text-foreground">确认退出登录</h2>
           </div>
           <div className="px-5 py-4">
             <p className="text-sm text-secondary">
-              确定要退出激活吗？退出后系统需要重新输入激活码才能继续使用。
+              确定要退出登录当前账号吗？退出后系统需要重新登录才能继续使用。
             </p>
           </div>
           <div className="flex items-center justify-end gap-3 px-5 py-4 border-t border-border">
@@ -953,8 +1000,23 @@ const Sidebar: React.FC<SidebarProps> = ({
               取消
             </button>
             <button
-              onClick={() => {
+              onClick={async () => {
                 setShowConfirmDeactivate(false);
+                // 1. 清除本地缓存凭证
+                localStorage.removeItem('heyclaw_api_key');
+                localStorage.removeItem('heyclaw_user_id');
+                localStorage.removeItem('heyclaw_session');
+                localStorage.removeItem('heyclaw_user_balance');
+                localStorage.removeItem('heyclaw_user_name');
+                
+                // 2. 清除浏览器缓存 Cookies
+                try {
+                  await window.electron.artifact.clearBrowserCookies();
+                } catch (cookieErr) {
+                  console.warn('Failed to clear browser cookies on deactivate:', cookieErr);
+                }
+
+                // 3. 触发全局事件，让 App.tsx 同步 SQLite 配置并重启网关
                 window.dispatchEvent(new CustomEvent('app:deactivate'));
               }}
               className="px-4 py-2 text-sm font-medium rounded-lg bg-red-500 hover:bg-red-600 text-white transition-colors"
@@ -969,6 +1031,18 @@ const Sidebar: React.FC<SidebarProps> = ({
       {isBillingModalOpen && (
         <BillingModal onClose={() => setIsBillingModalOpen(false)} />
       )}
+
+
+
+      {/* 修改密码模态框 */}
+      <PasswordModal
+        isOpen={isPasswordModalOpen}
+        onClose={() => setIsPasswordModalOpen(false)}
+        onSuccess={() => {
+          setIsPasswordModalOpen(false);
+          window.dispatchEvent(new CustomEvent('app:deactivate'));
+        }}
+      />
       </div>
     </aside>
   );

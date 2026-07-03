@@ -21,6 +21,7 @@ import PrivacyDialog from './components/PrivacyDialog';
 import { ScheduledTasksView } from './components/scheduledTasks';
 import Settings, { type SettingsOpenOptions } from './components/Settings';
 import Sidebar from './components/Sidebar';
+import { AuthModal } from './components/AuthModal';
 import { SkillsView } from './components/skills';
 import Toast from './components/Toast';
 import AppUpdateBadge from './components/update/AppUpdateBadge';
@@ -119,6 +120,36 @@ const App: React.FC = () => {
   const authUser = useSelector((state: RootState) => state.auth.user);
   const isWindows = window.electron.platform === 'win32';
 
+  const syncModelsToRedux = useCallback(() => {
+    const config = configService.getConfig();
+    const providerModels: { id: string; name: string; provider?: string; providerKey?: string; openClawProviderId?: string; supportsImage?: boolean }[] = [];
+    if (config.providers) {
+      Object.entries(config.providers).forEach(([providerName, providerConfig]) => {
+        if (providerConfig.enabled && providerConfig.models) {
+          const openClawProviderId = ProviderRegistry.getOpenClawProviderIdForConfig(providerName, providerConfig);
+          providerConfig.models.forEach((model: { id: string; name: string; supportsImage?: boolean }) => {
+            providerModels.push({
+              id: model.id,
+              name: model.name,
+              provider: getProviderDisplayName(providerName, providerConfig),
+              providerKey: providerName,
+              openClawProviderId,
+              supportsImage: model.supportsImage ?? false,
+            });
+          });
+        }
+      });
+    }
+    dispatch(setAvailableModels(providerModels));
+    if (providerModels.length > 0) {
+      const preferredModel = providerModels.find(
+        model => model.id === config.model.defaultModel
+          && (!config.model.defaultModelProvider || model.providerKey === config.model.defaultModelProvider)
+      ) ?? providerModels[0];
+      dispatch(setDefaultSelectedModel(preferredModel));
+    }
+  }, [dispatch]);
+
   const waitWithTimeout = useCallback(
     async <T,>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> => {
       return await new Promise<T>((resolve, reject) => {
@@ -208,10 +239,14 @@ const App: React.FC = () => {
           }
         }
 
-        let activated = false;
+        const apiKey = localStorage.getItem('heyclaw_api_key');
+        const session = localStorage.getItem('heyclaw_session');
+        const userId = localStorage.getItem('heyclaw_user_id');
+        // 与运行时 Sidebar 的判断逻辑保持一致：三个凭证必须同时存在才视为已登录
+        let activated = !!(apiKey && session && userId);
         let finalConfig = config;
 
-        if (oneapiKey) {
+        if (activated && oneapiKey) {
           try {
             mark('oneapi auth validation start');
             const cleanBaseUrl = oneapiBaseUrl.replace(/\/+$/, '');
@@ -289,36 +324,7 @@ const App: React.FC = () => {
         };
         apiService.setConfig(apiConfig);
 
-        const providerModels: { id: string; name: string; provider?: string; providerKey?: string; openClawProviderId?: string; supportsImage?: boolean }[] = [];
-        if (finalConfig.providers) {
-          Object.entries(finalConfig.providers).forEach(([providerName, providerConfig]) => {
-            if (providerConfig.enabled && providerConfig.models) {
-              const openClawProviderId = ProviderRegistry.getOpenClawProviderIdForConfig(providerName, providerConfig);
-              if (providerName === ProviderName.Minimax && providerConfig.authType === ProviderAuthType.OAuth) {
-                mark('MiniMax OAuth provider resolved to OpenClaw minimax-portal');
-              }
-              providerConfig.models.forEach((model: { id: string; name: string; supportsImage?: boolean }) => {
-                providerModels.push({
-                  id: model.id,
-                  name: model.name,
-                  provider: getProviderDisplayName(providerName, providerConfig),
-                  providerKey: providerName,
-                  openClawProviderId,
-                  supportsImage: model.supportsImage ?? false,
-                });
-              });
-            }
-          });
-        }
-        dispatch(setAvailableModels(providerModels));
-        if (providerModels.length > 0) {
-          const allModels = store.getState().model.availableModels;
-          const preferredModel = allModels.find(
-            model => model.id === finalConfig.model.defaultModel
-              && (!finalConfig.model.defaultModelProvider || model.providerKey === finalConfig.model.defaultModelProvider)
-          ) ?? allModels[0];
-          dispatch(setDefaultSelectedModel(preferredModel));
-        }
+        syncModelsToRedux();
         mark('model resolution done');
 
         // TODO: 以后开放服务协议弹窗时，恢复下面这行真实的存储读取
@@ -388,7 +394,7 @@ const App: React.FC = () => {
         // 2. 同步前端 Redux Store 状态，重新渲染可用模型和默认选中的模型
         dispatch(setAvailableModels(data.availableModels));
         if (data.defaultModel) {
-          const allModels = store.getState().model.availableModels;
+          const allModels = data.availableModels;
           const preferredModel = allModels.find(
             model => model.id === data.defaultModel
               && (!config.model?.defaultModelProvider || model.providerKey === config.model.defaultModelProvider)
@@ -583,8 +589,8 @@ const App: React.FC = () => {
   }, [showToast]);
 
   const handleShowLogin = useCallback(() => {
-    showToast(i18nService.t('featureInDevelopment'));
-  }, [showToast]);
+    setIsActivated(false);
+  }, []);
 
   const runUpdateCheck = useCallback(async () => {
     try {
@@ -1118,10 +1124,22 @@ const App: React.FC = () => {
 
   if (isInitialized && !isActivated) {
     return (
-      <ActivationOverlay 
-        onActivated={() => setIsActivated(true)} 
-        windowsStandaloneTitleBar={windowsStandaloneTitleBar}
-      />
+      <div className="h-screen flex flex-col bg-[#fcfdfe]">
+        {windowsStandaloneTitleBar}
+        <AuthModal 
+          isOpen={true} 
+          onSuccess={async () => {
+            try {
+              const entConfig = await window.electron.enterprise.getConfig();
+              setEnterpriseConfig(entConfig);
+            } catch (err) {
+              console.error('[App] Failed to fetch enterprise config on login success:', err);
+            }
+            syncModelsToRedux();
+            setIsActivated(true);
+          }} 
+        />
+      </div>
     );
   }
 
