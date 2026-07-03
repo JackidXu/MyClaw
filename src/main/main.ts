@@ -9734,8 +9734,8 @@ if (!gotTheLock) {
       const cspDirectives = [
         "default-src 'self'",
         isDev
-          ? `script-src 'self' 'unsafe-inline' http://localhost:${devPort} ws://localhost:${devPort}`
-          : "script-src 'self'",
+          ? `script-src 'self' 'unsafe-inline' http://localhost:${devPort} ws://localhost:${devPort} https://*.alipay.com https://*.alipayobjects.com`
+          : "script-src 'self' 'unsafe-inline' https://*.alipay.com https://*.alipayobjects.com",
         "style-src 'self' 'unsafe-inline' https:",
         `img-src 'self' data: blob: https: http: ${ArtifactPreviewProtocol.LocalFile}:`,
         // 允许连接到所有域名，不做限制
@@ -9743,7 +9743,7 @@ if (!gotTheLock) {
         "font-src 'self' data: blob: https:",
         `media-src 'self' data: blob: file: https: http: ${ArtifactPreviewProtocol.LocalFile}:`,
         "worker-src 'self' blob:",
-        "frame-src 'self' file: http://127.0.0.1:*",
+        "frame-src 'self' file: http://127.0.0.1:* https://*.alipay.com https://openapi.alipay.com https://*.alipaydev.com",
       ];
 
       callback({

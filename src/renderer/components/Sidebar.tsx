@@ -24,6 +24,7 @@ import {
 import MyAgentSidebarTree from './agentSidebar/MyAgentSidebarTree';
 import BillingModal from './BillingModal';
 import Modal from './common/Modal';
+import PayModal from './PayModal';
 import { PasswordModal } from './PasswordModal';
 import { CoworkUiEvent } from './cowork/constants';
 import CoworkSearchModal from './cowork/CoworkSearchModal';
@@ -96,6 +97,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   const [editNickname, setEditNickname] = useState('');
   const [editAvatar, setEditAvatar] = useState('');
   const [showConfirmDeactivate, setShowConfirmDeactivate] = useState(false);
+  const [isPayModalOpen, setIsPayModalOpen] = useState(false);
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
 
   const userCardContainerRef = useRef<HTMLDivElement>(null);
@@ -782,6 +784,25 @@ const Sidebar: React.FC<SidebarProps> = ({
                       <ArrowPathIcon className="w-3.5 h-3.5" />
                     )}
                   </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const config = configService.getConfig();
+                      const oneapiConfig = config.providers?.['oneapi'];
+                      const apiKey = oneapiConfig?.apiKey?.trim();
+                      if (!apiKey) {
+                        window.dispatchEvent(new CustomEvent('app:showToast', { detail: '未激活系统，请先输入激活码' }));
+                        return;
+                      }
+                      setIsPayModalOpen(true);
+                    }}
+                    className="hover:text-primary active:scale-95 transition-all p-0.5 rounded text-secondary"
+                    title="立即充值"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </button>
 
                 </div>
               </div>
@@ -1032,7 +1053,10 @@ const Sidebar: React.FC<SidebarProps> = ({
         <BillingModal onClose={() => setIsBillingModalOpen(false)} />
       )}
 
-
+      {/* 充值 Modal */}
+      {isPayModalOpen && (
+        <PayModal onClose={() => setIsPayModalOpen(false)} onSuccess={() => handleRefreshBalance(false)} />
+      )}
 
       {/* 修改密码模态框 */}
       <PasswordModal

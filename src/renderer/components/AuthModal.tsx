@@ -43,8 +43,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
         console.warn('Failed to clear browser cookies on submit:', cookieErr);
       }
 
-      const isDev = configService.getConfig().app.isDevelopment;
-      const adminBaseUrl = isDev ? 'http://localhost:8082' : 'https://admin.claw.chaohui.ai';
+      const adminBaseUrl = 'https://admin.claw.chaohui.ai';
 
       if (!isLogin) {
         // 1. 注册逻辑
