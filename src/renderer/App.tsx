@@ -10,7 +10,7 @@ import {
   AppUpdateStatus,
   isManualDownloadUrl,
 } from '../shared/appUpdate/constants';
-import { ProviderAuthType, ProviderName, ProviderRegistry } from '../shared/providers';
+import { ProviderName, ProviderRegistry } from '../shared/providers';
 import { CoworkView } from './components/cowork';
 import { CoworkShortcutDirection, CoworkUiEvent } from './components/cowork/constants';
 import CoworkPermissionModal from './components/cowork/CoworkPermissionModal';
@@ -380,7 +380,7 @@ const App: React.FC = () => {
         if (data.defaultModel) {
           const allModels = data.availableModels;
           const preferredModel = allModels.find(
-            model => model.id === data.defaultModel
+            (model: any) => model.id === data.defaultModel
               && (!config.model?.defaultModelProvider || model.providerKey === config.model.defaultModelProvider)
           ) ?? allModels[0];
           if (preferredModel) {
@@ -1271,7 +1271,7 @@ interface ActivationOverlayProps {
   windowsStandaloneTitleBar: React.ReactNode;
 }
 
-const ActivationOverlay: React.FC<ActivationOverlayProps> = ({ onActivated, windowsStandaloneTitleBar }) => {
+export const ActivationOverlay: React.FC<ActivationOverlayProps> = ({ onActivated, windowsStandaloneTitleBar }) => {
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

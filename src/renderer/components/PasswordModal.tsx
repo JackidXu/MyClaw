@@ -47,7 +47,7 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({ isOpen, onClose, o
 
       // 客户端直连 New API 修改密码 (使用 PUT /api/user/self，零越权风险)
       const currentConfig = configService.getConfig();
-      const oneapiConfig = currentConfig.providers?.['oneapi'] || {};
+      const oneapiConfig = (currentConfig.providers?.['oneapi'] || {}) as any;
       const oneapiBaseUrl = oneapiConfig.baseUrl || 'https://token.chaohui.ai';
       const cleanBaseUrl = oneapiBaseUrl.replace(/\/v1\/?$/, '').replace(/\/+$/, '');
       const targetUrl = `${cleanBaseUrl}/api/user/self`;

@@ -1,7 +1,7 @@
 import { type Artifact, type ArtifactType, ArtifactTypeValue } from '../types/artifact';
 import type { CoworkMessage } from '../types/cowork';
 
-export function isSensitiveSkillFile(filePath: string | undefined | null, title?: string | null, fileName?: string | null): boolean {
+export function isSensitiveSkillFile(filePath: string | undefined | null, _title?: string | null, _fileName?: string | null): boolean {
   if (filePath) {
     const normalized = filePath.toLowerCase().replace(/\\/g, '/');
     const segments = normalized.split('/');

@@ -95,7 +95,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
 
       // 同步更新系统模型服务 Provider 配置，并拉取同步最新模型，使后续聊天调用该 key 生效且能成功校验
       const currentConfig = configService.getConfig();
-      const currentOneapi = currentConfig.providers?.['oneapi'] || {};
+      const currentOneapi = (currentConfig.providers?.['oneapi'] || {}) as any;
       const oneapiBaseUrl = currentOneapi.baseUrl?.trim() || 'https://token.chaohui.ai/v1';
 
       let chatModels: any[] = [];
