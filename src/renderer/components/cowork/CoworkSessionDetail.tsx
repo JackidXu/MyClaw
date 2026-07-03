@@ -3106,6 +3106,20 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
       return `built-in://${skillId}/SKILL.md`;
     });
 
+    // 拦截所有包含 /skills/ 或 /SKILLs/ 级别的物理目录路径，仅当属于系统专有路径（如 HeyClawDev、HeyClaw 或 .agents）时，防止物理结构暴露
+    const physicalSkillDirRegex = /(?:[a-zA-Z]:[\\/][^\\/]+[\\/].*?|[\\/][^\\/]+[\\/].*?|~[\\/][^\\/\s)]+[\\/].*?)(?:HeyClawDev|HeyClaw|\.agents)[\\/](?:skills|SKILLs)[\\/]([a-zA-Z0-9_-]+)/gi;
+    result = result.replace(physicalSkillDirRegex, () => {
+      return `[Skill Directory]`;
+    });
+
+    // 拦截包含 SKILL.md 关键字的 markdown 链接，避免展示为可点击元素
+    const markdownFileLinkRegex = /\[([^\]]*?skill\.md[^\]]*?)\]\((?:file:\/\/|built-in:\/\/)?([^)]+)\)/gi;
+    result = result.replace(markdownFileLinkRegex, '');
+
+    // 屏蔽裸露的 SKILL.md 的 file:// 链接、绝对/相对路径或虚拟协议链接 (限定系统专有路径防止误杀)
+    const bareSkillPathRegex = /(?:file:\/\/\/[^\s)]*?(?:HeyClawDev|HeyClaw|\.agents)\/(?:skills|SKILLs)\/[^\s)]*?\/skill\.md|(?:[a-zA-Z]:[\\/]|(?:\/[^/\s]+)*\/)(?:HeyClawDev|HeyClaw|\.agents)\/(?:skills|SKILLs)\/[a-zA-Z0-9_-]+\/skill\.md|built-in:\/\/[^\s)]*?\/skill\.md)/gi;
+    result = result.replace(bareSkillPathRegex, '');
+
     // 归一化净化函数：移除 YAML 元数据、Markdown 格式标记符，忽略大小写并将所有连续空格归一化
     const normalizeForMatch = (text: string): string => {
       return text

@@ -1,6 +1,24 @@
 import { type Artifact, type ArtifactType, ArtifactTypeValue } from '../types/artifact';
 import type { CoworkMessage } from '../types/cowork';
 
+export function isSensitiveSkillFile(filePath: string | undefined | null, title?: string | null, fileName?: string | null): boolean {
+  if (filePath) {
+    const normalized = filePath.toLowerCase().replace(/\\/g, '/');
+    const segments = normalized.split('/');
+    const baseName = segments[segments.length - 1];
+    if (baseName === 'skill.md') {
+      // 只要路径段中包含 'skills'，或者以 built-in: 协议开头，都判定为技能机密资产
+      if (
+        segments.includes('skills') ||
+        normalized.startsWith('built-in:')
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 /**
  * Normalize a local artifact path from markdown, MEDIA tokens, or tool metadata.
  */
@@ -351,7 +369,7 @@ export function parseMediaTokensFromText(
 
   while ((match = re.exec(messageContent)) !== null) {
     const filePath = normalizeArtifactFilePath(match[1]);
-    if (!filePath) continue;
+    if (!filePath || isSensitiveSkillFile(filePath)) continue;
 
     const ext = getFileExtension(filePath);
     const artifactType = getArtifactTypeFromExtension(ext);
@@ -402,6 +420,7 @@ export function parseFilePathsFromText(
 
   while ((match = re.exec(messageContent)) !== null) {
     const filePath = normalizeArtifactFilePath(match[1]);
+    if (isSensitiveSkillFile(filePath)) continue;
 
     const ext = getFileExtension(filePath);
     const artifactType = getArtifactTypeFromExtension(ext);
@@ -448,6 +467,7 @@ export function parseFileLinksFromMessage(
       filePath = normalizeArtifactFilePath(match[2]);
     }
     const ext = getFileExtension(filePath);
+    if (isSensitiveSkillFile(filePath, linkText)) continue;
     const artifactType = getArtifactTypeFromExtension(ext);
     if (!artifactType) continue;
 
@@ -632,7 +652,7 @@ export function parseToolArtifact(
 
   const rawFilePath = extractFilePath(toolInput);
   const filePath = rawFilePath ? normalizeArtifactFilePath(rawFilePath) : null;
-  if (!filePath) return null;
+  if (!filePath || isSensitiveSkillFile(filePath)) return null;
 
   const ext = getFileExtension(filePath);
   const artifactType = getArtifactTypeFromExtension(ext);
