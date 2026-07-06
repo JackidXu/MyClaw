@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 
 import type { Model } from './modelSlice';
 import modelReducer, {
+  AUTO_MODEL,
   clearAgentSelectedModel,
   clearServerModels,
   selectAgentSelectedModel,
@@ -101,7 +102,7 @@ describe('setServerModels / clearServerModels', () => {
     state = modelReducer(state, setServerModels([lockedServerModel]));
 
     expect(state.defaultSelectedModel).toEqual(modelA);
-    expect(state.availableModels[0]).toEqual(lockedServerModel);
+    expect(state.availableModels[1]).toEqual(lockedServerModel);
   });
 
   test('setServerModels displays a locked server model when no custom models exist', () => {
@@ -113,8 +114,8 @@ describe('setServerModels / clearServerModels', () => {
 
     state = modelReducer(state, setServerModels([lockedServerModel]));
 
-    expect(state.availableModels).toEqual([lockedServerModel]);
-    expect(state.defaultSelectedModel).toEqual(lockedServerModel);
+    expect(state.availableModels).toEqual([AUTO_MODEL, lockedServerModel]);
+    expect(state.defaultSelectedModel).toEqual(AUTO_MODEL);
   });
 
   test('setAvailableModels clears fallback custom models while preserving locked server models', () => {
@@ -126,8 +127,8 @@ describe('setServerModels / clearServerModels', () => {
 
     state = modelReducer(state, setAvailableModels([]));
 
-    expect(state.availableModels).toEqual([lockedServerModel]);
-    expect(state.defaultSelectedModel).toEqual(lockedServerModel);
+    expect(state.availableModels).toEqual([AUTO_MODEL, lockedServerModel]);
+    expect(state.defaultSelectedModel).toEqual(AUTO_MODEL);
   });
 
   test('setServerModels clears per-agent selections that resolve to locked server models', () => {

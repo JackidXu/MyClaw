@@ -110,7 +110,6 @@ describe('ProviderRegistry', () => {
       [ProviderName.Volcengine, 'ark-code-latest'],
       [ProviderName.Volcengine, 'doubao-seed-2-0-lite-260215'],
       [ProviderName.Volcengine, 'doubao-seed-2-0-mini-260215'],
-      [ProviderName.Youdaozhiyun, 'deepseek-reasoner'],
       [ProviderName.Qianfan, 'glm-5.1'],
       [ProviderName.Qianfan, 'deepseek-v4-flash'],
       [ProviderName.Xiaomi, 'mimo-v2.5-pro'],

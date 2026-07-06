@@ -187,9 +187,9 @@ export function createScheduledTaskFormState(
     ? (exprToCronBuilder(rawCronExpr) ?? { ...DEFAULT_CRON_BUILDER })
     : { ...DEFAULT_CRON_BUILDER };
   const rawModel = task.payload.kind === PayloadKind.AgentTurn ? task.payload.model : undefined;
-  const taskModelRef = typeof rawModel === 'string'
-    ? (rawModel.trim() || fallbackModelRef)
-    : fallbackModelRef;
+  const taskModelRef = task.payload.kind === PayloadKind.AgentTurn
+    ? (typeof rawModel === 'string' ? (rawModel.trim() || fallbackModelRef) : fallbackModelRef)
+    : '';
 
   return {
     name: task.name,

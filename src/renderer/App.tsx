@@ -350,7 +350,7 @@ const App: React.FC = () => {
     };
 
     void initializeApp();
-  }, [dispatch, waitWithTimeout]);
+  }, [dispatch, waitWithTimeout, syncModelsToRedux]);
 
   useEffect(() => {
     const unsubscribe = i18nService.subscribe(() => {

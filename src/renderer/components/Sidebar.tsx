@@ -206,6 +206,11 @@ const Sidebar: React.FC<SidebarProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  const onShowLoginRef = useRef(onShowLogin);
+  useEffect(() => {
+    onShowLoginRef.current = onShowLogin;
+  }, [onShowLogin]);
+
   const handleRefreshBalance = useCallback(async (showToast = true) => {
     if (balanceLoading) return;
     setBalanceLoading(true);
@@ -216,7 +221,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       const userId = localStorage.getItem('heyclaw_user_id');
       if (!apiKey || !session || !userId) {
         await minDelayPromise;
-        onShowLogin?.();
+        onShowLoginRef.current?.();
         return;
       }
 
@@ -258,7 +263,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             localStorage.removeItem('heyclaw_api_key');
             localStorage.removeItem('heyclaw_user_id');
             localStorage.removeItem('heyclaw_session');
-            onShowLogin?.();
+            onShowLoginRef.current?.();
           }
           throw new Error(errorMsg);
         }
@@ -293,7 +298,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     const session = localStorage.getItem('heyclaw_session');
     const userId = localStorage.getItem('heyclaw_user_id');
     if (!apiKey || !session || !userId) {
-      onShowLogin?.();
+      onShowLoginRef.current?.();
       const currentConfig = configService.getConfig();
       const currentOneapi = currentConfig.providers?.['oneapi'];
       if (currentOneapi?.apiKey) {
