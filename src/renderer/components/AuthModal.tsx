@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+
 import { configService } from '../services/config';
 
 interface AuthModalProps {
@@ -95,8 +96,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
 
       // 同步更新系统模型服务 Provider 配置，并拉取同步最新模型，使后续聊天调用该 key 生效且能成功校验
       const currentConfig = configService.getConfig();
-      const currentOneapi = currentConfig.providers?.['oneapi'] || {};
-      const oneapiBaseUrl = currentOneapi.baseUrl?.trim() || 'https://token.chaohui.ai/v1';
+      const currentOneapi = currentConfig.providers?.['oneapi'];
+      const oneapiBaseUrl = currentOneapi?.baseUrl?.trim() || 'https://token.chaohui.ai/v1';
 
       let chatModels: any[] = [];
       let defaultChatModel = '';
@@ -141,7 +142,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
             ...currentOneapi,
             apiKey: formattedKey,
             enabled: true,
-            models: chatModels.length > 0 ? chatModels : currentOneapi.models,
+            models: chatModels.length > 0 ? chatModels : (currentOneapi?.models || []),
             baseUrl: oneapiBaseUrl,
           }
         },

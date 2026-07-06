@@ -7,6 +7,7 @@ import {
   SessionTarget as STSessionTarget,
 } from '../../../scheduledTask/constants';
 import type { CronJobService } from '../../../scheduledTask/cronJobService';
+import { OpenClawEnginePhase } from '../../../shared/openclawEngine/constants';
 import { PlatformRegistry } from '../../../shared/platform';
 import { resolveAllEnabledProviderConfigs } from '../../libs/claudeSettings';
 import { buildProviderSelection } from '../../libs/openclawConfigSync';
@@ -76,7 +77,12 @@ export interface ScheduledTaskHandlerDeps {
   } | null;
   getOpenClawRuntimeAdapter: () => {
     getGatewayClient: () => unknown;
-    fetchSessionByKey: (sessionKey: string) => Promise<unknown>;
+    getEngineStatusSnapshot: () => { phase: OpenClawEnginePhase };
+    connectGatewayIfNeeded: () => Promise<void>;
+    fetchSessionByKey: (
+      sessionKey: string,
+      options?: { sessionId?: string | null },
+    ) => Promise<unknown>;
   } | null;
 }
 
@@ -132,11 +138,32 @@ async function applyAnnounceDeliveryNormalization(
   }
 }
 
+async function ensureScheduledTaskGatewayClient(
+  getOpenClawRuntimeAdapter: ScheduledTaskHandlerDeps['getOpenClawRuntimeAdapter'],
+): Promise<boolean> {
+  const adapter = getOpenClawRuntimeAdapter();
+  if (!adapter) return false;
+  if (adapter.getGatewayClient()) return true;
+
+  // While the engine is still installing/starting, report not-ready instead
+  // of blocking on gateway startup; the renderer reloads via the refresh
+  // event after the first successful cron poll.
+  if (adapter.getEngineStatusSnapshot().phase !== OpenClawEnginePhase.Running) {
+    return false;
+  }
+
+  await adapter.connectGatewayIfNeeded();
+  return Boolean(adapter.getGatewayClient());
+}
+
 export function registerScheduledTaskHandlers(deps: ScheduledTaskHandlerDeps): void {
   const { getCronJobService, getIMGatewayManager, getOpenClawRuntimeAdapter } = deps;
 
   ipcMain.handle(ScheduledTaskIpc.List, async () => {
     try {
+      if (!(await ensureScheduledTaskGatewayClient(getOpenClawRuntimeAdapter))) {
+        return { success: true, ready: false, tasks: [] };
+      }
       const tasks = await getCronJobService().listJobs();
       return { success: true, ready: true, tasks };
     } catch (error) {
@@ -288,6 +315,9 @@ export function registerScheduledTaskHandlers(deps: ScheduledTaskHandlerDeps): v
       filter?: import('../../../scheduledTask/types').RunFilter,
     ) => {
       try {
+        if (!(await ensureScheduledTaskGatewayClient(getOpenClawRuntimeAdapter))) {
+          return { success: true, ready: false, runs: [] };
+        }
         const runs = await getCronJobService().listAllRuns(limit, offset, filter);
         return { success: true, ready: true, runs };
       } catch (error) {
@@ -299,19 +329,29 @@ export function registerScheduledTaskHandlers(deps: ScheduledTaskHandlerDeps): v
     },
   );
 
-  ipcMain.handle(ScheduledTaskIpc.ResolveSession, async (_event, sessionKey: string) => {
-    try {
-      if (!sessionKey) return { success: true, session: null };
-      // Fetch session history from OpenClaw (returns transient session, not persisted)
-      const session = await getOpenClawRuntimeAdapter()?.fetchSessionByKey(sessionKey);
-      return { success: true, session: session ?? null };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to resolve session',
-      };
-    }
-  });
+  ipcMain.handle(
+    ScheduledTaskIpc.ResolveSession,
+    async (
+      _event,
+      input: string | { sessionId?: string | null; sessionKey?: string | null },
+    ) => {
+      try {
+        const sessionKey = typeof input === 'string' ? input : (input.sessionKey ?? '');
+        const sessionId = typeof input === 'string' ? null : (input.sessionId ?? null);
+        if (!sessionKey) return { success: true, session: null };
+        // Fetch session history from OpenClaw (returns transient session, not persisted)
+        const session = await getOpenClawRuntimeAdapter()?.fetchSessionByKey(sessionKey, {
+          sessionId,
+        });
+        return { success: true, session: session ?? null };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to resolve session',
+        };
+      }
+    },
+  );
 
   ipcMain.handle(ScheduledTaskIpc.ListChannels, async () => {
     try {

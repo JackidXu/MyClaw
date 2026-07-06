@@ -1,4 +1,5 @@
 import {
+  ArchiveBoxArrowDownIcon,
   ArrowDownIcon,
   DocumentArrowDownIcon,
   PhotoIcon,
@@ -7,6 +8,8 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { createPortal } from 'react-dom';
 import { useDispatch, useSelector } from 'react-redux';
 
+import { stripGoalCommandPrefixForDisplay } from '../../../common/sessionTitle';
+import { CoworkGoalStatus } from '../../../shared/cowork/goal';
 import type { CoworkImageAttachmentPreview } from '../../../shared/cowork/imageAttachments';
 import {
   COWORK_RAIL_TOOLTIP_PREVIEW_MAX_LENGTH,
@@ -18,7 +21,7 @@ import {
   type CoworkSelectedTextValidationError,
   normalizeCoworkSelectedTextSnippets,
 } from '../../../shared/cowork/selectedText';
-import { dedupeArtifactsForDisplay, normalizeFilePathForDedup, normalizeLocalServiceUrlForDedup, parseFileLinksFromMessage, parseFilePathsFromText, parseLocalServiceUrlsFromText, parseMediaTokensFromText, parseRemoteImageArtifactsFromText, parseToolArtifact, parseToolResultMediaArtifacts, shouldParseFilePathsFromToolResult, stripFileLinksFromText } from '../../services/artifactParser';
+import { dedupeArtifactsForDisplay, normalizeFilePathForDedup, normalizeLocalServiceOrigin, normalizeLocalServiceUrlForDedup, parseFileLinksFromMessage, parseFilePathsFromText, parseLocalServiceUrlsFromText, parseMediaTokensFromText, parseRemoteImageArtifactsFromText, parseToolArtifact, parseToolResultMediaArtifacts, shouldParseFilePathsFromToolResult, stripFileLinksFromText } from '../../services/artifactParser';
 import { coworkService } from '../../services/cowork';
 import { i18nService } from '../../services/i18n';
 import { getInstalledKitSkillIds } from '../../services/kitCapability';
@@ -34,6 +37,7 @@ import {
   activateArtifactBrowserTab,
   activateArtifactFileListTab,
   activateArtifactPreviewTab,
+  activateArtifactSubagentTab,
   addArtifact,
   type ArtifactPreviewTab,
   ArtifactSpecialTab,
@@ -41,6 +45,7 @@ import {
   closePanel,
   MAX_PANEL_WIDTH,
   MIN_PANEL_WIDTH,
+  openArtifactPreviewTab,
   selectActivePreviewTab,
   selectIsPanelOpen,
   selectPanelWidth,
@@ -57,7 +62,7 @@ import { setActiveKitIds } from '../../store/slices/kitSlice';
 import { setActiveSkillIds } from '../../store/slices/skillSlice';
 import type { Artifact } from '../../types/artifact';
 import { ArtifactTypeValue, PREVIEWABLE_ARTIFACT_TYPES } from '../../types/artifact';
-import type { CoworkImageAttachment, CoworkMessage, CoworkMessageMetadata } from '../../types/cowork';
+import type { CoworkImageAttachment, CoworkMessage, CoworkMessageMetadata, SubagentSessionSummary } from '../../types/cowork';
 import {
   CoworkCollaborationMode,
   type CoworkCollaborationMode as CoworkCollaborationModeType,
@@ -65,15 +70,28 @@ import {
 } from '../../types/cowork';
 import type { MediaAttachmentRef } from '../../types/mediaGeneration';
 import { parseUserMessageForDisplay } from '../../utils/userMessageDisplay';
-import { ArtifactPanel, type BrowserAnnotationPayload } from '../artifacts';
+import { ArtifactPanel, type BrowserAnnotationPayload, SubagentPanelContent } from '../artifacts';
+import { reportArtifactPreviewAction } from '../artifacts/artifactAnalytics';
+import {
+  ArtifactAutoPreviewOpenTarget,
+  getAutoPreviewOpenTarget,
+  selectAutoPreviewArtifact,
+} from '../artifacts/autoPreviewPolicy';
 import ComposeIcon from '../icons/ComposeIcon';
 import FileTypeIcon from '../icons/fileTypes/FileTypeIcon';
 import SidebarToggleIcon from '../icons/SidebarToggleIcon';
+import SubagentIcon from '../icons/SubagentIcon';
 import MarkdownContent from '../MarkdownContent';
 import WindowTitleBar from '../window/WindowTitleBar';
 import AssistantTurnBlock, { ContextCompactionDivider } from './AssistantTurnBlock';
 import { type CoworkOpenShareOptionsEventDetail, CoworkUiEvent } from './constants';
 import ContextUsageIndicator from './ContextUsageIndicator';
+import {
+  bucketCount,
+  bucketDistance,
+  bucketLength,
+  reportConversationNavigationAction,
+} from './conversationAnalytics';
 import CoworkPromptInput, { type CoworkPromptInputRef } from './CoworkPromptInput';
 import LazyRenderTurn, { clearHeightCache } from './LazyRenderTurn';
 import {
@@ -85,6 +103,7 @@ import {
   getStreamingActivityStatusText,
   hasRenderableAssistantContent,
   MEDIA_TOKEN_DISPLAY_RE,
+  type ToolGroupItem,
 } from './messageDisplayUtils';
 import { parseProposedPlanBlock } from './proposedPlanParser';
 import { buildSelectedKitContextPrompt } from './selectedKitContextPrompt';
@@ -96,6 +115,7 @@ import {
   type CoworkTextExportFormat as CoworkTextExportFormatValue,
   mergeCoworkTextExportMessages,
 } from './sessionExport';
+import SubagentTurnLinks from './SubagentTurnLinks';
 import UserMessageContent from './UserMessageContent';
 import UserMessageItem from './UserMessageItem';
 interface CoworkSessionDetailProps {
@@ -116,16 +136,26 @@ interface CoworkSessionDetailProps {
   updateBadge?: React.ReactNode;
 }
 
+interface BrowserLocalServiceContext {
+  artifactId?: string;
+  url: string;
+  origin: string;
+  projectDirectory?: string;
+  projectCandidates?: NonNullable<Artifact['localService']>['projectCandidates'];
+}
+
 const AUTO_SCROLL_THRESHOLD = 120;
 const NAV_SCROLL_LOCK_DURATION = 800;
 const NAV_BOTTOM_SNAP_THRESHOLD = 20;
 const WHEEL_DELTA_LINE_HEIGHT = 16;
 const SCROLL_TO_BOTTOM_SETTLE_THRESHOLD = 24;
 const SCROLL_TO_BOTTOM_SETTLE_DELAYS_MS = [600, 1200, 1800] as const;
+const AUTO_PREVIEW_ARTIFACT_SETTLE_MS = 600;
 const ARTIFACT_PANEL_TRANSITION_MS = 200;
 const ARTIFACT_PANEL_RESIZE_HANDLE_WIDTH = 4;
 const COWORK_DETAIL_MIN_WIDTH = 480;
 const ARTIFACT_PANEL_MIN_WIDTH_RATIO = 1 / 6;
+const SUBAGENT_PANEL_POLL_INTERVAL_MS = 5_000;
 const INVALID_FILE_NAME_PATTERN = /[<>:"/\\|?*\u0000-\u001F]/g;
 const SELECTED_TEXT_ACTION_HALF_WIDTH = 72;
 const SELECTED_TEXT_ACTION_SUPPRESS_MS = 250;
@@ -215,6 +245,31 @@ type ExpandedConversationPreview = {
   items: ExpandedConversationPreviewItem[];
 };
 
+const getTurnMessageIds = (turn: ConversationTurn): Set<string> => {
+  const messageIds = new Set<string>();
+  for (const item of turn.assistantItems) {
+    if (item.type === 'assistant' || item.type === 'system' || item.type === 'tool_result') {
+      messageIds.add(item.message.id);
+      continue;
+    }
+    if (item.type === 'tool_group') {
+      messageIds.add(item.group.toolUse.id);
+      if (item.group.toolResult) {
+        messageIds.add(item.group.toolResult.id);
+      }
+    }
+  }
+  return messageIds;
+};
+
+const findLatestAssistantTurn = (turns: ConversationTurn[]): ConversationTurn | null => {
+  for (let index = turns.length - 1; index >= 0; index -= 1) {
+    const turn = turns[index];
+    if (turn.assistantItems.length > 0) return turn;
+  }
+  return null;
+};
+
 const stripRailLabelMarkdown = (value: string): string => value
   .replace(MEDIA_TOKEN_DISPLAY_RE, ' ')
   .replace(/^#+\s+/gm, '')
@@ -239,6 +294,10 @@ const getRailLabel = (content: string, fallback: string, maxLength = 50): string
     .join('\n');
   const stripped = stripRailLabelMarkdown(labelSource || content);
   return stripped.slice(0, maxLength) || fallback;
+};
+
+const getSessionTitleForDisplay = (title: string | null | undefined): string => {
+  return stripGoalCommandPrefixForDisplay(title ?? '').trim();
 };
 
 const isAssistantRailContentMessage = (message: CoworkMessage): boolean => (
@@ -1129,6 +1188,22 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
 
   // Clear lazy-render height cache when session changes
   const sessionId = currentSession?.id;
+  const handleGoalCommand = useCallback((command: string) => {
+    if (!currentSession?.id) return Promise.resolve(false);
+    const goalAction = command.split(/\s+/, 2)[1] ?? 'unknown';
+    console.debug(`[CoworkGoal] dispatching goal command action=${goalAction} for session ${currentSession.id}.`);
+    return coworkService.runGoalCommand({
+      sessionId: currentSession.id,
+      command,
+    }).catch((error) => {
+      console.warn(`[CoworkGoal] goal command action=${goalAction} failed for session ${currentSession.id}.`, error);
+      return false;
+    }).finally(() => {
+      if (currentSession.id) {
+        void coworkService.refreshContextUsage(currentSession.id, { notifyCompaction: false });
+      }
+    });
+  }, [currentSession?.id]);
   const latestProposedPlan = useMemo(
     () => currentSession ? findLatestProposedPlan(currentSession.messages) : null,
     [currentSession],
@@ -1256,6 +1331,18 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
   const [isExportingText, setIsExportingText] = useState(false);
   const [showExportOptions, setShowExportOptions] = useState(false);
 
+  const getConversationControlAnalyticsParams = useCallback(() => ({
+    sessionMessageCountBucket: bucketCount(currentSession?.messages.length ?? 0),
+    totalMessageCountBucket: bucketCount(currentSession?.totalMessages ?? currentSession?.messages.length ?? 0),
+    isStreaming,
+    isSessionBusy,
+  }), [
+    currentSession?.messages.length,
+    currentSession?.totalMessages,
+    isSessionBusy,
+    isStreaming,
+  ]);
+
   useEffect(() => {
     setShouldAutoScroll(true);
   }, [currentSession?.id]);
@@ -1267,23 +1354,57 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
     }
     if (isContextBusy) {
       console.debug('[CoworkSessionDetail] manual context compaction was ignored because compaction is already running.');
+      reportConversationNavigationAction({
+        actionType: 'context_compact_blocked',
+        params: {
+          ...getConversationControlAnalyticsParams(),
+          reason: 'context_busy',
+        },
+      });
       return;
     }
     if (isSessionBusy || currentSession.status === CoworkSessionStatusValue.Running) {
       console.debug('[CoworkSessionDetail] manual context compaction was ignored because the session is still running.');
+      reportConversationNavigationAction({
+        actionType: 'context_compact_blocked',
+        params: {
+          ...getConversationControlAnalyticsParams(),
+          reason: 'session_running',
+        },
+      });
       window.dispatchEvent(new CustomEvent('app:showToast', {
         detail: i18nService.t('coworkContextCompactBlockedRunning'),
       }));
       return;
     }
     console.debug('[CoworkSessionDetail] manual context compaction confirmation toggled.');
-    setShowCompactConfirm(prev => !prev);
-  }, [currentSession?.id, currentSession?.status, isContextBusy, isSessionBusy]);
+    setShowCompactConfirm(prev => {
+      const targetOpen = !prev;
+      reportConversationNavigationAction({
+        actionType: targetOpen ? 'context_compact_confirm_open' : 'context_compact_confirm_close',
+        params: {
+          ...getConversationControlAnalyticsParams(),
+          targetOpen,
+        },
+      });
+      return targetOpen;
+    });
+  }, [
+    currentSession?.id,
+    currentSession?.status,
+    getConversationControlAnalyticsParams,
+    isContextBusy,
+    isSessionBusy,
+  ]);
 
   const handleCancelCompactContext = useCallback(() => {
     console.debug('[CoworkSessionDetail] manual context compaction was canceled by the user.');
+    reportConversationNavigationAction({
+      actionType: 'context_compact_cancel',
+      params: getConversationControlAnalyticsParams(),
+    });
     setShowCompactConfirm(false);
-  }, []);
+  }, [getConversationControlAnalyticsParams]);
 
   const handleConfirmCompactContext = useCallback(() => {
     if (!currentSession?.id) {
@@ -1292,9 +1413,13 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
       return;
     }
     console.log(`[CoworkSessionDetail] manual context compaction confirmed for session ${currentSession.id}.`);
+    reportConversationNavigationAction({
+      actionType: 'context_compact_confirm',
+      params: getConversationControlAnalyticsParams(),
+    });
     setShowCompactConfirm(false);
     void coworkService.compactContext(currentSession.id);
-  }, [currentSession?.id]);
+  }, [currentSession?.id, getConversationControlAnalyticsParams]);
 
   const handleForkMessage = useCallback((messageId: string) => {
     if (!currentSession?.id) {
@@ -1390,6 +1515,16 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
       || 'unknown source';
     const result = normalizeCoworkSelectedTextSnippets([...selectedDraftSnippets, snippet]);
     if (result.success === false) {
+      reportConversationNavigationAction({
+        actionType: 'selected_text_add_blocked',
+        params: {
+          ...getConversationControlAnalyticsParams(),
+          sourceType,
+          selectedTextLengthBucket: bucketLength(snippet.text.length),
+          selectedSnippetCount: selectedDraftSnippets.length,
+          errorCode: result.error,
+        },
+      });
       logDetailDiagnostic(
         `rejected a selected text excerpt for session ${currentSession.id}; `
         + `source type is ${sourceType}, source is ${sourceLabel}, and reason is ${result.error}`,
@@ -1400,13 +1535,23 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
       return;
     }
     dispatch(addDraftSelectedTextSnippet({ draftKey: currentSession.id, snippet }));
+    reportConversationNavigationAction({
+      actionType: 'selected_text_add_to_prompt',
+      params: {
+        ...getConversationControlAnalyticsParams(),
+        sourceType,
+        selectedTextLengthBucket: bucketLength(snippet.text.length),
+        selectedSnippetCount: result.snippets.length,
+        selectedTextTotalLengthBucket: bucketLength(result.snippets.reduce((total, item) => total + item.text.length, 0)),
+      },
+    });
     logDetailDiagnostic(
       `added a selected text excerpt to the draft for session ${currentSession.id}; `
       + `source type is ${sourceType}, source is ${sourceLabel}; `
       + `${result.snippets.length} excerpts now contain ${result.snippets.reduce((total, item) => total + item.text.length, 0)} characters`,
     );
     promptInputRef.current?.focus();
-  }, [currentSession?.id, dispatch, selectedDraftSnippets]);
+  }, [currentSession?.id, dispatch, getConversationControlAnalyticsParams, selectedDraftSnippets]);
 
   const handleAddSelectedText = useCallback(() => {
     if (!selectedTextAction) return;
@@ -1428,17 +1573,31 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
       container?.querySelectorAll<HTMLElement>('[data-cowork-assistant-message-id]') ?? [],
     ).find(candidate => candidate.dataset.coworkAssistantMessageId === sourceMessageId);
     if (!element) {
+      reportConversationNavigationAction({
+        actionType: 'selected_text_locate_source',
+        params: {
+          ...getConversationControlAnalyticsParams(),
+          result: 'failed',
+        },
+      });
       window.dispatchEvent(new CustomEvent('app:showToast', {
         detail: i18nService.t('coworkSelectedTextSourceUnavailable'),
       }));
       return;
     }
+    reportConversationNavigationAction({
+      actionType: 'selected_text_locate_source',
+      params: {
+        ...getConversationControlAnalyticsParams(),
+        result: 'success',
+      },
+    });
     element.scrollIntoView({ behavior: 'smooth', block: 'center' });
     element.classList.add('ring-2', 'ring-primary/50', 'rounded-lg');
     window.setTimeout(() => {
       element.classList.remove('ring-2', 'ring-primary/50', 'rounded-lg');
     }, 1600);
-  }, []);
+  }, [getConversationControlAnalyticsParams]);
 
   // ─── Artifact detection ─────────────────────────────────────────────
   const isPanelOpen = useSelector((state: RootState) => selectIsPanelOpen(state, sessionId));
@@ -1448,10 +1607,13 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
   const [isArtifactPanelTransitioning, setIsArtifactPanelTransitioning] = useState(false);
   const [isFileListPreviewTabOpen, setIsFileListPreviewTabOpen] = useState(isPanelOpen);
   const [isBrowserPreviewTabOpen, setIsBrowserPreviewTabOpen] = useState(false);
+  const [isSubagentPreviewTabOpen, setIsSubagentPreviewTabOpen] = useState(false);
   const [activeSpecialPreviewTab, setActiveSpecialPreviewTab] = useState<ArtifactSpecialTab>(ArtifactSpecialTab.FileList);
   const [browserPreviewAddress, setBrowserPreviewAddress] = useState('');
   const [browserPreviewUrl, setBrowserPreviewUrl] = useState('');
   const [browserPreviewTitle, setBrowserPreviewTitle] = useState('');
+  const [browserLocalServiceContext, setBrowserLocalServiceContext] =
+    useState<BrowserLocalServiceContext | null>(null);
   const [browserHtmlPreviewArtifactId, setBrowserHtmlPreviewArtifactId] = useState<string | null>(null);
   const [showArtifactAddMenu, setShowArtifactAddMenu] = useState(false);
   const [artifactAddMenuPosition, setArtifactAddMenuPosition] = useState<{ left: number; top: number } | null>(null);
@@ -1460,6 +1622,9 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
   const [artifactTabsIsOverflowing, setArtifactTabsIsOverflowing] = useState(false);
   const [artifactPanelMinWidth, setArtifactPanelMinWidth] = useState(MIN_PANEL_WIDTH);
   const [artifactPanelMaxWidth, setArtifactPanelMaxWidth] = useState(MAX_PANEL_WIDTH);
+  const [subagents, setSubagents] = useState<SubagentSessionSummary[]>([]);
+  const [subagentsLoading, setSubagentsLoading] = useState(false);
+  const [selectedSubagent, setSelectedSubagent] = useState<SubagentSessionSummary | null>(null);
   const [contentRowWidth, setContentRowWidth] = useState(0);
   const [promptInputAreaHeight, setPromptInputAreaHeight] = useState(0);
   const [isArtifactPanelExpanded, setIsArtifactPanelExpanded] = useState(false);
@@ -1468,10 +1633,12 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
   const previousArtifactPanelOpenRef = useRef(isPanelOpen);
   const fileListPreviewTabOpenBySessionRef = useRef<Record<string, boolean>>({});
   const browserPreviewTabOpenBySessionRef = useRef<Record<string, boolean>>({});
+  const subagentPreviewTabOpenBySessionRef = useRef<Record<string, boolean>>({});
   const activeSpecialPreviewTabBySessionRef = useRef<Record<string, ArtifactSpecialTab>>({});
   const browserPreviewAddressBySessionRef = useRef<Record<string, string>>({});
   const browserPreviewUrlBySessionRef = useRef<Record<string, string>>({});
   const browserPreviewTitleBySessionRef = useRef<Record<string, string>>({});
+  const browserLocalServiceContextBySessionRef = useRef<Record<string, BrowserLocalServiceContext>>({});
   const browserHtmlPreviewArtifactIdBySessionRef = useRef<Record<string, string>>({});
   const browserHtmlPreviewSessionIdBySessionRef = useRef<Record<string, string>>({});
   const browserHtmlPreviewUrlBySessionRef = useRef<Record<string, string>>({});
@@ -1485,8 +1652,11 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
     sessionId ? state.artifact.artifactsBySession[sessionId] ?? EMPTY_ARTIFACTS : EMPTY_ARTIFACTS
   );
   const sessionArtifacts = useMemo(
-    () => dedupeArtifactsForDisplay(rawSessionArtifacts),
-    [rawSessionArtifacts],
+    () => dedupeArtifactsForDisplay(
+      rawSessionArtifacts,
+      { defaultProjectDirectory: currentSession?.cwd },
+    ),
+    [currentSession?.cwd, rawSessionArtifacts],
   );
   const artifactPreviewTabs = useSelector((state: RootState) =>
     sessionId ? state.artifact.previewTabsBySession[sessionId] ?? EMPTY_PREVIEW_TABS : EMPTY_PREVIEW_TABS
@@ -1502,8 +1672,131 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
   }, [artifactPreviewTabs, sessionArtifacts]);
   const shouldPinArtifactAddTab = artifactTabsIsOverflowing || artifactTabsCanScrollLeft || artifactTabsCanScrollRight;
   const browserPreviewTabTitle = browserPreviewTitle.trim() || i18nService.t('artifactBrowserTab');
+  const fetchSubagents = useCallback(async (targetSessionId: string, options: { showLoading?: boolean } = {}) => {
+    if (!targetSessionId) return;
+    if (options.showLoading) {
+      setSubagentsLoading(true);
+    }
+    try {
+      const result = await window.electron?.cowork?.listSubagentSessions(targetSessionId);
+      if (targetSessionId !== currentSession?.id) return;
+      if (!result?.success || !result.runs) {
+        setSubagents([]);
+        return;
+      }
+      setSubagents(result.runs.map((run) => ({
+        id: run.id,
+        agentId: run.agentId,
+        task: run.task,
+        label: run.label,
+        sessionKey: run.sessionKey,
+        parentSessionId: targetSessionId,
+        status: run.status,
+        createdAt: run.createdAt,
+        endedAt: run.endedAt,
+      })));
+    } catch {
+      if (targetSessionId === currentSession?.id) {
+        setSubagents([]);
+      }
+    } finally {
+      if (targetSessionId === currentSession?.id) {
+        setSubagentsLoading(false);
+      }
+    }
+  }, [currentSession?.id]);
+
+  useEffect(() => {
+    if (!sessionId) return;
+    void fetchSubagents(sessionId, { showLoading: subagents.length === 0 });
+  }, [fetchSubagents, messagesLength, sessionId, subagents.length]);
+
+  useEffect(() => {
+    if (!sessionId) return undefined;
+    const hasRunningSubagents = subagents.some(subagent => subagent.status === 'running');
+    const shouldPoll = isSubagentPreviewTabOpen ||
+      hasRunningSubagents ||
+      currentSession?.status === CoworkSessionStatusValue.Running;
+    if (!shouldPoll) return undefined;
+    const timer = window.setInterval(() => {
+      void fetchSubagents(sessionId);
+    }, SUBAGENT_PANEL_POLL_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [
+    currentSession?.status,
+    fetchSubagents,
+    isSubagentPreviewTabOpen,
+    sessionId,
+    subagents,
+  ]);
+
+  const subagentsByRunId = useMemo(() => new Map(
+    subagents.map(subagent => [subagent.id, subagent]),
+  ), [subagents]);
+  const selectedSubagentForPanel = useMemo(() => (
+    selectedSubagent
+      ? subagents.find(subagent => subagent.id === selectedSubagent.id) ?? selectedSubagent
+      : null
+  ), [selectedSubagent, subagents]);
+
+  const getToolGroupSubagents = useCallback((group: ToolGroupItem): SubagentSessionSummary[] => {
+    const seen = new Set<string>();
+    const result: SubagentSessionSummary[] = [];
+    const candidateIds = [
+      group.toolUse.id,
+      group.toolUse.metadata?.toolUseId,
+    ].filter((value): value is string => typeof value === 'string' && value.length > 0);
+    for (const candidateId of candidateIds) {
+      if (seen.has(candidateId)) continue;
+      const subagent = subagentsByRunId.get(candidateId);
+      if (!subagent) continue;
+      seen.add(candidateId);
+      result.push(subagent);
+    }
+    return result;
+  }, [subagentsByRunId]);
 
   const loadedFileIdsRef = useRef<Set<string>>(new Set());
+  const autoPreviewHandledTurnIdsRef = useRef<Record<string, Set<string>>>({});
+  const autoPreviewArtifactSettleTimerRef = useRef<number | null>(null);
+  const previousAutoPreviewSessionIdRef = useRef<string | undefined>(sessionId);
+  const previousAutoPreviewStreamingRef = useRef(isStreaming);
+  const previousAutoPreviewMessagesLengthRef = useRef(messagesLength);
+  const previousAutoPreviewLatestTurnIdRef = useRef<string | null>(null);
+  const [autoPreviewPendingTurnId, setAutoPreviewPendingTurnId] = useState<string | null>(null);
+
+  const getAutoPreviewHandledTurnIds = useCallback((targetSessionId: string): Set<string> => {
+    let handled = autoPreviewHandledTurnIdsRef.current[targetSessionId];
+    if (!handled) {
+      handled = new Set<string>();
+      autoPreviewHandledTurnIdsRef.current[targetSessionId] = handled;
+    }
+    return handled;
+  }, []);
+
+  const clearAutoPreviewArtifactSettleTimer = useCallback(() => {
+    if (autoPreviewArtifactSettleTimerRef.current) {
+      window.clearTimeout(autoPreviewArtifactSettleTimerRef.current);
+      autoPreviewArtifactSettleTimerRef.current = null;
+    }
+  }, []);
+
+  const setCurrentAutoPreviewPendingTurnId = useCallback((turnId: string | null) => {
+    setAutoPreviewPendingTurnId(turnId);
+  }, []);
+
+  const markAutoPreviewTurnHandled = useCallback((targetSessionId: string, turnId: string) => {
+    clearAutoPreviewArtifactSettleTimer();
+    getAutoPreviewHandledTurnIds(targetSessionId).add(turnId);
+    if (targetSessionId === sessionId && autoPreviewPendingTurnId === turnId) {
+      setAutoPreviewPendingTurnId(null);
+    }
+  }, [
+    autoPreviewPendingTurnId,
+    clearAutoPreviewArtifactSettleTimer,
+    getAutoPreviewHandledTurnIds,
+    sessionId,
+  ]);
 
   useEffect(() => {
     let animationFrame: number | undefined;
@@ -1611,18 +1904,24 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
   useEffect(() => {
     setIsFileListPreviewTabOpen(sessionId ? fileListPreviewTabOpenBySessionRef.current[sessionId] ?? false : false);
     setIsBrowserPreviewTabOpen(sessionId ? browserPreviewTabOpenBySessionRef.current[sessionId] ?? false : false);
+    setIsSubagentPreviewTabOpen(sessionId ? subagentPreviewTabOpenBySessionRef.current[sessionId] ?? false : false);
     setActiveSpecialPreviewTab(sessionId
       ? activeSpecialPreviewTabBySessionRef.current[sessionId] ?? ArtifactSpecialTab.FileList
       : ArtifactSpecialTab.FileList);
     setBrowserPreviewAddress(sessionId ? browserPreviewAddressBySessionRef.current[sessionId] ?? '' : '');
     setBrowserPreviewUrl(sessionId ? browserPreviewUrlBySessionRef.current[sessionId] ?? '' : '');
     setBrowserPreviewTitle(sessionId ? browserPreviewTitleBySessionRef.current[sessionId] ?? '' : '');
+    setBrowserLocalServiceContext(sessionId ? browserLocalServiceContextBySessionRef.current[sessionId] ?? null : null);
     setBrowserHtmlPreviewArtifactId(sessionId ? browserHtmlPreviewArtifactIdBySessionRef.current[sessionId] ?? null : null);
     setIsArtifactPanelExpanded(false);
     setIsExpandedPromptInputHidden(false);
     setIsExpandedConversationPreviewOpen(false);
     setShowArtifactAddMenu(false);
+    setSubagents([]);
+    setSubagentsLoading(false);
+    setSelectedSubagent(null);
     loadedFileIdsRef.current = new Set();
+    setAutoPreviewPendingTurnId(null);
   }, [sessionId]);
 
   useEffect(() => (
@@ -1650,6 +1949,13 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
     }
   }, [sessionId]);
 
+  const setSessionSubagentPreviewTabOpen = useCallback((open: boolean) => {
+    setIsSubagentPreviewTabOpen(open);
+    if (sessionId) {
+      subagentPreviewTabOpenBySessionRef.current[sessionId] = open;
+    }
+  }, [sessionId]);
+
   const setSessionActiveSpecialPreviewTab = useCallback((tab: ArtifactSpecialTab) => {
     setActiveSpecialPreviewTab(tab);
     if (sessionId) {
@@ -1661,6 +1967,16 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
     setBrowserPreviewAddress(value);
     if (sessionId) {
       browserPreviewAddressBySessionRef.current[sessionId] = value;
+    }
+  }, [sessionId]);
+
+  const setSessionBrowserLocalServiceContext = useCallback((context: BrowserLocalServiceContext | null) => {
+    setBrowserLocalServiceContext(context);
+    if (!sessionId) return;
+    if (context) {
+      browserLocalServiceContextBySessionRef.current[sessionId] = context;
+    } else {
+      delete browserLocalServiceContextBySessionRef.current[sessionId];
     }
   }, [sessionId]);
 
@@ -1687,6 +2003,14 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
         clearBrowserHtmlPreviewState(sessionId);
       }
     }
+    setBrowserLocalServiceContext(current => {
+      if (!current || !value.trim()) return current;
+      if (normalizeLocalServiceOrigin(value) === current.origin) return current;
+      if (sessionId) {
+        delete browserLocalServiceContextBySessionRef.current[sessionId];
+      }
+      return null;
+    });
   }, [clearBrowserHtmlPreviewState, sessionId]);
 
   const handleBrowserPreviewTitleChange = useCallback((value: string) => {
@@ -1705,47 +2029,123 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
     setBrowserPreviewAddress('');
     setBrowserPreviewUrl('');
     setBrowserPreviewTitle('');
+    setBrowserLocalServiceContext(null);
     if (sessionId) {
       delete browserPreviewAddressBySessionRef.current[sessionId];
       delete browserPreviewUrlBySessionRef.current[sessionId];
       delete browserPreviewTitleBySessionRef.current[sessionId];
+      delete browserLocalServiceContextBySessionRef.current[sessionId];
       clearBrowserHtmlPreviewState(sessionId);
     }
   }, [clearBrowserHtmlPreviewState, sessionId]);
 
   const handleOpenArtifactFileListTab = useCallback(() => {
+    reportArtifactPreviewAction({
+      actionType: 'panel_tab_open',
+      source: 'artifact_panel',
+      params: {
+        tabType: 'file_list',
+        tabCount: artifactTabsWithArtifacts.length,
+      },
+    });
     setSessionFileListPreviewTabOpen(true);
     setSessionActiveSpecialPreviewTab(ArtifactSpecialTab.FileList);
     if (sessionId) {
       dispatch(activateArtifactFileListTab({ sessionId }));
     }
-  }, [dispatch, sessionId, setSessionActiveSpecialPreviewTab, setSessionFileListPreviewTabOpen]);
+  }, [artifactTabsWithArtifacts.length, dispatch, sessionId, setSessionActiveSpecialPreviewTab, setSessionFileListPreviewTabOpen]);
 
   const handleActivateArtifactFileListTab = useCallback(() => {
     if (!sessionId) return;
+    reportArtifactPreviewAction({
+      actionType: 'panel_tab_switch',
+      source: 'artifact_panel',
+      params: {
+        tabType: 'file_list',
+        tabCount: artifactTabsWithArtifacts.length,
+      },
+    });
     setSessionFileListPreviewTabOpen(true);
     setSessionActiveSpecialPreviewTab(ArtifactSpecialTab.FileList);
     dispatch(activateArtifactFileListTab({ sessionId }));
-  }, [dispatch, sessionId, setSessionActiveSpecialPreviewTab, setSessionFileListPreviewTabOpen]);
+  }, [artifactTabsWithArtifacts.length, dispatch, sessionId, setSessionActiveSpecialPreviewTab, setSessionFileListPreviewTabOpen]);
 
   const handleOpenArtifactBrowserTab = useCallback(() => {
+    reportArtifactPreviewAction({
+      actionType: 'panel_tab_open',
+      source: 'artifact_panel',
+      params: {
+        tabType: 'browser',
+        tabCount: artifactTabsWithArtifacts.length,
+      },
+    });
     setShowArtifactAddMenu(false);
     if (!sessionId) return;
     setSessionBrowserPreviewTabOpen(true);
     setSessionActiveSpecialPreviewTab(ArtifactSpecialTab.Browser);
     dispatch(activateArtifactBrowserTab({ sessionId }));
-  }, [dispatch, sessionId, setSessionActiveSpecialPreviewTab, setSessionBrowserPreviewTabOpen]);
+  }, [artifactTabsWithArtifacts.length, dispatch, sessionId, setSessionActiveSpecialPreviewTab, setSessionBrowserPreviewTabOpen]);
+
+  const handleOpenArtifactSubagentTab = useCallback(() => {
+    reportArtifactPreviewAction({
+      actionType: 'panel_tab_open',
+      source: 'artifact_panel',
+      params: {
+        tabType: 'subagents',
+        tabCount: artifactTabsWithArtifacts.length,
+      },
+    });
+    setShowArtifactAddMenu(false);
+    setSelectedSubagent(null);
+    if (!sessionId) return;
+    setSessionSubagentPreviewTabOpen(true);
+    setSessionActiveSpecialPreviewTab(ArtifactSpecialTab.Subagents);
+    dispatch(activateArtifactSubagentTab({ sessionId }));
+    void fetchSubagents(sessionId, { showLoading: subagents.length === 0 });
+  }, [
+    artifactTabsWithArtifacts.length,
+    dispatch,
+    fetchSubagents,
+    sessionId,
+    setSessionActiveSpecialPreviewTab,
+    setSessionSubagentPreviewTabOpen,
+    subagents.length,
+  ]);
+
+  const handleSelectSubagent = useCallback((subagent: SubagentSessionSummary) => {
+    if (!sessionId) return;
+    setSelectedSubagent(subagent);
+    setSessionSubagentPreviewTabOpen(true);
+    setSessionActiveSpecialPreviewTab(ArtifactSpecialTab.Subagents);
+    dispatch(activateArtifactSubagentTab({ sessionId }));
+    void fetchSubagents(sessionId, { showLoading: subagents.length === 0 });
+  }, [
+    dispatch,
+    fetchSubagents,
+    sessionId,
+    setSessionActiveSpecialPreviewTab,
+    setSessionSubagentPreviewTabOpen,
+    subagents.length,
+  ]);
 
   const handleToggleArtifactPanelExpanded = useCallback(() => {
     setIsArtifactPanelExpanded(value => {
       const nextValue = !value;
+      reportArtifactPreviewAction({
+        actionType: 'panel_expand_toggle',
+        source: 'artifact_panel',
+        params: {
+          targetExpanded: nextValue,
+          tabCount: artifactTabsWithArtifacts.length,
+        },
+      });
       if (!nextValue) {
         setIsExpandedPromptInputHidden(false);
         setIsExpandedConversationPreviewOpen(false);
       }
       return nextValue;
     });
-  }, []);
+  }, [artifactTabsWithArtifacts.length]);
 
   const handleToggleExpandedPromptInput = useCallback(() => {
     setIsExpandedPromptInputHidden(value => {
@@ -1759,10 +2159,19 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
 
   const handleOpenHtmlFileInBrowser = useCallback(async (artifact: Artifact) => {
     if (!sessionId || artifact.type !== ArtifactTypeValue.Html || !artifact.filePath) return;
+    reportArtifactPreviewAction({
+      actionType: 'open_lobster_browser',
+      source: 'artifact_panel',
+      artifact,
+      params: {
+        openTarget: 'lobster_browser',
+      },
+    });
 
     setShowArtifactAddMenu(false);
     setSessionBrowserPreviewTabOpen(true);
     setSessionActiveSpecialPreviewTab(ArtifactSpecialTab.Browser);
+    setSessionBrowserLocalServiceContext(null);
     dispatch(activateArtifactBrowserTab({ sessionId }));
 
     const requestId = browserHtmlPreviewRequestIdRef.current + 1;
@@ -1792,6 +2201,14 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
       handleBrowserPreviewAddressChange(artifact.filePath);
       handleBrowserPreviewUrlChange(result.url);
       handleBrowserPreviewTitleChange('');
+      reportArtifactPreviewAction({
+        actionType: 'browser_preview_session_create',
+        source: 'artifact_panel',
+        artifact,
+        params: {
+          result: 'success',
+        },
+      });
     } catch (error) {
       if (!previousPreviewSessionId) {
         clearBrowserHtmlPreviewState(sessionId);
@@ -1799,6 +2216,14 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
       window.dispatchEvent(new CustomEvent('app:showToast', {
         detail: error instanceof Error ? error.message : i18nService.t('artifactSourceLoadFailed'),
       }));
+      reportArtifactPreviewAction({
+        actionType: 'browser_preview_session_create',
+        source: 'artifact_panel',
+        artifact,
+        params: {
+          result: 'failed',
+        },
+      });
     }
   }, [
     clearBrowserHtmlPreviewState,
@@ -1810,20 +2235,42 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
     sessionId,
     setSessionActiveSpecialPreviewTab,
     setSessionBrowserPreviewTabOpen,
+    setSessionBrowserLocalServiceContext,
   ]);
 
   const handleOpenLocalServiceArtifact = useCallback((artifact: Artifact) => {
     const url = artifact.url || artifact.content;
     if (!url) return;
+    const origin = artifact.localService?.origin || normalizeLocalServiceOrigin(url);
+    const projectDirectory = artifact.localService?.projectDirectory?.trim() || currentSession?.cwd?.trim();
+    reportArtifactPreviewAction({
+      actionType: 'open_local_service',
+      source: 'artifact_panel',
+      artifact,
+      params: {
+        openTarget: 'lobster_browser',
+      },
+    });
     handleOpenArtifactBrowserTab();
+    setSessionBrowserLocalServiceContext({
+      artifactId: artifact.id,
+      url,
+      origin,
+      ...(projectDirectory ? { projectDirectory } : {}),
+      ...(artifact.localService?.projectCandidates?.length
+        ? { projectCandidates: artifact.localService.projectCandidates }
+        : {}),
+    });
     handleBrowserPreviewAddressChange(url);
     handleBrowserPreviewUrlChange(url);
     handleBrowserPreviewTitleChange('');
   }, [
+    currentSession?.cwd,
     handleBrowserPreviewAddressChange,
     handleBrowserPreviewTitleChange,
     handleBrowserPreviewUrlChange,
     handleOpenArtifactBrowserTab,
+    setSessionBrowserLocalServiceContext,
   ]);
 
   const handleOpenArtifactFileListFromMenu = useCallback(() => {
@@ -1833,6 +2280,15 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
 
   const handleCloseArtifactFileListTab = useCallback(() => {
     const wasActive = !activeArtifactPreviewTab && activeSpecialPreviewTab === ArtifactSpecialTab.FileList;
+    reportArtifactPreviewAction({
+      actionType: 'panel_tab_close',
+      source: 'artifact_panel',
+      params: {
+        tabType: 'file_list',
+        wasActive,
+        tabCount: artifactTabsWithArtifacts.length,
+      },
+    });
     setSessionFileListPreviewTabOpen(false);
     if (!sessionId) {
       dispatch(closePanel(undefined));
@@ -1853,6 +2309,12 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
       return;
     }
 
+    if (isSubagentPreviewTabOpen) {
+      setSessionActiveSpecialPreviewTab(ArtifactSpecialTab.Subagents);
+      dispatch(activateArtifactSubagentTab({ sessionId }));
+      return;
+    }
+
     dispatch(closePanel({ sessionId }));
   }, [
     activeArtifactPreviewTab,
@@ -1860,6 +2322,7 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
     artifactTabsWithArtifacts,
     dispatch,
     isBrowserPreviewTabOpen,
+    isSubagentPreviewTabOpen,
     sessionId,
     setSessionActiveSpecialPreviewTab,
     setSessionFileListPreviewTabOpen,
@@ -1867,13 +2330,54 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
 
   const handleActivateArtifactBrowserTab = useCallback(() => {
     if (!sessionId) return;
+    reportArtifactPreviewAction({
+      actionType: 'panel_tab_switch',
+      source: 'artifact_panel',
+      params: {
+        tabType: 'browser',
+        tabCount: artifactTabsWithArtifacts.length,
+      },
+    });
     setSessionBrowserPreviewTabOpen(true);
     setSessionActiveSpecialPreviewTab(ArtifactSpecialTab.Browser);
     dispatch(activateArtifactBrowserTab({ sessionId }));
-  }, [dispatch, sessionId, setSessionActiveSpecialPreviewTab, setSessionBrowserPreviewTabOpen]);
+  }, [artifactTabsWithArtifacts.length, dispatch, sessionId, setSessionActiveSpecialPreviewTab, setSessionBrowserPreviewTabOpen]);
+
+  const handleActivateArtifactSubagentTab = useCallback(() => {
+    if (!sessionId) return;
+    reportArtifactPreviewAction({
+      actionType: 'panel_tab_switch',
+      source: 'artifact_panel',
+      params: {
+        tabType: 'subagents',
+        tabCount: artifactTabsWithArtifacts.length,
+      },
+    });
+    setSessionSubagentPreviewTabOpen(true);
+    setSessionActiveSpecialPreviewTab(ArtifactSpecialTab.Subagents);
+    dispatch(activateArtifactSubagentTab({ sessionId }));
+    void fetchSubagents(sessionId, { showLoading: subagents.length === 0 });
+  }, [
+    artifactTabsWithArtifacts.length,
+    dispatch,
+    fetchSubagents,
+    sessionId,
+    setSessionActiveSpecialPreviewTab,
+    setSessionSubagentPreviewTabOpen,
+    subagents.length,
+  ]);
 
   const handleCloseArtifactBrowserTab = useCallback(() => {
     const wasActive = !activeArtifactPreviewTab && activeSpecialPreviewTab === ArtifactSpecialTab.Browser;
+    reportArtifactPreviewAction({
+      actionType: 'panel_tab_close',
+      source: 'artifact_panel',
+      params: {
+        tabType: 'browser',
+        wasActive,
+        tabCount: artifactTabsWithArtifacts.length,
+      },
+    });
     setSessionBrowserPreviewTabOpen(false);
     clearBrowserPreviewState();
     if (!sessionId) {
@@ -1895,6 +2399,12 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
       return;
     }
 
+    if (isSubagentPreviewTabOpen) {
+      setSessionActiveSpecialPreviewTab(ArtifactSpecialTab.Subagents);
+      dispatch(activateArtifactSubagentTab({ sessionId }));
+      return;
+    }
+
     dispatch(closePanel({ sessionId }));
   }, [
     activeArtifactPreviewTab,
@@ -1903,28 +2413,111 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
     dispatch,
     clearBrowserPreviewState,
     isFileListPreviewTabOpen,
+    isSubagentPreviewTabOpen,
     sessionId,
     setSessionActiveSpecialPreviewTab,
     setSessionBrowserPreviewTabOpen,
   ]);
 
+  const handleCloseArtifactSubagentTab = useCallback(() => {
+    const wasActive = !activeArtifactPreviewTab && activeSpecialPreviewTab === ArtifactSpecialTab.Subagents;
+    reportArtifactPreviewAction({
+      actionType: 'panel_tab_close',
+      source: 'artifact_panel',
+      params: {
+        tabType: 'subagents',
+        wasActive,
+        tabCount: artifactTabsWithArtifacts.length,
+      },
+    });
+    setSessionSubagentPreviewTabOpen(false);
+    setSelectedSubagent(null);
+    if (!sessionId) {
+      dispatch(closePanel(undefined));
+      return;
+    }
+
+    if (!wasActive) return;
+
+    const nextTabId = artifactTabsWithArtifacts[0]?.tab.id;
+    if (nextTabId) {
+      dispatch(activateArtifactPreviewTab({ sessionId, tabId: nextTabId }));
+      return;
+    }
+
+    if (isBrowserPreviewTabOpen) {
+      setSessionActiveSpecialPreviewTab(ArtifactSpecialTab.Browser);
+      dispatch(activateArtifactBrowserTab({ sessionId }));
+      return;
+    }
+
+    if (isFileListPreviewTabOpen) {
+      setSessionActiveSpecialPreviewTab(ArtifactSpecialTab.FileList);
+      dispatch(activateArtifactFileListTab({ sessionId }));
+      return;
+    }
+
+    dispatch(closePanel({ sessionId }));
+  }, [
+    activeArtifactPreviewTab,
+    activeSpecialPreviewTab,
+    artifactTabsWithArtifacts,
+    dispatch,
+    isBrowserPreviewTabOpen,
+    isFileListPreviewTabOpen,
+    sessionId,
+    setSessionActiveSpecialPreviewTab,
+    setSessionSubagentPreviewTabOpen,
+  ]);
+
   const handleActivateArtifactTab = useCallback((tabId: string) => {
     if (!sessionId) return;
+    const artifact = artifactTabsWithArtifacts.find(item => item.tab.id === tabId)?.artifact;
+    reportArtifactPreviewAction({
+      actionType: 'panel_tab_switch',
+      source: 'artifact_panel',
+      artifact,
+      params: {
+        tabType: 'artifact',
+        tabCount: artifactTabsWithArtifacts.length,
+      },
+    });
     dispatch(activateArtifactPreviewTab({ sessionId, tabId }));
-  }, [dispatch, sessionId]);
+  }, [artifactTabsWithArtifacts, dispatch, sessionId]);
 
   const handleCloseArtifactTab = useCallback((tabId: string) => {
     if (!sessionId) return;
+    const artifact = artifactTabsWithArtifacts.find(item => item.tab.id === tabId)?.artifact;
     const remainingTabs = artifactTabsWithArtifacts.filter(({ tab }) => tab.id !== tabId);
+    reportArtifactPreviewAction({
+      actionType: 'panel_tab_close',
+      source: 'artifact_panel',
+      artifact,
+      params: {
+        tabType: 'artifact',
+        tabCount: artifactTabsWithArtifacts.length,
+      },
+    });
     dispatch(closeArtifactPreviewTab({ sessionId, tabId }));
-    if (remainingTabs.length === 0 && !isFileListPreviewTabOpen && !isBrowserPreviewTabOpen) {
+    if (remainingTabs.length === 0 && !isFileListPreviewTabOpen && !isBrowserPreviewTabOpen && !isSubagentPreviewTabOpen) {
       dispatch(closePanel({ sessionId }));
     }
-  }, [artifactTabsWithArtifacts, dispatch, isBrowserPreviewTabOpen, isFileListPreviewTabOpen, sessionId]);
+  }, [artifactTabsWithArtifacts, dispatch, isBrowserPreviewTabOpen, isFileListPreviewTabOpen, isSubagentPreviewTabOpen, sessionId]);
 
   const handleToggleArtifactPanel = useCallback(() => {
+    reportArtifactPreviewAction({
+      actionType: 'panel_toggle',
+      source: 'artifact_panel',
+      params: {
+        targetOpen: !isPanelOpen,
+        tabCount: artifactTabsWithArtifacts.length,
+      },
+    });
     if (isPanelOpen) {
       setShowArtifactAddMenu(false);
+      if (sessionId && autoPreviewPendingTurnId) {
+        markAutoPreviewTurnHandled(sessionId, autoPreviewPendingTurnId);
+      }
       dispatch(closePanel(sessionId ? { sessionId } : undefined));
       return;
     }
@@ -1934,7 +2527,7 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
       return;
     }
 
-    if (artifactTabsWithArtifacts.length === 0 && !isFileListPreviewTabOpen && !isBrowserPreviewTabOpen) {
+    if (artifactTabsWithArtifacts.length === 0 && !isFileListPreviewTabOpen && !isBrowserPreviewTabOpen && !isSubagentPreviewTabOpen) {
       setSessionFileListPreviewTabOpen(true);
       setSessionActiveSpecialPreviewTab(ArtifactSpecialTab.FileList);
       dispatch(activateArtifactFileListTab({ sessionId }));
@@ -1944,10 +2537,13 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
     dispatch(togglePanel({ sessionId }));
   }, [
     artifactTabsWithArtifacts.length,
+    autoPreviewPendingTurnId,
     dispatch,
     isBrowserPreviewTabOpen,
     isFileListPreviewTabOpen,
+    isSubagentPreviewTabOpen,
     isPanelOpen,
+    markAutoPreviewTurnHandled,
     sessionId,
     setSessionActiveSpecialPreviewTab,
     setSessionFileListPreviewTabOpen,
@@ -1961,8 +2557,19 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
   }, [handleToggleArtifactPanel]);
 
   const handleToggleArtifactAddMenu = useCallback(() => {
-    setShowArtifactAddMenu(open => !open);
-  }, []);
+    setShowArtifactAddMenu(open => {
+      const nextOpen = !open;
+      reportArtifactPreviewAction({
+        actionType: 'panel_add_menu_toggle',
+        source: 'artifact_panel',
+        params: {
+          targetOpen: nextOpen,
+          tabCount: artifactTabsWithArtifacts.length,
+        },
+      });
+      return nextOpen;
+    });
+  }, [artifactTabsWithArtifacts.length]);
 
   useLayoutEffect(() => {
     if (!showArtifactAddMenu) {
@@ -2128,7 +2735,12 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
         if (msg.type === 'assistant' && !msg.metadata?.isThinking && msg.content) {
           const seenFilePaths = new Set<string>();
           const seenLocalServiceUrls = new Set<string>();
-          const localServiceArtifacts = parseLocalServiceUrlsFromText(msg.content, msg.id, sessionId);
+          const localServiceArtifacts = parseLocalServiceUrlsFromText(
+            msg.content,
+            msg.id,
+            sessionId,
+            { projectDirectory: currentSession.cwd },
+          );
           for (const serviceArtifact of localServiceArtifacts) {
             pushLocalServiceArtifactIfNew(serviceArtifact, seenLocalServiceUrls);
           }
@@ -2235,7 +2847,7 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
       const cwd = currentSession.cwd;
       for (const artifact of detected) {
         if (artifact.type === ArtifactTypeValue.LocalService) {
-          dispatch(addArtifact({ sessionId, artifact }));
+          dispatch(addArtifact({ sessionId, artifact, defaultProjectDirectory: cwd }));
         }
       }
 
@@ -2444,6 +3056,10 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
     const handleOpenShareOptions = (event: Event) => {
       const detail = (event as CustomEvent<CoworkOpenShareOptionsEventDetail>).detail;
       if (!detail?.sessionId || detail.sessionId !== currentSession?.id) return;
+      reportConversationNavigationAction({
+        actionType: 'export_options_open',
+        params: getConversationControlAnalyticsParams(),
+      });
       setShowExportOptions(true);
     };
 
@@ -2451,7 +3067,7 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
     return () => {
       window.removeEventListener(CoworkUiEvent.OpenShareOptions, handleOpenShareOptions);
     };
-  }, [currentSession?.id]);
+  }, [currentSession?.id, getConversationControlAnalyticsParams]);
 
   useEffect(() => {
     if (!currentSession?.id || messageRailIndex.length > 0) return;
@@ -2496,6 +3112,13 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
   const handleExportText = useCallback(async (format: CoworkTextExportFormatValue) => {
     if (!currentSession || isExportingText) return;
     setIsExportingText(true);
+    reportConversationNavigationAction({
+      actionType: 'export_text_submit',
+      params: {
+        ...getConversationControlAnalyticsParams(),
+        exportFormat: format,
+      },
+    });
     const timestamp = new Date().toISOString().slice(0, 10);
     const fileName = sanitizeExportFileName(`${currentSession.title}-${timestamp}.${format}`);
     try {
@@ -2509,13 +3132,38 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
         fileExtension: format,
       });
       if (result.success && !result.canceled) {
+        reportConversationNavigationAction({
+          actionType: 'export_text_result',
+          params: {
+            ...getConversationControlAnalyticsParams(),
+            exportFormat: format,
+            result: 'success',
+          },
+        });
         window.dispatchEvent(new CustomEvent('app:showToast', {
           detail: i18nService.t('coworkExportTextSuccess'),
         }));
+      } else if (result.canceled) {
+        reportConversationNavigationAction({
+          actionType: 'export_text_result',
+          params: {
+            ...getConversationControlAnalyticsParams(),
+            exportFormat: format,
+            result: 'cancelled',
+          },
+        });
       } else if (!result.success) {
         throw new Error(result.error || 'Export failed');
       }
     } catch (error) {
+      reportConversationNavigationAction({
+        actionType: 'export_text_result',
+        params: {
+          ...getConversationControlAnalyticsParams(),
+          exportFormat: format,
+          result: 'failed',
+        },
+      });
       console.error('Failed to export session text:', error);
       window.dispatchEvent(new CustomEvent('app:showToast', {
         detail: i18nService.t('coworkExportTextFailed'),
@@ -2523,12 +3171,41 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
     } finally {
       setIsExportingText(false);
     }
-  }, [currentSession, isExportingText, loadTextExportMessages]);
+  }, [currentSession, getConversationControlAnalyticsParams, isExportingText, loadTextExportMessages]);
+
+  const handleExportDiagnostics = useCallback(async () => {
+    if (!currentSession?.id) return;
+    reportConversationNavigationAction({
+      actionType: 'export_diagnostics_submit',
+      params: getConversationControlAnalyticsParams(),
+    });
+
+    const result = await coworkService.exportSessionDiagnostics({ sessionId: currentSession.id });
+    const outcome = result.canceled ? 'cancelled' : result.success ? 'success' : 'failed';
+    reportConversationNavigationAction({
+      actionType: 'export_diagnostics_result',
+      params: {
+        ...getConversationControlAnalyticsParams(),
+        result: outcome,
+      },
+    });
+    if (result.canceled) return;
+
+    window.dispatchEvent(new CustomEvent('app:showToast', {
+      detail: result.success
+        ? i18nService.t('coworkExportDiagnosticsSuccess')
+        : result.error || i18nService.t('coworkExportDiagnosticsFailed'),
+    }));
+  }, [currentSession?.id, getConversationControlAnalyticsParams]);
 
   const handleShareClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!currentSession || isExportingImage) return;
     setIsExportingImage(true);
+    reportConversationNavigationAction({
+      actionType: 'export_image_submit',
+      params: getConversationControlAnalyticsParams(),
+    });
 
     window.requestAnimationFrame(() => {
       void (async () => {
@@ -2664,6 +3341,13 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
               defaultFileName: sanitizeExportFileName(`${currentSession.title}-${timestamp}.png`),
             });
             if (saveResult.success && !saveResult.canceled) {
+              reportConversationNavigationAction({
+                actionType: 'export_image_result',
+                params: {
+                  ...getConversationControlAnalyticsParams(),
+                  result: 'success',
+                },
+              });
               window.dispatchEvent(new CustomEvent('app:showToast', {
                 detail: i18nService.t('coworkExportImageSuccess'),
               }));
@@ -2672,10 +3356,24 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
             if (!saveResult.success) {
               throw new Error(saveResult.error || 'Failed to export image');
             }
+            reportConversationNavigationAction({
+              actionType: 'export_image_result',
+              params: {
+                ...getConversationControlAnalyticsParams(),
+                result: 'cancelled',
+              },
+            });
           } finally {
             scrollContainer.scrollTop = initialScrollTop;
           }
         } catch (error) {
+          reportConversationNavigationAction({
+            actionType: 'export_image_result',
+            params: {
+              ...getConversationControlAnalyticsParams(),
+              result: 'failed',
+            },
+          });
           console.error('Failed to export session image:', error);
           window.dispatchEvent(new CustomEvent('app:showToast', {
             detail: i18nService.t('coworkExportImageFailed'),
@@ -2797,6 +3495,17 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
     const scrollLogMessage = `Scroll to bottom requested for session ${currentSession?.id ?? 'unknown'}; distance was ${Math.max(0, Math.round(distanceToBottom))}px.`;
     console.debug(`[CoworkSessionDetail] ${scrollLogMessage}`);
     window.electron?.log?.fromRenderer?.('debug', 'CoworkSessionDetail', scrollLogMessage);
+    reportConversationNavigationAction({
+      actionType: 'scroll_to_bottom_click',
+      params: {
+        distanceToBottomBucket: bucketDistance(Math.max(0, distanceToBottom)),
+        railItemCount: railItemCountRef.current,
+        currentRailIndex: currentRailIndexRef.current,
+        sessionMessageCountBucket: bucketCount(currentSession?.messages.length ?? 0),
+        totalMessageCountBucket: bucketCount(currentSession?.totalMessages ?? currentSession?.messages.length ?? 0),
+        isStreaming,
+      },
+    });
     clearScrollToBottomSettleTimers();
     scrollToBottomIntentRef.current = true;
     if (prefersReducedMotion) {
@@ -2830,7 +3539,7 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
       }, delayMs);
       scrollToBottomSettleTimersRef.current.push(timer);
     });
-  }, [clearScrollToBottomSettleTimers, currentSession?.id]);
+  }, [clearScrollToBottomSettleTimers, currentSession?.id, currentSession?.messages.length, currentSession?.totalMessages, isStreaming]);
 
   const handleScrollToBottomWheel = useCallback((event: React.WheelEvent<HTMLButtonElement>) => {
     const container = scrollContainerRef.current;
@@ -2913,10 +3622,25 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
     }
   }, [currentSession?.messages.length]);
 
-  const navigateToRailItem = useCallback((railIndex: number) => {
+  const navigateToRailItem = useCallback((
+    railIndex: number,
+    actionType: 'rail_item_click' | 'rail_prev_click' | 'rail_next_click' = 'rail_item_click',
+  ) => {
     if (railIndex < 0 || railIndex >= railItemCountRef.current) return;
     const item = railItemsRef.current[railIndex];
     if (!item) return;
+
+    reportConversationNavigationAction({
+      actionType,
+      params: {
+        currentRailIndex: currentRailIndexRef.current,
+        targetRailIndex: railIndex,
+        railItemCount: railItemCountRef.current,
+        sessionMessageCountBucket: bucketCount(currentSession?.messages.length ?? 0),
+        totalMessageCountBucket: bucketCount(currentSession?.totalMessages ?? currentSession?.messages.length ?? 0),
+        isStreaming,
+      },
+    });
 
     const isNavigatingToLastRailItem = railIndex >= railItemCountRef.current - 1;
     if (!isNavigatingToLastRailItem) {
@@ -3052,7 +3776,7 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
 
     currentRailIndexRef.current = railIndex;
     setCurrentRailIndex(railIndex);
-  }, [currentSession?.id]);
+  }, [currentSession?.id, currentSession?.messages.length, currentSession?.totalMessages, isStreaming]);
 
   // lastMessageContent and messagesLength are now sourced from memoized
   // selectors (selectLastMessageContent / selectCurrentMessagesLength)
@@ -3230,6 +3954,7 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
   const messages = currentSession?.messages;
   const displayItems = useMemo(() => messages ? buildDisplayItems(messages) : [], [messages]);
   const turns = useMemo(() => buildConversationTurns(displayItems), [displayItems]);
+  const latestAssistantTurn = useMemo(() => findLatestAssistantTurn(turns), [turns]);
   const loadedRailTurnMap = useMemo(() => buildLoadedRailTurnMap(turns), [turns]);
   const messageOffsetById = useMemo(() => {
     const offsetById = new Map<string, number>();
@@ -3266,6 +3991,113 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
       ? i18nService.t('coworkRailUnloadedMessageHint')
       : railTooltipItem.summary
     : '';
+
+  useEffect(() => {
+    const previousSessionId = previousAutoPreviewSessionIdRef.current;
+    const sessionChanged = previousSessionId !== sessionId;
+    const wasStreaming = previousAutoPreviewStreamingRef.current;
+    const previousMessagesLength = previousAutoPreviewMessagesLengthRef.current;
+    const previousLatestTurnId = previousAutoPreviewLatestTurnIdRef.current;
+    const latestTurnId = latestAssistantTurn?.id ?? null;
+
+    previousAutoPreviewSessionIdRef.current = sessionId;
+    previousAutoPreviewStreamingRef.current = isStreaming;
+    previousAutoPreviewMessagesLengthRef.current = messagesLength;
+    previousAutoPreviewLatestTurnIdRef.current = latestTurnId;
+
+    if (sessionChanged) {
+      clearAutoPreviewArtifactSettleTimer();
+      setAutoPreviewPendingTurnId(null);
+      return;
+    }
+
+    if (!sessionId || !latestAssistantTurn) {
+      clearAutoPreviewArtifactSettleTimer();
+      setAutoPreviewPendingTurnId(null);
+      return;
+    }
+
+    const completedStreamingTurn = wasStreaming && !isStreaming;
+    const latestTurnChanged = latestTurnId !== null && latestTurnId !== previousLatestTurnId;
+    const appendedCompletedTurn = !isStreaming && messagesLength > previousMessagesLength && latestTurnChanged;
+    if (!completedStreamingTurn && !appendedCompletedTurn) return;
+
+    if (getAutoPreviewHandledTurnIds(sessionId).has(latestAssistantTurn.id)) return;
+    setCurrentAutoPreviewPendingTurnId(latestAssistantTurn.id);
+  }, [
+    clearAutoPreviewArtifactSettleTimer,
+    getAutoPreviewHandledTurnIds,
+    isStreaming,
+    latestAssistantTurn,
+    messagesLength,
+    sessionId,
+    setCurrentAutoPreviewPendingTurnId,
+  ]);
+
+  useEffect(() => {
+    if (!sessionId || !autoPreviewPendingTurnId || !currentSession) return;
+    if (getAutoPreviewHandledTurnIds(sessionId).has(autoPreviewPendingTurnId)) {
+      clearAutoPreviewArtifactSettleTimer();
+      setCurrentAutoPreviewPendingTurnId(null);
+      return;
+    }
+
+    const pendingTurn = turns.find(turn => turn.id === autoPreviewPendingTurnId);
+    if (!pendingTurn) return;
+
+    if (isPanelOpen) {
+      markAutoPreviewTurnHandled(sessionId, autoPreviewPendingTurnId);
+      return;
+    }
+
+    const turnMessageIds = getTurnMessageIds(pendingTurn);
+    const turnArtifacts = rawSessionArtifacts.filter(
+      artifact => turnMessageIds.has(artifact.messageId) && PREVIEWABLE_ARTIFACT_TYPES.has(artifact.type),
+    );
+    const artifact = selectAutoPreviewArtifact(
+      turnArtifacts,
+      { defaultProjectDirectory: currentSession.cwd },
+    );
+    if (!artifact) return;
+
+    clearAutoPreviewArtifactSettleTimer();
+    autoPreviewArtifactSettleTimerRef.current = window.setTimeout(() => {
+      autoPreviewArtifactSettleTimerRef.current = null;
+      if (getAutoPreviewHandledTurnIds(sessionId).has(autoPreviewPendingTurnId)) return;
+
+      switch (getAutoPreviewOpenTarget(artifact)) {
+        case ArtifactAutoPreviewOpenTarget.LocalServiceBrowser:
+          handleOpenLocalServiceArtifact(artifact);
+          break;
+        case ArtifactAutoPreviewOpenTarget.HtmlBrowser:
+          void handleOpenHtmlFileInBrowser(artifact);
+          break;
+        case ArtifactAutoPreviewOpenTarget.PreviewTab:
+          dispatch(openArtifactPreviewTab({ sessionId, artifactId: artifact.id }));
+          break;
+        default:
+          return;
+      }
+
+      markAutoPreviewTurnHandled(sessionId, autoPreviewPendingTurnId);
+    }, AUTO_PREVIEW_ARTIFACT_SETTLE_MS);
+
+    return clearAutoPreviewArtifactSettleTimer;
+  }, [
+    autoPreviewPendingTurnId,
+    clearAutoPreviewArtifactSettleTimer,
+    currentSession,
+    dispatch,
+    getAutoPreviewHandledTurnIds,
+    handleOpenHtmlFileInBrowser,
+    handleOpenLocalServiceArtifact,
+    isPanelOpen,
+    markAutoPreviewTurnHandled,
+    rawSessionArtifacts,
+    sessionId,
+    setCurrentAutoPreviewPendingTurnId,
+    turns,
+  ]);
 
   // Cache turn-level DOM elements (data-turn-index, always in DOM even for lazy turns)
   useEffect(() => {
@@ -3440,8 +4272,14 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
               assistantItems: [],
             }}
             resolveLocalFilePath={resolveLocalFilePath}
+            localServiceDirectory={currentSession?.cwd}
             showTypingIndicator
             showCopyButtons={!isStreaming}
+            completedGoal={
+              currentSession.goal?.status === CoworkGoalStatus.Complete
+                ? currentSession.goal
+                : null
+            }
             planConfirmationMessageId={planConfirmationMessageId}
             onConfirmPlan={handleConfirmPlan}
             onAdjustPlan={handleAdjustPlan}
@@ -3464,17 +4302,7 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
       const turnRailIdx = turn.userMessage || hasAssistantContent ? railCounter++ : -1;
       const assistantRailMessageId = getAssistantRailMessageId(turn);
 
-      const turnMessageIds = new Set<string>();
-      for (const item of turn.assistantItems) {
-        if (item.type === 'assistant' || item.type === 'system' || item.type === 'tool_result') {
-          turnMessageIds.add(item.message.id);
-        } else if (item.type === 'tool_group') {
-          turnMessageIds.add(item.group.toolUse.id);
-          if (item.group.toolResult) {
-            turnMessageIds.add(item.group.toolResult.id);
-          }
-        }
-      }
+      const turnMessageIds = getTurnMessageIds(turn);
       const turnArtifacts = rawSessionArtifacts.filter(
         a => turnMessageIds.has(a.messageId) && PREVIEWABLE_ARTIFACT_TYPES.has(a.type)
       );
@@ -3509,11 +4337,28 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
                 artifacts={turnArtifacts}
                 resolveLocalFilePath={resolveLocalFilePath}
                 mapDisplayText={mapDisplayText}
+                localServiceDirectory={currentSession?.cwd}
                 onOpenLocalService={handleOpenLocalServiceArtifact}
                 onOpenHtmlFile={handleOpenHtmlFileInBrowser}
                 onForkMessage={remoteManaged ? undefined : handleForkMessage}
+                renderToolGroupFooter={(group) => {
+                  const groupSubagents = getToolGroupSubagents(group);
+                  if (groupSubagents.length === 0) return null;
+                  return (
+                    <SubagentTurnLinks
+                      subagents={groupSubagents}
+                      variant="tool"
+                      onSelectSubagent={handleSelectSubagent}
+                    />
+                  );
+                }}
                 showTypingIndicator={showTypingIndicator}
                 showCopyButtons={!isStreaming || !isLastTurn}
+                completedGoal={
+                  isLastTurn && currentSession.goal?.status === CoworkGoalStatus.Complete
+                    ? currentSession.goal
+                    : null
+                }
                 planConfirmationMessageId={planConfirmationMessageId}
                 onConfirmPlan={handleConfirmPlan}
                 onAdjustPlan={handleAdjustPlan}
@@ -3554,7 +4399,7 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
             </div>
           )}
           <h1 className="text-sm leading-none font-medium text-foreground truncate max-w-[360px]">
-            {currentSession.title || i18nService.t('coworkNewSession')}
+            {getSessionTitleForDisplay(currentSession.title) || i18nService.t('coworkNewSession')}
           </h1>
         </div>
 
@@ -3649,6 +4494,45 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
                         }}
                         className={`mr-1 rounded p-0.5 transition-colors ${
                           activeArtifactPreviewTab || activeSpecialPreviewTab !== ArtifactSpecialTab.Browser
+                            ? 'text-transparent group-hover:text-secondary group-hover:hover:bg-surface-hover group-hover:hover:text-foreground'
+                            : 'text-secondary hover:bg-surface-hover hover:text-foreground'
+                        }`}
+                        title={i18nService.t('artifactCloseTab')}
+                      >
+                        <ArtifactTabCloseIcon className="h-3 w-3" />
+                      </button>
+                    </div>
+                  )}
+                  {isSubagentPreviewTabOpen && (
+                    <div
+                      data-artifact-preview-active={
+                        !activeArtifactPreviewTab && activeSpecialPreviewTab === ArtifactSpecialTab.Subagents
+                          ? 'true'
+                          : undefined
+                      }
+                      className={`non-draggable group flex h-7 max-w-[190px] items-center rounded-lg text-xs transition-colors ${
+                        activeArtifactPreviewTab || activeSpecialPreviewTab !== ArtifactSpecialTab.Subagents
+                          ? 'text-secondary hover:bg-surface hover:text-foreground'
+                          : 'bg-surface-raised text-foreground shadow-sm'
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={handleActivateArtifactSubagentTab}
+                        className="flex min-w-0 items-center gap-1.5 px-2 text-left"
+                        title={i18nService.t('subagentPanelTitle')}
+                      >
+                        <SubagentIcon className="h-3.5 w-3.5 shrink-0" />
+                        <span className="truncate">{i18nService.t('subagentPanelTitle')}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleCloseArtifactSubagentTab();
+                        }}
+                        className={`mr-1 rounded p-0.5 transition-colors ${
+                          activeArtifactPreviewTab || activeSpecialPreviewTab !== ArtifactSpecialTab.Subagents
                             ? 'text-transparent group-hover:text-secondary group-hover:hover:bg-surface-hover group-hover:hover:text-foreground'
                             : 'text-secondary hover:bg-surface-hover hover:text-foreground'
                         }`}
@@ -3810,6 +4694,14 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
             <ArtifactBrowserTabIcon className="h-4 w-4 shrink-0" />
             <span className="truncate">{i18nService.t('artifactBrowserTab')}</span>
           </button>
+          <button
+            type="button"
+            onClick={handleOpenArtifactSubagentTab}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-surface"
+          >
+            <SubagentIcon className="h-4 w-4 shrink-0" />
+            <span className="truncate">{i18nService.t('subagentPanelTitle')}</span>
+          </button>
         </div>,
         document.body
       )}
@@ -3864,6 +4756,17 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
                 <div>
                   <div className="font-medium">JSON</div>
                   <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('coworkExportJSONDesc')}</div>
+                </div>
+              </button>
+              <button
+                type="button"
+                onClick={() => { setShowExportOptions(false); void handleExportDiagnostics(); }}
+                className="w-full flex items-center gap-3 px-5 py-3 text-left text-sm dark:text-claude-darkText text-claude-text hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover transition-colors"
+              >
+                <ArchiveBoxArrowDownIcon className="h-5 w-5 dark:text-claude-darkTextSecondary text-claude-textSecondary" />
+                <div>
+                  <div className="font-medium">{i18nService.t('coworkExportDiagnostics')}</div>
+                  <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('coworkExportDiagnosticsDesc')}</div>
                 </div>
               </button>
             </div>
@@ -3935,7 +4838,7 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
               onClick={() => {
                 const resolvedRail = currentRailIndex < 0 ? railItemCountRef.current - 1 : currentRailIndex;
                 if (resolvedRail <= 0) return;
-                navigateToRailItem(resolvedRail - 1);
+                navigateToRailItem(resolvedRail - 1, 'rail_prev_click');
               }}
               onMouseEnter={() => { setHoveredRailIndex(null); }}
               className={`shrink-0 flex items-center justify-center w-5 h-5 mb-2 -mr-[5px] rounded-full transition-all text-neutral-600 dark:text-neutral-400
@@ -3966,7 +4869,7 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
                     key={msg.key}
                     type="button"
                     onClick={() => {
-                      navigateToRailItem(idx);
+                      navigateToRailItem(idx, 'rail_item_click');
                     }}
                     onMouseEnter={(e) => {
                       setHoveredRailIndex(idx);
@@ -4005,7 +4908,7 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
                 const maxRail = railItemCountRef.current - 1;
                 const resolvedRail = currentRailIndex < 0 ? maxRail : currentRailIndex;
                 if (resolvedRail >= maxRail) return;
-                navigateToRailItem(resolvedRail + 1);
+                navigateToRailItem(resolvedRail + 1, 'rail_next_click');
               }}
               onMouseEnter={() => { setHoveredRailIndex(null); }}
               className={`shrink-0 flex items-center justify-center w-5 h-5 mt-2 -mr-[5px] rounded-full transition-all text-neutral-600 dark:text-neutral-400
@@ -4061,11 +4964,6 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
                 {railTooltipSummary}
               </div>
             )}
-            <div
-              className="mt-2 flex items-center gap-1.5 text-[12px] text-neutral-400 dark:text-neutral-500"
-            >
-              HeyClaw
-            </div>
           </div>,
           document.body
         )}
@@ -4205,35 +5103,39 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
             workingDirectory={currentSession?.cwd ?? ''}
             contextAgentId={currentSession?.agentId}
             sessionId={currentSession?.id}
+            goal={!remoteManaged ? currentSession?.goal : null}
+            onGoalCommand={!remoteManaged && currentSession?.id ? handleGoalCommand : undefined}
             contextUsageControl={(
-              <div ref={compactConfirmRef} className="relative inline-flex flex-shrink-0">
-                <ContextUsageIndicator
-                  usage={contextUsage}
-                  compacting={isContextBusy}
-                  disabled={remoteManaged || !currentSession?.id}
-                  onCompact={handleCompactContext}
-                  showTooltip={!showCompactConfirm}
-                  active={showCompactConfirm}
-                  className="-mr-1"
-                />
-                {showCompactConfirm && (
-                  <div className="absolute bottom-full left-1/2 z-50 mb-1.5 flex -translate-x-1/2 items-center gap-2 rounded-xl border border-border bg-surface p-1.5 shadow-popover">
-                    <button
-                      type="button"
-                      onClick={handleCancelCompactContext}
-                      className="whitespace-nowrap rounded-md bg-surface-raised px-2.5 py-1 text-center text-[11px] font-medium leading-4 text-secondary transition-colors hover:text-foreground"
-                    >
-                      {i18nService.t('cancel')}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleConfirmCompactContext}
-                      className="whitespace-nowrap rounded-md bg-primary px-2.5 py-1 text-center text-[11px] font-semibold leading-4 text-white transition-colors hover:bg-primary-hover"
-                    >
-                      {i18nService.t('coworkContextCompactConfirmActionShort')}
-                    </button>
-                  </div>
-                )}
+              <div className="flex min-w-0 items-center gap-2">
+                <div ref={compactConfirmRef} className="relative inline-flex flex-shrink-0">
+                  <ContextUsageIndicator
+                    usage={contextUsage}
+                    compacting={isContextBusy}
+                    disabled={remoteManaged || !currentSession?.id}
+                    onCompact={handleCompactContext}
+                    showTooltip={!showCompactConfirm}
+                    active={showCompactConfirm}
+                    className="-mr-1"
+                  />
+                  {showCompactConfirm && (
+                    <div className="absolute bottom-full left-1/2 z-50 mb-1.5 flex -translate-x-1/2 items-center gap-2 rounded-xl border border-border bg-surface p-1.5 shadow-popover">
+                      <button
+                        type="button"
+                        onClick={handleCancelCompactContext}
+                        className="whitespace-nowrap rounded-md bg-surface-raised px-2.5 py-1 text-center text-[11px] font-medium leading-4 text-secondary transition-colors hover:text-foreground"
+                      >
+                        {i18nService.t('cancel')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleConfirmCompactContext}
+                        className="whitespace-nowrap rounded-md bg-primary px-2.5 py-1 text-center text-[11px] font-semibold leading-4 text-white transition-colors hover:bg-primary-hover"
+                      >
+                        {i18nService.t('coworkContextCompactConfirmActionShort')}
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           />
@@ -4282,20 +5184,32 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
             <ArtifactPanel
               sessionId={currentSession.id}
               artifacts={sessionArtifacts}
+              workingDirectory={currentSession.cwd}
               activeSpecialTab={activeSpecialPreviewTab}
               minPanelWidth={artifactPanelRenderMinWidth}
               maxPanelWidth={artifactPanelRenderMaxWidth}
               isPanelExpanded={isArtifactPanelExpanded}
               browserAddress={browserPreviewAddress}
               browserUrl={browserPreviewUrl}
+              browserLocalServiceContext={browserLocalServiceContext}
               browserHtmlArtifactId={browserHtmlPreviewArtifactId}
               onBrowserAddressChange={handleBrowserPreviewAddressChange}
               onBrowserUrlChange={handleBrowserPreviewUrlChange}
               onBrowserTitleChange={handleBrowserPreviewTitleChange}
+              onBrowserLocalServiceContextChange={setSessionBrowserLocalServiceContext}
               onOpenFileListTab={handleOpenArtifactFileListTab}
               onOpenBrowserTab={handleOpenArtifactBrowserTab}
               onOpenHtmlFileInBrowser={handleOpenHtmlFileInBrowser}
               onBrowserAnnotationCaptured={handleBrowserAnnotationCaptured}
+              subagentPanel={(
+                <SubagentPanelContent
+                  subagents={subagents}
+                  loading={subagentsLoading}
+                  selectedSubagent={selectedSubagentForPanel}
+                  onBackToList={() => setSelectedSubagent(null)}
+                  onSelectSubagent={handleSelectSubagent}
+                />
+              )}
               onAddSelectedText={addSelectedTextSnippetToDraft}
               selectedTextEnabled={!remoteManaged}
             />

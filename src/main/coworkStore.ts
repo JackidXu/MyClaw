@@ -15,6 +15,10 @@ import {
   type CoworkForkMode as CoworkForkModeType,
 } from '../shared/cowork/constants';
 import {
+  type CoworkGoal,
+  normalizeCoworkGoal,
+} from '../shared/cowork/goal';
+import {
   COWORK_RAIL_TOOLTIP_PREVIEW_MAX_LENGTH,
   type CoworkMessageRailIndexItem,
   getCoworkRailPreview,
@@ -461,6 +465,7 @@ export interface CoworkSession {
   forkWorkspacePath?: string | null;
   forkGitBranch?: string | null;
   forkGitBaseRef?: string | null;
+  goal?: CoworkGoal | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -475,6 +480,7 @@ export interface CoworkSessionSummary {
   parentSessionId?: string | null;
   forkedAt?: number | null;
   forkMode?: CoworkForkModeType;
+  goal?: CoworkGoal | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -666,6 +672,7 @@ interface CoworkSessionSummaryRow {
   parent_session_id?: string | null;
   forked_at?: number | null;
   fork_mode?: string | null;
+  goal_json?: string | null;
   created_at: number;
   updated_at: number;
 }
@@ -712,6 +719,20 @@ export class CoworkStore {
     return value.replace(/[\\%_]/g, (match) => `\\${match}`);
   }
 
+  private parseGoalJson(value: string | null | undefined): CoworkGoal | null {
+    if (!value) return null;
+    try {
+      return normalizeCoworkGoal(JSON.parse(value));
+    } catch (error) {
+      console.warn('[CoworkStore] Failed to parse goal_json:', error);
+      return null;
+    }
+  }
+
+  private serializeGoal(goal: CoworkGoal | null | undefined): string | null {
+    return goal ? JSON.stringify(goal) : null;
+  }
+
   private mapSessionSummaryRow(row: CoworkSessionSummaryRow): CoworkSessionSummary {
     return {
       id: row.id,
@@ -723,6 +744,7 @@ export class CoworkStore {
       parentSessionId: row.parent_session_id ?? null,
       forkedAt: row.forked_at ?? null,
       forkMode: (row.fork_mode as CoworkForkModeType | undefined) ?? CoworkForkMode.None,
+      goal: this.parseGoalJson(row.goal_json),
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
@@ -814,13 +836,14 @@ export class CoworkStore {
       execution_mode?: string | null;
       active_skill_ids?: string | null;
       agent_id?: string | null;
+      goal_json?: string | null;
       created_at: number;
       updated_at: number;
     }
 
     const row = this.getOne<SessionRow>(
       `
-      SELECT id, title, claude_session_id, status, pinned, pin_order, cwd, system_prompt, model_override, execution_mode, active_skill_ids, agent_id, created_at, updated_at
+      SELECT id, title, claude_session_id, status, pinned, pin_order, cwd, system_prompt, model_override, execution_mode, active_skill_ids, agent_id, goal_json, created_at, updated_at
       FROM cowork_sessions
       WHERE id = ?
     `,
@@ -863,6 +886,7 @@ export class CoworkStore {
       messagesOffset: messageOffset,
       totalMessages,
       ...this.getSessionForkMetadata(row.id),
+      goal: this.parseGoalJson(row.goal_json),
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
@@ -1256,7 +1280,7 @@ export class CoworkStore {
     updates: Partial<
       Pick<
         CoworkSession,
-        'title' | 'claudeSessionId' | 'status' | 'cwd' | 'systemPrompt' | 'modelOverride' | 'executionMode'
+        'title' | 'claudeSessionId' | 'status' | 'cwd' | 'systemPrompt' | 'modelOverride' | 'executionMode' | 'goal'
       >
     >,
     options: { touchUpdatedAt?: boolean } = {},
@@ -1296,6 +1320,10 @@ export class CoworkStore {
     if (updates.executionMode !== undefined) {
       setClauses.push('execution_mode = ?');
       values.push(updates.executionMode);
+    }
+    if (updates.goal !== undefined) {
+      setClauses.push('goal_json = ?');
+      values.push(this.serializeGoal(updates.goal));
     }
 
     if (setClauses.length === 0) return;
@@ -1410,6 +1438,7 @@ export class CoworkStore {
         `
         SELECT id, title, status, pinned, pin_order, agent_id,
                parent_session_id, forked_at, fork_mode,
+               goal_json,
                created_at, updated_at
         FROM cowork_sessions
         WHERE COALESCE(NULLIF(TRIM(agent_id), ''), 'main') = ?
@@ -1426,6 +1455,7 @@ export class CoworkStore {
         `
         SELECT id, title, status, pinned, pin_order, agent_id,
                parent_session_id, forked_at, fork_mode,
+               goal_json,
                created_at, updated_at
         FROM cowork_sessions
         ORDER BY pinned DESC,
@@ -1485,6 +1515,7 @@ export class CoworkStore {
         `
         SELECT id, title, status, pinned, pin_order, agent_id,
                parent_session_id, forked_at, fork_mode,
+               goal_json,
                created_at, updated_at
         FROM cowork_sessions
         WHERE title LIKE ? ESCAPE '\\'
@@ -1502,6 +1533,7 @@ export class CoworkStore {
         `
         SELECT id, title, status, pinned, pin_order, agent_id,
                parent_session_id, forked_at, fork_mode,
+               goal_json,
                created_at, updated_at
         FROM cowork_sessions
         WHERE title LIKE ? ESCAPE '\\'

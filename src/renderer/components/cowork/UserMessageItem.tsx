@@ -1,6 +1,7 @@
 import { PhotoIcon } from '@heroicons/react/24/outline';
 import React, { useCallback, useMemo, useState } from 'react';
 
+import { hasGoalSettingMessageMetadata } from '../../../common/goalCommandDisplay';
 import type { CoworkImageAttachmentPreview } from '../../../shared/cowork/imageAttachments';
 import type { CoworkSelectedTextSnippet } from '../../../shared/cowork/selectedText';
 import type { KitReference } from '../../../shared/kit/constants';
@@ -14,9 +15,11 @@ import type { Skill } from '../../types/skill';
 import { formatMessageDateTime } from '../../utils/tokenFormat';
 import { parseUserMessageForDisplay } from '../../utils/userMessageDisplay';
 import EditIcon from '../icons/EditIcon';
+import GoalIcon from '../icons/GoalIcon';
 import MessageCopyIcon from '../icons/MessageCopyIcon';
 import SidebarKitsIcon from '../icons/SidebarKitsIcon';
 import SkillIcon from '../icons/SkillIcon';
+import { reportConversationMessageAction } from './conversationAnalytics';
 import ImagePreviewModal, { type ImagePreviewSource } from './ImagePreviewModal';
 import {
   COWORK_DETAIL_CONTENT_CLASS,
@@ -31,17 +34,26 @@ import UserMessageContent from './UserMessageContent';
 
 const CopyButton: React.FC<{
   content: string;
+  onCopy?: (result: 'success' | 'failed') => void;
   visible: boolean;
-}> = ({ content, visible }) => {
+}> = ({ content, onCopy, visible }) => {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async (e: React.MouseEvent) => {
     e.stopPropagation();
     const copiedToClipboard = await copyTextToClipboard(content);
     if (copiedToClipboard) {
+      onCopy?.('success');
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+      return;
     }
+    onCopy?.('failed');
+    window.electron?.log?.fromRenderer?.(
+      'warn',
+      'UserMessageItem',
+      'Failed to copy user message content to the clipboard.',
+    );
   };
 
   return (
@@ -187,6 +199,7 @@ const UserMessageItem: React.FC<{
   }, []);
 
   const metadata = message.metadata as CoworkMessageMetadata | undefined;
+  const isGoalSettingMessage = hasGoalSettingMessageMetadata(metadata);
   const displayContent = useMemo(
     () => parseUserMessageForDisplay(message.content || '', {
       localMediaAttachments: Array.isArray(metadata?.localMediaAttachments)
@@ -215,6 +228,20 @@ const UserMessageItem: React.FC<{
     ? imageAttachmentPreviews
     : legacyImageAttachments;
   const hasCapabilityBadges = messageKitReferences.length > 0 || messageSkills.length > 0;
+  const handleImagePreviewOpen = useCallback((image: ImagePreviewSource) => {
+    reportConversationMessageAction({
+      actionType: 'open_message_image',
+      message,
+    });
+    setExpandedImage(image);
+  }, [message]);
+  const handleReEditClick = useCallback(() => {
+    reportConversationMessageAction({
+      actionType: 'reedit_user_message',
+      message,
+    });
+    onReEdit?.(message);
+  }, [message, onReEdit]);
 
   return (
     <div
@@ -251,7 +278,7 @@ const UserMessageItem: React.FC<{
                   <UserMessageContent
                     content={displayContent}
                     className="max-w-none"
-                    onImageClick={setExpandedImage}
+                    onImageClick={handleImagePreviewOpen}
                   />
                 )}
                 {displayImageAttachments.length > 0 && (
@@ -263,7 +290,7 @@ const UserMessageItem: React.FC<{
                           alt={img.name}
                           className="max-h-48 max-w-[16rem] rounded-lg object-contain cursor-pointer border border-border hover:border-primary transition-colors"
                           title={img.name}
-                          onClick={() => setExpandedImage({
+                          onClick={() => handleImagePreviewOpen({
                             src: `data:${img.mimeType};base64,${img.base64Data}`,
                             alt: img.name,
                             name: img.name,
@@ -278,18 +305,35 @@ const UserMessageItem: React.FC<{
                   </div>
                 )}
               </div>
-              <div className={messageMetaClassName(isHovered, 'right')} aria-hidden={!isHovered}>
-                <span>{formatMessageDateTime(message.timestamp)}</span>
-                {modelLabel && <span>{modelLabel}</span>}
-                <CopyButton
-                  content={message.content}
-                  visible={isHovered}
-                />
-                {onReEdit && (
-                  <ReEditButton
+              <div className="flex w-full items-center justify-end gap-2">
+                <div className={messageMetaClassName(isHovered, 'right')} aria-hidden={!isHovered}>
+                  <span>{formatMessageDateTime(message.timestamp)}</span>
+                  {modelLabel && <span>{modelLabel}</span>}
+                  <CopyButton
+                    content={message.content}
+                    onCopy={(result) => reportConversationMessageAction({
+                      actionType: 'copy_message',
+                      message,
+                      params: {
+                        result,
+                        copySource: 'user_message',
+                        copiedLength: message.content.length,
+                      },
+                    })}
                     visible={isHovered}
-                    onClick={() => onReEdit(message)}
                   />
+                  {onReEdit && (
+                    <ReEditButton
+                      visible={isHovered}
+                      onClick={handleReEditClick}
+                    />
+                  )}
+                </div>
+                {isGoalSettingMessage && (
+                  <div className="mt-1 inline-flex h-5 shrink-0 items-center gap-1 text-[11px] leading-none text-zinc-400 dark:text-zinc-500 select-none">
+                    <GoalIcon className="h-4 w-4 text-[var(--icon-secondary)]" />
+                    <span>{i18nService.t('coworkGoalSetAsGoal')}</span>
+                  </div>
                 )}
               </div>
             </div>

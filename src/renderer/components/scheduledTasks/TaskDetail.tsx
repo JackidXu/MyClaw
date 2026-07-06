@@ -9,6 +9,7 @@ import { RootState } from '../../store';
 import { setViewMode } from '../../store/slices/scheduledTaskSlice';
 import PencilIcon from '../icons/PencilIcon';
 import TrashIcon from '../icons/TrashIcon';
+import { getTaskAnalyticsParams, reportScheduledTaskAction } from './analytics';
 import TaskRunHistory from './TaskRunHistory';
 import {
   formatDateTime,
@@ -21,7 +22,7 @@ import {
 
 interface TaskDetailProps {
   task: ScheduledTask;
-  onRequestDelete: (taskId: string, taskName: string) => void;
+  onRequestDelete: (taskId: string, taskName: string, source?: string) => void;
 }
 
 const TaskDetail: React.FC<TaskDetailProps> = ({ task, onRequestDelete }) => {
@@ -35,6 +36,39 @@ const TaskDetail: React.FC<TaskDetailProps> = ({ task, onRequestDelete }) => {
 
   const statusLabel = i18nService.t(getStatusLabelKey(task.state.lastStatus));
   const statusTone = getStatusTone(task.state.lastStatus);
+  const analyticsParams = React.useMemo(
+    () => getTaskAnalyticsParams(task, availableModels),
+    [availableModels, task],
+  );
+  const handleEdit = React.useCallback(() => {
+    reportScheduledTaskAction('detail_edit', {
+      source: 'scheduled_task_detail',
+      ...analyticsParams,
+    });
+    dispatch(setViewMode('edit'));
+  }, [analyticsParams, dispatch]);
+  const handleRunManually = React.useCallback(async () => {
+    reportScheduledTaskAction('detail_run_manually', {
+      source: 'scheduled_task_detail',
+      ...analyticsParams,
+    });
+    try {
+      await scheduledTaskService.runManually(task.id);
+      reportScheduledTaskAction('detail_run_manually_success', {
+        source: 'scheduled_task_detail',
+        result: 'success',
+        ...analyticsParams,
+      });
+    } catch (error) {
+      reportScheduledTaskAction('detail_run_manually_failed', {
+        source: 'scheduled_task_detail',
+        result: 'failed',
+        errorCode: 'run_manually_failed',
+        ...analyticsParams,
+      });
+      throw error;
+    }
+  }, [analyticsParams, task.id]);
   const promptText = task.payload.kind === 'systemEvent' ? task.payload.text : task.payload.message;
   const taskModelRef = task.payload.kind === 'agentTurn' ? task.payload.model : undefined;
   const taskModelLabel = typeof taskModelRef === 'string' && taskModelRef.trim()
@@ -66,7 +100,7 @@ const TaskDetail: React.FC<TaskDetailProps> = ({ task, onRequestDelete }) => {
         <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
-            onClick={() => dispatch(setViewMode('edit'))}
+            onClick={handleEdit}
             className="p-2 rounded-lg text-secondary hover:bg-surface-raised transition-colors"
             title={i18nService.t('scheduledTasksEdit')}
           >
@@ -74,7 +108,7 @@ const TaskDetail: React.FC<TaskDetailProps> = ({ task, onRequestDelete }) => {
           </button>
           <button
             type="button"
-            onClick={() => void scheduledTaskService.runManually(task.id)}
+            onClick={() => void handleRunManually()}
             disabled={Boolean(task.state.runningAtMs)}
             className="p-2 rounded-lg text-secondary hover:bg-surface-raised transition-colors disabled:opacity-50"
             title={i18nService.t('scheduledTasksRun')}
@@ -83,7 +117,7 @@ const TaskDetail: React.FC<TaskDetailProps> = ({ task, onRequestDelete }) => {
           </button>
           <button
             type="button"
-            onClick={() => onRequestDelete(task.id, task.name)}
+            onClick={() => onRequestDelete(task.id, task.name, 'scheduled_task_detail')}
             className="p-2 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
             title={i18nService.t('scheduledTasksDelete')}
           >
@@ -165,7 +199,7 @@ const TaskDetail: React.FC<TaskDetailProps> = ({ task, onRequestDelete }) => {
 
       <div className={sectionClass}>
         <h3 className={sectionTitleClass}>{i18nService.t('scheduledTasksRunHistory')}</h3>
-        <TaskRunHistory taskId={task.id} runs={runs} />
+        <TaskRunHistory task={task} runs={runs} />
       </div>
     </div>
   );

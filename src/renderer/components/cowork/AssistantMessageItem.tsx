@@ -1,10 +1,16 @@
 import React, { useCallback, useEffect, useState } from 'react';
 
+import {
+  type CoworkGoal,
+  formatCoworkGoalCompletionDuration,
+} from '../../../shared/cowork/goal';
 import { i18nService } from '../../services/i18n';
 import type { CoworkMessage, CoworkMessageMetadata } from '../../types/cowork';
 import { formatMessageDateTime } from '../../utils/tokenFormat';
+import GoalIcon from '../icons/GoalIcon';
 import MessageForkIcon from '../icons/MessageForkIcon';
 import MarkdownContent from '../MarkdownContent';
+import { reportConversationMessageAction } from './conversationAnalytics';
 import ImagePreviewModal, { type ImagePreviewSource } from './ImagePreviewModal';
 import { MessageCopyButton } from './MessageActionButton';
 import {
@@ -18,13 +24,18 @@ import { parseProposedPlanBlock } from './proposedPlanParser';
 export { MessageCopyButton as CopyButton } from './MessageActionButton';
 
 const ForkButton: React.FC<{
+  message: CoworkMessage;
   visible: boolean;
   onFork: () => void;
-}> = ({ visible, onFork }) => (
+}> = ({ message, visible, onFork }) => (
   <button
     type="button"
     onClick={(event) => {
       event.stopPropagation();
+      reportConversationMessageAction({
+        actionType: 'fork_from_assistant_message',
+        message,
+      });
       onFork();
     }}
     className={`p-1.5 rounded-md hover:bg-surface-raised transition-all duration-200 ${
@@ -47,6 +58,7 @@ const AssistantMessageItem: React.FC<{
   showCopyButton?: boolean;
   onFork?: (messageId: string) => void;
   turnMetadata?: CoworkMessageMetadata | null;
+  completedGoal?: CoworkGoal | null;
   planConfirmationMessageId?: string | null;
   onConfirmPlan?: (messageId: string) => void;
   onAdjustPlan?: (messageId: string) => void;
@@ -57,6 +69,7 @@ const AssistantMessageItem: React.FC<{
   showCopyButton = false,
   onFork,
   turnMetadata,
+  completedGoal,
   planConfirmationMessageId,
   onConfirmPlan,
   onAdjustPlan,
@@ -71,7 +84,24 @@ const AssistantMessageItem: React.FC<{
     proposedPlan.planText,
   ].filter((part): part is string => Boolean(part)).join('\n\n');
   const modelLabel = getMessageModelLabel(turnMetadata);
+  const goalCompletionDuration = completedGoal
+    ? formatCoworkGoalCompletionDuration(completedGoal)
+    : null;
+  const goalCompletionLabel = goalCompletionDuration
+    ? i18nService.t('coworkGoalCompletedIn').replace('{duration}', goalCompletionDuration)
+    : null;
+  const metaVisible = isHovered || !!goalCompletionLabel;
   const showPlanConfirmationActions = planConfirmationMessageId === message.id;
+  const handleImageClick = useCallback((image: ImagePreviewSource) => {
+    reportConversationMessageAction({
+      actionType: 'open_message_image',
+      message,
+      params: {
+        messageRole: 'assistant',
+      },
+    });
+    setExpandedImage(image);
+  }, [message]);
   useEffect(() => {
     if (!proposedPlan.didNormalizePlanText) return;
     window.electron?.log?.fromRenderer?.(
@@ -118,20 +148,36 @@ const AssistantMessageItem: React.FC<{
               className="prose dark:prose-invert max-w-none"
               resolveLocalFilePath={resolveLocalFilePath}
               showRevealInFolderAction
-              onImageClick={setExpandedImage}
+              onImageClick={handleImageClick}
             />
             {showCopyButton && (
-              <div className={messageMetaClassName(isHovered)} aria-hidden={!isHovered}>
+              <div className={messageMetaClassName(metaVisible)} aria-hidden={!metaVisible}>
+                {goalCompletionLabel && (
+                  <span className="inline-flex items-center gap-1 text-secondary">
+                    <GoalIcon className="h-3.5 w-3.5" />
+                    <span>{goalCompletionLabel}</span>
+                  </span>
+                )}
                 <span>{formatMessageDateTime(message.timestamp)}</span>
                 {modelLabel && <span>{modelLabel}</span>}
                 {onFork && (
                   <ForkButton
+                    message={message}
                     visible={isHovered}
                     onFork={() => onFork(message.id)}
                   />
                 )}
                 <MessageCopyButton
                   content={copyContent}
+                  onCopy={(result) => reportConversationMessageAction({
+                    actionType: 'copy_message',
+                    message,
+                    params: {
+                      result,
+                      copySource: 'assistant_message',
+                      copiedLength: copyContent.length,
+                    },
+                  })}
                   visible={isHovered}
                 />
               </div>
@@ -143,7 +189,7 @@ const AssistantMessageItem: React.FC<{
             <ProposedPlanBlock
               content={proposedPlan.planText}
               resolveLocalFilePath={resolveLocalFilePath}
-              onImageClick={setExpandedImage}
+              onImageClick={handleImageClick}
               showConfirmationActions={showPlanConfirmationActions}
               onConfirmExecution={showPlanConfirmationActions ? () => onConfirmPlan?.(message.id) : undefined}
               onAdjustPlan={showPlanConfirmationActions ? () => onAdjustPlan?.(message.id) : undefined}
@@ -152,17 +198,33 @@ const AssistantMessageItem: React.FC<{
         )}
       </div>
       {showCopyButton && !displayContent && (
-        <div className={messageMetaClassName(isHovered)} aria-hidden={!isHovered}>
+        <div className={messageMetaClassName(metaVisible)} aria-hidden={!metaVisible}>
+          {goalCompletionLabel && (
+            <span className="inline-flex items-center gap-1 text-secondary">
+              <GoalIcon className="h-3.5 w-3.5" />
+              <span>{goalCompletionLabel}</span>
+            </span>
+          )}
           <span>{formatMessageDateTime(message.timestamp)}</span>
           {modelLabel && <span>{modelLabel}</span>}
           {onFork && (
             <ForkButton
+              message={message}
               visible={isHovered}
               onFork={() => onFork(message.id)}
             />
           )}
           <MessageCopyButton
             content={copyContent}
+            onCopy={(result) => reportConversationMessageAction({
+              actionType: 'copy_message',
+              message,
+              params: {
+                result,
+                copySource: 'assistant_message',
+                copiedLength: copyContent.length,
+              },
+            })}
             visible={isHovered}
           />
         </div>

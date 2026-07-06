@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+
 import { configService } from '../services/config';
 
 interface PasswordModalProps {
@@ -47,8 +48,8 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({ isOpen, onClose, o
 
       // 客户端直连 New API 修改密码 (使用 PUT /api/user/self，零越权风险)
       const currentConfig = configService.getConfig();
-      const oneapiConfig = currentConfig.providers?.['oneapi'] || {};
-      const oneapiBaseUrl = oneapiConfig.baseUrl || 'https://token.chaohui.ai';
+      const oneapiConfig = currentConfig.providers?.['oneapi'];
+      const oneapiBaseUrl = oneapiConfig?.baseUrl || 'https://token.chaohui.ai';
       const cleanBaseUrl = oneapiBaseUrl.replace(/\/v1\/?$/, '').replace(/\/+$/, '');
       const targetUrl = `${cleanBaseUrl}/api/user/self`;
 

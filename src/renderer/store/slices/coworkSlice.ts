@@ -1,5 +1,6 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 
+import type { CoworkGoal } from '../../../shared/cowork/goal';
 import {
   COWORK_RAIL_TOOLTIP_PREVIEW_MAX_LENGTH,
   type CoworkMessageRailIndexItem,
@@ -147,7 +148,8 @@ const markSessionUnread = (state: CoworkState, sessionId: string) => {
 
 const buildRailIndexItemFromMessage = (
   message: CoworkMessage,
-  fallbackIndex: number,
+  messageOffset: number,
+  fallbackLabelIndex: number,
 ): CoworkMessageRailIndexItem | null => {
   if ((message.type !== 'user' && message.type !== 'assistant') || !message.content.trim()) {
     return null;
@@ -157,15 +159,30 @@ const buildRailIndexItemFromMessage = (
     messageId: message.id,
     type: message.type,
     sequence: null,
-    messageOffset: fallbackIndex,
+    messageOffset,
     timestamp: message.timestamp,
     preview: getCoworkRailPreview(
       message.content,
-      message.type === 'user' ? `Turn ${fallbackIndex + 1}` : 'HeyClaw',
+      message.type === 'user' ? `Turn ${fallbackLabelIndex + 1}` : 'HeyClaw',
       COWORK_RAIL_TOOLTIP_PREVIEW_MAX_LENGTH,
     ),
     contentLen: message.content.length,
   };
+};
+
+const resolveRailMessageOffset = (
+  state: CoworkState,
+  sessionId: string,
+  message: CoworkMessage,
+  fallbackOffset: number,
+): number => {
+  if (state.currentSession?.id !== sessionId) {
+    return fallbackOffset;
+  }
+  const messageIndex = state.currentSession.messages.findIndex(item => item.id === message.id);
+  return messageIndex >= 0
+    ? state.currentSession.messagesOffset + messageIndex
+    : fallbackOffset;
 };
 
 const upsertRailIndexItem = (
@@ -177,7 +194,14 @@ const upsertRailIndexItem = (
   if (!existingItems) return;
 
   const existingIndex = existingItems.findIndex(item => item.messageId === message.id);
-  const item = buildRailIndexItemFromMessage(message, existingIndex >= 0 ? existingIndex : existingItems.length);
+  const existingItem = existingIndex >= 0 ? existingItems[existingIndex] : null;
+  const fallbackOffset = existingItem?.messageOffset ?? existingItems.length;
+  const messageOffset = resolveRailMessageOffset(state, sessionId, message, fallbackOffset);
+  const item = buildRailIndexItemFromMessage(
+    message,
+    messageOffset,
+    existingIndex >= 0 ? existingIndex : existingItems.length,
+  );
   if (!item) {
     if (existingIndex >= 0) {
       existingItems.splice(existingIndex, 1);
@@ -190,6 +214,7 @@ const upsertRailIndexItem = (
       ...existingItems[existingIndex],
       ...item,
       sequence: existingItems[existingIndex].sequence,
+      messageOffset: existingItems[existingIndex].messageOffset,
     };
     return;
   }
@@ -346,6 +371,7 @@ const toSessionSummary = (session: CoworkSession): CoworkSessionSummary => ({
   parentSessionId: session.parentSessionId ?? null,
   forkedAt: session.forkedAt ?? null,
   forkMode: session.forkMode,
+  goal: session.goal ?? null,
   createdAt: session.createdAt,
   updatedAt: session.updatedAt,
 });
@@ -457,6 +483,17 @@ const coworkSlice = createSlice({
 
       if (status === CoworkSessionStatusValue.Completed) {
         markSessionUnread(state, sessionId);
+      }
+    },
+
+    updateSessionGoal(state, action: PayloadAction<{ sessionId: string; goal: CoworkGoal | null }>) {
+      const { sessionId, goal } = action.payload;
+      const sessionIndex = state.sessions.findIndex(s => s.id === sessionId);
+      if (sessionIndex !== -1) {
+        state.sessions[sessionIndex].goal = goal;
+      }
+      if (state.currentSession?.id === sessionId) {
+        state.currentSession.goal = goal;
       }
     },
 
@@ -869,6 +906,7 @@ export const {
   clearDraftSelectedTextSnippets,
   addSession,
   updateSessionStatus,
+  updateSessionGoal,
   deleteSession,
   deleteSessions,
   setMessageRailIndexLoading,

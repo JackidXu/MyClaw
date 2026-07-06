@@ -10,18 +10,19 @@ import {
   AppUpdateStatus,
   isManualDownloadUrl,
 } from '../shared/appUpdate/constants';
-import { ProviderAuthType, ProviderName, ProviderRegistry } from '../shared/providers';
+import { ProviderName, ProviderRegistry } from '../shared/providers';
+import { AuthModal } from './components/AuthModal';
 import { CoworkView } from './components/cowork';
 import { CoworkShortcutDirection, CoworkUiEvent } from './components/cowork/constants';
 import CoworkPermissionModal from './components/cowork/CoworkPermissionModal';
 import CoworkQuestionWizard from './components/cowork/CoworkQuestionWizard';
+import EngineFailureOverlay from './components/cowork/EngineFailureOverlay';
 import EngineStartupOverlay from './components/cowork/EngineStartupOverlay';
 import KitsView from './components/kits/KitsView';
 import PrivacyDialog from './components/PrivacyDialog';
 import { ScheduledTasksView } from './components/scheduledTasks';
 import Settings, { type SettingsOpenOptions } from './components/Settings';
 import Sidebar from './components/Sidebar';
-import { AuthModal } from './components/AuthModal';
 import { SkillsView } from './components/skills';
 import Toast from './components/Toast';
 import AppUpdateBadge from './components/update/AppUpdateBadge';
@@ -34,9 +35,11 @@ import { authService } from './services/auth';
 import { configService } from './services/config';
 import { coworkService } from './services/cowork';
 import { i18nService } from './services/i18n';
+import { LogReporterAction, reportYdAnalyzer } from './services/logReporter';
 import { scheduledTaskService } from './services/scheduledTask';
 import { matchesShortcut } from './services/shortcuts';
 import { themeService } from './services/theme';
+import { applyTypographyPreferences } from './services/typography';
 import { RootState, store } from './store';
 import {
   selectCurrentSessionId,
@@ -111,6 +114,7 @@ const App: React.FC = () => {
   } | null>(null);
   const toastTimerRef = useRef<number | null>(null);
   const hasInitialized = useRef(false);
+  const hasReportedAppStartedRef = useRef(false);
   const previousUpdateStatusRef = useRef<AppUpdateRuntimeState['status']>(AppUpdateStatus.Idle);
   const shouldInstallReadyUpdateRef = useRef(false);
   const dispatch = useDispatch();
@@ -148,6 +152,7 @@ const App: React.FC = () => {
       ) ?? providerModels[0];
       dispatch(setDefaultSelectedModel(preferredModel));
     }
+    return providerModels;
   }, [dispatch]);
 
   const waitWithTimeout = useCallback(
@@ -302,13 +307,14 @@ const App: React.FC = () => {
 
         setIsActivated(activated);
 
+        applyTypographyPreferences(config);
         const apiConfig: ApiConfig = {
           apiKey: finalConfig.api.key,
           baseUrl: finalConfig.api.baseUrl,
         };
         apiService.setConfig(apiConfig);
 
-        syncModelsToRedux();
+        const providerModels = syncModelsToRedux();
         mark('model resolution done');
 
         // TODO: 以后开放服务协议弹窗时，恢复下面这行真实的存储读取
@@ -319,6 +325,14 @@ const App: React.FC = () => {
 
         setIsInitialized(true);
         mark('shell ready');
+        if (!hasReportedAppStartedRef.current) {
+          hasReportedAppStartedRef.current = true;
+          void reportYdAnalyzer({
+            action: LogReporterAction.AppStarted,
+            providerModelCount: providerModels.length,
+            hasLoggedInUser: !!store.getState().auth.user?.yid,
+          });
+        }
 
         void waitWithTimeout(scheduledTaskService.init(), 5000, 'scheduledTaskService.init').catch((error) => {
           console.error('[App] initializeApp: scheduledTaskService.init failed:', error);
@@ -346,6 +360,12 @@ const App: React.FC = () => {
       unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    if (authUser) {
+      void authService.fetchProfileSummary();
+    }
+  }, [authUser]);
 
   // Listen for Copilot token auto-refresh events from the main process
   useEffect(() => {
@@ -380,7 +400,7 @@ const App: React.FC = () => {
         if (data.defaultModel) {
           const allModels = data.availableModels;
           const preferredModel = allModels.find(
-            model => model.id === data.defaultModel
+            (model: any) => model.id === data.defaultModel
               && (!config.model?.defaultModelProvider || model.providerKey === config.model.defaultModelProvider)
           ) ?? allModels[0];
           if (preferredModel) {
@@ -485,8 +505,15 @@ const App: React.FC = () => {
   }, [dispatch]);
 
   const handleToggleSidebar = useCallback(() => {
+    void reportYdAnalyzer({
+      action: LogReporterAction.SidebarAction,
+      source: 'home_sidebar',
+      actionType: isSidebarCollapsed ? 'expand_sidebar' : 'collapse_sidebar',
+      activeView: mainView,
+      isCollapsed: isSidebarCollapsed,
+    });
     setIsSidebarCollapsed((prev) => !prev);
-  }, []);
+  }, [isSidebarCollapsed, mainView]);
 
   const handleNewChat = useCallback(() => {
     // Only clear when already on home (no session) — preserve __home__ draft when returning from a session
@@ -1088,20 +1115,14 @@ const App: React.FC = () => {
   ) : null;
 
   if (!isInitialized) {
+    // index.html's static splash shows the same startup page until React
+    // mounts; rendering EngineStartupOverlay from the first frame keeps the
+    // whole startup on one continuous screen with no visual handoff.
     return (
       <div className="h-screen overflow-hidden flex flex-col">
         {windowsStandaloneTitleBar}
-        <div className="flex-1 flex items-center justify-center bg-background">
-          <div className="flex flex-col items-center space-y-4">
-            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary to-primary-hover flex items-center justify-center shadow-glow-accent animate-pulse">
-              <ChatBubbleLeftRightIcon className="h-8 w-8 text-white" />
-            </div>
-            <div className="w-24 h-1 rounded-full bg-primary/20 overflow-hidden">
-              <div className="h-full w-1/2 rounded-full bg-primary animate-shimmer" />
-            </div>
-            <div className="text-foreground text-xl font-medium">{i18nService.t('loading')}</div>
-          </div>
-        </div>
+        <div className="flex-1 bg-surface" />
+        <EngineStartupOverlay bootstrapping />
       </div>
     );
   }
@@ -1230,6 +1251,11 @@ const App: React.FC = () => {
         </div>
       </div>
 
+      <EngineFailureOverlay
+        onRequestAppSettings={privacyAgreed === true && !showWelcome ? handleShowSettings : undefined}
+        suspended={showSettings || showUpdateModal || pendingPermission !== null || privacyAgreed === false || showWelcome}
+      />
+
       {/* 设置窗口显示在所有主内容之上，但不影响主界面的交互 */}
       {showSettings && (
         <Settings
@@ -1266,202 +1292,6 @@ const App: React.FC = () => {
   );
 };
 
-interface ActivationOverlayProps {
-  onActivated: () => void;
-  windowsStandaloneTitleBar: React.ReactNode;
-}
 
-const ActivationOverlay: React.FC<ActivationOverlayProps> = ({ onActivated, windowsStandaloneTitleBar }) => {
-  const [code, setCode] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const dispatch = useDispatch();
-
-  const handleActivate = async () => {
-    const trimmedCode = code.trim();
-    if (!trimmedCode) {
-      setError('请输入激活码');
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    try {
-      const config = configService.getConfig();
-      const oneapiConfig = config.providers?.['oneapi'];
-      const oneapiBaseUrl = oneapiConfig?.baseUrl?.trim() || 'https://token.chaohui.ai/v1';
-      const cleanBaseUrl = oneapiBaseUrl.replace(/\/+$/, '');
-      const testUrl = `${cleanBaseUrl}/models`;
-
-      const response = await window.electron.api.fetch({
-        url: testUrl,
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${trimmedCode}`,
-        },
-      }) as { ok: boolean; status: number; data: any; statusText?: string };
-
-      if (!response.ok) {
-        setError(response.status === 401 ? '激活码无效，请检查后重试' : `校验失败: HTTP ${response.status}`);
-      } else {
-        const body = response.data as { data: Array<{ id: string }> };
-        if (!body || !Array.isArray(body.data) || body.data.length === 0) {
-          setError('获取模型列表失败，请检查 OneAPI 配置');
-          return;
-        }
-
-        const chatModels: any[] = [];
-        for (const m of body.data) {
-          const modelId = m.id;
-          const isImage = /dall-e|stable-diffusion|\bsdxl\b|midjourney|\bmj-v\d+|controlnet|\bflux\b|seedream/i.test(modelId);
-          const hasVideoKeyword = /cogvideo|seedance|sora|kling|\bluma\b|runway|video-gen/i.test(modelId);
-          const isVideoUnderstanding = /chat|understand|vision|vl|multimodal/i.test(modelId);
-          const isVideo = hasVideoKeyword && !isVideoUnderstanding;
-
-          if (!isImage && !isVideo) {
-            chatModels.push({
-              id: modelId,
-              name: modelId,
-              supportsImage: true,
-            });
-          }
-        }
-
-        const defaultChatModel = chatModels[0]?.id;
-        if (chatModels.length === 0) {
-          setError('该激活码无可用的对话模型');
-          return;
-        }
-
-        const updatedProviders = {
-          ...config.providers,
-          oneapi: {
-            ...oneapiConfig,
-            enabled: true,
-            apiKey: trimmedCode,
-            models: chatModels,
-            baseUrl: oneapiBaseUrl,
-          }
-        };
-
-        // 写入本地 sqlite 数据库
-        await configService.updateConfig({
-          providers: updatedProviders,
-          model: {
-            ...config.model,
-            defaultModel: defaultChatModel || config.model?.defaultModel || '',
-            defaultModelProvider: 'oneapi',
-            availableModels: chatModels.map(m => ({
-              ...m,
-              provider: 'oneapi',
-              providerKey: 'oneapi',
-            })),
-          }
-        });
-
-        // 同步 Redux 状态
-        dispatch(setAvailableModels(chatModels.map(m => ({
-          ...m,
-          provider: 'oneapi',
-          providerKey: 'oneapi',
-        }))));
-
-        if (defaultChatModel) {
-          const allModels = store.getState().model.availableModels;
-          const preferredModel = allModels.find(
-            m => m.id === defaultChatModel && m.providerKey === 'oneapi'
-          ) ?? allModels[0];
-          if (preferredModel) {
-            dispatch(setDefaultSelectedModel(preferredModel));
-          }
-        }
-
-        // 重新启动大模型网关引擎
-        try {
-          await coworkService.restartOpenClawGateway();
-        } catch (e) {
-          console.warn('[App] restartOpenClawGateway on activate failed:', e);
-        }
-        onActivated();
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '网络连接失败，请检查网络设置');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="h-screen overflow-hidden flex flex-col bg-[#f4f5f7] dark:bg-[#0e101f] text-foreground font-sans selection:bg-primary/30 selection:text-white relative transition-colors duration-200">
-      {windowsStandaloneTitleBar}
-      
-      {/* 渐变流光背景 */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-[-25%] left-[-15%] w-[70%] h-[70%] rounded-full bg-gradient-to-br from-primary/12 dark:from-primary/25 to-transparent blur-[140px] animate-pulse duration-[8000ms]" />
-        <div className="absolute bottom-[-25%] right-[-15%] w-[70%] h-[70%] rounded-full bg-gradient-to-tr from-violet-500/8 dark:from-violet-500/18 to-transparent blur-[140px] animate-pulse duration-[10000ms]" />
-      </div>
-
-      <div className="flex-1 flex items-center justify-center p-6 relative z-10">
-        {/* 玻璃卡片 */}
-        <div className="w-full max-w-[420px] rounded-2xl bg-white dark:bg-[#151728] border border-border/80 dark:border-white/15 p-8 shadow-[0_15px_35px_rgba(0,0,0,0.05)] dark:shadow-[0_20px_50px_rgba(0,0,0,0.6)] flex flex-col space-y-6 transform hover:scale-[1.01] transition-all duration-300">
-          
-          {/* 标志与标题 */}
-          <div className="flex flex-col items-center space-y-3 text-center">
-            <img
-              src="logo.png?v=heyclaw"
-              alt="HeyClaw Logo"
-              className="w-14 h-14 rounded-2xl select-none"
-              draggable={false}
-            />
-            <h2 className="text-2xl font-bold tracking-tight text-foreground dark:text-white/90">HeyClaw 激活</h2>
-            <p className="text-sm text-secondary dark:text-white/60 max-w-[280px]">
-              请输入您的激活码以开启 HeyClaw AI 工作站
-            </p>
-          </div>
-
-          {/* 表单输入 */}
-          <div className="flex flex-col space-y-4">
-            <div className="flex flex-col space-y-1.5">
-              <label className="text-xs font-semibold text-secondary dark:text-white/70 tracking-wider uppercase pl-1">
-                激活码
-              </label>
-              <input
-                type="password"
-                value={code}
-                onChange={(e) => { setCode(e.target.value); setError(null); }}
-                placeholder="sk-xxxxxxxxxxxxxxxxxxxxxxxx"
-                disabled={loading}
-                className="w-full px-4 py-3 bg-surface-raised dark:bg-white/[0.06] hover:bg-surface-raised/80 dark:hover:bg-white/[0.08] focus:bg-surface border border-border dark:border-white/15 focus:border-primary/50 dark:focus:border-primary/50 rounded-xl text-foreground dark:text-white placeholder-foreground/30 dark:placeholder-white/40 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 shadow-inner transition-all duration-200"
-              />
-            </div>
-
-            {error && (
-              <div className="text-xs text-red-500 dark:text-red-400 pl-1 animate-fade-in">
-                ⚠️ {error}
-              </div>
-            )}
-
-            <button
-              onClick={handleActivate}
-              disabled={loading}
-              className="w-full py-3.5 bg-primary hover:bg-primary-hover disabled:opacity-50 text-white rounded-xl font-medium text-sm transition-all duration-300 transform active:scale-[0.98] shadow-sm hover:shadow-glow-accent disabled:transform-none disabled:active:scale-100 flex items-center justify-center space-x-2"
-            >
-              {loading ? (
-                <>
-                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  <span>正在验证激活码...</span>
-                </>
-              ) : (
-                <span>激活并开始使用</span>
-              )}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
 
 export default App; 
