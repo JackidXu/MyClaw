@@ -197,7 +197,11 @@ export class SqliteStore {
         pin_order INTEGER,
         is_default INTEGER NOT NULL DEFAULT 0,
         source TEXT NOT NULL DEFAULT 'custom',
-        preset_id TEXT NOT NULL DEFAULT '',
+        title TEXT NOT NULL DEFAULT '',
+        nickname TEXT NOT NULL DEFAULT '',
+        tags TEXT NOT NULL DEFAULT '[]',
+        level TEXT NOT NULL DEFAULT '',
+        department TEXT NOT NULL DEFAULT '',
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
       );
@@ -450,8 +454,35 @@ export class SqliteStore {
         this.db.exec('ALTER TABLE agents ADD COLUMN pin_order INTEGER;');
         this.didRunMigration = true;
       }
+      if (!agentColNames.includes('title')) {
+        this.db.exec("ALTER TABLE agents ADD COLUMN title TEXT NOT NULL DEFAULT '';");
+        this.didRunMigration = true;
+      }
+      if (!agentColNames.includes('nickname')) {
+        this.db.exec("ALTER TABLE agents ADD COLUMN nickname TEXT NOT NULL DEFAULT '';");
+        this.didRunMigration = true;
+      }
+      if (!agentColNames.includes('tags')) {
+        this.db.exec("ALTER TABLE agents ADD COLUMN tags TEXT NOT NULL DEFAULT '[]';");
+        this.didRunMigration = true;
+      }
+      if (!agentColNames.includes('level')) {
+        this.db.exec("ALTER TABLE agents ADD COLUMN level TEXT NOT NULL DEFAULT '';");
+        this.didRunMigration = true;
+      }
+      if (!agentColNames.includes('department')) {
+        this.db.exec("ALTER TABLE agents ADD COLUMN department TEXT NOT NULL DEFAULT '';");
+        this.didRunMigration = true;
+      }
     } catch {
       // Column already exists or migration not needed.
+    }
+
+    try {
+      this.db.exec("UPDATE agents SET nickname = name WHERE TRIM(COALESCE(nickname, '')) = '';");
+      this.db.exec("UPDATE agents SET level = '中级' WHERE TRIM(COALESCE(level, '')) = '';");
+    } catch {
+      // Ignore backfill errors
     }
 
     try {

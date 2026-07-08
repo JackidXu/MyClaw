@@ -93,6 +93,11 @@ const AgentCreateModal: React.FC<AgentCreateModalProps> = ({
   const [workingDirectory, setWorkingDirectory] = useState('');
   const [skillIds, setSkillIds] = useState<string[]>([]);
   const [creating, setCreating] = useState(false);
+  const [title, setTitle] = useState('');
+  const [nickname, setNickname] = useState('');
+  const [tagsInput, setTagsInput] = useState('');
+  const [level, setLevel] = useState('中级');
+  const [department, setDepartment] = useState('设计部');
   const [presetTemplates, setPresetTemplates] = useState<PresetAgent[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
@@ -291,6 +296,11 @@ const AgentCreateModal: React.FC<AgentCreateModalProps> = ({
     setShowTemplatePicker(false);
     setSelectedTemplate(null);
     setBoundKeys(new Set());
+    setTitle('');
+    setNickname('');
+    setTagsInput('');
+    setLevel('中级');
+    setDepartment('设计部');
   };
 
   const handleApplyTemplate = (preset: PresetAgent) => {
@@ -308,6 +318,11 @@ const AgentCreateModal: React.FC<AgentCreateModalProps> = ({
     setIcon(preset.icon?.trim() || DefaultAgentAvatarIcon);
     setSkillIds(preset.skillIds ?? []);
     setSelectedTemplate(template);
+    setTitle(isEn && preset.titleEn ? preset.titleEn || '' : preset.title || '');
+    setNickname(isEn && preset.nicknameEn ? preset.nicknameEn || '' : preset.nickname || '');
+    setTagsInput(preset.tags ? preset.tags.join(', ') : '');
+    setLevel(preset.level || '中级');
+    setDepartment(preset.department || '设计部');
     reportAgentCreateAction('template_selected', {
       activeTab: AgentDetailTab.Identity,
       isDirty: true,
@@ -391,6 +406,11 @@ const AgentCreateModal: React.FC<AgentCreateModalProps> = ({
         workingDirectory: workingDirectory.trim(),
         icon: icon.trim() || undefined,
         skillIds,
+        title: title.trim(),
+        nickname: nickname.trim() || name.trim(),
+        tags: tagsInput.split(',').map((t) => t.trim()).filter(Boolean),
+        level,
+        department,
       });
       if (agent) {
         // Save IM bindings after agent is created
@@ -535,6 +555,65 @@ const AgentCreateModal: React.FC<AgentCreateModalProps> = ({
               aria-label={i18nService.t('agentDescription')}
               className="mt-0.5 w-full bg-transparent text-sm leading-5 text-secondary placeholder:text-secondary/50 focus:outline-none"
             />
+
+            <div className="mt-4 grid grid-cols-2 gap-3 border-t border-border/50 pt-3">
+              <div>
+                <label className="text-[10px] font-semibold text-secondary uppercase">员工姓名 / 昵称</label>
+                <input
+                  type="text"
+                  value={nickname}
+                  onChange={(e) => setNickname(e.target.value)}
+                  placeholder="e.g. 创意写手小莫"
+                  className="mt-1 w-full bg-surface border border-border px-3 py-1.5 rounded-xl text-xs text-foreground placeholder:text-secondary/40 focus:outline-none focus:border-primary"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-semibold text-secondary uppercase">岗位头衔</label>
+                <input
+                  type="text"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="e.g. 文案创意总监"
+                  className="mt-1 w-full bg-surface border border-border px-3 py-1.5 rounded-xl text-xs text-foreground placeholder:text-secondary/40 focus:outline-none focus:border-primary"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-semibold text-secondary uppercase">职级级别</label>
+                <select
+                  value={level}
+                  onChange={(e) => setLevel(e.target.value)}
+                  className="mt-1 w-full bg-surface border border-border px-3 py-1.5 rounded-xl text-xs text-foreground focus:outline-none focus:border-primary cursor-pointer"
+                >
+                  <option value="初级">初级</option>
+                  <option value="中级">中级</option>
+                  <option value="高级">高级</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-[10px] font-semibold text-secondary uppercase">分配部门</label>
+                <select
+                  value={department}
+                  onChange={(e) => setDepartment(e.target.value)}
+                  className="mt-1 w-full bg-surface border border-border px-3 py-1.5 rounded-xl text-xs text-foreground focus:outline-none focus:border-primary cursor-pointer"
+                >
+                  <option value="设计部">设计部</option>
+                  <option value="市场部">市场部</option>
+                  <option value="运营部">运营部</option>
+                  <option value="商品部">商品部</option>
+                  <option value="IT部">IT部</option>
+                </select>
+              </div>
+              <div className="col-span-2">
+                <label className="text-[10px] font-semibold text-secondary uppercase">专业标签 (逗号分隔)</label>
+                <input
+                  type="text"
+                  value={tagsInput}
+                  onChange={(e) => setTagsInput(e.target.value)}
+                  placeholder="e.g. 选题规划, 新媒体写作"
+                  className="mt-1 w-full bg-surface border border-border px-3 py-1.5 rounded-xl text-xs text-foreground placeholder:text-secondary/40 focus:outline-none focus:border-primary"
+                />
+              </div>
+            </div>
           </div>
         </div>
         <div className="mt-1 flex shrink-0 items-center gap-2">

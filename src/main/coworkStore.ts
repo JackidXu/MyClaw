@@ -362,6 +362,11 @@ export interface Agent {
   isDefault: boolean;
   source: AgentSource;
   presetId: string;
+  title: string;
+  nickname: string;
+  tags: string[];
+  level: string;
+  department: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -378,6 +383,11 @@ export interface CreateAgentRequest {
   skillIds?: string[];
   source?: AgentSource;
   presetId?: string;
+  title?: string;
+  nickname?: string;
+  tags?: string[];
+  level?: string;
+  department?: string;
 }
 
 export interface UpdateAgentRequest {
@@ -391,6 +401,11 @@ export interface UpdateAgentRequest {
   skillIds?: string[];
   enabled?: boolean;
   pinned?: boolean;
+  title?: string;
+  nickname?: string;
+  tags?: string[];
+  level?: string;
+  department?: string;
 }
 
 
@@ -2679,6 +2694,11 @@ export class CoworkStore {
       is_default: number;
       source: string;
       preset_id: string;
+      title?: string | null;
+      nickname?: string | null;
+      tags?: string | null;
+      level?: string | null;
+      department?: string | null;
       created_at: number;
       updated_at: number;
     }
@@ -2707,6 +2727,11 @@ export class CoworkStore {
       is_default: number;
       source: string;
       preset_id: string;
+      title?: string | null;
+      nickname?: string | null;
+      tags?: string | null;
+      level?: string | null;
+      department?: string | null;
       created_at: number;
       updated_at: number;
     }
@@ -2740,8 +2765,8 @@ export class CoworkStore {
       this.db
         .prepare(
           `
-        INSERT INTO agents (id, name, description, system_prompt, identity, model, working_directory, icon, skill_ids, enabled, is_default, source, preset_id, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?, ?)
+        INSERT INTO agents (id, name, description, system_prompt, identity, model, working_directory, icon, skill_ids, enabled, is_default, source, preset_id, title, nickname, tags, level, department, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
         )
         .run(
@@ -2756,6 +2781,11 @@ export class CoworkStore {
           JSON.stringify(request.skillIds || []),
           request.source || 'custom',
           request.presetId || '',
+          request.title || '',
+          request.nickname || request.name,
+          JSON.stringify(request.tags || []),
+          request.level || '中级',
+          request.department || '',
           now,
           now,
         );
@@ -2835,6 +2865,26 @@ export class CoworkStore {
         setClauses.push('pin_order = NULL');
       }
     }
+    if (updates.title !== undefined) {
+      setClauses.push('title = ?');
+      values.push(updates.title);
+    }
+    if (updates.nickname !== undefined) {
+      setClauses.push('nickname = ?');
+      values.push(updates.nickname);
+    }
+    if (updates.tags !== undefined) {
+      setClauses.push('tags = ?');
+      values.push(JSON.stringify(updates.tags));
+    }
+    if (updates.level !== undefined) {
+      setClauses.push('level = ?');
+      values.push(updates.level);
+    }
+    if (updates.department !== undefined) {
+      setClauses.push('department = ?');
+      values.push(updates.department);
+    }
 
     values.push(id);
     this.db.prepare(`UPDATE agents SET ${setClauses.join(', ')} WHERE id = ?`).run(...values);
@@ -2877,6 +2927,11 @@ export class CoworkStore {
     is_default: number;
     source: string;
     preset_id: string;
+    title?: string | null;
+    nickname?: string | null;
+    tags?: string | null;
+    level?: string | null;
+    department?: string | null;
     created_at: number;
     updated_at: number;
   }): Agent {
@@ -2885,6 +2940,12 @@ export class CoworkStore {
       skillIds = JSON.parse(row.skill_ids);
     } catch {
       skillIds = [];
+    }
+    let tags: string[] = [];
+    try {
+      tags = row.tags ? JSON.parse(row.tags) : [];
+    } catch {
+      tags = [];
     }
     return {
       id: row.id,
@@ -2902,6 +2963,11 @@ export class CoworkStore {
       isDefault: Boolean(row.is_default),
       source: row.source as AgentSource,
       presetId: row.preset_id,
+      title: row.title || '',
+      nickname: row.nickname || row.name || '',
+      tags,
+      level: row.level || '中级',
+      department: row.department || '',
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };

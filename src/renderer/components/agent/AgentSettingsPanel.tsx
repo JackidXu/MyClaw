@@ -92,6 +92,11 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showUnsavedConfirm, setShowUnsavedConfirm] = useState(false);
   const [activeTab, setActiveTab] = useState<AgentDetailTab>(AgentDetailTab.Prompt);
+  const [title, setTitle] = useState('');
+  const [nickname, setNickname] = useState('');
+  const [tagsInput, setTagsInput] = useState('');
+  const [level, setLevel] = useState('中级');
+  const [department, setDepartment] = useState('设计部');
   const openedAgentIdRef = useRef<string | null>(null);
 
   // IM binding state — keys are platform names or `platform:<instanceId>` for multi-instance platforms.
@@ -111,6 +116,11 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
     model: '',
     workingDirectory: '',
     skillIds: [] as string[],
+    title: '',
+    nickname: '',
+    tagsInput: '',
+    level: '',
+    department: '',
   });
 
   const getChangedFields = useCallback((): string[] => {
@@ -130,6 +140,11 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
     if (boundKeys.size !== initialBoundKeys.size || [...boundKeys].some((k) => !initialBoundKeys.has(k))) {
       changedFields.push('imBindings');
     }
+    if (title !== init.title) changedFields.push('title');
+    if (nickname !== init.nickname) changedFields.push('nickname');
+    if (tagsInput !== init.tagsInput) changedFields.push('tagsInput');
+    if (level !== init.level) changedFields.push('level');
+    if (department !== init.department) changedFields.push('department');
     return changedFields;
   }, [
     boundKeys,
@@ -257,6 +272,11 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
       setModel(resolvedModel);
       setWorkingDirectory(a.workingDirectory ?? '');
       setSkillIds(a.skillIds ?? []);
+      setTitle(a.title ?? '');
+      setNickname(a.nickname ?? a.name ?? '');
+      setTagsInput(a.tags ? a.tags.join(', ') : '');
+      setLevel(a.level ?? '中级');
+      setDepartment(a.department ?? '设计部');
       initialValuesRef.current = {
         name: a.name,
         description: a.description,
@@ -267,6 +287,11 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
         model: resolvedModelRef,
         workingDirectory: a.workingDirectory ?? '',
         skillIds: a.skillIds ?? [],
+        title: a.title ?? '',
+        nickname: a.nickname ?? a.name ?? '',
+        tagsInput: a.tags ? a.tags.join(', ') : '',
+        level: a.level ?? '中级',
+        department: a.department ?? '设计部',
       };
     })();
 
@@ -369,6 +394,11 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
         workingDirectory: workingDirectory.trim(),
         icon: icon.trim(),
         skillIds,
+        title: title.trim(),
+        nickname: nickname.trim(),
+        tags: tagsInput.split(',').map((t) => t.trim()).filter(Boolean),
+        level,
+        department,
       });
       if (!result) {
         reportAgentSettingsAction('save_failed', {
@@ -711,6 +741,65 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
                 aria-label={i18nService.t('agentDescription')}
                 className="mt-0.5 w-full bg-transparent text-sm leading-5 text-secondary placeholder:text-secondary/50 focus:outline-none"
               />
+
+              <div className="mt-4 grid grid-cols-2 gap-3 border-t border-border/50 pt-3">
+                <div>
+                  <label className="text-[10px] font-semibold text-secondary uppercase">员工姓名 / 昵称</label>
+                  <input
+                    type="text"
+                    value={nickname}
+                    onChange={(e) => setNickname(e.target.value)}
+                    placeholder="e.g. 创意写手小莫"
+                    className="mt-1 w-full bg-surface border border-border px-3 py-1.5 rounded-xl text-xs text-foreground placeholder:text-secondary/40 focus:outline-none focus:border-primary"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-semibold text-secondary uppercase">岗位头衔</label>
+                  <input
+                    type="text"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="e.g. 文案创意总监"
+                    className="mt-1 w-full bg-surface border border-border px-3 py-1.5 rounded-xl text-xs text-foreground placeholder:text-secondary/40 focus:outline-none focus:border-primary"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-semibold text-secondary uppercase">职级级别</label>
+                  <select
+                    value={level}
+                    onChange={(e) => setLevel(e.target.value)}
+                    className="mt-1 w-full bg-surface border border-border px-3 py-1.5 rounded-xl text-xs text-foreground focus:outline-none focus:border-primary cursor-pointer"
+                  >
+                    <option value="初级">初级</option>
+                    <option value="中级">中级</option>
+                    <option value="高级">高级</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] font-semibold text-secondary uppercase">分配部门</label>
+                  <select
+                    value={department}
+                    onChange={(e) => setDepartment(e.target.value)}
+                    className="mt-1 w-full bg-surface border border-border px-3 py-1.5 rounded-xl text-xs text-foreground focus:outline-none focus:border-primary cursor-pointer"
+                  >
+                    <option value="设计部">设计部</option>
+                    <option value="市场部">市场部</option>
+                    <option value="运营部">运营部</option>
+                    <option value="商品部">商品部</option>
+                    <option value="IT部">IT部</option>
+                  </select>
+                </div>
+                <div className="col-span-2">
+                  <label className="text-[10px] font-semibold text-secondary uppercase">专业标签 (逗号分隔)</label>
+                  <input
+                    type="text"
+                    value={tagsInput}
+                    onChange={(e) => setTagsInput(e.target.value)}
+                    placeholder="e.g. 选题规划, 新媒体写作"
+                    className="mt-1 w-full bg-surface border border-border px-3 py-1.5 rounded-xl text-xs text-foreground placeholder:text-secondary/40 focus:outline-none focus:border-primary"
+                  />
+                </div>
+              </div>
             </div>
           </div>
           <button type="button" onClick={handleClose} className="mt-1 p-2 rounded-lg hover:bg-surface-raised transition-colors">
