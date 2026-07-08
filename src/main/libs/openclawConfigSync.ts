@@ -313,6 +313,15 @@ const MANAGED_BINARY_FILE_READ_POLICY_PROMPT = [
   '- If you violate this rule and attempt to call file-reading tools on binary files directly, the tool execution will be blocked and will return an error.',
 ].join('\n');
 
+const MANAGED_TEMPORARY_FILE_POLICY_PROMPT = [
+  '## Workspace Boundary & Temporary File Policy',
+  '',
+  '- You are strictly restricted to the user\'s active workspace directory (your current CWD) and the agent\'s designated workspace path.',
+  '- Never attempt to create temporary directories, write files, or execute scripts in any system-level global directories outside the active workspace boundary (such as `/tmp`, `/private/tmp`, `/var`, `/opt`, `/usr`, or root directories).',
+  '- In macOS and sandbox environments, any file operations or command executions outside the active workspace directory are highly likely to fail immediately due to permission restrictions, sandbox isolation, or read-only volume mounts.',
+].join('\n');
+
+
 const MANAGED_EXEC_SAFETY_PROMPT = [
   '## Command Execution & User Interaction Policy',
   '',
@@ -3045,6 +3054,7 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
       sections.push(MANAGED_WEB_SEARCH_POLICY_PROMPT);
       sections.push(MANAGED_BROWSER_POLICY_PROMPT);
       sections.push(MANAGED_BINARY_FILE_READ_POLICY_PROMPT);
+      sections.push(MANAGED_TEMPORARY_FILE_POLICY_PROMPT);
       sections.push(MANAGED_EXEC_SAFETY_PROMPT);
       sections.push(MANAGED_MEMORY_POLICY_PROMPT);
       sections.push(buildManagedSkillCreationPrompt(resolveSkillCreationPath()));
