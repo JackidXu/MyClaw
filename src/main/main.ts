@@ -4451,16 +4451,16 @@ if (!gotTheLock) {
           params,
         };
       } else {
-        // 组装 OneAPI 生图参数
-        let size = '1024x1024';
+        const isDoubaoSeedream = typeof model === 'string' && model.toLowerCase().includes('doubao-seedream');
+        let size = isDoubaoSeedream ? '2048x2048' : '1024x1024';
         if (args.size && typeof args.size === 'string') {
           size = args.size;
         } else if (args.aspectRatio && typeof args.aspectRatio === 'string') {
           const ar = args.aspectRatio.trim();
           if (ar === '16:9' || ar === '4:3') {
-            size = '1792x1024';
+            size = isDoubaoSeedream ? '2560x1440' : '1792x1024';
           } else if (ar === '9:16' || ar === '3:4') {
-            size = '1024x1792';
+            size = isDoubaoSeedream ? '1440x2560' : '1024x1792';
           }
         }
 
