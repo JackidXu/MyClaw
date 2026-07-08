@@ -28,8 +28,8 @@ export const isTestModeEnabled = (): boolean => {
  */
 export const getServerApiBaseUrl = (): string => {
   return isTestModeEnabled()
-    ? 'https://lobsterai-server.inner.youdao.com'
-    : 'https://lobsterai-server.youdao.com';
+    ? 'http://localhost:8082'
+    : 'https://admin.claw.chaohui.ai';
 };
 
 export const getHtmlSharePublicBaseUrl = (): string => {

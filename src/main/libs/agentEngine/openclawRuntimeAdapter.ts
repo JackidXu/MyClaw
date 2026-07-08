@@ -3296,6 +3296,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       ref: string;
       modelId: string;
       supportsThinking: boolean;
+      supportsImage: boolean;
     };
     const candidates: ModelCandidate[] = [];
 
@@ -3324,6 +3325,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
             ref: sel.primaryModel,
             modelId: sel.sessionModelId.toLowerCase(),
             supportsThinking: model.supportsThinking === true,
+            supportsImage: model.supportsImage === true,
           });
         }
       }
@@ -3351,16 +3353,29 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     const isLiteModel = (c: ModelCandidate): boolean =>
       !c.supportsThinking && LITE_KEYWORDS.some(kw => c.modelId.includes(kw));
 
-    const strongModels = candidates.filter(isStrongModel);
-    const liteModels = candidates.filter(isLiteModel);
+    // 多模态识图任务处理：如果检测到图片附件，仅在支持识图的模型中选择（若有的话）
+    const isMultimodalTask =
+      (imageAttachments && imageAttachments.length > 0) ||
+      (mediaReferences && mediaReferences.length > 0);
+
+    let filteredCandidates = candidates;
+    if (isMultimodalTask) {
+      const validMultimodal = candidates.filter(c => c.supportsImage);
+      if (validMultimodal.length > 0) {
+        filteredCandidates = validMultimodal;
+      }
+    }
+
+    const strongModels = filteredCandidates.filter(isStrongModel);
+    const liteModels = filteredCandidates.filter(isLiteModel);
 
     let selected: ModelCandidate | undefined;
     if (complexity === 'complex') {
       // 复杂任务：强模型 > 全量第一个
-      selected = strongModels[0] ?? candidates[0];
+      selected = strongModels[0] ?? filteredCandidates[0];
     } else {
       // 简单任务：轻量模型 > 全量第一个（无轻量模型时也可使用强模型）
-      selected = liteModels[0] ?? candidates[0];
+      selected = liteModels[0] ?? filteredCandidates[0];
     }
 
     return selected?.ref ?? null;

@@ -96,7 +96,7 @@ import {
   OpenClawGatewayRepairErrorCode,
 } from '../shared/openclawEngine/constants';
 import { PlatformRegistry } from '../shared/platform';
-import { OpenClawProviderId, ProviderName } from '../shared/providers';
+import { OpenClawProviderId, ProviderName, ProviderRegistry } from '../shared/providers';
 import {
   ShareDeploymentCandidateSource,
   type ShareDeploymentCreateNodeInput,
@@ -5797,11 +5797,22 @@ if (!gotTheLock) {
             description: `OneAPI ${modelId} 视频生成模型`,
           });
         } else {
-          // 作为普通的对话大模型
+          // 智能推断自建 OneAPI 渠道的普通对话大模型是否支持识图
+          const isKnownNonVision = /deepseek/i.test(modelId);
+          const isKnownVision = /vision|vl|omni|gpt-4o|claude-3|gemini|doubao/i.test(modelId);
+          let supportsImage = false;
+          if (!isKnownNonVision) {
+            if (isKnownVision) {
+              supportsImage = true;
+            } else {
+              supportsImage = ProviderRegistry.resolveModelSupportsImage('oneapi', modelId, false);
+            }
+          }
+
           chatModels.push({
             id: modelId,
             name: modelId,
-            supportsImage: true,
+            supportsImage,
           });
         }
       }
