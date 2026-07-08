@@ -5650,6 +5650,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     if (!this.gatewayClient) {
       void this.attemptGatewayReconnect();
     } else {
+      this.lastTickTimestamp = Date.now();
       this.checkTickHealth();
     }
   }
