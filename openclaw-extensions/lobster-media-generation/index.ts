@@ -1,4 +1,5 @@
 import { Type } from '@sinclair/typebox';
+// @ts-expect-error plugin-sdk exists natively inside the openclaw gateway sandbox
 import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
 
 import { isLobsterAiDesktopSessionKey } from './sessionKey';
@@ -170,9 +171,8 @@ const ImageGenerateSchema = Type.Object({
   size: Type.Optional(Type.String({ description: 'Output size, e.g. "1024x1024".' })),
   aspectRatio: Type.Optional(Type.String({ description: 'Aspect ratio, e.g. "1:1", "16:9", "9:16".' })),
   resolution: Type.Optional(Type.String({ description: 'Resolution: "1K", "2K", "4K".' })),
-  imageSize: Type.Optional(Type.String({ description: 'Image size for models that use imageConfig, e.g. "512px", "1K", "2K", "4K".' })),
-  n: Type.Optional(Type.Number({ description: 'Number of images to generate. Default: 1. Alias of count for models that use n.', minimum: 1, maximum: 10 })),
-  count: Type.Optional(Type.Number({ description: 'Number of images to generate. Default: 1.', minimum: 1, maximum: 10 })),
+  n: Type.Optional(Type.Number({ description: 'Number of images to generate. Crucial: ALWAYS set to 1. If you need multiple images, trigger multiple parallel tool calls (concurrent calls) instead of setting this greater than 1.', minimum: 1, maximum: 1 })),
+  count: Type.Optional(Type.Number({ description: 'Number of images to generate. Crucial: ALWAYS set to 1. If you need multiple images, trigger multiple parallel tool calls (concurrent calls) instead of setting this greater than 1.', minimum: 1, maximum: 1 })),
   quality: Type.Optional(Type.String({ description: 'Output quality, e.g. "low", "medium", "high", "auto".' })),
   outputFormat: Type.Optional(Type.String({ description: 'Output image format, e.g. "png", "jpeg", "webp".' })),
   output_format: Type.Optional(Type.String({ description: 'Output image format, e.g. "png", "jpeg", "webp". Alias of outputFormat.' })),
@@ -225,7 +225,7 @@ const plugin = {
       return;
     }
 
-    api.registerTool((ctx) => {
+    api.registerTool((ctx: any) => {
       const sessionKey = ctx.sessionKey ?? '';
       if (!isLobsterAiDesktopSessionKey(sessionKey)) {
         return null;
@@ -267,7 +267,7 @@ const plugin = {
       };
     });
 
-    api.registerTool((ctx) => {
+    api.registerTool((ctx: any) => {
       const sessionKey = ctx.sessionKey ?? '';
       if (!isLobsterAiDesktopSessionKey(sessionKey)) {
         return null;
