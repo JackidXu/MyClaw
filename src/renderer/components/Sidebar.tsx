@@ -229,8 +229,8 @@ const Sidebar: React.FC<SidebarProps> = ({
 
       const fetchPromise = (async () => {
         const currentConfig = configService.getConfig();
-        const oneapiConfig = currentConfig.providers?.['oneapi'];
-        const oneapiBaseUrl = oneapiConfig?.baseUrl || 'https://token.chaohui.ai';
+        const oneapiConfig = (currentConfig.providers?.['oneapi'] || {}) as any;
+        const oneapiBaseUrl = oneapiConfig.baseUrl || 'https://token.chaohui.ai';
         
         // 自动剥离末尾的 /v1 或 /v1/ 以匹配管理自查接口
         const cleanBaseUrl = oneapiBaseUrl.replace(/\/v1\/?$/, '').replace(/\/+$/, '');
@@ -251,6 +251,10 @@ const Sidebar: React.FC<SidebarProps> = ({
           const userProfile = selfResp.data.data;
           // 根据 New API 官方定义，用户的当前可用剩余配额即为 quota 字段
           remainQuota = Number(userProfile.quota || 0);
+          const dispName = userProfile.display_name || userProfile.username || 'HeyClaw 用户';
+          localStorage.setItem('heyclaw_user_name', dispName);
+          setUserNickname(dispName);
+          setEditNickname(dispName);
         } else {
           // 提取错误原因 (安全获取 message，避免 TypeError)
           const errorMsg = selfResp.data?.message || 
@@ -300,15 +304,16 @@ const Sidebar: React.FC<SidebarProps> = ({
     if (!apiKey || !session || !userId) {
       onShowLoginRef.current?.();
       const currentConfig = configService.getConfig();
-      const currentOneapi = currentConfig.providers?.['oneapi'];
-      if (currentOneapi?.apiKey) {
+      const currentOneapi = (currentConfig.providers?.['oneapi'] || {}) as any;
+      if (currentOneapi.apiKey) {
         void configService.updateConfig({
           providers: {
             ...currentConfig.providers,
             oneapi: {
               ...currentOneapi,
               apiKey: '',
-              enabled: false
+              enabled: false,
+              baseUrl: currentOneapi.baseUrl || 'https://token.chaohui.ai/v1'
             }
           }
         });

@@ -11,6 +11,7 @@ import {
   isManualDownloadUrl,
 } from '../shared/appUpdate/constants';
 import { ProviderName, ProviderRegistry } from '../shared/providers';
+import AgentsView from './components/agent/AgentsView';
 import { AuthModal } from './components/AuthModal';
 import { CoworkView } from './components/cowork';
 import { CoworkShortcutDirection, CoworkUiEvent } from './components/cowork/constants';
@@ -18,7 +19,6 @@ import CoworkPermissionModal from './components/cowork/CoworkPermissionModal';
 import CoworkQuestionWizard from './components/cowork/CoworkQuestionWizard';
 import EngineFailureOverlay from './components/cowork/EngineFailureOverlay';
 import EngineStartupOverlay from './components/cowork/EngineStartupOverlay';
-import AgentsView from './components/agent/AgentsView';
 import PrivacyDialog from './components/PrivacyDialog';
 import { ScheduledTasksView } from './components/scheduledTasks';
 import Settings, { type SettingsOpenOptions } from './components/Settings';
@@ -45,8 +45,7 @@ import {
   selectCurrentSessionId,
   selectFirstPendingPermission,
 } from './store/selectors/coworkSelectors';
-import { setDraftCollaborationMode, setDraftKitIds, setDraftPrompt } from './store/slices/coworkSlice';
-import { setActiveKitIds } from './store/slices/kitSlice';
+import { setDraftCollaborationMode, setDraftPrompt } from './store/slices/coworkSlice';
 import { setAvailableModels, setDefaultSelectedModel } from './store/slices/modelSlice';
 import { clearSelection } from './store/slices/quickActionSlice';
 import { CoworkCollaborationMode, type CoworkPermissionResult } from './types/cowork';
@@ -483,26 +482,6 @@ const App: React.FC = () => {
   const handleShowKits = useCallback(() => {
     setMainView('kits');
   }, []);
-
-  const handleKitTryAsking = useCallback((text: string, kitId: string) => {
-    dispatch(setActiveKitIds([kitId]));
-    coworkService.clearSession({ restoreAgentSkills: true });
-    dispatch(clearSelection());
-    dispatch(setDraftCollaborationMode({
-      draftKey: '__home__',
-      mode: CoworkCollaborationMode.Default,
-    }));
-    // Set the draft prompt and kit selection in store BEFORE switching view, so that when
-    // CoworkPromptInput mounts/updates with draftKey='__home__', it picks up both.
-    dispatch(setDraftPrompt({ sessionId: '__home__', draft: text }));
-    dispatch(setDraftKitIds({ draftKey: '__home__', kitIds: [kitId] }));
-    setMainView('cowork');
-    window.setTimeout(() => {
-      window.dispatchEvent(new CustomEvent(CoworkUiEvent.FocusInput, {
-        detail: { resetCollaborationMode: true, text },
-      }));
-    }, 0);
-  }, [dispatch]);
 
   const handleToggleSidebar = useCallback(() => {
     void reportYdAnalyzer({
@@ -1290,7 +1269,6 @@ const App: React.FC = () => {
     </div>
   );
 };
-
 
 
 export default App; 
