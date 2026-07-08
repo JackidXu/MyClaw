@@ -1,5 +1,15 @@
 'use strict';
 
+// Load .env when dotenv is available, but do not require it for packaging.
+// This supports local .env configs while preserving pre-set environment variables in CI/CD pipelines.
+try {
+  require('dotenv').config();
+} catch (error) {
+  if (error && error.code !== 'MODULE_NOT_FOUND') {
+    console.warn('[Codesign] Failed to load dotenv:', error.message);
+  }
+}
+
 const fs = require('fs');
 const path = require('path');
 
