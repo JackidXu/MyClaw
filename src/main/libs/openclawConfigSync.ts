@@ -1604,15 +1604,18 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
         }
       }
 
-      if (!allProvidersMap[providerSelection.providerId]) {
-        allProvidersMap[providerSelection.providerId] = providerSelection.providerConfig;
-      } else {
-        const existing = allProvidersMap[providerSelection.providerId];
-        const alreadyHas = existing.models.some(
-          em => em.id === providerSelection.providerConfig.models[0]?.id,
-        );
-        if (!alreadyHas && providerSelection.providerConfig.models.length > 0) {
-          existing.models.push(...providerSelection.providerConfig.models);
+      if (providerSelection) {
+        const selection = providerSelection;
+        if (!allProvidersMap[selection.providerId]) {
+          allProvidersMap[selection.providerId] = selection.providerConfig;
+        } else {
+          const existing = allProvidersMap[selection.providerId];
+          const alreadyHas = existing.models.some(
+            em => em.id === selection.providerConfig.models[0]?.id,
+          );
+          if (!alreadyHas && selection.providerConfig.models.length > 0) {
+            existing.models.push(...selection.providerConfig.models);
+          }
         }
       }
 
@@ -2863,6 +2866,11 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
         isDefault: true,
         source: 'custom',
         presetId: '',
+        title: '',
+        nickname: DefaultAgentProfile.Name,
+        tags: [],
+        level: '中级',
+        department: '',
         createdAt: 0,
         updatedAt: 0,
       });
