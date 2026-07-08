@@ -1676,6 +1676,26 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
       coworkConfig.executionMode || 'local',
       this.isEnterprise(),
     );
+    const proxyBaseURL = getCoworkOpenAICompatProxyBaseURL('local');
+    const proxyToken = getCoworkOpenAICompatProxyToken();
+
+    if (proxyBaseURL && proxyToken) {
+      allProvidersMap['system'] = {
+        baseUrl: `${proxyBaseURL}/v1`,
+        api: 'openai-completions',
+        apiKey: proxyToken,
+        auth: 'api-key',
+        models: [
+          {
+            id: 'auto',
+            name: 'Auto Routing Model',
+            api: 'openai-completions',
+            input: ['text', 'image'],
+          }
+        ]
+      };
+    }
+
     const availableProviders = buildProviderModelCatalog(allProvidersMap);
     const agentModelDefaults = Object.keys(perModelCustomDefaults).length > 0
       ? buildCompleteAgentModelDefaults(allProvidersMap, perModelCustomDefaults)

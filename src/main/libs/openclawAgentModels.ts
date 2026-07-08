@@ -187,11 +187,38 @@ export function buildAgentEntry(
   fallbackPrimaryModel: string,
   options?: { workspace?: string; availableProviders?: ProviderModelCatalog },
 ): Record<string, unknown> {
-  const qualified = resolveQualifiedAgentModelRef({
-    agentModel: agent.model,
-    availableProviders: options?.availableProviders ?? {},
-  });
-  const primaryModel = qualified.status === 'qualified' ? qualified.primaryModel : fallbackPrimaryModel;
+  const modelRef = agent.model?.trim() || '';
+  const isAuto = !modelRef || modelRef === 'auto' || modelRef === 'system/auto';
+
+  let primaryModel = fallbackPrimaryModel;
+
+  if (isAuto && options?.availableProviders && Object.keys(options.availableProviders).length > 0) {
+    const candidates: string[] = [];
+    for (const [providerId, provider] of Object.entries(options.availableProviders)) {
+      for (const model of provider.models) {
+        if (model.id) {
+          candidates.push(`${providerId}/${model.id}`);
+        }
+      }
+    }
+
+    if (candidates.length > 0) {
+      const STRONG_KEYWORDS = ['pro', 'plus', 'opus', 'sonnet', 'reasoner', 'r1', 'thinking', 'turbo', 'ultra'];
+      const strongModel = candidates.find(ref => STRONG_KEYWORDS.some(kw => ref.toLowerCase().includes(kw)));
+      primaryModel = strongModel || candidates[0];
+    }
+  } else {
+    const qualified = resolveQualifiedAgentModelRef({
+      agentModel: agent.model,
+      availableProviders: options?.availableProviders ?? {},
+    });
+    primaryModel = qualified.status === 'qualified' ? qualified.primaryModel : fallbackPrimaryModel;
+  }
+
+  if (primaryModel === 'system/auto' || primaryModel === 'auto') {
+    primaryModel = fallbackPrimaryModel;
+  }
+
   const legacyIcon = isDesignedAgentAvatarIcon(agent.icon) ? '' : agent.icon;
 
   return {
@@ -211,6 +238,7 @@ export function buildAgentEntry(
     },
   };
 }
+
 
 export function buildManagedAgentEntries({
   agents,

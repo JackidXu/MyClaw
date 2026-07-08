@@ -2492,6 +2492,16 @@ async function handleRequest(
       writeJSON(res, 400, createAnthropicErrorBody(message, 'invalid_request_error'));
       return;
     }
+    try {
+      const parsed = JSON.parse(body);
+      if (parsed.model === 'system/auto' || parsed.model === 'auto') {
+        parsed.model = upstreamConfig.model;
+        body = JSON.stringify(parsed);
+        console.info(`[CoworkProxy] Remapped passthrough model: system/auto -> ${upstreamConfig.model}`);
+      }
+    } catch (e) {
+      // Ignore
+    }
     const upstreamHeaders: Record<string, string> = {
       'Content-Type': 'application/json',
     };
@@ -2625,8 +2635,12 @@ async function handleRequest(
   // Force-remap model name to the user-configured upstream model.
   // The Claude Agent SDK may emit internal model names (e.g. claude-haiku-4-5-20251001)
   // for probe/warmup requests, which non-Anthropic providers don't recognize.
-  if (upstreamConfig.provider && upstreamConfig.provider !== 'anthropic' && upstreamConfig.provider !== 'openai') {
-    const requestModel = typeof openAIRequest.model === 'string' ? openAIRequest.model : '';
+  const requestModel = typeof openAIRequest.model === 'string' ? openAIRequest.model : '';
+
+  if (requestModel === 'system/auto' || requestModel === 'auto') {
+    console.info(`[CoworkProxy] Remapping auto model: ${requestModel} -> ${upstreamConfig.model}`);
+    openAIRequest.model = upstreamConfig.model;
+  } else if (upstreamConfig.provider && upstreamConfig.provider !== 'anthropic' && upstreamConfig.provider !== 'openai') {
     if (requestModel !== upstreamConfig.model) {
       console.info(
         `[CoworkProxy] Remapping model: ${requestModel} -> ${upstreamConfig.model} (provider: ${upstreamConfig.provider})`
