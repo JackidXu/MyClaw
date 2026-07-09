@@ -44,7 +44,7 @@ const PlatformGuide: React.FC<{
   steps: string[];
   guideUrl?: string;
   guideLabel?: string;
-}> = ({ title, steps, guideUrl, guideLabel }) => (
+}> = ({ title, steps, guideUrl: _guideUrl, guideLabel: _guideLabel }) => (
   <div className="mb-3 p-3 rounded-lg border border-dashed border-border-subtle">
     {title && (
       <p className="text-xs text-foreground leading-relaxed mb-1.5 font-medium">{title}</p>
@@ -54,7 +54,8 @@ const PlatformGuide: React.FC<{
         <li key={i}>{step}</li>
       ))}
     </ol>
-    {guideUrl && (
+    {/* TODO: 暂时注释不显示配置手册，因为现在配置手册是跳到有道的链接 */}
+    {/* {guideUrl && (
       <button
         type="button"
         onClick={() => {
@@ -66,7 +67,7 @@ const PlatformGuide: React.FC<{
       >
         {guideLabel || i18nService.t('imViewGuide')}
       </button>
-    )}
+    )} */}
   </div>
 );
 

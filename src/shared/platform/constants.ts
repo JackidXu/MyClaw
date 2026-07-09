@@ -190,7 +190,10 @@ class PlatformRegistryImpl {
 
     for (const def of definitions) {
       pIdx.set(def.id, def);
-      platforms.push(def.id);
+      // 移除最后四个通道：云信、小蜜蜂、POPO、黑爪爪邮箱
+      if (def.id !== 'nim' && def.id !== 'netease-bee' && def.id !== 'popo' && def.id !== 'email') {
+        platforms.push(def.id);
+      }
 
       cIdx.set(def.channel, def);
       channels.add(def.channel);
@@ -216,7 +219,9 @@ class PlatformRegistryImpl {
 
   /** Platforms filtered by region, preserving definition order. */
   platformsByRegion(region: 'china' | 'global'): readonly Platform[] {
-    return this.defs.filter(d => d.region === region).map(d => d.id);
+    return this.defs
+      .filter(d => d.region === region && d.id !== 'nim' && d.id !== 'netease-bee' && d.id !== 'popo' && d.id !== 'email')
+      .map(d => d.id);
   }
 
   // ── Single Platform Queries ──

@@ -5,7 +5,6 @@
 
 import { EyeIcon, EyeSlashIcon, XCircleIcon as XCircleIconSolid } from '@heroicons/react/20/solid';
 import { SignalIcon, XMarkIcon } from '@heroicons/react/24/outline';
-import { PlatformRegistry } from '@shared/platform';
 import React, { useState } from 'react';
 
 import { i18nService } from '../../services/i18n';
@@ -177,7 +176,8 @@ const QQInstanceSettings: React.FC<QQInstanceSettingsProps> = ({
           <li>{i18nService.t('imQQGuideStep3')}</li>
           <li>{i18nService.t('imQQGuideStep4')}</li>
         </ol>
-        {PlatformRegistry.guideUrl('qq') && (
+        {/* TODO: 暂时注释不显示配置手册，因为现在配置手册是跳到有道的链接 */}
+        {/* {PlatformRegistry.guideUrl('qq') && (
           <button
             type="button"
             onClick={() => {
@@ -189,7 +189,7 @@ const QQInstanceSettings: React.FC<QQInstanceSettingsProps> = ({
           >
             {i18nService.t('imViewGuide')}
           </button>
-        )}
+        )} */}
       </div>
 
       {/* AppID */}

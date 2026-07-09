@@ -29,14 +29,15 @@ interface FeishuInstanceSettingsProps {
 const PlatformGuide: React.FC<{
   steps: string[];
   guideUrl?: string;
-}> = ({ steps, guideUrl }) => (
+}> = ({ steps, guideUrl: _guideUrl }) => (
   <div className="mb-3 p-3 rounded-lg border border-dashed border-border-subtle">
     <ol className="text-xs text-secondary space-y-1 list-decimal list-inside">
       {steps.map((step, i) => (
         <li key={i}>{step}</li>
       ))}
     </ol>
-    {guideUrl && (
+    {/* TODO: 暂时注释不显示配置手册，因为现在配置手册是跳到有道的链接 */}
+    {/* {guideUrl && (
       <button
         type="button"
         onClick={() => {
@@ -48,7 +49,7 @@ const PlatformGuide: React.FC<{
       >
         {i18nService.t('imViewGuide')}
       </button>
-    )}
+    )} */}
   </div>
 );
 

@@ -5,7 +5,6 @@
 
 import { EyeIcon, EyeSlashIcon, XCircleIcon as XCircleIconSolid } from '@heroicons/react/20/solid';
 import { SignalIcon, XMarkIcon } from '@heroicons/react/24/outline';
-import { PlatformRegistry } from '@shared/platform';
 import React, { useState } from 'react';
 
 import { i18nService } from '../../services/i18n';
@@ -197,7 +196,8 @@ const DiscordInstanceSettings: React.FC<DiscordInstanceSettingsProps> = ({
           <li>{i18nService.t('imDiscordGuideStep5')}</li>
           <li>{i18nService.t('imDiscordGuideStep6')}</li>
         </ol>
-        {PlatformRegistry.guideUrl('discord') && (
+        {/* TODO: 暂时注释不显示配置手册，因为现在配置手册是跳到有道的链接 */}
+        {/* {PlatformRegistry.guideUrl('discord') && (
           <button
             type="button"
             onClick={() => {
@@ -209,7 +209,7 @@ const DiscordInstanceSettings: React.FC<DiscordInstanceSettingsProps> = ({
           >
             {i18nService.t('imViewGuide')}
           </button>
-        )}
+        )} */}
       </div>
 
       {/* Bot Token */}

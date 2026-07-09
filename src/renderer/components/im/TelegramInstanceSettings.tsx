@@ -5,7 +5,6 @@
 
 import { EyeIcon, EyeSlashIcon, XCircleIcon as XCircleIconSolid } from '@heroicons/react/20/solid';
 import { SignalIcon, XMarkIcon } from '@heroicons/react/24/outline';
-import { PlatformRegistry } from '@shared/platform';
 import React, { useState } from 'react';
 
 import { i18nService } from '../../services/i18n';
@@ -179,7 +178,8 @@ const TelegramInstanceSettings: React.FC<TelegramInstanceSettingsProps> = ({
           <li>{i18nService.t('imTelegramGuideStep2')}</li>
           <li>{i18nService.t('imTelegramGuideStep3')}</li>
         </ol>
-        {PlatformRegistry.guideUrl('telegram') && (
+        {/* TODO: 暂时注释不显示配置手册，因为现在配置手册是跳到有道的链接 */}
+        {/* {PlatformRegistry.guideUrl('telegram') && (
           <button
             type="button"
             onClick={() => {
@@ -191,7 +191,7 @@ const TelegramInstanceSettings: React.FC<TelegramInstanceSettingsProps> = ({
           >
             {i18nService.t('imViewGuide')}
           </button>
-        )}
+        )} */}
       </div>
 
       {/* Bot Token */}

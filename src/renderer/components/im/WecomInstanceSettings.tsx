@@ -5,7 +5,6 @@
 
 import { EyeIcon, EyeSlashIcon, XCircleIcon as XCircleIconSolid } from '@heroicons/react/20/solid';
 import { CheckCircleIcon, SignalIcon, XCircleIcon, XMarkIcon } from '@heroicons/react/24/outline';
-import { PlatformRegistry } from '@shared/platform';
 import React, { useState } from 'react';
 
 import { i18nService } from '../../services/i18n';
@@ -159,7 +158,8 @@ const WecomInstanceSettings: React.FC<WecomInstanceSettingsProps> = ({
           <li>{i18nService.t('imWecomGuideStep2')}</li>
           <li>{i18nService.t('imWecomGuideStep3')}</li>
         </ol>
-        {PlatformRegistry.guideUrl('wecom') && (
+        {/* TODO: 暂时注释不显示配置手册，因为现在配置手册是跳到有道的链接 */}
+        {/* {PlatformRegistry.guideUrl('wecom') && (
           <button
             type="button"
             onClick={() => {
@@ -171,7 +171,7 @@ const WecomInstanceSettings: React.FC<WecomInstanceSettingsProps> = ({
           >
             {i18nService.t('imViewGuide')}
           </button>
-        )}
+        )} */}
       </div>
 
       {/* Bot ID */}
