@@ -95,36 +95,11 @@ const AgentAvatarPicker: React.FC<AgentAvatarPickerProps> = ({ value, onChange }
             })}
           </div>
 
-          <div className="border-t border-border px-6 py-4 flex items-center justify-between">
-            <input
-              type="file"
-              accept="image/*"
-              className="hidden"
-              id="avatar-image-uploader"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) {
-                  const reader = new FileReader();
-                  reader.onload = (event) => {
-                    if (event.target?.result && typeof event.target.result === 'string') {
-                      onChange(event.target.result);
-                      setIsOpen(false);
-                    }
-                  };
-                  reader.readAsDataURL(file);
-                }
-              }}
-            />
-            <label
-              htmlFor="avatar-image-uploader"
-              className="px-3 py-1.5 text-xs font-semibold rounded-xl border border-dashed border-primary text-primary hover:bg-primary/5 transition-all cursor-pointer select-none"
-            >
-              上传图片
-            </label>
+          <div className="border-t border-border px-6 py-4">
             <button
               type="button"
               onClick={() => setIsOpen(false)}
-              className="text-sm font-medium text-foreground hover:text-primary transition-colors cursor-pointer"
+              className="text-sm font-medium text-foreground hover:text-primary transition-colors"
             >
               {i18nService.t('agentAvatarPickerDone')}
             </button>

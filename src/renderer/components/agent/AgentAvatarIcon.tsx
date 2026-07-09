@@ -128,15 +128,6 @@ const AgentAvatarIcon: React.FC<AgentAvatarIconProps> = ({
   useDefaultWhenEmpty = true,
 }) => {
   const normalized = value?.trim() ?? '';
-  
-  if (normalized.startsWith('data:image/') || normalized.startsWith('http://') || normalized.startsWith('https://') || normalized.startsWith('file://')) {
-    return (
-      <span className={`inline-flex shrink-0 items-center justify-center rounded-full overflow-hidden ${className}`}>
-        <img src={normalized} alt="Avatar" className="w-full h-full object-cover select-none" />
-      </span>
-    );
-  }
-
   const parsedAvatar = parseAgentAvatarIcon(normalized);
   const avatar = parsedAvatar ?? (!normalized && useDefaultWhenEmpty ? DefaultAgentAvatar : null);
 
