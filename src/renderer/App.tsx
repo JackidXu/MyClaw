@@ -674,7 +674,6 @@ const App: React.FC = () => {
   }, []);
 
 
-
   const handlePermissionResponse = useCallback(async (result: CoworkPermissionResult) => {
     if (!pendingPermission) return;
     await coworkService.respondToPermission(pendingPermission.requestId, result);
@@ -1265,7 +1264,6 @@ const App: React.FC = () => {
           onReject={handlePrivacyReject}
         />
       )}
-
     </div>
   );
 };

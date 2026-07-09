@@ -69,6 +69,7 @@ vi.mock('./openclawLocalExtensions', () => ({
   findBundledExtensionsDir: () => null,
   findThirdPartyExtensionsDir: () => null,
   hasBundledOpenClawExtension: (id: string) => id !== 'qwen-portal-auth',
+  hasRuntimeBundledOpenClawExtension: (id: string) => id === 'xai',
   resolveOpenClawExtensionPluginId: (id: string) => {
     const manifestIds: Record<string, string> = {
       'clawemail-email': 'email',
@@ -114,8 +115,9 @@ describe('OpenClawConfigSync runtime config output', () => {
 
   afterEach(async () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
-    const { setSystemProxyEnabled } = await import('./systemProxy');
+    const { restoreOriginalProxyEnv, setSystemProxyEnabled } = await import('./systemProxy');
     setSystemProxyEnabled(false);
+    restoreOriginalProxyEnv();
   });
 
   const createSync = async (overrides: Record<string, unknown> = {}) => {
@@ -229,6 +231,50 @@ describe('OpenClawConfigSync runtime config output', () => {
     expect(config.agents.defaults.mediaMaxMb).toBe(30);
   });
 
+  test('enables optimized OpenClaw heartbeat by default', async () => {
+    const sync = await createSync();
+
+    const result = sync.sync('heartbeat-enabled-default');
+    expect(result.ok).toBe(true);
+
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    expect(config.agents.defaults.heartbeat).toEqual({
+      every: '1h',
+      target: 'none',
+      lightContext: true,
+      isolatedSession: true,
+    });
+  });
+
+  test('writes disabled OpenClaw heartbeat cadence when user disables heartbeat', async () => {
+    const sync = await createSync({
+      getCoworkConfig: () => ({
+        workingDirectory: tmpDir,
+        systemPrompt: '',
+        executionMode: 'local',
+        agentEngine: 'openclaw',
+        memoryEnabled: false,
+        memoryImplicitUpdateEnabled: false,
+        memoryLlmJudgeEnabled: false,
+        memoryGuardLevel: 'balanced',
+        memoryUserMemoriesMaxItems: 100,
+        skipMissedJobs: false,
+        openClawHeartbeatEnabled: false,
+      }),
+    });
+
+    const result = sync.sync('heartbeat-disabled');
+    expect(result.ok).toBe(true);
+
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    expect(config.agents.defaults.heartbeat).toEqual({
+      every: '0m',
+      target: 'none',
+      lightContext: true,
+      isolatedSession: true,
+    });
+  });
+
   test('writes model provider env-proxy transport when system proxy is enabled', async () => {
     const { setSystemProxyEnabled } = await import('./systemProxy');
     setSystemProxyEnabled(true);
@@ -275,6 +321,58 @@ describe('OpenClawConfigSync runtime config output', () => {
 
     const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
     expect(config.models.providers.openai.request.proxy).toEqual({ mode: 'env-proxy' });
+  });
+
+  test('writes managed browser proxy args when system proxy is enabled', async () => {
+    const { applySystemProxyEnv, setSystemProxyEnabled } = await import('./systemProxy');
+    setSystemProxyEnabled(true);
+    applySystemProxyEnv('http://127.0.0.1:7890');
+
+    const sync = await createSync();
+
+    const result = sync.sync('browser-system-proxy');
+    expect(result.ok).toBe(true);
+
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    expect(config.browser.extraArgs).toEqual(['--proxy-server=http://127.0.0.1:7890']);
+  });
+
+  test('does not write managed browser proxy args in strict browser network mode', async () => {
+    const { BrowserNetworkMode } = await import('../../shared/browserWebAccess/constants');
+    const { applySystemProxyEnv, setSystemProxyEnabled } = await import('./systemProxy');
+    setSystemProxyEnabled(true);
+    applySystemProxyEnv('http://127.0.0.1:7890');
+
+    const sync = await createSync({
+      getBrowserWebAccessConfig: () => ({
+        networkMode: BrowserNetworkMode.Strict,
+      }),
+    });
+
+    const result = sync.sync('browser-system-proxy-strict');
+    expect(result.ok).toBe(true);
+
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    expect(config.browser.extraArgs).toBeUndefined();
+    expect(config.browser.ssrfPolicy.dangerouslyAllowPrivateNetwork).toBe(false);
+  });
+
+  test('does not write managed browser proxy args when browser proxy following is disabled', async () => {
+    const { applySystemProxyEnv, setSystemProxyEnabled } = await import('./systemProxy');
+    setSystemProxyEnabled(true);
+    applySystemProxyEnv('http://127.0.0.1:7890');
+
+    const sync = await createSync({
+      getBrowserWebAccessConfig: () => ({
+        followGlobalProxy: false,
+      }),
+    });
+
+    const result = sync.sync('browser-system-proxy-disabled');
+    expect(result.ok).toBe(true);
+
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    expect(config.browser.extraArgs).toBeUndefined();
   });
 
   test('does not create an agent model allowlist for OpenAI OAuth when system proxy is enabled', async () => {
@@ -992,6 +1090,20 @@ describe('OpenClawConfigSync runtime config output', () => {
     expect(config.tools.deny).not.toContain('video_generate');
   });
 
+  test('declares and allowlists the bundled xai plugin so its compat hooks load', async () => {
+    const sync = await createSync();
+
+    const result = sync.sync('xai-plugin-declared');
+    expect(result.ok).toBe(true);
+
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    expect(config.plugins.entries.xai).toEqual({ enabled: true });
+    // plugins.allow is a strict allowlist once non-empty — without this entry
+    // the xai plugin never loads and grok models lose their reasoningEffort
+    // compat (xAI rejects the parameter for every model except grok-4.3).
+    expect(config.plugins.allow).toContain('xai');
+  });
+
   test('maps OpenAI OAuth mode to the ChatGPT Responses provider', async () => {
     const { AuthType, OpenClawApi, OpenClawProviderId, ProviderName } = await import('../../shared/providers');
     const { buildProviderSelection } = await import('./openclawConfigSync');
@@ -1040,6 +1152,53 @@ describe('OpenClawConfigSync runtime config output', () => {
     expect(selection.providerConfig.auth).toBe(AuthType.OAuth);
     expect(selection.providerConfig.apiKey).toBe('${LOBSTER_APIKEY_MINIMAX}');
     expect(selection.providerConfig.models[0].maxTokens).toBe(131_072);
+  });
+
+  test('maps xAI OAuth mode to the xai provider without an apiKey', async () => {
+    const { AuthType, OpenClawApi, OpenClawProviderId, ProviderName } = await import('../../shared/providers');
+    const { buildProviderSelection } = await import('./openclawConfigSync');
+
+    const selection = buildProviderSelection({
+      apiKey: '',
+      baseURL: 'https://api.x.ai/v1',
+      modelId: 'grok-4.3',
+      apiType: 'openai',
+      providerName: ProviderName.Xai,
+      authType: 'oauth',
+      codingPlanEnabled: false,
+      supportsImage: true,
+      supportsThinking: true,
+      modelName: 'Grok 4.3',
+    });
+
+    expect(selection.providerId).toBe(OpenClawProviderId.Xai);
+    expect(selection.primaryModel).toBe(`${OpenClawProviderId.Xai}/grok-4.3`);
+    expect(selection.providerConfig.baseUrl).toBe('https://api.x.ai/v1');
+    expect(selection.providerConfig.api).toBe(OpenClawApi.OpenAIResponses);
+    expect(selection.providerConfig.auth).toBe(AuthType.OAuth);
+    expect(selection.providerConfig).not.toHaveProperty('apiKey');
+  });
+
+  test('keeps xAI API key mode on the env-var placeholder', async () => {
+    const { AuthType, OpenClawApi, OpenClawProviderId, ProviderName } = await import('../../shared/providers');
+    const { buildProviderSelection } = await import('./openclawConfigSync');
+
+    const selection = buildProviderSelection({
+      apiKey: 'xai-key',
+      baseURL: 'https://api.x.ai/v1',
+      modelId: 'grok-4.3',
+      apiType: 'openai',
+      providerName: ProviderName.Xai,
+      authType: 'apikey',
+      codingPlanEnabled: false,
+      supportsImage: true,
+      modelName: 'Grok 4.3',
+    });
+
+    expect(selection.providerId).toBe(OpenClawProviderId.Xai);
+    expect(selection.providerConfig.api).toBe(OpenClawApi.OpenAIResponses);
+    expect(selection.providerConfig.auth).toBe(AuthType.ApiKey);
+    expect(selection.providerConfig.apiKey).toBe('${LOBSTER_APIKEY_XAI}');
   });
 
   test('keeps MiniMax API key mode on the standard MiniMax provider', async () => {
@@ -2008,5 +2167,34 @@ describe('OpenClawConfigSync runtime config output', () => {
     expect(result.ok).toBe(true);
     expect(result.changedTopLevelKeys).toContain('mcp');
     expect(result.restartImpact).toBe(OpenClawConfigImpact.Restart);
+  });
+
+  test('writes all remote MCP headers to openclaw config', async () => {
+    const sync = await createSync({
+      getResolvedMcpServers: () => [{
+        name: 'Remote MCP',
+        transportType: 'http',
+        url: 'https://mcp.example.com/stream',
+        headers: {
+          Authorization: 'Bearer test-token',
+          'X-Tenant-Id': 'tenant-123',
+          'X-Client-Id': 'client-456',
+        },
+      }],
+    });
+
+    const result = sync.sync('mcp-server-updated');
+
+    expect(result.ok).toBe(true);
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    expect(config.mcp.servers['Remote MCP']).toMatchObject({
+      url: 'https://mcp.example.com/stream',
+      transport: 'streamable-http',
+      headers: {
+        authorization: 'Bearer test-token',
+        'x-tenant-id': 'tenant-123',
+        'x-client-id': 'client-456',
+      },
+    });
   });
 });
