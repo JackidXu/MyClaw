@@ -12,7 +12,7 @@ import {
 import { clearCurrentSession } from '../store/slices/coworkSlice';
 import { clearAgentSelectedModel } from '../store/slices/modelSlice';
 import { clearActiveSkills, setActiveSkillIds } from '../store/slices/skillSlice';
-import type { Agent, PresetAgent, CreateAgentRequest, UpdateAgentRequest } from '../types/agent';
+import type { Agent, PresetAgent } from '../types/agent';
 
 const syncActiveSkillsForCurrentAgent = (agentId: string, skillIds: string[]): void => {
   if (store.getState().agent.currentAgentId !== agentId) {
@@ -45,11 +45,6 @@ class AgentService {
           isDefault: a.isDefault,
           source: a.source,
           skillIds: a.skillIds ?? [],
-          title: a.title ?? '',
-          nickname: a.nickname ?? a.name ?? '',
-          tags: a.tags ?? [],
-          level: a.level ?? '中级',
-          department: a.department ?? '',
         }));
         store.dispatch(setAgents(mappedAgents));
       }
@@ -60,7 +55,16 @@ class AgentService {
     }
   }
 
-  async createAgent(request: CreateAgentRequest): Promise<Agent | null> {
+  async createAgent(request: {
+    name: string;
+    description?: string;
+    systemPrompt?: string;
+    identity?: string;
+    model?: string;
+    workingDirectory?: string;
+    icon?: string;
+    skillIds?: string[];
+  }): Promise<Agent | null> {
     try {
       const agent = await window.electron?.agents?.create(request);
       if (agent) {
@@ -77,11 +81,6 @@ class AgentService {
           isDefault: agent.isDefault,
           source: agent.source,
           skillIds: agent.skillIds ?? [],
-          title: agent.title ?? '',
-          nickname: agent.nickname ?? agent.name ?? '',
-          tags: agent.tags ?? [],
-          level: agent.level ?? '中级',
-          department: agent.department ?? '',
         }));
         return agent;
       }
@@ -92,7 +91,18 @@ class AgentService {
     }
   }
 
-  async updateAgent(id: string, updates: UpdateAgentRequest): Promise<Agent | null> {
+  async updateAgent(id: string, updates: {
+    name?: string;
+    description?: string;
+    systemPrompt?: string;
+    identity?: string;
+    model?: string;
+    workingDirectory?: string;
+    icon?: string;
+    skillIds?: string[];
+    enabled?: boolean;
+    pinned?: boolean;
+  }): Promise<Agent | null> {
     try {
       const agent = await window.electron?.agents?.update(id, updates);
       if (agent) {
@@ -109,11 +119,6 @@ class AgentService {
             pinned: agent.pinned ?? false,
             pinOrder: agent.pinOrder ?? null,
             skillIds,
-            title: agent.title ?? '',
-            nickname: agent.nickname ?? agent.name ?? '',
-            tags: agent.tags ?? [],
-            level: agent.level ?? '中级',
-            department: agent.department ?? '',
           },
         }));
         // Only sync active skills when skillIds were explicitly updated,
@@ -189,11 +194,6 @@ class AgentService {
           isDefault: agent.isDefault,
           source: agent.source,
           skillIds: agent.skillIds ?? [],
-          title: agent.title ?? '',
-          nickname: agent.nickname ?? agent.name ?? '',
-          tags: agent.tags ?? [],
-          level: agent.level ?? '中级',
-          department: agent.department ?? '',
         }));
         return agent;
       }

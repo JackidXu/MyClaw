@@ -13,11 +13,6 @@ interface AgentSummary {
   isDefault: boolean;
   source: 'custom' | 'preset';
   skillIds: string[];
-  title: string;
-  nickname: string;
-  tags: string[];
-  level: string;
-  department: string;
 }
 
 interface AgentState {

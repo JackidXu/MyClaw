@@ -16,11 +16,6 @@ export interface Agent {
   isDefault: boolean;
   source: AgentSource;
   presetId: string;
-  title: string;
-  nickname: string;
-  tags: string[];
-  level: string;
-  department: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -38,13 +33,6 @@ export interface PresetAgent {
   systemPromptEn: string;
   skillIds: string[];
   installed?: boolean;
-  title?: string;
-  titleEn?: string;
-  nickname?: string;
-  nicknameEn?: string;
-  tags?: string[];
-  level?: string;
-  department?: string;
 }
 
 export interface CreateAgentRequest {
@@ -59,11 +47,6 @@ export interface CreateAgentRequest {
   skillIds?: string[];
   source?: string;
   presetId?: string;
-  title?: string;
-  nickname?: string;
-  tags?: string[];
-  level?: string;
-  department?: string;
 }
 
 export interface UpdateAgentRequest {
@@ -77,9 +60,4 @@ export interface UpdateAgentRequest {
   skillIds?: string[];
   enabled?: boolean;
   pinned?: boolean;
-  title?: string;
-  nickname?: string;
-  tags?: string[];
-  level?: string;
-  department?: string;
 }

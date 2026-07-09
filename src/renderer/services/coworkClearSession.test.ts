@@ -49,11 +49,6 @@ describe('coworkService.clearSession', () => {
       isDefault: false,
       source: 'custom',
       skillIds: ['docx', 'web-search'],
-      title: '',
-      nickname: 'Agent 1',
-      tags: [],
-      level: '中级',
-      department: '',
     }]));
     store.dispatch(setCurrentAgentId('agent-1'));
     store.dispatch(setCurrentSession(makeSession()));
@@ -88,11 +83,6 @@ describe('coworkService.clearSession', () => {
       isDefault: false,
       source: 'custom',
       skillIds: [],
-      title: '',
-      nickname: 'Agent 1',
-      tags: [],
-      level: '中级',
-      department: '',
     }]));
     store.dispatch(setCurrentAgentId('agent-1'));
     store.dispatch(setActiveSkillIds(['xlsx']));

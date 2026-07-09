@@ -22,11 +22,6 @@ const makeAgent = (overrides: Partial<Agent> = {}): Agent => ({
   isDefault: false,
   source: 'custom',
   presetId: '',
-  title: '',
-  nickname: 'Agent 1',
-  tags: [],
-  level: '中级',
-  department: '',
   createdAt: 1,
   updatedAt: 1,
   ...overrides,
@@ -55,11 +50,6 @@ describe('agentService.updateAgent', () => {
       isDefault: false,
       source: 'custom',
       skillIds: [],
-      title: '',
-      nickname: 'Agent 1',
-      tags: [],
-      level: '中级',
-      department: '',
     }]));
     store.dispatch(setCurrentAgentId('agent-1'));
 
@@ -91,11 +81,6 @@ describe('agentService.updateAgent', () => {
       isDefault: false,
       source: 'custom',
       skillIds: [],
-      title: '',
-      nickname: 'Agent 1',
-      tags: [],
-      level: '中级',
-      department: '',
     }]));
     store.dispatch(setCurrentAgentId('agent-1'));
     store.dispatch(setActiveSkillIds(['user-selected-skill']));
@@ -128,11 +113,6 @@ describe('agentService.updateAgent', () => {
       isDefault: false,
       source: 'custom',
       skillIds: ['docx'],
-      title: '',
-      nickname: 'Agent 1',
-      tags: [],
-      level: '中级',
-      department: '',
     }]));
     store.dispatch(setCurrentAgentId('agent-2'));
     store.dispatch(setActiveSkillIds(['xlsx']));
