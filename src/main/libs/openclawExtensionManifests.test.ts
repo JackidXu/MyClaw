@@ -35,6 +35,7 @@ describe('OpenClaw extension manifests', () => {
     expect(readContractTools('lobster-media-generation')).toEqual([
       'heyclaw_image_generate',
       'heyclaw_video_generate',
+      'heyclaw_image_segment',
     ]);
   });
 

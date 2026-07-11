@@ -107,7 +107,7 @@ import MediaMentionPicker from './MediaMentionPicker';
 import {
   buildMediaMentionSegments,
   computeMediaLabels,
-  extractMediaReferencesFromPrompt,
+  getEffectiveMediaReferences,
   type MediaLabel,
   MediaMentionSegmentKind,
   resolveMediaMentionTrigger,
@@ -1362,8 +1362,9 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
       });
     }
 
-    // Resolve @media tokens into MediaAttachmentRef array
-    const mediaReferences = extractMediaReferencesFromPrompt(finalPrompt, mediaLabels);
+    // Resolve @media tokens into MediaAttachmentRef array (implicitly include all attachments if no explicit mentions exist)
+    const mediaReferences = getEffectiveMediaReferences(finalPrompt, mediaLabels);
+
 
     const result = await onSubmit(
       finalPrompt,

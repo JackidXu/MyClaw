@@ -5,7 +5,8 @@
   "contracts": {
     "tools": [
       "heyclaw_image_generate",
-      "heyclaw_video_generate"
+      "heyclaw_video_generate",
+      "heyclaw_image_segment"
     ]
   },
   "configSchema": {

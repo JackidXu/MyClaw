@@ -414,7 +414,61 @@ const plugin = {
       };
     });
 
-    api.logger.info('[lobster-media-generation] registered heyclaw_image_generate and heyclaw_video_generate tools.');
+    api.registerTool((ctx: any) => {
+      const sessionKey = ctx.sessionKey ?? '';
+      if (!isLobsterAiDesktopSessionKey(sessionKey)) {
+        return null;
+      }
+
+      return {
+        name: 'heyclaw_image_segment',
+        label: 'Image Segmentation',
+        description: [
+          'Segment an image to extract the foreground subject with a transparent background, using Aliyun vision intelligence via HeyClaw server.',
+          'CRITICAL WORKFLOW: Use this tool when you need to extract a specific subject (clothing, product, person, object, etc.) from a photo before generating a high-quality e-commerce white-background image.',
+          'First call this tool to segment the subject, then pass the returned transparent PNG URL as the `image` parameter to `heyclaw_image_generate`.',
+          'REQUIRED: Analyze the input image content before calling:',
+          '- If the image contains clothing/apparel (tops, pants, skirt, shoes, bag, hat), set type="clothing". Optionally set clothClass to the specific category you identified (e.g. ["tops"], ["pants"], ["skirt"]).',
+          '- For any other subject (product, person, animal, object, etc.), set type="general".',
+          'Do NOT guess type blindly — examine the image first.',
+        ].join(' '),
+        parameters: Type.Object({
+          image: Type.String({ description: 'The exact absolute local file path (e.g., "/Users/.../photo.jpg") or http(s) URL of the image. Do NOT include any explanations or chat reasoning in this parameter.' }),
+          type: Type.String({
+            description: 'Segmentation model type. Must be determined by analyzing the image: "clothing" for apparel/fashion images; "general" for all other subjects.',
+            enum: ['clothing', 'general'],
+          }),
+          clothClass: Type.Optional(Type.Array(Type.String(), {
+            description: 'Only used when type is "clothing". Intelligently identify from the image which clothing category to extract: coat (jacket, overcoat, outer layer), tops (shirts, inner tops), pants (trousers, jeans), skirt, shoes, bag, hat. Use "coat" for jackets/outerwear to avoid including inner garments. If unsure or multiple items, omit this field and let the API detect automatically.',
+          })),
+        }),
+        async execute(id: string, params: unknown) {
+          const args = (params ?? {}) as Record<string, unknown>;
+          for (const key of Object.keys(args)) {
+            if (typeof args[key] === 'string') {
+              args[key] = cleanStringArg(args[key]);
+            }
+          }
+          try {
+            api.logger.info(`[lobster-media-generation] image segment tool callback started: toolCallId=${id} image=${args.image} type=${args.type}`);
+            const startedAt = Date.now();
+            const result = await callMediaBridge(config, {
+              tool: 'heyclaw_image_segment',
+              args,
+              context: { sessionKey, toolCallId: id },
+            });
+            api.logger.info(`[lobster-media-generation] image segment tool callback completed: toolCallId=${id} elapsedMs=${Date.now() - startedAt} isError=${result.isError === true}`);
+            return result;
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            api.logger.info(`[lobster-media-generation] image segment tool callback failed: toolCallId=${id} error=${message}`);
+            return { content: [{ type: 'text', text: `Image segmentation failed: ${message}` }], isError: true };
+          }
+        },
+      };
+    });
+
+    api.logger.info('[lobster-media-generation] registered heyclaw_image_generate, heyclaw_video_generate and heyclaw_image_segment tools.');
   },
 };
 

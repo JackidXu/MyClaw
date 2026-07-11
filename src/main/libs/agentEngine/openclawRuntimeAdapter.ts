@@ -1888,8 +1888,20 @@ const buildMediaGenerationTurnInstruction = (selection?: CoworkMediaSelection, h
     '[HeyClaw media generation turn instruction]',
     'The user selected a HeyClaw media generation model for this turn.',
     'IMPORTANT: Do NOT read or use the "seedance" or "seedream" skills for this request.',
-    'The HeyClaw media generation tools (heyclaw_image_generate / heyclaw_video_generate) replace those skills when a media model is selected.',
+    'The HeyClaw media generation tools (heyclaw_image_generate / heyclaw_video_generate / heyclaw_image_segment) replace those skills when a media model is selected.',
     'Do not run any skill scripts for image or video generation. Use only the heyclaw_* tools specified below.',
+    '',
+    '[CRITICAL TWO-STAGE WORKFLOW FOR E-COMMERCE / SUBJECT IMAGE GENERATION]',
+    'If the user provides an input image and asks to generate a clean product shot, white-background single item, or replace the background/context of a subject (clothing, person, bag, shoes, object, etc.):',
+    '1. First, you MUST call the "heyclaw_image_segment" tool to isolate the subject with a transparent background.',
+    '   - Carefully analyze the image contents: if the target is a fashion item (clothing, shoes, bags, hats), set type="clothing". You MUST also intelligently identify the clothClass (e.g. use "coat" for jackets/coats to exclude inner wear, "tops" for shirts/blouses, "pants", "skirt", "shoes", "bag", "hat").',
+    '   - For all other non-fashion subjects, set type="general".',
+    '   - CRITICAL PARAMETER CONSTRAINT: The `image` parameter of `heyclaw_image_segment` MUST be a pure, exact absolute file path (e.g. "/Users/xubingxiong/heyClaw/project/temp.jpg") or a raw HTTP URL. Do NOT write your thinking process, explanations, placeholder bracket texts, or questions inside the `image` string argument. It must contain only the raw path/URL itself.',
+    '2. Second, once you get the result URL from "heyclaw_image_segment", you MUST call "heyclaw_image_generate" with the following parameters:',
+    '   - `image`: Set this to the EXACT segmented transparent image URL returned in the previous step (e.g. "https://scrm0.cdn.banchengyun.com/.../segmented-coat-xxx.png"). You MUST NOT leave this parameter out. This is required for image-to-image control to preserve the garment texture/shape.',
+    '   - `action`: "generate"',
+    '   - `prompt`: The description of the desired output (e.g., "ecommerce white background product shot, keep texture details").',
+    'Do NOT call heyclaw_image_generate without the `image` parameter if you have segmented the image.',
   ];
 
   if (selection.mode === 'image') {
@@ -1944,8 +1956,8 @@ const buildMediaReferencePromptSection = (mediaReferences?: CoworkMediaAttachmen
   const lines = [
     '[HeyClaw media reference mapping]',
     'The current user request contains explicit @ media tokens. Treat these mappings as authoritative and do not guess which uploaded attachment a token means.',
-    'When calling heyclaw_image_generate or heyclaw_video_generate, pass mapped file paths or URLs as tool arguments. Do not pass @ media tokens as image, images, firstFrame, lastFrame, referenceImages, media.url, video, or videos values.',
-    'For heyclaw_image_generate, prefer image with the mapped path for one referenced image and images for multiple referenced images.',
+    'When calling heyclaw_image_generate, heyclaw_video_generate, or heyclaw_image_segment, pass mapped file paths or URLs as tool arguments. Do not pass @ media tokens as image, images, firstFrame, lastFrame, referenceImages, media.url, video, or videos values.',
+    'For heyclaw_image_segment or heyclaw_image_generate, prefer image with the mapped path for one referenced image and images for multiple referenced images.',
   ];
 
   for (const ref of refs) {

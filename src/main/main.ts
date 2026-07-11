@@ -4069,12 +4069,96 @@ if (!gotTheLock) {
     context: { sessionKey: string; toolCallId: string };
   }): Promise<{ content: Array<{ type: string; text: string }>; isError?: boolean; details?: Record<string, unknown> }> => {
     let { tool, args } = request;
+
+    // 如果是图片分割工具，直接在这里处理并返回，避免受到后续生图生视频的 Gating 限制和 OneAPI 异步状态逻辑的影响
+    if (tool === 'heyclaw_image_segment') {
+      const serverBaseUrl = getServerApiBaseUrl();
+      let image = args.image as string;
+      const type = args.type as string;
+      if (!image) {
+        return { content: [{ type: 'text', text: 'image 参数是必填的。' }], isError: true };
+      }
+
+      // 容错清洗：如果大模型把分析过程文本混在了 image 字段，提取出真实的路径或 URL
+      const cleanMatch = image.match(/(https?:\/\/[^\s"'\[\]]+)|(\/[^\s"'\[\]]+\.[a-zA-Z]{3,4})/);
+      if (cleanMatch) {
+        image = cleanMatch[0];
+      }
+
+      if (!type) {
+        return { content: [{ type: 'text', text: 'type 参数是必填的（clothing 或 general）。' }], isError: true };
+      }
+      try {
+        let imageBuffer: Buffer;
+
+        if (image.startsWith('http://') || image.startsWith('https://')) {
+          // 从 URL 下载
+          const dlResp = await fetch(image);
+          if (!dlResp.ok) {
+            throw new Error(`无法下载图片 HTTP ${dlResp.status}: ${dlResp.statusText}`);
+          }
+          imageBuffer = Buffer.from(await dlResp.arrayBuffer());
+        } else {
+          // 本地文件
+          const filePath = image.startsWith('file://') ? fileURLToPath(image) : path.resolve(image);
+          if (!fs.existsSync(filePath)) {
+            throw new Error(`文件不存在: ${filePath}`);
+          }
+          imageBuffer = await fs.promises.readFile(filePath);
+        }
+
+        // 构建 query 参数，clothClass 逗号拼接
+        const clothClass = args.clothClass;
+        const clothClassStr = Array.isArray(clothClass)
+          ? clothClass.join(',')
+          : typeof clothClass === 'string' ? clothClass : '';
+        const queryParams = new URLSearchParams({ type });
+        if (clothClassStr) queryParams.set('clothClass', clothClassStr);
+
+        // 直接将 buffer 以二进制流 POST 到分割接口，省去 OSS 上传中转
+        const segmentResp = await fetch(`${serverBaseUrl}/api/image/segment?${queryParams}`, {
+          method: 'POST',
+          body: new Uint8Array(imageBuffer),
+          headers: { 'content-type': 'application/octet-stream' },
+        });
+
+        if (!segmentResp.ok) {
+          const text = await segmentResp.text();
+          throw new Error(`图片分割接口响应失败 HTTP ${segmentResp.status}: ${text}`);
+        }
+
+        const segmentResult = await segmentResp.json() as any;
+        if (!segmentResult.success) {
+          throw new Error(segmentResult.error || '图片分割失败');
+        }
+
+        const resultUrl = segmentResult.url;
+        return {
+          content: [
+            { type: 'text', text: `图片分割成功。\n分割结果图片：\n![分割结果](${resultUrl})\n\n你可以把这个分割结果图片作为参考图，使用生图工具重新生成符合要求的图片。` }
+          ],
+          details: {
+            status: 'succeeded',
+            url: resultUrl,
+          }
+        };
+      } catch (err: any) {
+        console.error('[MediaGeneration] heyclaw_image_segment 失败:', err);
+        return {
+          content: [{ type: 'text', text: `图片分割失败: ${err.message}` }],
+          isError: true,
+        };
+      }
+    }
+
+
     if (tool === 'lobsterai_image_generate') {
       tool = 'heyclaw_image_generate';
     } else if (tool === 'lobsterai_video_generate') {
       tool = 'heyclaw_video_generate';
     }
     const action = (args.action as string) || 'generate';
+    console.warn(`[DEBUG-ARGS] tool=${tool} action=${action} image=${JSON.stringify(args.image)} images=${JSON.stringify(args.images)} keys=${Object.keys(args).join(',')}`);
     const serverBaseUrl = getServerApiBaseUrl();
     const sessionId = extractSessionIdFromKey(request.context.sessionKey);
     const selection = normalizeMediaSelectionState(sessionId ? mediaSelectionBySession.get(sessionId) : undefined);
@@ -4323,6 +4407,16 @@ if (!gotTheLock) {
         if (args.output_format) params.output_format = args.output_format;
         if (args.temperature != null) params.temperature = args.temperature;
         if (args.imageSize) params.imageSize = args.imageSize;
+
+        // 针对 Doubao-Seedream 最低像素限制进行静默升档纠偏
+        const modelStr = String(selectedModel).toLowerCase();
+        if (modelStr.includes('seedream')) {
+          const sizeStr = String(params.size || '');
+          if (!sizeStr || sizeStr === '1024x1024' || sizeStr.includes('512') || sizeStr.includes('768')) {
+            console.log(`[MediaGeneration] Auto-correcting size for Seedream model from "${sizeStr}" to "2048x1920" to meet pixel limits.`);
+            params.size = '2048x1920';
+          }
+        }
       }
       if (args.count) params.count = args.count;
       if (args.durationSeconds != null) params.durationSeconds = args.durationSeconds;
@@ -4344,6 +4438,10 @@ if (!gotTheLock) {
       }
 
       const refs = sessionId ? mediaReferencesBySession.get(sessionId) : undefined;
+      
+      const rawImage = args.image as string;
+      const rawImages = args.images as string[];
+
       params = applyMediaReferencesToGenerationParams({
         mediaType: mediaType === MediaGenerationRequestType.Video
           ? MediaGenerationRequestType.Video
@@ -4351,6 +4449,16 @@ if (!gotTheLock) {
         params,
         refs,
       });
+
+      // 物理垫图有更高优先级，若指定了具体的图片地址则将其还原并设为 reference_image
+      if (rawImage && !rawImage.startsWith('@')) {
+        const existing = rawImages || [];
+        params.images = [rawImage, ...existing.filter(i => !i.startsWith('@'))];
+        params.imageRoles = ['reference_image'];
+      } else if (rawImages && Array.isArray(rawImages) && rawImages.some(i => typeof i === 'string' && !i.startsWith('@'))) {
+        params.images = rawImages.filter(i => typeof i === 'string' && !i.startsWith('@'));
+        params.imageRoles = (params.images as string[]).map(() => 'reference_image');
+      }
 
       // Convert local file paths to data URLs
       const MEDIA_MIME: Record<string, string> = {
@@ -4462,8 +4570,30 @@ if (!gotTheLock) {
       } else {
         const isDoubaoSeedream = typeof model === 'string' && model.toLowerCase().includes('doubao-seedream');
         let size = isDoubaoSeedream ? '2048x2048' : '1024x1024';
-        if (args.size && typeof args.size === 'string') {
-          size = args.size;
+        
+        // 提取待用 size，包含参数纠偏
+        let inputSize = (args.size && typeof args.size === 'string') ? args.size : '';
+        if (isDoubaoSeedream) {
+          let needCorrect = false;
+          if (!inputSize) {
+            needCorrect = true;
+          } else {
+            const match = inputSize.match(/^(\d+)x(\d+)$/);
+            if (match) {
+              const pixels = parseInt(match[1], 10) * parseInt(match[2], 10);
+              if (pixels < 3686400) needCorrect = true;
+            } else {
+              needCorrect = true;
+            }
+          }
+          if (needCorrect) {
+            console.log(`[MediaGeneration] Overriding size for Seedream model from "${inputSize}" to "2048x1920" to meet minimum 3686400 pixel limit.`);
+            inputSize = '2048x1920';
+          }
+        }
+
+        if (inputSize) {
+          size = inputSize;
         } else if (args.aspectRatio && typeof args.aspectRatio === 'string') {
           const ar = args.aspectRatio.trim();
           if (ar === '16:9' || ar === '4:3') {
@@ -4478,11 +4608,19 @@ if (!gotTheLock) {
           n = typeof params.n === 'number' ? params.n : (typeof args.count === 'number' ? args.count : 1);
         }
 
+        const imageParam = params.images && (params.images as string[]).length > 0
+          ? (isDoubaoSeedream
+            // Seedream API 使用 image 字段（单张传 string，多张传 array）
+            ? { image: (params.images as string[]).length === 1 ? (params.images as string[])[0] : params.images }
+            : { images: params.images })
+          : {};
         bodyData = {
           model,
           prompt,
           n,
           size,
+          ...imageParam,
+          ...(!isDoubaoSeedream && params.imageRoles ? { imageRoles: params.imageRoles } : {}),
         };
 
         if (args.quality && typeof args.quality === 'string') {
@@ -4490,6 +4628,7 @@ if (!gotTheLock) {
         }
       }
 
+      console.warn(`[DEBUG-BODY] images=${JSON.stringify(bodyData.images)} imageRoles=${JSON.stringify(bodyData.imageRoles)}`);
       console.log('[MediaGeneration] sending OneAPI generate request:', {
         url: oneapiUrl,
         model,

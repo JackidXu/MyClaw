@@ -238,3 +238,32 @@ export function buildMediaMentionSegments(
 
   return segments.length > 0 ? segments : [{ kind: MediaMentionSegmentKind.Text, text }];
 }
+
+export function getEffectiveMediaReferences(
+  prompt: string,
+  mediaLabels: MediaLabel[],
+): MediaAttachmentRef[] {
+  // 1. 尝试从文本中提取 @ 显式提及的媒体
+  const explicitRefs = extractMediaReferencesFromPrompt(prompt, mediaLabels);
+  if (explicitRefs.length > 0) {
+    return explicitRefs;
+  }
+
+  // 2. 如果没有显式提及，但当前有上传的附件媒体，则默认全部关联传入
+  const implicitRefs: MediaAttachmentRef[] = [];
+  for (const item of mediaLabels) {
+    implicitRefs.push({
+      token: `@${item.label}`,
+      mediaType: item.mediaType,
+      index: item.index,
+      fileId: item.attachment.path,
+      fileName: item.attachment.name,
+      mimeType: getMediaMentionMimeType(item),
+      localPath: item.attachment.path.startsWith('inline:') ? undefined : item.attachment.path,
+      dataUrl: item.attachment.dataUrl,
+      role: MEDIA_ROLE_BY_TYPE[item.mediaType],
+    });
+  }
+
+  return implicitRefs;
+}

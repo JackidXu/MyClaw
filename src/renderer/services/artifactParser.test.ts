@@ -777,6 +777,11 @@ describe('shouldParseFilePathsFromToolResult', () => {
     expect(shouldParseFilePathsFromToolResult('Write')).toBe(false);
     expect(shouldParseFilePathsFromToolResult('Edit')).toBe(false);
   });
+
+  test('returns false for heyclaw_image_segment (returns URL in markdown, not a local file path)', () => {
+    expect(shouldParseFilePathsFromToolResult('heyclaw_image_segment')).toBe(false);
+    expect(shouldParseFilePathsFromToolResult('HEYCLAW_IMAGE_SEGMENT')).toBe(false);
+  });
 });
 
 describe('parseFilePathsFromText — find command output scenario', () => {
