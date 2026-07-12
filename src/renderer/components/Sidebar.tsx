@@ -31,7 +31,6 @@ import ComposeIcon from './icons/ComposeIcon';
 import SidebarAutomationIcon from './icons/SidebarAutomationIcon';
 import SidebarKitsIcon from './icons/SidebarKitsIcon';
 import SidebarToggleIcon from './icons/SidebarToggleIcon';
-import SkillIcon from './icons/SkillIcon';
 import TrashIcon from './icons/TrashIcon';
 import { PasswordModal } from './PasswordModal';
 import PayModal from './PayModal';
@@ -146,6 +145,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   updateNotice,
 }) => {
   void onShowKits;
+  void onShowSkills;
   const currentAgentId = useSelector((state: RootState) => state.agent.currentAgentId);
   const agents = useSelector((state: RootState) => state.agent.agents);
   const sessions = useSelector(selectCoworkSessions);
@@ -738,7 +738,11 @@ const Sidebar: React.FC<SidebarProps> = ({
       >
       <div className="pt-3 pb-3">
         {showHeaderRow && (
-          <div className="draggable sidebar-header-drag h-8 flex items-center justify-end px-3">
+          <div className="draggable sidebar-header-drag h-8 flex items-center justify-between px-3">
+            {/* 左侧放置品牌文字标题 (改用灰色) */}
+            <div className="flex items-center select-none font-semibold text-[12.5px] text-secondary">
+              HeyClaw生意增长助手
+            </div>
             {!isWindows && (
               <button
                 type="button"
@@ -808,19 +812,6 @@ const Sidebar: React.FC<SidebarProps> = ({
           >
             <SidebarKitsIcon className="h-4 w-4 shrink-0" />
             <span className="min-w-0 truncate">专家</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              reportSidebarAction('open_skills', { activeView, isCollapsed });
-              setIsSearchOpen(false);
-              onShowSkills();
-            }}
-            className={activeView === 'skills' ? activeSidebarNavItemClassName : sidebarNavItemClassName}
-            aria-current={activeView === 'skills' ? 'page' : undefined}
-          >
-            <SkillIcon className="h-4 w-4 shrink-0" />
-            {i18nService.t('skills')}
           </button>
         </div>
       </div>

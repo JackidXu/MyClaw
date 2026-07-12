@@ -15,6 +15,7 @@ interface SkillsViewProps {
   readOnly?: boolean;
   activeTab?: 'skills' | 'mcp';
   onChangeTab?: (tab: 'skills' | 'mcp') => void;
+  hideHeader?: boolean;
 }
 
 const SkillsView: React.FC<SkillsViewProps> = ({
@@ -26,6 +27,7 @@ const SkillsView: React.FC<SkillsViewProps> = ({
   readOnly,
   activeTab,
   onChangeTab,
+  hideHeader,
 }) => {
   const isMac = window.electron.platform === 'darwin';
   const [localTab, setLocalTab] = useState<'skills' | 'mcp'>('skills');
@@ -33,6 +35,21 @@ const SkillsView: React.FC<SkillsViewProps> = ({
   const handleTabChange = onChangeTab ?? setLocalTab;
 
   const isWindows = window.electron.platform === 'win32';
+
+  if (hideHeader) {
+    return (
+      <div className="flex-1 overflow-y-auto min-h-0 [scrollbar-gutter:stable] bg-background">
+        <div className="mx-auto w-full max-w-[1120px] px-6 py-6">
+          {currentTab === 'skills' ? (
+            <SkillsManager readOnly={readOnly} onCreateByChat={onCreateSkillByChat} />
+          ) : (
+            <McpManager />
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex-1 flex flex-col bg-background h-full">
       <div className="draggable flex h-12 items-center justify-between px-4 border-b border-border shrink-0">

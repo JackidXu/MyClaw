@@ -105,7 +105,7 @@ import SkillIcon from '../icons/SkillIcon';
 import TaskPauseIcon from '../icons/TaskPauseIcon';
 import TrashIcon from '../icons/TrashIcon';
 import XMarkIcon from '../icons/XMarkIcon';
-import { ActiveKitBadge, KitsButton } from '../kits';
+import { ActiveKitBadge } from '../kits';
 import ModelSelector, {
   ModelAccessPromptKind,
   ModelAccessPromptModal,
@@ -1751,6 +1751,10 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
       onManageKits();
     }
   }, [activeKitIds.length, onManageKits, reportPromptControl]);
+
+  // 规避隐藏 KitsButton 时的 TS6133 未使用报错
+  void handleSelectKit;
+  void handleManageKits;
 
   const handleSelectAgent = useCallback((agentId: string) => {
     if (!agentId || agentId === currentAgentId) {
