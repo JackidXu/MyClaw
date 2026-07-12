@@ -6,7 +6,7 @@ import {
 import type { CoworkSelectedTextSnippet } from '../../shared/cowork/selectedText';
 import {
   computeMediaLabels,
-  extractMediaReferencesFromPrompt,
+  getEffectiveMediaReferences,
 } from '../components/cowork/mediaMentionUtils';
 import type { MediaAttachmentRef } from '../types/mediaGeneration';
 
@@ -181,7 +181,7 @@ export async function prepareCoworkPromptPayload(
     ? (attachmentLines ? `${options.basePrompt}\n\n${attachmentLines}` : options.basePrompt)
     : attachmentLines;
   const mediaLabels = computeMediaLabels(options.attachments);
-  const mediaReferences = extractMediaReferencesFromPrompt(finalPrompt, mediaLabels);
+  const mediaReferences = getEffectiveMediaReferences(finalPrompt, mediaLabels);
 
   return {
     success: true,
