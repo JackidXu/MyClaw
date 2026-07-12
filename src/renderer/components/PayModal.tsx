@@ -176,6 +176,7 @@ const PayModal: React.FC<PayModalProps> = ({ onClose, onSuccess }) => {
         clearInterval(checkStatusIntervalRef.current);
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderId]);
 
   // 组件挂载时获取规格列表

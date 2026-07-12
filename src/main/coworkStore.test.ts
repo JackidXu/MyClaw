@@ -96,6 +96,8 @@ function setupDb(): void {
       icon TEXT NOT NULL DEFAULT '',
       skill_ids TEXT NOT NULL DEFAULT '[]',
       subagent_allow_agent_ids TEXT NOT NULL DEFAULT '[]',
+      level TEXT NOT NULL DEFAULT '高级',
+      department TEXT NOT NULL DEFAULT '其他',
       enabled INTEGER NOT NULL DEFAULT 1,
       pinned INTEGER NOT NULL DEFAULT 0,
       pin_order INTEGER,

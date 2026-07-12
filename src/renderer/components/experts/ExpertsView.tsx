@@ -1,11 +1,12 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useMemo,useState } from 'react';
 import { useSelector } from 'react-redux';
-import { RootState } from '../../store';
+
 import { agentService } from '../../services/agent';
 import { coworkService } from '../../services/cowork';
+import { RootState } from '../../store';
 import AgentAvatarIcon from '../agent/AgentAvatarIcon';
-import SidebarToggleIcon from '../icons/SidebarToggleIcon';
 import ComposeIcon from '../icons/ComposeIcon';
+import SidebarToggleIcon from '../icons/SidebarToggleIcon';
 import SkillsView from '../skills/SkillsView';
 
 // 9个核心部门定义

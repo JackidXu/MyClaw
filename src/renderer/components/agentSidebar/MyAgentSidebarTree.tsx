@@ -1,9 +1,10 @@
+import { AgentId } from '@shared/agent';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { AgentId } from '@shared/agent';
-import { RootState } from '../../store';
+
 import { agentService } from '../../services/agent';
 import { coworkService } from '../../services/cowork';
+import { RootState } from '../../store';
 import { selectCoworkSessions, selectCurrentSessionId } from '../../store/selectors/coworkSelectors';
 import { setDraftCollaborationMode } from '../../store/slices/coworkSlice';
 import { CoworkCollaborationMode } from '../../types/cowork';
@@ -11,10 +12,10 @@ import { isDefaultAgentId } from '../../utils/agentDisplay';
 import AgentAvatarIcon from '../agent/AgentAvatarIcon';
 import AgentCreateModal from '../agent/AgentCreateModal';
 import AgentSettingsPanel from '../agent/AgentSettingsPanel';
+import type { CoworkOpenShareOptionsEventDetail } from '../cowork/constants';
+import { CoworkUiEvent } from '../cowork/constants';
 import { formatAgentTaskRelativeTime } from './time';
 import { useAgentSidebarState } from './useAgentSidebarState';
-import { CoworkUiEvent } from '../cowork/constants';
-import type { CoworkOpenShareOptionsEventDetail } from '../cowork/constants';
 
 interface MyAgentSidebarTreeProps {
   isBatchMode: boolean;

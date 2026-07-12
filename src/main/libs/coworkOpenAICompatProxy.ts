@@ -2499,7 +2499,7 @@ async function handleRequest(
         body = JSON.stringify(parsed);
         console.info(`[CoworkProxy] Remapped passthrough model: system/auto -> ${upstreamConfig.model}`);
       }
-    } catch (e) {
+    } catch {
       // Ignore
     }
     const upstreamHeaders: Record<string, string> = {

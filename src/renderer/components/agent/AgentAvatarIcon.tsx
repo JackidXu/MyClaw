@@ -35,7 +35,6 @@ import tagIconUrl from '../../assets/agent-avatars/tag.svg';
 import translationIconUrl from '../../assets/agent-avatars/translation.svg';
 import translationAltIconUrl from '../../assets/agent-avatars/translation-alt.svg';
 import travelIconUrl from '../../assets/agent-avatars/travel.svg';
-
 import avatar1 from '../../assets/avatars/avatar_1.png';
 import avatar2 from '../../assets/avatars/avatar_2.png';
 import avatar3 from '../../assets/avatars/avatar_3.png';
