@@ -2841,15 +2841,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
   const largeInputActions = !remoteManaged ? (
     <div className="flex items-center gap-0.5">
       {addMenuAction}
-      <KitsButton
-        onSelectKit={handleSelectKit}
-        onManageKits={handleManageKits}
-        onOpenChange={(open) => {
-          reportPromptControl(open ? 'kit_menu_open' : 'kit_menu_close', {
-            activeKitCount: activeKitIds.length,
-          });
-        }}
-      />
+      {/* 隐藏“专家套件”四宫格图标按钮 */}
     </div>
   ) : null;
 
