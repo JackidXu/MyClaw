@@ -379,6 +379,8 @@ export interface Agent {
   icon: string;
   skillIds: string[];
   subagentAllowAgentIds: string[];
+  level?: '高级' | '中级' | '初级';
+  department?: string;
   enabled: boolean;
   pinned: boolean;
   pinOrder?: number | null;
@@ -401,6 +403,8 @@ export interface CreateAgentRequest {
   icon?: string;
   skillIds?: string[];
   subagentAllowAgentIds?: string[];
+  level?: '高级' | '中级' | '初级';
+  department?: string;
   source?: AgentSource;
   presetId?: string;
 }
@@ -415,6 +419,8 @@ export interface UpdateAgentRequest {
   icon?: string;
   skillIds?: string[];
   subagentAllowAgentIds?: string[];
+  level?: '高级' | '中级' | '初级';
+  department?: string;
   enabled?: boolean;
   pinned?: boolean;
   sortOrder?: number | null;
@@ -2796,6 +2802,8 @@ export class CoworkStore {
       icon: string;
       skill_ids: string;
       subagent_allow_agent_ids?: string | null;
+      level?: string | null;
+      department?: string | null;
       enabled: number;
       pinned?: number | null;
       pin_order?: number | null;
@@ -2827,6 +2835,8 @@ export class CoworkStore {
       icon: string;
       skill_ids: string;
       subagent_allow_agent_ids?: string | null;
+      level?: string | null;
+      department?: string | null;
       enabled: number;
       pinned?: number | null;
       pin_order?: number | null;
@@ -2867,8 +2877,8 @@ export class CoworkStore {
       this.db
         .prepare(
           `
-        INSERT INTO agents (id, name, description, system_prompt, identity, model, working_directory, icon, skill_ids, subagent_allow_agent_ids, enabled, is_default, source, preset_id, sort_order, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?, ?, ?)
+        INSERT INTO agents (id, name, description, system_prompt, identity, model, working_directory, icon, skill_ids, subagent_allow_agent_ids, level, department, enabled, is_default, source, preset_id, sort_order, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?, ?, ?)
       `,
         )
         .run(
@@ -2882,6 +2892,8 @@ export class CoworkStore {
           normalizeAgentAvatarIcon(request.icon),
           JSON.stringify(normalizeStringIdList(request.skillIds)),
           JSON.stringify(normalizeStringIdList(request.subagentAllowAgentIds)),
+          request.level || '高级',
+          request.department || '其他',
           request.source || 'custom',
           request.presetId || '',
           this.getNextAgentSortOrder(),
@@ -2951,6 +2963,14 @@ export class CoworkStore {
     if (updates.subagentAllowAgentIds !== undefined) {
       setClauses.push('subagent_allow_agent_ids = ?');
       values.push(JSON.stringify(normalizeStringIdList(updates.subagentAllowAgentIds)));
+    }
+    if (updates.level !== undefined) {
+      setClauses.push('level = ?');
+      values.push(updates.level);
+    }
+    if (updates.department !== undefined) {
+      setClauses.push('department = ?');
+      values.push(updates.department);
     }
     if (updates.enabled !== undefined) {
       setClauses.push('enabled = ?');
@@ -3036,6 +3056,8 @@ export class CoworkStore {
     icon: string;
     skill_ids: string;
     subagent_allow_agent_ids?: string | null;
+    level?: string | null;
+    department?: string | null;
     enabled: number;
     pinned?: number | null;
     pin_order?: number | null;
@@ -3059,6 +3081,8 @@ export class CoworkStore {
       icon: row.icon,
       skillIds,
       subagentAllowAgentIds,
+      level: (row.level || '高级') as '高级' | '中级' | '初级',
+      department: row.department || '其他',
       enabled: Boolean(row.enabled),
       pinned: Boolean(row.pinned),
       pinOrder: row.pinned ? (row.pin_order ?? null) : null,

@@ -1,48 +1,20 @@
-import {
-  closestCenter,
-  DndContext,
-  type DragEndEvent,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-} from '@dnd-kit/core';
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable';
-import { AgentId } from '@shared/agent';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-
+import { AgentId } from '@shared/agent';
+import { RootState } from '../../store';
 import { agentService } from '../../services/agent';
 import { coworkService } from '../../services/cowork';
-import { i18nService } from '../../services/i18n';
-import { RootState } from '../../store';
-import { selectCurrentSessionId } from '../../store/selectors/coworkSelectors';
+import { selectCoworkSessions, selectCurrentSessionId } from '../../store/selectors/coworkSelectors';
 import { setDraftCollaborationMode } from '../../store/slices/coworkSlice';
 import { CoworkCollaborationMode } from '../../types/cowork';
 import { isDefaultAgentId } from '../../utils/agentDisplay';
+import AgentAvatarIcon from '../agent/AgentAvatarIcon';
 import AgentCreateModal from '../agent/AgentCreateModal';
 import AgentSettingsPanel from '../agent/AgentSettingsPanel';
-import {
-  type CoworkOpenAgentTaskSlotEventDetail,
-  type CoworkOpenShareOptionsEventDetail,
-  CoworkShortcutDirection,
-  type CoworkSwitchAgentEventDetail,
-  CoworkUiEvent,
-} from '../cowork/constants';
-import AgentTreeNode from './AgentTreeNode';
-import {
-  type AgentSidebarBatchItem,
-  createSessionBatchItem,
-} from './batchSelection';
-import MyAgentSidebarHeader from './MyAgentSidebarHeader';
-import type { AgentSidebarAgentNode, AgentSidebarTaskNode } from './types';
+import { formatAgentTaskRelativeTime } from './time';
 import { useAgentSidebarState } from './useAgentSidebarState';
+import { CoworkUiEvent } from '../cowork/constants';
+import type { CoworkOpenShareOptionsEventDetail } from '../cowork/constants';
 
 interface MyAgentSidebarTreeProps {
   isBatchMode: boolean;
@@ -50,62 +22,18 @@ interface MyAgentSidebarTreeProps {
   deletedSessionIds: string[];
   selectedKeys: Set<string>;
   onShowCowork: () => void;
+  onShowExperts?: () => void;
   onTaskSelected?: (params: {
     agentType: 'main' | 'custom';
     isCurrentSession: boolean;
     taskStatus: string;
   }) => void;
-  onSidebarAction?: (actionType: string, params?: {
-    agentType?: 'main' | 'custom';
-    hasActiveSubagent?: boolean;
-    isCurrentSession?: boolean;
-    isCurrentSubagent?: boolean;
-    isExpanded?: boolean;
-    isPinned?: boolean;
-    result?: 'success' | 'failed';
-    subagentStatus?: string;
-    targetPinned?: boolean;
-    taskStatus?: string;
-    visibleTaskCount?: number;
-  }) => void;
-  onToggleSelection: (selectionKey: string, agentId: string) => void;
-  onEnterBatchMode: (sessionId: string, agentId: string) => void;
-  onBatchSelectableItemsChange: (items: AgentSidebarBatchItem[]) => void;
+  onSidebarAction?: (actionType: string, params?: any) => void;
+  onToggleSelection?: (selectionKey: string, agentId: string) => void;
+  onEnterBatchMode?: (sessionId: string, agentId: string) => void;
+  onBatchSelectableItemsChange?: (items: any[]) => void;
   onSearchTasks?: () => void;
 }
-
-const SortableAgentNode: React.FC<{
-  agent: AgentSidebarAgentNode;
-  disabled: boolean;
-  children: React.ReactNode;
-}> = ({ agent, disabled, children }) => {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: agent.id, disabled });
-  const verticalTransform = transform
-    ? `translate3d(0, ${Math.round(transform.y)}px, 0)`
-    : undefined;
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={{
-        transform: verticalTransform,
-        transition,
-      }}
-      className={`${disabled ? '' : 'cursor-grab active:cursor-grabbing'} ${isDragging ? 'relative z-50 opacity-80' : ''}`}
-      {...attributes}
-      {...listeners}
-    >
-      {children}
-    </div>
-  );
-};
 
 const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
   isBatchMode,
@@ -113,435 +41,635 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
   deletedSessionIds,
   selectedKeys,
   onShowCowork,
+  onShowExperts,
   onTaskSelected,
   onSidebarAction,
-  onToggleSelection,
-  onEnterBatchMode,
-  onBatchSelectableItemsChange,
-  onSearchTasks,
 }) => {
-  const currentAgentId = useSelector((state: RootState) => state.agent.currentAgentId);
+  void isBatchMode;
+  void batchAgentId;
+  void deletedSessionIds;
+  void selectedKeys;
+  void onSidebarAction;
+  void onShowExperts;
+
   const dispatch = useDispatch();
+  const currentAgentId = useSelector((state: RootState) => state.agent.currentAgentId);
+  const agents = useSelector((state: RootState) => state.agent.agents);
+  const sessions = useSelector(selectCoworkSessions);
   const currentSessionId = useSelector(selectCurrentSessionId);
+
+  // 状态定义
+  const [activeMenuSessionId, setActiveMenuSessionId] = useState<string | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [createAgentSource, setCreateAgentSource] = useState<'home_agent_sidebar' | 'home_agent_sidebar_empty'>(
-    'home_agent_sidebar',
-  );
+  const [isManageOpen, setIsManageOpen] = useState(false);
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
   const [settingsAgentId, setSettingsAgentId] = useState<string | null>(null);
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 6 },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    }),
-  );
+
+  // 二阶段行内确认状态，代替 Electron 不支持的 window.confirm
+  const [confirmingRecallAgentId, setConfirmingRecallAgentId] = useState<string | null>(null);
+  const [confirmingDeleteAgentId, setConfirmingDeleteAgentId] = useState<string | null>(null);
+
+  // 从 sidebar state 挂钩，用于局部静默更新 Redux preview 树数据
   const {
-    agentNodes,
     patchTaskPreview,
     removeTaskPreview,
-    removeTaskPreviews,
-    removeAgentTaskPreviews,
-    retryLoadTasks,
-    loadMoreTasks,
-    expandAgent,
-    expandTasks,
-    collapseTasks,
-    toggleAgentExpanded,
   } = useAgentSidebarState();
 
-  const getAgentType = useCallback((agentId: string): 'main' | 'custom' => (
-    isDefaultAgentId(agentId) ? 'main' : 'custom'
-  ), []);
+  // 点击外部关闭弹出菜单
+  useEffect(() => {
+    const handleGlobalClick = () => {
+      setActiveMenuSessionId(null);
+    };
+    window.addEventListener('click', handleGlobalClick);
+    return () => window.removeEventListener('click', handleGlobalClick);
+  }, []);
 
-  const getTaskActionParams = useCallback((task: AgentSidebarTaskNode, hasActiveSubagent?: boolean) => ({
-    agentType: getAgentType(task.agentId),
-    hasActiveSubagent,
-    isCurrentSession: task.id === currentSessionId,
-    isPinned: task.pinned,
-    taskStatus: task.status,
-  }), [currentSessionId, getAgentType]);
+  // 当关闭管理弹窗时，自动将行内确认状态重置
+  useEffect(() => {
+    if (!isManageOpen) {
+      setConfirmingRecallAgentId(null);
+      setConfirmingDeleteAgentId(null);
+    }
+  }, [isManageOpen]);
 
+  // 获取所有已经启用(已添加)的专家列表
+  const enabledExperts = useMemo(() => {
+    return agents.filter((a) => a.enabled);
+  }, [agents]);
+
+  // 将所有会话进行更新时间降序及置顶排序
+  const sortedSessions = useMemo(() => {
+    return [...sessions].sort((a, b) => {
+      if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+      const aTime = a.updatedAt || a.createdAt || 0;
+      const bTime = b.updatedAt || b.createdAt || 0;
+      return bTime - aTime;
+    });
+  }, [sessions]);
+
+  // 加载专家列表
   useEffect(() => {
     void agentService.loadAgents();
   }, []);
 
-  const handleSelectTask = useCallback(async (task: AgentSidebarTaskNode) => {
-    onTaskSelected?.({
-      agentType: isDefaultAgentId(task.agentId) ? 'main' : 'custom',
-      isCurrentSession: task.id === currentSessionId,
-      taskStatus: task.status,
-    });
-    if (task.agentId !== currentAgentId) {
-      agentService.switchAgent(task.agentId);
-      await coworkService.loadSessions(task.agentId);
+  // 监听当前选中的专家发生变化，自动拉取该专家的对话列表并更新视图
+  useEffect(() => {
+    if (currentAgentId) {
+      void coworkService.loadSessions(currentAgentId);
     }
+  }, [currentAgentId]);
+
+  const getTaskActionParams = useCallback((task: any, hasActiveSubagent?: boolean) => ({
+    agentType: isDefaultAgentId(task.agentId) ? ('main' as const) : ('custom' as const),
+    hasActiveSubagent,
+    isCurrentSession: task.id === currentSessionId,
+    isPinned: task.pinned,
+    taskStatus: task.status,
+  }), [currentSessionId]);
+
+  // 移出或解雇专家真实执行逻辑
+  const handleRemoveExpertReal = async (expert: any) => {
+    if (expert.id === AgentId.Main) return;
+
+    if (expert.source === 'preset') {
+      const updated = await agentService.updateAgent(expert.id, { enabled: false });
+      if (updated) {
+        await agentService.loadAgents();
+        if (currentAgentId === expert.id) {
+          agentService.switchAgent(AgentId.Main);
+          await coworkService.loadSessions(AgentId.Main);
+        }
+      } else {
+        window.dispatchEvent(new CustomEvent('app:showToast', { detail: '移出内置专家失败' }));
+      }
+    } else {
+      const deleted = await agentService.deleteAgent(expert.id);
+      if (deleted) {
+        await agentService.loadAgents();
+        if (currentAgentId === expert.id) {
+          agentService.switchAgent(AgentId.Main);
+          await coworkService.loadSessions(AgentId.Main);
+        }
+      } else {
+        window.dispatchEvent(new CustomEvent('app:showToast', { detail: '解雇并删除专家失败' }));
+      }
+    }
+  };
+
+  // 点击头像墙专家头像：切换专家，如果没有对话就新建，有对话就直接切换
+  const handleExpertClick = async (expertId: string) => {
+    const expertSessions = sessions.filter(s => s.agentId === expertId);
+    
+    if (expertId !== currentAgentId) {
+      agentService.switchAgent(expertId);
+      await coworkService.loadSessions(expertId);
+    }
+    
     onShowCowork();
-    // Clear subagent detail view so the main session detail is shown
-    window.dispatchEvent(new CustomEvent(CoworkUiEvent.SelectSubagent, { detail: null }));
-    return coworkService.loadSession(task.id);
+
+    if (expertSessions.length > 0) {
+      const latest = [...expertSessions].sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt))[0];
+      await coworkService.loadSession(latest.id);
+    } else {
+      coworkService.clearSession({ restoreAgentSkills: true });
+      dispatch(setDraftCollaborationMode({
+        draftKey: '__home__',
+        mode: CoworkCollaborationMode.Default,
+      }));
+    }
+  };
+
+  // 点击历史会话项
+  const handleSelectSession = useCallback(async (session: any) => {
+    const agentId = session.agentId?.trim() || AgentId.Main;
+    onTaskSelected?.({
+      agentType: isDefaultAgentId(agentId) ? 'main' : 'custom',
+      isCurrentSession: session.id === currentSessionId,
+      taskStatus: session.status,
+    });
+    
+    if (agentId !== currentAgentId) {
+      agentService.switchAgent(agentId);
+      await coworkService.loadSessions(agentId);
+    }
+    
+    onShowCowork();
+    return coworkService.loadSession(session.id);
   }, [currentAgentId, currentSessionId, onShowCowork, onTaskSelected]);
 
-  useEffect(() => {
-    const handleSwitchAgent = (event: Event) => {
-      const detail = (event as CustomEvent<CoworkSwitchAgentEventDetail>).detail;
-      const direction = detail?.direction;
-      if (!direction || agentNodes.length === 0) return;
+  // 处理三点菜单点击与触发
+  const handleMenuClick = (e: React.MouseEvent, sessionId: string) => {
+    e.stopPropagation();
+    setActiveMenuSessionId(activeMenuSessionId === sessionId ? null : sessionId);
+  };
 
-      const currentIndex = agentNodes.findIndex((agent) => agent.id === currentAgentId);
-      const fallbackIndex = direction === CoworkShortcutDirection.Next ? 0 : agentNodes.length - 1;
-      const nextIndex = currentIndex < 0
-        ? fallbackIndex
-        : direction === CoworkShortcutDirection.Next
-          ? (currentIndex + 1) % agentNodes.length
-          : (currentIndex - 1 + agentNodes.length) % agentNodes.length;
-      const targetAgent = agentNodes[nextIndex];
-      if (!targetAgent) return;
+  // 删除会话操作
+  const handleDeleteSession = async (e: React.MouseEvent, sessionId: string) => {
+    e.stopPropagation();
+    const confirmDelete = window.confirm('确定要删除这个对话任务吗？');
+    if (!confirmDelete) return;
 
-      void (async () => {
-        if (targetAgent.id !== currentAgentId) {
-          agentService.switchAgent(targetAgent.id);
-          await coworkService.loadSessions(targetAgent.id);
-        }
-        expandAgent(targetAgent.id);
-        onShowCowork();
-        window.dispatchEvent(new CustomEvent(CoworkUiEvent.SelectSubagent, { detail: null }));
-      })();
-    };
-
-    const handleShowCurrentAgentTasks = () => {
-      expandAgent(currentAgentId);
-      void expandTasks(currentAgentId);
-      onShowCowork();
-    };
-
-    const handleOpenAgentTaskSlot = (event: Event) => {
-      const slot = (event as CustomEvent<CoworkOpenAgentTaskSlotEventDetail>).detail?.slot;
-      if (!Number.isInteger(slot) || slot < 1) return;
-
-      void (async () => {
-        expandAgent(currentAgentId);
-        void expandTasks(currentAgentId);
-        const result = await coworkService.listSessionsForAgentPreview(currentAgentId, slot, 0);
-        const session = result.sessions?.[slot - 1];
-        if (!result.success || !session) {
-          window.dispatchEvent(new CustomEvent('app:showToast', {
-            detail: i18nService.t('shortcutAgentTaskSlotUnavailable').replace('{slot}', String(slot)),
-          }));
-          return;
-        }
-
-        const agentId = session.agentId?.trim() || AgentId.Main;
-        if (agentId !== currentAgentId) {
-          agentService.switchAgent(agentId);
-          await coworkService.loadSessions(agentId);
-        }
-        onShowCowork();
-        window.dispatchEvent(new CustomEvent(CoworkUiEvent.SelectSubagent, { detail: null }));
-        await coworkService.loadSession(session.id);
-      })();
-    };
-
-    window.addEventListener(CoworkUiEvent.ShortcutSwitchAgent, handleSwitchAgent);
-    window.addEventListener(CoworkUiEvent.ShortcutShowCurrentAgentTasks, handleShowCurrentAgentTasks);
-    window.addEventListener(CoworkUiEvent.ShortcutOpenAgentTaskSlot, handleOpenAgentTaskSlot);
-    return () => {
-      window.removeEventListener(CoworkUiEvent.ShortcutSwitchAgent, handleSwitchAgent);
-      window.removeEventListener(CoworkUiEvent.ShortcutShowCurrentAgentTasks, handleShowCurrentAgentTasks);
-      window.removeEventListener(CoworkUiEvent.ShortcutOpenAgentTaskSlot, handleOpenAgentTaskSlot);
-    };
-  }, [agentNodes, currentAgentId, expandAgent, expandTasks, onShowCowork]);
-
-  const handleDeleteTask = async (task: AgentSidebarTaskNode) => {
-    const deleted = await coworkService.deleteSession(task.id);
+    const deleted = await coworkService.deleteSession(sessionId);
     onSidebarAction?.(deleted ? 'task_delete_success' : 'task_delete_failed', {
-      ...getTaskActionParams(task),
+      agentType: isDefaultAgentId(currentAgentId) ? 'main' : 'custom',
+      isCurrentSession: sessionId === currentSessionId,
       result: deleted ? 'success' : 'failed',
     });
     if (deleted) {
-      removeTaskPreview(task.id);
+      removeTaskPreview(sessionId);
+      if (sessionId === currentSessionId) {
+        coworkService.clearSession({ restoreAgentSkills: true });
+      }
     }
   };
 
-  const handleToggleTaskPin = async (task: AgentSidebarTaskNode, pinned: boolean) => {
-    const result = await coworkService.setSessionPinned(task.id, pinned);
+  // 置顶/取消置顶操作
+  const handleTogglePin = async (e: React.MouseEvent, session: any) => {
+    e.stopPropagation();
+    const result = await coworkService.setSessionPinned(session.id, !session.pinned);
     onSidebarAction?.('task_pin_toggle', {
-      ...getTaskActionParams(task),
+      ...getTaskActionParams(session),
       result: result.success ? 'success' : 'failed',
-      targetPinned: pinned,
+      targetPinned: !session.pinned,
     });
     if (result.success) {
-      patchTaskPreview(task.id, { pinned, pinOrder: result.pinOrder }, { preserveUpdatedAt: true });
+      patchTaskPreview(session.id, { pinned: !session.pinned, pinOrder: result.pinOrder }, { preserveUpdatedAt: true });
     }
   };
 
-  const handleRenameTask = async (task: AgentSidebarTaskNode, title: string) => {
-    const renamed = await coworkService.renameSession(task.id, title);
-    onSidebarAction?.('task_rename_submit', {
-      ...getTaskActionParams(task),
-      result: renamed ? 'success' : 'failed',
-    });
-    if (renamed) {
-      patchTaskPreview(task.id, { title }, { preserveUpdatedAt: true });
-    }
+  // 重命名会话 (行内编辑模式，避免 window.prompt 报错)
+  const handleRenameTaskPrompt = (e: React.MouseEvent, session: any) => {
+    e.stopPropagation();
+    setRenameValue(session.title || '');
+    setEditingSessionId(session.id);
   };
 
-  const handleShareTask = async (task: AgentSidebarTaskNode) => {
-    onSidebarAction?.('task_share_open', getTaskActionParams(task));
-    const session = await handleSelectTask(task);
-    if (!session) return;
+  // 分享会话
+  const handleShareTaskAction = async (e: React.MouseEvent, session: any) => {
+    e.stopPropagation();
+    onSidebarAction?.('task_share_open', getTaskActionParams(session));
+    const loaded = await handleSelectSession(session);
+    if (!loaded) return;
 
     window.setTimeout(() => {
       window.dispatchEvent(new CustomEvent<CoworkOpenShareOptionsEventDetail>(
         CoworkUiEvent.OpenShareOptions,
-        { detail: { sessionId: task.id } },
+        { detail: { sessionId: session.id } },
       ));
     }, 0);
   };
 
-  const handleEnterBatchMode = (task: AgentSidebarTaskNode) => {
-    if (task.agentId !== currentAgentId) {
-      agentService.switchAgent(task.agentId);
-      void coworkService.loadSessions(task.agentId);
-    }
-    onEnterBatchMode(task.id, task.agentId);
-  };
-
-  const handleCreateTask = async (agent: AgentSidebarAgentNode) => {
-    onSidebarAction?.('agent_create_task', {
-      agentType: getAgentType(agent.id),
-      isExpanded: agent.isExpanded,
-      isPinned: agent.pinned,
-    });
-    if (agent.id !== currentAgentId) {
-      agentService.switchAgent(agent.id);
-      await coworkService.loadSessions(agent.id);
-    }
-    coworkService.clearSession({ restoreAgentSkills: true });
-    dispatch(setDraftCollaborationMode({
-      draftKey: '__home__',
-      mode: CoworkCollaborationMode.Default,
-    }));
-    onShowCowork();
-    window.setTimeout(() => {
-      window.dispatchEvent(new CustomEvent(CoworkUiEvent.FocusInput, {
-        detail: { clear: false, resetCollaborationMode: true },
-      }));
-    }, 0);
-  };
-
-  const handleDeleteAgent = async (agent: AgentSidebarAgentNode) => {
-    if (isDefaultAgentId(agent.id)) return;
-    const deleted = await agentService.deleteAgent(agent.id);
-    onSidebarAction?.(deleted ? 'agent_delete_success' : 'agent_delete_failed', {
-      agentType: getAgentType(agent.id),
-      isPinned: agent.pinned,
-      result: deleted ? 'success' : 'failed',
-    });
-    if (deleted) {
-      removeAgentTaskPreviews(agent.id);
-    }
-    if (deleted && settingsAgentId === agent.id) {
-      setSettingsAgentId(null);
-    }
-    if (!deleted) {
-      window.dispatchEvent(new CustomEvent('app:showToast', { detail: i18nService.t('agentDeleteFailed') }));
-    }
-  };
-
-  const handleToggleAgentPin = async (agent: AgentSidebarAgentNode, pinned: boolean) => {
-    const updated = await agentService.updateAgent(agent.id, { pinned });
-    onSidebarAction?.('agent_pin_toggle', {
-      agentType: getAgentType(agent.id),
-      isPinned: agent.pinned,
-      result: updated ? 'success' : 'failed',
-      targetPinned: pinned,
-    });
-    if (!updated) {
-      window.dispatchEvent(new CustomEvent('app:showToast', { detail: i18nService.t('agentPinFailed') }));
-    }
-  };
-
-  const pinnedAgentNodes = agentNodes.filter((agent) => agent.pinned);
-  const projectAgentNodes = agentNodes.filter((agent) => !agent.pinned);
-  const hasPinnedAgents = pinnedAgentNodes.length > 0;
-
-  const handleReorderAgents = useCallback(async (
-    activeId: string,
-    overId: string,
-    groupAgents: AgentSidebarAgentNode[],
-  ) => {
-    const oldIndex = groupAgents.findIndex((agent) => agent.id === activeId);
-    const newIndex = groupAgents.findIndex((agent) => agent.id === overId);
-    if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) return;
-
-    const reorderedGroupIds = arrayMove(groupAgents.map((agent) => agent.id), oldIndex, newIndex);
-    const pinnedIds = groupAgents[0]?.pinned
-      ? reorderedGroupIds
-      : pinnedAgentNodes.map((agent) => agent.id);
-    const projectIds = groupAgents[0]?.pinned
-      ? projectAgentNodes.map((agent) => agent.id)
-      : reorderedGroupIds;
-    const updated = await agentService.reorderAgents([...pinnedIds, ...projectIds]);
-    if (!updated) {
-      window.dispatchEvent(new CustomEvent('app:showToast', { detail: i18nService.t('agentReorderFailed') }));
-    }
-  }, [pinnedAgentNodes, projectAgentNodes]);
-
-  const renderAgentNode = (agent: AgentSidebarAgentNode) => (
-    <SortableAgentNode
-      key={agent.id}
-      agent={agent}
-      disabled={agent.isExpanded || isBatchMode}
-    >
-      <AgentTreeNode
-        agent={agent}
-        isBatchMode={isBatchMode}
-        batchAgentId={batchAgentId}
-        selectedKeys={selectedKeys}
-        showBatchOption
-        onToggleExpanded={toggleAgentExpanded}
-        onEditAgent={(agent) => {
-          onSidebarAction?.('agent_edit', {
-            agentType: getAgentType(agent.id),
-            isExpanded: agent.isExpanded,
-            isPinned: agent.pinned,
-          });
-          setSettingsAgentId(agent.id);
-        }}
-        onCreateTask={(agent) => void handleCreateTask(agent)}
-        onDeleteAgent={handleDeleteAgent}
-        onToggleAgentPin={handleToggleAgentPin}
-        onRetryLoadTasks={(agentId) => {
-          const targetAgent = agentNodes.find((item) => item.id === agentId);
-          onSidebarAction?.('task_list_retry_load', {
-            agentType: getAgentType(agentId),
-            visibleTaskCount: targetAgent?.tasks.length,
-          });
-          void retryLoadTasks(agentId);
-        }}
-        onLoadMoreTasks={(agentId) => {
-          const targetAgent = agentNodes.find((item) => item.id === agentId);
-          onSidebarAction?.('task_list_expand_more', {
-            agentType: getAgentType(agentId),
-            visibleTaskCount: targetAgent?.tasks.length,
-          });
-          void loadMoreTasks(agentId);
-        }}
-        onCollapseTasks={(agentId) => {
-          const targetAgent = agentNodes.find((item) => item.id === agentId);
-          onSidebarAction?.('task_list_collapse', {
-            agentType: getAgentType(agentId),
-            visibleTaskCount: targetAgent?.tasks.length,
-          });
-          collapseTasks(agentId);
-        }}
-        onSelectTask={(task) => void handleSelectTask(task)}
-        onDeleteTask={handleDeleteTask}
-        onShareTask={handleShareTask}
-        onToggleTaskPin={handleToggleTaskPin}
-        onRenameTask={handleRenameTask}
-        onToggleSelection={onToggleSelection}
-        onEnterBatchMode={handleEnterBatchMode}
-        onSidebarAction={onSidebarAction}
-        getTaskActionParams={getTaskActionParams}
-      />
-    </SortableAgentNode>
-  );
-
-  const renderSortableAgentGroup = (agents: AgentSidebarAgentNode[]) => (
-    <DndContext
-      sensors={sensors}
-      collisionDetection={closestCenter}
-      onDragEnd={(event: DragEndEvent) => {
-        const activeId = String(event.active.id);
-        const overId = event.over?.id ? String(event.over.id) : '';
-        if (!overId) return;
-        void handleReorderAgents(activeId, overId, agents);
-      }}
-    >
-      <SortableContext
-        items={agents.map((agent) => agent.id)}
-        strategy={verticalListSortingStrategy}
-      >
-        {agents.map(renderAgentNode)}
-      </SortableContext>
-    </DndContext>
-  );
-
-  useEffect(() => {
-    if (deletedSessionIds.length === 0) return;
-    removeTaskPreviews(deletedSessionIds);
-  }, [deletedSessionIds, removeTaskPreviews]);
-
-  useEffect(() => {
-    if (!batchAgentId) {
-      onBatchSelectableItemsChange([]);
-      return;
-    }
-
-    const batchAgent = agentNodes.find((agent) => agent.id === batchAgentId);
-    if (!batchAgent) {
-      onBatchSelectableItemsChange([]);
-      return;
-    }
-
-    const items = batchAgent.tasks.map((task): AgentSidebarBatchItem => createSessionBatchItem(task.id));
-    onBatchSelectableItemsChange(items);
-  }, [agentNodes, batchAgentId, onBatchSelectableItemsChange]);
-
   return (
-    <div className="pb-3" role="tree" aria-label={i18nService.t('myAgents')}>
-      {hasPinnedAgents && (
-        <div className="space-y-0.5">
-          <div className="sticky top-0 z-30 flex h-10 items-center bg-surface-raised px-1.5">
-            <h2 className="min-w-0 truncate text-sm font-normal text-secondary">
-              {i18nService.t('myAgentSidebarPinned')}
-            </h2>
-          </div>
-          {renderSortableAgentGroup(pinnedAgentNodes)}
-        </div>
-      )}
-
-      <MyAgentSidebarHeader
-        onSearchTasks={onSearchTasks}
-        onCreateAgent={() => {
-          setCreateAgentSource('home_agent_sidebar');
-          setIsCreateOpen(true);
-        }}
-      />
-
-      {agentNodes.length === 0 ? (
-        <div className="px-3 py-6 text-center">
-          <p className="text-xs font-medium text-secondary">
-            {i18nService.t('myAgentSidebarNoAgents')}
-          </p>
+    <div className="flex flex-col h-full overflow-hidden select-none pb-4">
+      {/* 顶部：我的专家墙 */}
+      <div className="shrink-0 mb-4 px-2">
+        <div className="flex items-center justify-between mb-2.5">
+          <h2 className="text-[13px] font-semibold text-secondary">我的专家</h2>
+          {/* 管理专家齿轮按钮 */}
           <button
             type="button"
-            onClick={() => {
-              setCreateAgentSource('home_agent_sidebar_empty');
-              setIsCreateOpen(true);
-            }}
-            className="mt-3 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-primary-hover"
+            onClick={() => setIsManageOpen(true)}
+            title="管理我的专家"
+            className="text-secondary hover:text-foreground transition-colors p-1 rounded hover:bg-secondary/15 cursor-pointer"
           >
-            {i18nService.t('createNewAgent')}
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
           </button>
         </div>
-      ) : projectAgentNodes.length > 0 ? (
-        <div className="space-y-0.5 px-0">
-          {renderSortableAgentGroup(projectAgentNodes)}
+
+        {/* 圆形头像网格（一行4个，高和宽完全对齐约束，保持极致清爽） */}
+        <div className="grid grid-cols-4 gap-3 max-h-[140px] overflow-y-auto pr-1 py-1 [scrollbar-width:none]">
+          {enabledExperts.map((expert) => {
+            const isSelected = currentAgentId === expert.id;
+            return (
+              <div
+                key={expert.id}
+                className="group relative flex flex-col items-center justify-between h-[58px] cursor-pointer"
+              >
+                <div
+                  onClick={() => void handleExpertClick(expert.id)}
+                  title={expert.name}
+                  className="relative w-9 h-9 flex items-center justify-center animate-in fade-in duration-100"
+                >
+                  <AgentAvatarIcon
+                    value={expert.icon}
+                    className={`h-9 w-9 shadow-sm transition-all rounded-full ${
+                      isSelected
+                        ? 'ring-2 ring-primary ring-offset-1 shadow-md'
+                        : 'group-hover:scale-105 group-hover:shadow-md'
+                    }`}
+                  />
+                  {isSelected && (
+                    <span className="absolute bottom-0 right-0 flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                    </span>
+                  )}
+                </div>
+                <span
+                  onClick={() => void handleExpertClick(expert.id)}
+                  className="w-full text-[10px] text-center text-secondary truncate px-0.5 select-none leading-none group-hover:text-foreground transition-colors"
+                >
+                  {expert.name.replace('专家', '').replace('助手', '')}
+                </span>
+              </div>
+            );
+          })}
+
+          {/* 最后的加号快速添加 */}
+          <button
+            type="button"
+            onClick={() => setIsCreateOpen(true)}
+            title="添加新专家"
+            className="flex flex-col items-center justify-between h-[58px] focus:outline-none group cursor-pointer animate-in fade-in duration-100"
+          >
+            <div className="relative w-9 h-9 flex items-center justify-center">
+              <div className="h-9 w-9 rounded-full border-2 border-dashed border-border bg-surface hover:bg-secondary/10 flex items-center justify-center transition-all group-hover:scale-105">
+                <svg
+                  className="h-4 w-4 text-secondary group-hover:text-primary transition-colors"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+              </div>
+            </div>
+            <span className="text-[10px] text-center text-secondary leading-none">
+              添加
+            </span>
+          </button>
         </div>
-      ) : null}
+      </div>
+
+      {/* 底部：扁平历史任务会话列表 */}
+      <div className="flex-1 min-h-0 flex flex-col border-t border-border/60 pt-3 animate-in fade-in duration-100">
+        <div className="flex-1 overflow-y-auto space-y-1 pr-1 [scrollbar-gutter:stable] [scrollbar-width:thin]">
+          {sortedSessions.length === 0 ? (
+            <div className="py-8 text-center text-xs text-secondary/60">
+              暂无对话任务
+            </div>
+          ) : (
+            sortedSessions.map((session) => {
+              const isSelected = session.id === currentSessionId;
+              const expert = agents.find((a) => a.id === session.agentId);
+              const relativeTime = formatAgentTaskRelativeTime(session.updatedAt || session.createdAt);
+
+              const isMenuOpen = activeMenuSessionId === session.id;
+              return (
+                <div
+                  key={session.id}
+                  onClick={() => handleSelectSession(session)}
+                  className={`group flex items-center justify-between rounded-xl px-2.5 py-2 transition-all cursor-pointer select-none ${
+                    isMenuOpen ? 'relative z-[110]' : 'relative z-10'
+                  } ${
+                    isSelected
+                      ? 'bg-primary/10 text-primary shadow-sm'
+                      : activeMenuSessionId !== null
+                        ? 'text-foreground'
+                        : 'hover:bg-secondary/15 text-foreground'
+                  }`}
+                >
+                  <div className="flex items-center min-w-0 flex-1 space-x-2.5 pr-6">
+                    {/* 会话绑定专家的头像 */}
+                    <AgentAvatarIcon
+                      value={expert?.icon}
+                      className="h-7 w-7 rounded-full shadow-sm"
+                      useDefaultWhenEmpty
+                    />
+                    
+                    {/* 会话标题 */}
+                    <div className="flex-1 min-w-0">
+                      {editingSessionId === session.id ? (
+                        <input
+                          type="text"
+                          value={renameValue}
+                          autoFocus
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => setRenameValue(e.target.value)}
+                          onKeyDown={async (e) => {
+                            if (e.key === 'Enter') {
+                              e.currentTarget.blur();
+                            } else if (e.key === 'Escape') {
+                              setEditingSessionId(null);
+                            }
+                          }}
+                          onBlur={async () => {
+                            const nextTitle = renameValue.trim();
+                            if (nextTitle && nextTitle !== (session.title || '')) {
+                              const renamed = await coworkService.renameSession(session.id, nextTitle);
+                              onSidebarAction?.('task_rename_submit', {
+                                ...getTaskActionParams(session),
+                                result: renamed ? 'success' : 'failed',
+                              });
+                              if (renamed) {
+                                patchTaskPreview(session.id, { title: nextTitle }, { preserveUpdatedAt: true });
+                              }
+                            }
+                            setEditingSessionId(null);
+                          }}
+                          className="w-full bg-surface border border-primary px-1 py-0.5 rounded text-xs text-foreground focus:outline-none"
+                        />
+                      ) : (
+                        <div className={`text-[12.5px] truncate font-semibold ${isSelected ? 'text-primary' : 'text-foreground'}`}>
+                          {session.title || '无标题会话'}
+                        </div>
+                      )}
+                      <div className="text-[10px] text-secondary mt-0.5 truncate max-w-full flex items-center space-x-1">
+                        <span>{expert ? `${expert.name} · ` : ''}</span>
+                        <span>{relativeTime.compact}</span>
+                        {session.pinned && (
+                          <span className="inline-flex items-center text-primary ml-1.5" title="已置顶">
+                            <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
+                              <path d="M5 4a1 1 0 011-1h8a1 1 0 011 1v1a1 1 0 01-1 1h-1v4h1a1 1 0 011 1v1a1 1 0 01-1 1h-3v4l-2 2-2-2v-4H4a1 1 0 01-1-1v-1a1 1 0 011-1h1V6H4a1 1 0 01-1-1V4zm4 6H8v2h1v-2zm3 0h-1v2h1v-2z" />
+                            </svg>
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 三点式上下文菜单区 */}
+                  <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center shrink-0">
+                    <button
+                      type="button"
+                      onClick={(e) => handleMenuClick(e, session.id)}
+                      title="更多操作"
+                      className="opacity-0 group-hover:opacity-100 transition-opacity h-6 w-6 inline-flex items-center justify-center rounded-lg hover:bg-secondary/20 text-secondary hover:text-foreground cursor-pointer"
+                    >
+                      <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+                      </svg>
+                    </button>
+                    
+                    {activeMenuSessionId === session.id && (
+                      <div
+                        onClick={(e) => e.stopPropagation()}
+                        className="absolute right-2 top-full z-[100] mt-0.5 w-28 py-0.5 bg-surface border border-border rounded-lg shadow-lg text-left"
+                      >
+                        {/* 1. 置顶/取消置顶 */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            setActiveMenuSessionId(null);
+                            void handleTogglePin(e, session);
+                          }}
+                          className="w-full text-left px-2.5 py-1 text-[11px] text-foreground hover:bg-secondary/15 flex items-center space-x-1.5 cursor-pointer"
+                        >
+                          <svg className="h-3 w-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                          </svg>
+                          <span>{session.pinned ? '取消置顶' : '置顶'}</span>
+                        </button>
+
+                        {/* 2. 重命名 */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            setActiveMenuSessionId(null);
+                            void handleRenameTaskPrompt(e, session);
+                          }}
+                          className="w-full text-left px-2.5 py-1 text-[11px] text-foreground hover:bg-secondary/15 flex items-center space-x-1.5 cursor-pointer"
+                        >
+                          <svg className="h-3 w-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                          <span>重命名</span>
+                        </button>
+
+                        {/* 3. 分享 */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            setActiveMenuSessionId(null);
+                            void handleShareTaskAction(e, session);
+                          }}
+                          className="w-full text-left px-2.5 py-1 text-[11px] text-foreground hover:bg-secondary/15 flex items-center space-x-1.5 cursor-pointer"
+                        >
+                          <svg className="h-3 w-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 10.742l5.428-2.714m-5.428 5.428l5.428 2.714M16.5 6a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zm-7 6a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zm9 6a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z" />
+                          </svg>
+                          <span>分享</span>
+                        </button>
+
+                        {/* 4. 删除 */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            setActiveMenuSessionId(null);
+                            void handleDeleteSession(e, session.id);
+                          }}
+                          className="w-full text-left px-2.5 py-1 text-[11px] text-red-500 hover:bg-red-50 flex items-center space-x-1.5 cursor-pointer"
+                        >
+                          <svg className="h-3 w-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                          <span>删除</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
 
       <AgentCreateModal
         isOpen={isCreateOpen}
         onClose={() => setIsCreateOpen(false)}
-        source={createAgentSource}
+        source="home_agent_sidebar"
       />
       <AgentSettingsPanel
         agentId={settingsAgentId}
         onClose={() => setSettingsAgentId(null)}
       />
+
+      {/* 4. 统一专家管理弹窗列表 */}
+      {isManageOpen && (
+        <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-100">
+          <div className="bg-surface border border-border w-[380px] max-h-[480px] rounded-2xl shadow-2xl flex flex-col p-4 text-foreground animate-in fade-in zoom-in-95 duration-150">
+            {/* 弹窗头部 */}
+            <div className="flex items-center justify-between border-b border-border/60 pb-2.5 mb-3">
+              <h3 className="text-[14px] font-semibold text-foreground">管理我的专家</h3>
+              <button
+                type="button"
+                onClick={() => setIsManageOpen(false)}
+                className="text-secondary hover:text-foreground transition-colors cursor-pointer"
+              >
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* 专家列表容器 */}
+            <div className="flex-1 overflow-y-auto space-y-2 pr-1 [scrollbar-width:thin]">
+              {enabledExperts.map((expert) => {
+                const isMain = expert.id === AgentId.Main;
+                const isPreset = expert.source === 'preset';
+
+                const isConfirmingRecall = confirmingRecallAgentId === expert.id;
+                const isConfirmingDelete = confirmingDeleteAgentId === expert.id;
+
+                return (
+                  <div
+                    key={expert.id}
+                    className="flex items-center justify-between p-2 rounded-xl bg-secondary/5 border border-border/40 hover:bg-secondary/10 transition-colors animate-in fade-in duration-100"
+                  >
+                    {/* 左侧：头像 + 专家名字属性 */}
+                    <div className="flex items-center space-x-2.5 min-w-0">
+                      <AgentAvatarIcon
+                        value={expert.icon}
+                        className="h-8 w-8 rounded-full shadow-sm"
+                      />
+                      <div className="min-w-0">
+                        <div className="text-xs font-semibold truncate text-foreground">{expert.name}</div>
+                      </div>
+                    </div>
+
+                    {/* 右侧：编辑 / 召回 / 删除 操作按钮 */}
+                    <div className="flex items-center space-x-1.5 shrink-0">
+                      {/* 编辑 (主专家与自定义专家均支持) */}
+                      {!isConfirmingRecall && !isConfirmingDelete && (isMain || !isPreset) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsManageOpen(false);
+                            setSettingsAgentId(expert.id);
+                          }}
+                          className="px-2 py-1 rounded bg-secondary/20 hover:bg-secondary/30 text-[11px] font-medium text-foreground transition-colors cursor-pointer"
+                        >
+                          编辑
+                        </button>
+                      )}
+
+                      {/* 非主专家操作 */}
+                      {!isMain && (
+                        <>
+                          {isPreset ? (
+                            // 内置专家移出 (召回) 二阶段
+                            isConfirmingRecall ? (
+                              <div className="flex items-center space-x-1 animate-in fade-in duration-150">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setConfirmingRecallAgentId(null);
+                                    void handleRemoveExpertReal(expert);
+                                  }}
+                                  className="px-2 py-1 rounded bg-orange-600 hover:bg-orange-700 text-white text-[11px] font-medium cursor-pointer"
+                                >
+                                  确定召回？
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setConfirmingRecallAgentId(null)}
+                                  className="px-1.5 py-1 rounded bg-secondary/20 hover:bg-secondary/30 text-foreground text-[11px] font-medium cursor-pointer"
+                                >
+                                  取消
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setConfirmingRecallAgentId(expert.id);
+                                  setConfirmingDeleteAgentId(null);
+                                }}
+                                className="px-2 py-1 rounded text-[11px] font-medium transition-colors cursor-pointer bg-orange-50 hover:bg-orange-100 text-orange-600"
+                              >
+                                召回
+                              </button>
+                            )
+                          ) : (
+                            // 自定义专家删除 (解雇) 二阶段
+                            isConfirmingDelete ? (
+                              <div className="flex items-center space-x-1 animate-in fade-in duration-150">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setConfirmingDeleteAgentId(null);
+                                    void handleRemoveExpertReal(expert);
+                                  }}
+                                  className="px-2 py-1 rounded bg-red-600 hover:bg-red-700 text-white text-[11px] font-medium cursor-pointer"
+                                >
+                                  确定删除？
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setConfirmingDeleteAgentId(null)}
+                                  className="px-1.5 py-1 rounded bg-secondary/20 hover:bg-secondary/30 text-foreground text-[11px] font-medium cursor-pointer"
+                                >
+                                  取消
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setConfirmingDeleteAgentId(expert.id);
+                                  setConfirmingRecallAgentId(null);
+                                }}
+                                className="px-2 py-1 rounded text-[11px] font-medium transition-colors cursor-pointer bg-red-50 hover:bg-red-100 text-red-600"
+                              >
+                                删除
+                              </button>
+                            )
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

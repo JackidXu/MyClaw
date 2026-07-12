@@ -89,6 +89,8 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
   const [workingDirectory, setWorkingDirectory] = useState('');
   const [skillIds, setSkillIds] = useState<string[]>([]);
   const [subagentAllowAgentIds, setSubagentAllowAgentIds] = useState<string[]>([]);
+  const [level, setLevel] = useState<'高级' | '中级' | '初级'>('高级');
+  const [department, setDepartment] = useState('其他');
   const [nameTouched, setNameTouched] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -114,6 +116,8 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
     workingDirectory: '',
     skillIds: [] as string[],
     subagentAllowAgentIds: [] as string[],
+    level: '高级' as '高级' | '中级' | '初级',
+    department: '其他',
   });
 
   const getChangedFields = useCallback((): string[] => {
@@ -136,6 +140,8 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
     ) {
       changedFields.push('subagentAllowAgentIds');
     }
+    if (level !== init.level) changedFields.push('level');
+    if (department !== init.department) changedFields.push('department');
     if (boundKeys.size !== initialBoundKeys.size || [...boundKeys].some((k) => !initialBoundKeys.has(k))) {
       changedFields.push('imBindings');
     }
@@ -153,6 +159,8 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
     systemPrompt,
     userInfo,
     workingDirectory,
+    level,
+    department,
   ]);
 
   const getSelectedSkills = useCallback((): Skill[] => (
@@ -268,6 +276,8 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
       setWorkingDirectory(a.workingDirectory ?? '');
       setSkillIds(a.skillIds ?? []);
       setSubagentAllowAgentIds(a.subagentAllowAgentIds ?? []);
+      setLevel(a.level ?? '高级');
+      setDepartment(a.department ?? '其他');
       initialValuesRef.current = {
         name: a.name,
         description: a.description,
@@ -279,6 +289,8 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
         workingDirectory: a.workingDirectory ?? '',
         skillIds: a.skillIds ?? [],
         subagentAllowAgentIds: a.subagentAllowAgentIds ?? [],
+        level: a.level ?? '高级',
+        department: a.department ?? '其他',
       };
     })();
 
@@ -382,6 +394,8 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
         icon: icon.trim(),
         skillIds,
         subagentAllowAgentIds,
+        level,
+        department,
       });
       if (!result) {
         reportAgentSettingsAction('save_failed', {
@@ -797,6 +811,7 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
                 aria-label={i18nService.t('agentDescription')}
                 className="mt-0.5 w-full bg-transparent text-sm leading-5 text-secondary placeholder:text-secondary/50 focus:outline-none"
               />
+              {/* 移除级别和部门选择 */}
             </div>
           </div>
           <button type="button" onClick={handleClose} className="mt-1 p-2 rounded-lg hover:bg-surface-raised transition-colors">

@@ -331,6 +331,8 @@ contextBridge.exposeInMainWorld('electron', {
       icon?: string;
       skillIds?: string[];
       subagentAllowAgentIds?: string[];
+      level?: '高级' | '中级' | '初级';
+      department?: string;
       source?: string;
       presetId?: string;
     }) => {
@@ -349,6 +351,8 @@ contextBridge.exposeInMainWorld('electron', {
         icon?: string;
         skillIds?: string[];
         subagentAllowAgentIds?: string[];
+        level?: '高级' | '中级' | '初级';
+        department?: string;
         enabled?: boolean;
         pinned?: boolean;
         sortOrder?: number | null;

@@ -71,6 +71,8 @@ class AgentService {
     icon?: string;
     skillIds?: string[];
     subagentAllowAgentIds?: string[];
+    level?: '高级' | '中级' | '初级';
+    department?: string;
   }): Promise<Agent | null> {
     try {
       const agent = await window.electron?.agents?.create(request);
@@ -88,8 +90,11 @@ class AgentService {
           sortOrder: agent.sortOrder ?? null,
           isDefault: agent.isDefault,
           source: agent.source,
+          presetId: agent.presetId,
           skillIds: agent.skillIds ?? [],
           subagentAllowAgentIds: agent.subagentAllowAgentIds ?? [],
+          level: agent.level,
+          department: agent.department,
         }));
         return agent;
       }
@@ -110,6 +115,8 @@ class AgentService {
     icon?: string;
     skillIds?: string[];
     subagentAllowAgentIds?: string[];
+    level?: '高级' | '中级' | '初级';
+    department?: string;
     enabled?: boolean;
     pinned?: boolean;
     sortOrder?: number | null;
@@ -132,6 +139,9 @@ class AgentService {
             sortOrder: agent.sortOrder ?? null,
             skillIds,
             subagentAllowAgentIds: agent.subagentAllowAgentIds ?? [],
+            presetId: agent.presetId,
+            level: agent.level,
+            department: agent.department,
           },
         }));
         // Only sync active skills when skillIds were explicitly updated,

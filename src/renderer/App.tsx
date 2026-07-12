@@ -19,6 +19,7 @@ import CoworkQuestionWizard from './components/cowork/CoworkQuestionWizard';
 import EngineFailureOverlay from './components/cowork/EngineFailureOverlay';
 import EngineStartupOverlay from './components/cowork/EngineStartupOverlay';
 import KitsView from './components/kits/KitsView';
+import ExpertsView from './components/experts/ExpertsView';
 import PrivacyDialog from './components/PrivacyDialog';
 import { ScheduledTasksView } from './components/scheduledTasks';
 import Settings, { type SettingsOpenOptions } from './components/Settings';
@@ -89,7 +90,7 @@ const INIT_STEP_TIMEOUT_MS_DEFAULT = 16_000;
 const App: React.FC = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [settingsOptions, setSettingsOptions] = useState<SettingsOpenOptions & { requestId: number }>({ requestId: 0 });
-  const [mainView, setMainView] = useState<'cowork' | 'skills' | 'scheduledTasks' | 'kits' | 'mcp'>('cowork');
+  const [mainView, setMainView] = useState<'cowork' | 'skills' | 'scheduledTasks' | 'kits' | 'mcp' | 'experts'>('cowork');
   const [skillsActiveTab, setSkillsActiveTab] = useState<'skills' | 'mcp'>('skills');
   const [isInitialized, setIsInitialized] = useState(false);
   const [isActivated, setIsActivated] = useState<boolean>(true);
@@ -491,6 +492,10 @@ const App: React.FC = () => {
 
   const handleShowKits = useCallback(() => {
     setMainView('kits');
+  }, []);
+
+  const handleShowExperts = useCallback(() => {
+    setMainView('experts');
   }, []);
 
   const handleToggleSidebar = useCallback(() => {
@@ -1259,6 +1264,7 @@ const App: React.FC = () => {
           onShowCowork={handleShowCowork}
           onShowScheduledTasks={handleShowScheduledTasks}
           onShowKits={handleShowKits}
+          onShowExperts={handleShowExperts}
           onNewChat={handleNewChat}
           isCollapsed={isSidebarCollapsed}
           onToggleCollapse={handleToggleSidebar}
@@ -1291,6 +1297,13 @@ const App: React.FC = () => {
               />
             ) : mainView === 'kits' ? (
               <KitsView
+                isSidebarCollapsed={isSidebarCollapsed}
+                onToggleSidebar={handleToggleSidebar}
+                onNewChat={handleNewChat}
+                updateBadge={collapsedHeaderUpdateBadge}
+              />
+            ) : mainView === 'experts' ? (
+              <ExpertsView
                 isSidebarCollapsed={isSidebarCollapsed}
                 onToggleSidebar={handleToggleSidebar}
                 onNewChat={handleNewChat}

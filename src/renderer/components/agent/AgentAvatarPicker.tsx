@@ -1,14 +1,5 @@
-import {
-  DefaultAgentAvatar,
-  encodeAgentAvatarIcon,
-  parseAgentAvatarIcon,
-} from '@shared/agent/avatar';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-
-import { i18nService } from '../../services/i18n';
-import AgentAvatarIcon, {
-  AGENT_AVATAR_SVG_OPTIONS,
-} from './AgentAvatarIcon';
+import React, { useEffect, useRef, useState } from 'react';
+import AgentAvatarIcon from './AgentAvatarIcon';
 
 interface AgentAvatarPickerProps {
   value: string;
@@ -18,10 +9,6 @@ interface AgentAvatarPickerProps {
 const AgentAvatarPicker: React.FC<AgentAvatarPickerProps> = ({ value, onChange }) => {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-
-  const selectedAvatar = useMemo(() => {
-    return parseAgentAvatarIcon(value) ?? DefaultAgentAvatar;
-  }, [value]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -39,55 +26,51 @@ const AgentAvatarPicker: React.FC<AgentAvatarPickerProps> = ({ value, onChange }
     };
   }, [isOpen]);
 
-  const updateAvatar = (nextAvatar: typeof selectedAvatar) => {
-    onChange(encodeAgentAvatarIcon(nextAvatar));
-  };
+  const AVATAR_OPTIONS = ['avatar_1', 'avatar_2', 'avatar_3', 'avatar_4', 'avatar_5', 'avatar_6'];
 
   return (
     <div ref={containerRef} className="relative shrink-0">
       <button
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
-        title={i18nService.t('agentAvatarPickerTitle')}
-        aria-label={i18nService.t('agentAvatarPickerTitle')}
+        title="选择专家头像"
+        aria-label="选择专家头像"
         className={`rounded-full transition-shadow hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/50 ${
           isOpen ? 'ring-2 ring-primary/60' : ''
         }`}
       >
         <AgentAvatarIcon
-          value={value}
-          className="h-11 w-11"
-          iconClassName="h-[22px] w-[22px]"
-          legacyClassName="text-2xl"
+          value={value || 'avatar_1'}
+          className="h-11 w-11 rounded-full shadow-sm"
+          useDefaultWhenEmpty
         />
       </button>
 
       {isOpen && (
         <div
-          className="absolute left-0 top-full z-50 mt-2 w-[324px] overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl"
+          className="absolute left-0 top-full z-50 mt-2 w-[240px] overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl"
         >
-          <div className="grid max-h-[360px] grid-cols-6 gap-x-4 gap-y-4 overflow-y-auto px-6 py-5">
-            {AGENT_AVATAR_SVG_OPTIONS.map((option) => {
-              const optionValue = encodeAgentAvatarIcon({ svg: option.svg });
-              const isSelected = selectedAvatar.svg === option.svg;
+          <div className="grid grid-cols-3 gap-x-4 gap-y-4 px-5 py-5 justify-items-center">
+            {AVATAR_OPTIONS.map((avatarName) => {
+              const isSelected = value === avatarName;
 
               return (
                 <button
-                  key={option.svg}
+                  key={avatarName}
                   type="button"
-                  onClick={() => updateAvatar({ svg: option.svg })}
-                  title={i18nService.t(option.labelKey)}
-                  aria-label={i18nService.t(option.labelKey)}
-                  className={`flex h-10 w-10 items-center justify-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary/50 ${
+                  onClick={() => {
+                    onChange(avatarName);
+                    setIsOpen(false);
+                  }}
+                  className={`flex h-12 w-12 items-center justify-center rounded-full transition-all focus:outline-none ${
                     isSelected
-                      ? 'bg-surface-raised text-foreground shadow-sm ring-1 ring-border'
-                      : 'text-foreground hover:bg-secondary/10'
+                      ? 'shadow-md ring-2 ring-primary ring-offset-1 scale-105'
+                      : 'hover:scale-105'
                   }`}
                 >
                   <AgentAvatarIcon
-                    value={optionValue}
-                    className="h-10 w-10"
-                    iconClassName="h-6 w-6"
+                    value={avatarName}
+                    className="h-12 w-12 rounded-full"
                     useDefaultWhenEmpty={false}
                   />
                 </button>
@@ -95,13 +78,13 @@ const AgentAvatarPicker: React.FC<AgentAvatarPickerProps> = ({ value, onChange }
             })}
           </div>
 
-          <div className="border-t border-border px-6 py-4">
+          <div className="border-t border-border px-5 py-3 flex justify-end">
             <button
               type="button"
               onClick={() => setIsOpen(false)}
-              className="text-sm font-medium text-foreground hover:text-primary transition-colors"
+              className="text-xs font-semibold text-secondary hover:text-primary transition-colors cursor-pointer"
             >
-              {i18nService.t('agentAvatarPickerDone')}
+              关闭
             </button>
           </div>
         </div>

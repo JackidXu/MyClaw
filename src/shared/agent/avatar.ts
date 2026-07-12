@@ -96,6 +96,17 @@ export const isDesignedAgentAvatarIcon = (value: string | null | undefined): boo
 
 export const normalizeAgentAvatarIcon = (value: string | null | undefined): string => {
   const normalized = value?.trim() ?? '';
+  // 1. 如果是新版 3D 图片头像或图片资源路径，原样返回，不进行拦截重置
+  if (
+    normalized.startsWith('avatar_') ||
+    normalized.startsWith('/') ||
+    normalized.startsWith('http') ||
+    normalized.startsWith('data:') ||
+    normalized.startsWith('file:')
+  ) {
+    return normalized;
+  }
+  // 2. 兼容旧 SVG 头像
   const avatar = parseAgentAvatarIcon(normalized);
   if (avatar) return encodeAgentAvatarIcon(avatar);
   return DefaultAgentAvatarIcon;

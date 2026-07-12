@@ -93,6 +93,8 @@ const AgentCreateModal: React.FC<AgentCreateModalProps> = ({
   const [workingDirectory, setWorkingDirectory] = useState('');
   const [skillIds, setSkillIds] = useState<string[]>([]);
   const [subagentAllowAgentIds, setSubagentAllowAgentIds] = useState<string[]>([]);
+  const [level, setLevel] = useState<'高级' | '中级' | '初级'>('高级');
+  const [department, setDepartment] = useState('其他');
   const [creating, setCreating] = useState(false);
   const [presetTemplates, setPresetTemplates] = useState<PresetAgent[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
@@ -130,9 +132,11 @@ const AgentCreateModal: React.FC<AgentCreateModalProps> = ({
     if (workingDirectory !== initialWorkingDirectoryRef.current) changedFields.push('workingDirectory');
     if (skillIds.length > 0) changedFields.push('skillIds');
     if (subagentAllowAgentIds.length > 0) changedFields.push('subagentAllowAgentIds');
+    if (level !== '高级') changedFields.push('level');
+    if (department !== '其他') changedFields.push('department');
     if (boundKeys.size > 0) changedFields.push('imBindings');
     return changedFields;
-  }, [boundKeys.size, description, icon, identity, model, name, skillIds.length, subagentAllowAgentIds.length, systemPrompt, userInfo, workingDirectory]);
+  }, [boundKeys.size, description, icon, identity, model, name, skillIds.length, subagentAllowAgentIds.length, systemPrompt, userInfo, workingDirectory, level, department]);
 
   const isDirty = useCallback((): boolean => {
     return getChangedFields().length > 0;
@@ -283,6 +287,8 @@ const AgentCreateModal: React.FC<AgentCreateModalProps> = ({
     setUserInfo('');
     initialUserInfoRef.current = '';
     setIcon(DefaultAgentAvatarIcon);
+    setLevel('高级');
+    setDepartment('其他');
     setModel(null);
     setWorkingDirectory('');
     setSkillIds([]);
@@ -307,6 +313,8 @@ const AgentCreateModal: React.FC<AgentCreateModalProps> = ({
     setIdentity(isEn && preset.identityEn ? preset.identityEn : preset.identity);
     setIcon(preset.icon?.trim() || DefaultAgentAvatarIcon);
     setSkillIds(preset.skillIds ?? []);
+    if (preset.level) setLevel(preset.level);
+    if (preset.department) setDepartment(preset.department);
     setSelectedTemplate(template);
     reportAgentCreateAction('template_selected', {
       activeTab: AgentDetailTab.Identity,
@@ -378,6 +386,8 @@ const AgentCreateModal: React.FC<AgentCreateModalProps> = ({
         icon: icon.trim() || undefined,
         skillIds,
         subagentAllowAgentIds,
+        level,
+        department,
       });
       if (agent) {
         if (userInfo !== initialUserInfoRef.current) {
@@ -596,21 +606,11 @@ const AgentCreateModal: React.FC<AgentCreateModalProps> = ({
               aria-label={i18nService.t('agentDescription')}
               className="mt-0.5 w-full bg-transparent text-sm leading-5 text-secondary placeholder:text-secondary/50 focus:outline-none"
             />
+            {/* 移除级别和部门显示 */}
           </div>
         </div>
         <div className="mt-1 flex shrink-0 items-center gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              reportAgentCreateAction('open_template_picker', {
-                isDirty: isDirty(),
-              });
-              setShowTemplatePicker(true);
-            }}
-            className="h-8 rounded-lg border border-border bg-surface px-3 text-sm font-medium text-foreground hover:bg-surface-raised transition-colors"
-          >
-            {i18nService.t('agentUseTemplate')}
-          </button>
+          {/* 移除使用模板按钮 */}
           <button type="button" onClick={handleClose} className="p-2 rounded-lg hover:bg-surface-raised transition-colors">
             <XMarkIcon className="h-5 w-5 text-secondary" />
           </button>

@@ -11,6 +11,8 @@ export interface Agent {
   icon: string;
   skillIds: string[];
   subagentAllowAgentIds: string[];
+  level?: '高级' | '中级' | '初级';
+  department?: string;
   enabled: boolean;
   pinned: boolean;
   pinOrder?: number | null;
@@ -34,6 +36,8 @@ export interface PresetAgent {
   systemPrompt: string;
   systemPromptEn: string;
   skillIds: string[];
+  level?: '高级' | '中级' | '初级';
+  department?: string;
   installed?: boolean;
 }
 
@@ -48,6 +52,8 @@ export interface CreateAgentRequest {
   icon?: string;
   skillIds?: string[];
   subagentAllowAgentIds?: string[];
+  level?: '高级' | '中级' | '初级';
+  department?: string;
   source?: string;
   presetId?: string;
 }
@@ -62,6 +68,8 @@ export interface UpdateAgentRequest {
   icon?: string;
   skillIds?: string[];
   subagentAllowAgentIds?: string[];
+  level?: '高级' | '中级' | '初级';
+  department?: string;
   enabled?: boolean;
   pinned?: boolean;
   sortOrder?: number | null;

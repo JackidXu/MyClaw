@@ -193,6 +193,8 @@ export class SqliteStore {
         icon TEXT NOT NULL DEFAULT '',
         skill_ids TEXT NOT NULL DEFAULT '[]',
         subagent_allow_agent_ids TEXT NOT NULL DEFAULT '[]',
+        level TEXT NOT NULL DEFAULT '高级',
+        department TEXT NOT NULL DEFAULT '其他',
         enabled INTEGER NOT NULL DEFAULT 1,
         pinned INTEGER NOT NULL DEFAULT 0,
         pin_order INTEGER,
@@ -475,6 +477,14 @@ export class SqliteStore {
       }
       if (!agentColNames.includes('subagent_allow_agent_ids')) {
         this.db.exec("ALTER TABLE agents ADD COLUMN subagent_allow_agent_ids TEXT NOT NULL DEFAULT '[]';");
+        this.didRunMigration = true;
+      }
+      if (!agentColNames.includes('level')) {
+        this.db.exec("ALTER TABLE agents ADD COLUMN level TEXT NOT NULL DEFAULT '高级';");
+        this.didRunMigration = true;
+      }
+      if (!agentColNames.includes('department')) {
+        this.db.exec("ALTER TABLE agents ADD COLUMN department TEXT NOT NULL DEFAULT '其他';");
         this.didRunMigration = true;
       }
     } catch {

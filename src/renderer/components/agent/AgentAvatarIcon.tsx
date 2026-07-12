@@ -36,6 +36,22 @@ import translationIconUrl from '../../assets/agent-avatars/translation.svg';
 import translationAltIconUrl from '../../assets/agent-avatars/translation-alt.svg';
 import travelIconUrl from '../../assets/agent-avatars/travel.svg';
 
+import avatar1 from '../../assets/avatars/avatar_1.png';
+import avatar2 from '../../assets/avatars/avatar_2.png';
+import avatar3 from '../../assets/avatars/avatar_3.png';
+import avatar4 from '../../assets/avatars/avatar_4.png';
+import avatar5 from '../../assets/avatars/avatar_5.png';
+import avatar6 from '../../assets/avatars/avatar_6.png';
+
+export const AVATAR_IMAGES: Record<string, string> = {
+  avatar_1: avatar1,
+  avatar_2: avatar2,
+  avatar_3: avatar3,
+  avatar_4: avatar4,
+  avatar_5: avatar5,
+  avatar_6: avatar6,
+};
+
 export const AGENT_AVATAR_SVG_OPTIONS: Array<{ svg: AgentAvatarSvg; labelKey: string }> = [
   { svg: AgentAvatarSvg.Lobster, labelKey: 'agentAvatarSvgLobster' },
 
@@ -127,35 +143,71 @@ const AgentAvatarIcon: React.FC<AgentAvatarIconProps> = ({
   fallbackText = 'A',
   useDefaultWhenEmpty = true,
 }) => {
+  void iconClassName;
+  void legacyClassName;
   const normalized = value?.trim() ?? '';
+
+  // 1. 如果值是 avatar_x 的图片名称或有效路径
+  if (normalized && AVATAR_IMAGES[normalized]) {
+    return (
+      <span className={`inline-flex shrink-0 items-center justify-center rounded-full overflow-hidden ${className}`}>
+        <img src={AVATAR_IMAGES[normalized]} alt="Avatar" className="w-full h-full object-cover select-none" />
+      </span>
+    );
+  }
+
+  // 2. 兼容如果是图片 URL 或带 http / data: 等的路径
+  if (normalized.startsWith('http') || normalized.startsWith('data:') || normalized.startsWith('/') || normalized.startsWith('file:')) {
+    return (
+      <span className={`inline-flex shrink-0 items-center justify-center rounded-full overflow-hidden ${className}`}>
+        <img src={normalized} alt="Avatar" className="w-full h-full object-cover select-none" />
+      </span>
+    );
+  }
+
+  // 3. 兼容旧 SVG 头像，将其映射为新图片
   const parsedAvatar = parseAgentAvatarIcon(normalized);
   const avatar = parsedAvatar ?? (!normalized && useDefaultWhenEmpty ? DefaultAgentAvatar : null);
 
   if (avatar) {
-    if (avatar.svg === AgentAvatarSvg.Lobster) {
-      return (
-        <span className={`inline-flex shrink-0 items-center justify-center rounded-full overflow-hidden ${className}`}>
-          <img src="logo.png" alt="HeyClaw" className="w-full h-full object-cover select-none" />
-        </span>
-      );
-    }
-
-    const iconUrl = getAgentAvatarSvgUrl(avatar.svg);
-    const maskStyle: React.CSSProperties = {
-      WebkitMaskImage: `url("${iconUrl}")`,
-      WebkitMaskPosition: 'center',
-      WebkitMaskRepeat: 'no-repeat',
-      WebkitMaskSize: 'contain',
-      backgroundColor: 'currentColor',
-      maskImage: `url("${iconUrl}")`,
-      maskPosition: 'center',
-      maskRepeat: 'no-repeat',
-      maskSize: 'contain',
+    const getMappedAvatarImage = (svg: string): string => {
+      switch (svg) {
+        case 'lobster':
+        case 'document':
+        case 'briefcase':
+        case 'books':
+        case 'scales':
+          return avatar1;
+        case 'data':
+        case 'folder':
+        case 'tag':
+        case 'diagnosis':
+          return avatar2;
+        case 'creation':
+        case 'artboard':
+        case 'inspiration':
+        case 'potted-plant':
+          return avatar3;
+        case 'music':
+        case 'entertainment':
+        case 'headphones':
+        case 'lightning':
+          return avatar4;
+        case 'pet':
+        case 'fitness':
+        case 'meditation':
+        case 'travel':
+        case 'heart':
+          return avatar5;
+        default:
+          return avatar6;
+      }
     };
 
+    const imageUrl = getMappedAvatarImage(avatar.svg);
     return (
-      <span className={`inline-flex shrink-0 items-center justify-center rounded-full text-foreground ${className}`}>
-        <span aria-hidden="true" className={`inline-block ${iconClassName}`} style={maskStyle} />
+      <span className={`inline-flex shrink-0 items-center justify-center rounded-full overflow-hidden ${className}`}>
+        <img src={imageUrl} alt="Avatar" className="w-full h-full object-cover select-none" />
       </span>
     );
   }

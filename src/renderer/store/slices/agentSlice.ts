@@ -13,8 +13,11 @@ interface AgentSummary {
   sortOrder?: number | null;
   isDefault: boolean;
   source: 'custom' | 'preset';
+  presetId?: string;
   skillIds: string[];
   subagentAllowAgentIds: string[];
+  level?: '高级' | '中级' | '初级';
+  department?: string;
 }
 
 interface AgentState {

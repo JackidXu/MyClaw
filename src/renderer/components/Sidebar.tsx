@@ -40,11 +40,12 @@ import PayModal from './PayModal';
 interface SidebarProps {
   onShowSettings: () => void;
   onShowLogin?: () => void;
-  activeView: 'cowork' | 'skills' | 'scheduledTasks' | 'kits' | 'mcp';
+  activeView: 'cowork' | 'skills' | 'scheduledTasks' | 'kits' | 'mcp' | 'experts';
   onShowSkills: () => void;
   onShowCowork: () => void;
   onShowScheduledTasks: () => void;
   onShowKits: () => void;
+  onShowExperts: () => void;
   onNewChat: () => void;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
@@ -137,12 +138,14 @@ const Sidebar: React.FC<SidebarProps> = ({
   onShowCowork,
   onShowScheduledTasks,
   onShowKits,
+  onShowExperts,
   onNewChat,
   isCollapsed,
   onToggleCollapse,
   onWidthChange,
   updateNotice,
 }) => {
+  void onShowKits;
   const currentAgentId = useSelector((state: RootState) => state.agent.currentAgentId);
   const agents = useSelector((state: RootState) => state.agent.agents);
   const sessions = useSelector(selectCoworkSessions);
@@ -444,6 +447,8 @@ const Sidebar: React.FC<SidebarProps> = ({
         console.warn('[Sidebar] failed to save kits new feature badge state:', error);
       });
   }, [showKitsNewBadge]);
+
+  void dismissKitsNewBadge;
 
   useEffect(() => {
     const handleSearch = () => {
@@ -771,6 +776,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             <SidebarAutomationIcon className="h-4 w-4 shrink-0" />
             {i18nService.t('scheduledTasks')}
           </button>
+          {/* 原“召唤专家”菜单，隐藏但不删除代码
           <button
             type="button"
             onClick={() => {
@@ -789,6 +795,19 @@ const Sidebar: React.FC<SidebarProps> = ({
                 {i18nService.t('newFeatureBadge')}
               </span>
             )}
+          </button>
+          */}
+          <button
+            type="button"
+            onClick={() => {
+              setIsSearchOpen(false);
+              onShowExperts();
+            }}
+            className={activeView === 'experts' ? activeSidebarNavItemClassName : sidebarNavItemClassName}
+            aria-current={activeView === 'experts' ? 'page' : undefined}
+          >
+            <SidebarKitsIcon className="h-4 w-4 shrink-0" />
+            <span className="min-w-0 truncate">专家</span>
           </button>
           <button
             type="button"
@@ -817,6 +836,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             deletedSessionIds={deletedSessionIds}
             selectedKeys={selectedKeys}
             onShowCowork={onShowCowork}
+            onShowExperts={onShowExperts}
             onTaskSelected={(params) => {
               console.debug('[Sidebar] reporting agent sidebar task selection analytics');
               void reportYdAnalyzer({
