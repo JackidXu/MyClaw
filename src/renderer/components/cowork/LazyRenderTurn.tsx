@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useEffect,useRef, useState } from 'react';
 
 /**
  * LazyRenderTurn — Viewport-based lazy rendering wrapper for conversation turns.
@@ -48,10 +48,10 @@ const LazyRenderTurn: React.FC<LazyRenderTurnProps> = ({
 
     const observer = new IntersectionObserver(
       ([entry]) => {
-        const nowVisible = entry.isIntersecting;
-        setIsVisible(nowVisible);
-        if (nowVisible) {
+        if (entry.isIntersecting) {
+          setIsVisible(true);
           hasRenderedRef.current = true;
+          observer.unobserve(el);
         }
       },
       {
