@@ -1017,7 +1017,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
           {/* 点击后滑出控制菜单 */}
           {showUserMenu && (
-            <div className="absolute bottom-[calc(100%-8px)] left-3 right-3 z-50 p-1.5 rounded-xl border border-border bg-surface shadow-popover flex flex-col space-y-0.5 animate-fade-in">
+            <div className="absolute bottom-[calc(100%+6px)] left-3 right-3 z-50 p-2.5 rounded-2xl border border-border/80 bg-surface shadow-xl flex flex-col space-y-1 animate-fade-in">
               <button
                 type="button"
                 onClick={(e) => {
@@ -1027,9 +1027,9 @@ const Sidebar: React.FC<SidebarProps> = ({
                   setEditAvatar(userAvatar);
                   setIsEditModalOpen(true);
                 }}
-                className="w-full flex items-center gap-2 px-2.5 py-1.5 text-left text-xs text-foreground/80 hover:bg-surface-raised rounded-lg transition-colors font-medium"
+                className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-[13px] text-foreground/80 hover:bg-primary/5 hover:text-primary dark:hover:bg-primary/10 rounded-xl transition-all duration-200 font-medium"
               >
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className="w-4 h-4 text-secondary shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                 </svg>
                 编辑资料
@@ -1041,9 +1041,9 @@ const Sidebar: React.FC<SidebarProps> = ({
                   setShowUserMenu(false);
                   setIsPasswordModalOpen(true);
                 }}
-                className="w-full flex items-center gap-2 px-2.5 py-1.5 text-left text-xs text-foreground/80 hover:bg-surface-raised rounded-lg transition-colors font-medium"
+                className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-[13px] text-foreground/80 hover:bg-primary/5 hover:text-primary dark:hover:bg-primary/10 rounded-xl transition-all duration-200 font-medium"
               >
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className="w-4 h-4 text-secondary shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                 </svg>
                 修改密码
@@ -1055,13 +1055,16 @@ const Sidebar: React.FC<SidebarProps> = ({
                   setShowUserMenu(false);
                   setIsBillingModalOpen(true);
                 }}
-                className="w-full flex items-center gap-2 px-2.5 py-1.5 text-left text-xs text-foreground/80 hover:bg-surface-raised rounded-lg transition-colors font-medium"
+                className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-[13px] text-foreground/80 hover:bg-primary/5 hover:text-primary dark:hover:bg-primary/10 rounded-xl transition-all duration-200 font-medium"
               >
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className="w-4 h-4 text-secondary shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
                 我的账单
               </button>
+              
+              <div className="h-[1px] bg-border/40 my-1" />
+
               <button
                 type="button"
                 onClick={(e) => {
@@ -1069,9 +1072,9 @@ const Sidebar: React.FC<SidebarProps> = ({
                   setShowUserMenu(false);
                   setShowConfirmDeactivate(true);
                 }}
-                className="w-full flex items-center gap-2 px-2.5 py-1.5 text-left text-xs text-red-500 hover:bg-red-500/10 rounded-lg transition-colors font-medium"
+                className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-[13px] text-red-500 hover:bg-red-500/10 rounded-xl transition-all duration-200 font-medium"
               >
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                 </svg>
                 退出登录
