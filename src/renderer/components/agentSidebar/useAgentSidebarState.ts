@@ -60,6 +60,9 @@ export const deriveAgentSidebarIndicator = (
   if (session.status === CoworkSessionStatusValue.Running) {
     return AgentSidebarIndicator.Running;
   }
+  if (session.status === CoworkSessionStatusValue.Error) {
+    return AgentSidebarIndicator.Error;
+  }
   if (
     session.status === CoworkSessionStatusValue.Completed
     && unreadSessionIds.has(session.id)

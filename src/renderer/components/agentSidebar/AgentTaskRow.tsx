@@ -7,8 +7,8 @@ import Modal from '../common/Modal';
 import EditIcon from '../icons/EditIcon';
 import EllipsisHorizontalIcon from '../icons/EllipsisHorizontalIcon';
 import ListChecksIcon from '../icons/ListChecksIcon';
-import LoadingIcon from '../icons/LoadingIcon';
 import PushPinIcon from '../icons/PushPinIcon';
+import SpinnerIcon from '../icons/SpinnerIcon';
 import TrashIcon from '../icons/TrashIcon';
 import { AgentSidebarIndicator } from './constants';
 import { formatAgentTaskRelativeTime } from './time';
@@ -291,16 +291,23 @@ const AgentTaskRow: React.FC<AgentTaskRowProps> = ({
           )}
           {task.indicator === AgentSidebarIndicator.Running && (
             <span
-              className="inline-flex h-3 w-3 shrink-0 items-center justify-center transition-opacity group-hover:opacity-0"
+              className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center transition-opacity group-hover:opacity-0"
               title={indicatorLabel}
               aria-label={indicatorLabel}
             >
-              <LoadingIcon className="h-3 w-3 animate-spin text-secondary" aria-hidden="true" />
+              <SpinnerIcon className="h-3.5 w-3.5 animate-spin text-primary" aria-hidden="true" />
             </span>
           )}
           {task.indicator === AgentSidebarIndicator.CompletedUnread && (
             <span
-              className="h-[7px] w-[7px] shrink-0 rounded-full bg-blue-500 transition-opacity group-hover:opacity-0"
+              className="h-[7px] w-[7px] shrink-0 rounded-full bg-emerald-500 transition-opacity group-hover:opacity-0"
+              title={indicatorLabel}
+              aria-label={indicatorLabel}
+            />
+          )}
+          {task.indicator === AgentSidebarIndicator.Error && (
+            <span
+              className="h-[7px] w-[7px] shrink-0 rounded-full bg-red-500 transition-opacity group-hover:opacity-0"
               title={indicatorLabel}
               aria-label={indicatorLabel}
             />

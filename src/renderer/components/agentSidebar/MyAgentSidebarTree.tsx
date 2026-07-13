@@ -6,7 +6,11 @@ import Modal from '../../components/common/Modal';
 import { agentService } from '../../services/agent';
 import { coworkService } from '../../services/cowork';
 import { RootState } from '../../store';
-import { selectCoworkSessions, selectCurrentSessionId } from '../../store/selectors/coworkSelectors';
+import {
+  selectCoworkSessions,
+  selectCurrentSessionId,
+  selectUnreadSessionIds,
+} from '../../store/selectors/coworkSelectors';
 import { setDraftCollaborationMode } from '../../store/slices/coworkSlice';
 import { CoworkCollaborationMode } from '../../types/cowork';
 import { isDefaultAgentId } from '../../utils/agentDisplay';
@@ -15,6 +19,7 @@ import AgentCreateModal from '../agent/AgentCreateModal';
 import AgentSettingsPanel from '../agent/AgentSettingsPanel';
 import type { CoworkOpenShareOptionsEventDetail } from '../cowork/constants';
 import { CoworkUiEvent } from '../cowork/constants';
+import SpinnerIcon from '../icons/SpinnerIcon';
 import { formatAgentTaskRelativeTime } from './time';
 import { useAgentSidebarState } from './useAgentSidebarState';
 
@@ -59,6 +64,8 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
   const agents = useSelector((state: RootState) => state.agent.agents);
   const sessions = useSelector(selectCoworkSessions);
   const currentSessionId = useSelector(selectCurrentSessionId);
+  const unreadSessionIds = useSelector(selectUnreadSessionIds);
+  const unreadSessionIdSet = useMemo(() => new Set(unreadSessionIds), [unreadSessionIds]);
 
   // 状态定义
   const [activeMenuSessionId, setActiveMenuSessionId] = useState<string | null>(null);
@@ -357,6 +364,9 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
               const isSelected = session.id === currentSessionId;
               const expert = agents.find((a) => a.id === session.agentId);
               const relativeTime = formatAgentTaskRelativeTime(session.updatedAt || session.createdAt);
+              const isRunning = session.status === 'running';
+              const isCompletedUnread = session.status === 'completed' && unreadSessionIdSet.has(session.id);
+              const isError = session.status === 'error';
 
               const isMenuOpen = activeMenuSessionId === session.id;
               return (
@@ -432,13 +442,31 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
                     </div>
                   </div>
 
-                  {/* 三点式上下文菜单区 */}
-                  <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center shrink-0">
+                  {/* 三点式上下文菜单区 / 状态指示器 */}
+                  <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center justify-center shrink-0 w-6 h-6">
+                    {!isMenuOpen && isRunning && (
+                      <span className="absolute inset-0 flex items-center justify-center transition-opacity duration-150 group-hover:opacity-0 pointer-events-none" aria-hidden="true">
+                        <SpinnerIcon className="h-3.5 w-3.5 animate-spin text-primary" />
+                      </span>
+                    )}
+                    {!isMenuOpen && isCompletedUnread && (
+                      <span className="absolute inset-0 flex items-center justify-center transition-opacity duration-150 group-hover:opacity-0 pointer-events-none" aria-hidden="true">
+                        <span className="h-[7px] w-[7px] rounded-full bg-emerald-500" />
+                      </span>
+                    )}
+                    {!isMenuOpen && isError && (
+                      <span className="absolute inset-0 flex items-center justify-center transition-opacity duration-150 group-hover:opacity-0 pointer-events-none" aria-hidden="true">
+                        <span className="h-[7px] w-[7px] rounded-full bg-red-500" />
+                      </span>
+                    )}
+
                     <button
                       type="button"
                       onClick={(e) => handleMenuClick(e, session.id)}
                       title="更多操作"
-                      className="opacity-0 group-hover:opacity-100 transition-opacity h-6 w-6 inline-flex items-center justify-center rounded-lg hover:bg-secondary/20 text-secondary hover:text-foreground cursor-pointer"
+                      className={`${
+                        isMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                      } transition-opacity h-6 w-6 inline-flex items-center justify-center rounded-lg hover:bg-secondary/20 text-secondary hover:text-foreground cursor-pointer`}
                     >
                       <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
                         <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />

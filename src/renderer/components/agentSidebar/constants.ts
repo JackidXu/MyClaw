@@ -3,6 +3,7 @@ export const AgentSidebarIndicator = {
   PendingPermission: 'pending_permission',
   Running: 'running',
   CompletedUnread: 'completed_unread',
+  Error: 'error',
 } as const;
 
 export type AgentSidebarIndicator =
