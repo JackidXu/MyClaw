@@ -1,4 +1,4 @@
-import { ArrowPathIcon,ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import { ArrowPathIcon, ExclamationTriangleIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 import { AgentId } from '@shared/agent';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSelector } from 'react-redux';
@@ -738,22 +738,32 @@ const Sidebar: React.FC<SidebarProps> = ({
       >
       <div className="pt-3 pb-3">
         {showHeaderRow && (
-          <div className="draggable sidebar-header-drag h-8 flex items-center justify-end px-3">
+          <div className="draggable sidebar-header-drag h-8 flex items-center justify-end px-3 gap-1">
             {!isWindows && (
-              <button
-                type="button"
-                onClick={onToggleCollapse}
-                className="non-draggable h-8 w-8 inline-flex items-center justify-center rounded-lg text-secondary hover:bg-surface-raised transition-colors"
-                aria-label={isCollapsed ? i18nService.t('expand') : i18nService.t('collapse')}
-              >
-                <SidebarToggleIcon className="h-4 w-4" isCollapsed={isCollapsed} />
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => setIsSearchOpen(true)}
+                  className="non-draggable h-8 w-6 inline-flex items-center justify-center rounded-lg text-secondary hover:bg-surface-raised transition-colors"
+                  aria-label={i18nService.t('search')}
+                >
+                  <MagnifyingGlassIcon className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={onToggleCollapse}
+                  className="non-draggable h-8 w-6 inline-flex items-center justify-center rounded-lg text-secondary hover:bg-surface-raised transition-colors"
+                  aria-label={isCollapsed ? i18nService.t('expand') : i18nService.t('collapse')}
+                >
+                  <SidebarToggleIcon className="h-4 w-4" isCollapsed={isCollapsed} />
+                </button>
+              </>
             )}
           </div>
         )}
         {showHeaderRow && (
-          <div className="px-3 py-1.5 flex items-center select-none font-semibold text-[12.5px] text-secondary">
-            HeyClaw生意增长助手
+          <div className="px-3 py-1.5 flex items-center select-none font-semibold text-[12.5px] text-tertiary opacity-40">
+             HeyClaw生意增长助手
           </div>
         )}
         <div className="mt-[5px] space-y-0.5 px-3">
