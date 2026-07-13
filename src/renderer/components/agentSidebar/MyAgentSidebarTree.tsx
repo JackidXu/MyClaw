@@ -2,6 +2,7 @@ import { AgentId } from '@shared/agent';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 
+import Modal from '../../components/common/Modal';
 import { agentService } from '../../services/agent';
 import { coworkService } from '../../services/cowork';
 import { RootState } from '../../store';
@@ -64,6 +65,7 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isManageOpen, setIsManageOpen] = useState(false);
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  const [sessionToDelete, setSessionToDelete] = useState<any | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [settingsAgentId, setSettingsAgentId] = useState<string | null>(null);
 
@@ -208,9 +210,6 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
   // 删除会话操作
   const handleDeleteSession = async (e: React.MouseEvent, sessionId: string) => {
     e.stopPropagation();
-    const confirmDelete = window.confirm('确定要删除这个对话任务吗？');
-    if (!confirmDelete) return;
-
     const deleted = await coworkService.deleteSession(sessionId);
     onSidebarAction?.(deleted ? 'task_delete_success' : 'task_delete_failed', {
       agentType: isDefaultAgentId(currentAgentId) ? 'main' : 'custom',
@@ -496,12 +495,13 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
                           <span>分享</span>
                         </button>
 
-                        {/* 4. 删除 */}
+                         {/* 4. 删除 */}
                         <button
                           type="button"
                           onClick={(e) => {
+                            e.stopPropagation();
+                            setSessionToDelete(session);
                             setActiveMenuSessionId(null);
-                            void handleDeleteSession(e, session.id);
                           }}
                           className="w-full text-left px-2.5 py-1 text-[11px] text-red-500 hover:bg-red-50 flex items-center space-x-1.5 cursor-pointer"
                         >
@@ -671,6 +671,45 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
           </div>
         </div>
       )}
+
+      {/* 删除会话的确认轻量弹窗 */}
+      <Modal
+        isOpen={!!sessionToDelete}
+        onClose={() => setSessionToDelete(null)}
+        className="w-[320px] bg-surface border border-border p-5 rounded-xl shadow-2xl flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-200 animate-duration-150"
+      >
+        <div className="w-10 h-10 rounded-full bg-red-500/10 text-red-500 flex items-center justify-center mb-3">
+          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+          </svg>
+        </div>
+        <h3 className="text-sm font-semibold text-foreground mb-1">确定要删除这个对话任务吗？</h3>
+        <p className="text-xs text-secondary mb-5 max-w-[240px] truncate">
+          {sessionToDelete?.title || '未命名会话'}
+        </p>
+        <div className="flex w-full space-x-3">
+          <button
+            type="button"
+            onClick={() => setSessionToDelete(null)}
+            className="flex-1 py-1.5 rounded-lg border border-border bg-surface text-foreground text-xs font-medium hover:bg-secondary/10 active:bg-secondary/15 transition-colors cursor-pointer"
+          >
+            取消
+          </button>
+          <button
+            type="button"
+            onClick={async (e) => {
+              const targetSession = sessionToDelete;
+              setSessionToDelete(null);
+              if (targetSession) {
+                await handleDeleteSession(e, targetSession.id);
+              }
+            }}
+            className="flex-1 py-1.5 rounded-lg bg-red-500 text-white text-xs font-medium hover:bg-red-600 active:bg-red-700 transition-colors cursor-pointer"
+          >
+            确定删除
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 };

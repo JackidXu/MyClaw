@@ -738,11 +738,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       >
       <div className="pt-3 pb-3">
         {showHeaderRow && (
-          <div className="draggable sidebar-header-drag h-8 flex items-center justify-between px-3">
-            {/* 左侧放置品牌文字标题 (改用灰色) */}
-            <div className="flex items-center select-none font-semibold text-[12.5px] text-secondary">
-              HeyClaw生意增长助手
-            </div>
+          <div className="draggable sidebar-header-drag h-8 flex items-center justify-end px-3">
             {!isWindows && (
               <button
                 type="button"
@@ -753,6 +749,11 @@ const Sidebar: React.FC<SidebarProps> = ({
                 <SidebarToggleIcon className="h-4 w-4" isCollapsed={isCollapsed} />
               </button>
             )}
+          </div>
+        )}
+        {showHeaderRow && (
+          <div className="px-3 py-1.5 flex items-center select-none font-semibold text-[12.5px] text-secondary">
+            HeyClaw生意增长助手
           </div>
         )}
         <div className="mt-[5px] space-y-0.5 px-3">
