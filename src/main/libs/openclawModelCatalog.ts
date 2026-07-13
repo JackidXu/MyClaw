@@ -61,6 +61,12 @@ const BUILT_IN_MODEL_MAX_TOKENS = new Map<string, number>([
   ['minimax-portal/minimax-m2.7-highspeed', 131_072],
   ['minimax-portal/minimax-m2.5', 131_072],
   ['minimax-portal/minimax-m2.5-highspeed', 131_072],
+  ['openai/deepseek-v4-flash', 16_384],
+  ['openai/deepseek-v4-pro', 16_384],
+  ['deepseek/deepseek-v4-flash', 16_384],
+  ['deepseek/deepseek-v4-pro', 16_384],
+  ['volcengine/deepseek-v4-flash', 16_384],
+  ['volcengine/deepseek-v4-pro', 16_384],
 ]);
 
 const BUILT_IN_PROVIDER_ALIASES = new Map<string, string>([

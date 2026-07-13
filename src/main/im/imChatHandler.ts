@@ -170,7 +170,7 @@ export class IMChatHandler {
 
     const body: any = {
       model: config.model || 'claude-3-5-sonnet-20241022',
-      max_tokens: 4096,
+      max_tokens: 8192,
       messages: [{ role: 'user', content: userMessage }],
     };
 
@@ -222,7 +222,6 @@ export class IMChatHandler {
       ? {
           model: config.model || 'gpt-4o',
           input: [{ role: 'user', content: [{ type: 'input_text', text: userMessage }] }],
-          max_output_tokens: 4096,
         }
       : {
           model: config.model || 'gpt-4o',
@@ -230,13 +229,6 @@ export class IMChatHandler {
         };
     if (useResponsesApi && systemPrompt) {
       body.instructions = systemPrompt;
-    }
-    if (!useResponsesApi) {
-      if (this.shouldUseMaxCompletionTokens(config)) {
-        body.max_completion_tokens = 4096;
-      } else {
-        body.max_tokens = 4096;
-      }
     }
 
     const headers: Record<string, string> = {
