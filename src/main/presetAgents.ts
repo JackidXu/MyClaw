@@ -516,7 +516,7 @@ const RAW_EXPERTS = [
 ];
 
 export const PRESET_AGENTS: PresetAgent[] = RAW_EXPERTS.map((raw, index) => {
-  const icon = `avatar_${(index % 6) + 1}`;
+  const icon = `avatar_${(index % 16) + 1}`;
   return {
     id: raw.id,
     name: raw.name,
