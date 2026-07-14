@@ -4047,6 +4047,7 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
   }, []);
 
   const messages = currentSession?.messages;
+
   const displayItems = useMemo(() => messages ? buildDisplayItems(messages) : [], [messages]);
   const turns = useMemo(() => buildConversationTurns(displayItems), [displayItems]);
   const latestAssistantTurn = useMemo(() => findLatestAssistantTurn(turns), [turns]);
@@ -4406,7 +4407,7 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
       );
 
       return (
-        <LazyRenderTurn key={turn.id} turnId={turn.id} alwaysRender={alwaysRender} data-turn-index={index}>
+        <LazyRenderTurn key={turn.id} turnId={turn.id} alwaysRender={alwaysRender} data-turn-index={index} dependency={turn}>
           {turn.userMessage && (
             <div
               data-export-role="user-message"

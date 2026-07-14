@@ -106,7 +106,7 @@ const ConversationTurnsView: React.FC<ConversationTurnsViewProps> = ({
         );
 
         const turnContent = (
-          <LazyRenderTurn key={turn.id} turnId={turn.id} alwaysRender={alwaysRender} data-turn-index={index}>
+          <LazyRenderTurn key={turn.id} turnId={turn.id} alwaysRender={alwaysRender} data-turn-index={index} dependency={turn}>
             {turn.userMessage && (
               <div data-export-role="user-message" className={isLastTurn ? 'animate-message-in' : undefined}>
                 <UserMessageItem

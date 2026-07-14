@@ -18,6 +18,8 @@ interface LazyRenderTurnProps extends React.HTMLAttributes<HTMLDivElement> {
   rootMargin?: number;
   /** Whether this turn should always be rendered (e.g. last turn during streaming) */
   alwaysRender?: boolean;
+  /** Optional dependency object (e.g. turn) to trigger re-render on change */
+  dependency?: any;
   children: React.ReactNode;
 }
 
@@ -28,6 +30,7 @@ const LazyRenderTurn: React.FC<LazyRenderTurnProps> = ({
   turnId,
   rootMargin = 600,
   alwaysRender = false,
+  dependency,
   children,
   style,
   ...restProps
@@ -103,7 +106,20 @@ const LazyRenderTurn: React.FC<LazyRenderTurnProps> = ({
   );
 };
 
-export default LazyRenderTurn;
+const MemoizedLazyRenderTurn = React.memo(LazyRenderTurn, (prevProps, nextProps) => {
+  // 1. 如果 alwaysRender 属性改变，必须重新渲染
+  if (prevProps.alwaysRender !== nextProps.alwaysRender) return false;
+  // 2. 如果 alwaysRender 为真（表示是活跃消息、正流式输出或最新的前几项），必须重新渲染以展现最新状态
+  if (prevProps.alwaysRender || nextProps.alwaysRender) return false;
+  // 3. 如果 turnId 改变了，必须重新渲染
+  if (prevProps.turnId !== nextProps.turnId) return false;
+  // 4. 如果 dependency 改变了（例如历史消息数据发生变更，比如重新编辑保存），必须重新渲染
+  if (prevProps.dependency !== nextProps.dependency) return false;
+  // 5. 其余情况下，内容完全静态且不活跃，安全跳过重复渲染
+  return true;
+});
+
+export default MemoizedLazyRenderTurn;
 
 /** Clear all cached heights (e.g. when switching sessions) */
 export const clearHeightCache = () => heightCache.clear();
