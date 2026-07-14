@@ -284,7 +284,7 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
       <div className="shrink-0 mb-4 px-2">
         <div className="flex items-center justify-between mb-2.5">
           <h2 className="text-[13px] font-semibold text-secondary">我的专家</h2>
-          {/* 全部对话的标签 */}
+          {/* 全部任务的标签 */}
           <button
             type="button"
             onClick={() => setFilterAgentId('all')}
@@ -294,7 +294,7 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
                 : 'text-secondary hover:text-foreground hover:bg-secondary/10'
             }`}
           >
-            全部对话
+            全部任务
           </button>
         </div>
 
