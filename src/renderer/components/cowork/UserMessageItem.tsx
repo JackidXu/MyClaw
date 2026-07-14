@@ -1,5 +1,6 @@
 import { PhotoIcon } from '@heroicons/react/24/outline';
 import React, { useCallback, useMemo, useState } from 'react';
+import { useSelector } from 'react-redux';
 
 import { hasGoalSettingMessageMetadata } from '../../../common/goalCommandDisplay';
 import type { CoworkImageAttachmentPreview } from '../../../shared/cowork/imageAttachments';
@@ -9,11 +10,16 @@ import { copyTextToClipboard } from '../../services/clipboard';
 import { i18nService } from '../../services/i18n';
 import { buildKitReferences } from '../../services/kitCapability';
 import { skillService } from '../../services/skill';
+import { RootState } from '../../store';
 import type { CoworkImageAttachment, CoworkMessage, CoworkMessageMetadata } from '../../types/cowork';
 import type { MarketplaceKit } from '../../types/kit';
 import type { Skill } from '../../types/skill';
 import { formatMessageDateTime } from '../../utils/tokenFormat';
 import { parseUserMessageForDisplay } from '../../utils/userMessageDisplay';
+import {
+  ACTIVE_CONTEXT_BADGE_BUTTON_CLASS,
+  ACTIVE_CONTEXT_BADGE_ICON_WRAP_CLASS,
+} from '../common/activeContextBadgeStyles';
 import EditIcon from '../icons/EditIcon';
 import GoalIcon from '../icons/GoalIcon';
 import MessageCopyIcon from '../icons/MessageCopyIcon';
@@ -116,10 +122,49 @@ const ReEditButton: React.FC<{
 // ── UserMessageSkillBadges ───────────────────────────────────────────────────
 
 const UserMessageSkillBadges: React.FC<{ skills: Skill[] }> = ({ skills }) => {
+  const currentAgentId = useSelector((state: RootState) => state.agent.currentAgentId);
+  const [isExpanded, setIsExpanded] = useState(false);
+
   if (skills.length === 0) return null;
+
+  const shouldCollapse = currentAgentId !== 'main';
+
+  if (shouldCollapse && !isExpanded) {
+    return (
+      <button
+        type="button"
+        onClick={() => setIsExpanded(true)}
+        className={ACTIVE_CONTEXT_BADGE_BUTTON_CLASS}
+      >
+        <span className={ACTIVE_CONTEXT_BADGE_ICON_WRAP_CLASS}>
+          <SkillIcon className="h-3.5 w-3.5 text-primary" />
+        </span>
+        <span className="min-w-0 truncate">
+          {i18nService.getLanguage() === 'zh'
+            ? `${skills.length}个专家能力`
+            : `${skills.length} Expert Capabilities`}
+        </span>
+      </button>
+    );
+  }
 
   return (
     <div className="flex flex-wrap items-center gap-1.5">
+      {shouldCollapse && (
+        <button
+          type="button"
+          onClick={() => setIsExpanded(false)}
+          className={`${ACTIVE_CONTEXT_BADGE_BUTTON_CLASS} opacity-80 hover:opacity-100`}
+          title={i18nService.getLanguage() === 'zh' ? '收起专家能力' : 'Collapse Capabilities'}
+        >
+          <span className={ACTIVE_CONTEXT_BADGE_ICON_WRAP_CLASS}>
+            <SkillIcon className="h-3.5 w-3.5 text-primary" />
+          </span>
+          <span className="min-w-0 truncate text-xs text-secondary">
+            {i18nService.getLanguage() === 'zh' ? '收起专家能力' : 'Collapse'}
+          </span>
+        </button>
+      )}
       {skills.map(skill => (
         <div
           key={skill.id}
