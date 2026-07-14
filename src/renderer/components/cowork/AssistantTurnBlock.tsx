@@ -282,6 +282,16 @@ const AssistantTurnBlock: React.FC<{
     const content = mapDisplayText ? mapDisplayText(displayContent) : displayContent;
     if (!content.trim() && !isContextCompactionMessage(message)) return null;
 
+    // 过滤由于后台任务或通道在工具执行失败时推送到会话中的无效报错信息
+    const trimmedContent = content.trim();
+    if (
+      (trimmedContent.startsWith('⚠️') || trimmedContent.startsWith('🛠️')) &&
+      trimmedContent.endsWith('failed')
+    ) {
+      return null;
+    }
+
+
     if (isContextCompactionMessage(message)) {
       const status = message.metadata?.status;
       return (
