@@ -388,6 +388,7 @@ const AgentCreateModal: React.FC<AgentCreateModalProps> = ({
         subagentAllowAgentIds,
         level,
         department,
+        enabled: false,
       });
       if (agent) {
         if (userInfo !== initialUserInfoRef.current) {

@@ -75,6 +75,7 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
   const [sessionToDelete, setSessionToDelete] = useState<any | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [settingsAgentId, setSettingsAgentId] = useState<string | null>(null);
+  const [filterAgentId, setFilterAgentId] = useState<string | 'all'>('all');
 
   // 二阶段行内确认状态，代替 Electron 不支持的 window.confirm
   const [confirmingRecallAgentId, setConfirmingRecallAgentId] = useState<string | null>(null);
@@ -123,12 +124,21 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
     void agentService.loadAgents();
   }, []);
 
-  // 监听当前选中的专家发生变化，自动拉取该专家的对话列表并更新视图
+  // 监听选中的过滤专家，拉取对应的对话列表
   useEffect(() => {
-    if (currentAgentId) {
-      void coworkService.loadSessions(currentAgentId);
+    if (filterAgentId === 'all') {
+      void coworkService.loadSessions(undefined);
+    } else {
+      void coworkService.loadSessions(filterAgentId);
     }
-  }, [currentAgentId]);
+  }, [filterAgentId]);
+
+  // 监听当前选中的专家发生变化，如果在单专家模式，自动拉取该专家的对话列表并更新视图
+  useEffect(() => {
+    if (currentAgentId && filterAgentId !== 'all' && currentAgentId !== filterAgentId) {
+      setFilterAgentId(currentAgentId);
+    }
+  }, [currentAgentId, filterAgentId]);
 
   const getTaskActionParams = useCallback((task: any, hasActiveSubagent?: boolean) => ({
     agentType: isDefaultAgentId(task.agentId) ? ('main' as const) : ('custom' as const),
@@ -169,6 +179,7 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
 
   // 点击头像墙专家头像：切换专家，如果没有对话就新建，有对话就直接切换
   const handleExpertClick = async (expertId: string) => {
+    setFilterAgentId(expertId);
     const expertSessions = sessions.filter(s => s.agentId === expertId);
     
     if (expertId !== currentAgentId) {
@@ -273,24 +284,24 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
       <div className="shrink-0 mb-4 px-2">
         <div className="flex items-center justify-between mb-2.5">
           <h2 className="text-[13px] font-semibold text-secondary">我的专家</h2>
-          {/* 管理专家齿轮按钮 */}
+          {/* 全部对话的标签 */}
           <button
             type="button"
-            onClick={() => setIsManageOpen(true)}
-            title="管理我的专家"
-            className="text-secondary hover:text-foreground transition-colors p-1 rounded hover:bg-secondary/15 cursor-pointer"
+            onClick={() => setFilterAgentId('all')}
+            className={`text-xs font-semibold px-2 py-0.5 rounded transition-all cursor-pointer ${
+              filterAgentId === 'all'
+                ? 'bg-primary/10 text-primary'
+                : 'text-secondary hover:text-foreground hover:bg-secondary/10'
+            }`}
           >
-            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
+            全部对话
           </button>
         </div>
 
         {/* 圆形头像网格（一行4个，高和宽完全对齐约束，保持极致清爽） */}
         <div className="grid grid-cols-4 gap-3 max-h-[140px] overflow-y-auto pr-1 py-1 [scrollbar-width:none]">
           {enabledExperts.map((expert) => {
-            const isSelected = currentAgentId === expert.id;
+            const isSelected = filterAgentId === expert.id;
             return (
               <div
                 key={expert.id}
@@ -315,6 +326,41 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
                       <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
                     </span>
                   )}
+
+                  {/* 右上角快捷控制图标 (仅在 Hover 状态下显示，避免误触且操作精准) */}
+                  <div className="absolute -top-1 -right-1 z-20 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                    {expert.id === AgentId.Main ? (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSettingsAgentId(expert.id);
+                        }}
+                        className="w-4 h-4 rounded-full bg-transparent flex items-center justify-center text-foreground/85 hover:bg-surface hover:border hover:border-border hover:text-foreground hover:shadow-md transition-all duration-150 cursor-pointer"
+                        title="编辑主专家"
+                      >
+                        {/* 铅笔编辑图标 */}
+                        <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                        </svg>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setConfirmingRecallAgentId(expert.id);
+                        }}
+                        className="w-4 h-4 rounded-full bg-transparent flex items-center justify-center text-foreground/85 hover:bg-surface hover:border hover:border-border hover:text-foreground hover:shadow-md transition-all duration-150 cursor-pointer"
+                        title="召回该专家"
+                      >
+                        {/* 叉号召回图标 */}
+                        <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <span
                   onClick={() => void handleExpertClick(expert.id)}
@@ -329,7 +375,7 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
           {/* 最后的加号快速添加 */}
           <button
             type="button"
-            onClick={() => setIsCreateOpen(true)}
+            onClick={() => onShowExperts?.()}
             title="添加新专家"
             className="flex flex-col items-center justify-between h-[58px] focus:outline-none group cursor-pointer animate-in fade-in duration-100"
           >
@@ -735,6 +781,51 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
             className="flex-1 py-1.5 rounded-lg bg-red-500 text-white text-xs font-medium hover:bg-red-600 active:bg-red-700 transition-colors cursor-pointer"
           >
             确定删除
+          </button>
+        </div>
+      </Modal>
+
+      {/* 召回专家的确认轻量弹窗 */}
+      <Modal
+        isOpen={!!confirmingRecallAgentId}
+        onClose={() => setConfirmingRecallAgentId(null)}
+        className="w-[320px] bg-surface border border-border p-5 rounded-xl shadow-2xl flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-200"
+      >
+        <div className="w-10 h-10 rounded-full bg-orange-500/10 text-orange-500 flex items-center justify-center mb-3">
+          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+        </div>
+        <h3 className="text-sm font-semibold text-foreground mb-1">是否确认召回？</h3>
+        <p className="text-xs text-secondary mb-5 max-w-[240px] truncate">
+          召回后将从我的专家列表中移除：{agents.find(a => a.id === confirmingRecallAgentId)?.name}
+        </p>
+        <div className="flex w-full space-x-3">
+          <button
+            type="button"
+            onClick={() => setConfirmingRecallAgentId(null)}
+            className="flex-1 py-1.5 rounded-lg border border-border bg-surface text-foreground text-xs font-medium hover:bg-secondary/10 active:bg-secondary/15 transition-colors cursor-pointer"
+          >
+            取消
+          </button>
+          <button
+            type="button"
+            onClick={async () => {
+              const agentId = confirmingRecallAgentId;
+              setConfirmingRecallAgentId(null);
+              if (agentId) {
+                const updated = await agentService.updateAgent(agentId, { enabled: false });
+                if (updated) {
+                  await agentService.loadAgents();
+                  if (currentAgentId === agentId) {
+                    agentService.switchAgent(AgentId.Main);
+                  }
+                }
+              }
+            }}
+            className="flex-1 py-1.5 rounded-lg bg-orange-600 text-white text-xs font-medium hover:bg-orange-700 active:bg-orange-800 transition-colors cursor-pointer"
+          >
+            确认召回
           </button>
         </div>
       </Modal>

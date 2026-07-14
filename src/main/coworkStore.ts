@@ -407,6 +407,7 @@ export interface CreateAgentRequest {
   department?: string;
   source?: AgentSource;
   presetId?: string;
+  enabled?: boolean;
 }
 
 export interface UpdateAgentRequest {
@@ -2871,6 +2872,7 @@ export class CoworkStore {
     }
 
     let removedOrphanSessionCount = 0;
+    const isEnabled = request.enabled !== false ? 1 : 0;
     const createAgent = this.db.transaction(() => {
       removedOrphanSessionCount = this.deleteSessionsForAgent(id).length;
 
@@ -2878,7 +2880,7 @@ export class CoworkStore {
         .prepare(
           `
         INSERT INTO agents (id, name, description, system_prompt, identity, model, working_directory, icon, skill_ids, subagent_allow_agent_ids, level, department, enabled, is_default, source, preset_id, sort_order, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)
       `,
         )
         .run(
@@ -2894,6 +2896,7 @@ export class CoworkStore {
           JSON.stringify(normalizeStringIdList(request.subagentAllowAgentIds)),
           request.level || '高级',
           request.department || '其他',
+          isEnabled,
           request.source || 'custom',
           request.presetId || '',
           this.getNextAgentSortOrder(),

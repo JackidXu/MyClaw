@@ -51,6 +51,10 @@ class AgentService {
           source: a.source,
           skillIds: a.skillIds ?? [],
           subagentAllowAgentIds: a.subagentAllowAgentIds ?? [],
+          level: a.level,
+          department: a.department,
+          identity: a.identity,
+          presetId: a.presetId,
         }));
         store.dispatch(setAgents(mappedAgents));
       }
@@ -73,6 +77,7 @@ class AgentService {
     subagentAllowAgentIds?: string[];
     level?: '高级' | '中级' | '初级';
     department?: string;
+    enabled?: boolean;
   }): Promise<Agent | null> {
     try {
       const agent = await window.electron?.agents?.create(request);
@@ -95,6 +100,7 @@ class AgentService {
           subagentAllowAgentIds: agent.subagentAllowAgentIds ?? [],
           level: agent.level,
           department: agent.department,
+          identity: agent.identity,
         }));
         return agent;
       }

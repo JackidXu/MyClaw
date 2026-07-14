@@ -56,6 +56,7 @@ export interface CreateAgentRequest {
   department?: string;
   source?: string;
   presetId?: string;
+  enabled?: boolean;
 }
 
 export interface UpdateAgentRequest {

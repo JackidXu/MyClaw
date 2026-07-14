@@ -18,6 +18,7 @@ interface AgentSummary {
   subagentAllowAgentIds: string[];
   level?: '高级' | '中级' | '初级';
   department?: string;
+  identity?: string;
 }
 
 interface AgentState {
