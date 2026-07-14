@@ -92,6 +92,18 @@ describe('prepareCoworkPromptPayload', () => {
       success: true,
       payload: {
         finalPrompt: 'inspect\n\nFile: /tmp/image.png',
+        mediaReferences: [
+          {
+            fileId: '/tmp/image.png',
+            fileName: 'image.png',
+            index: 1,
+            localPath: '/tmp/image.png',
+            mediaType: 'image',
+            mimeType: 'image/png',
+            role: 'reference_image',
+            token: '@图片1',
+          },
+        ],
       },
     });
   });

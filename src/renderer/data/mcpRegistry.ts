@@ -1,4 +1,4 @@
-import { McpRegistryEntry, McpRegistryEntryKind } from '../types/mcp';
+import { McpRegistryEntry } from '../types/mcp';
 
 /**
  * Built-in MCP server registry.
