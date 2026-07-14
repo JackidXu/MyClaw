@@ -1,6 +1,4 @@
-import { AgentId, DefaultAgentProfile, LegacyAgentName } from '@shared/agent';
-
-import { i18nService } from '../services/i18n';
+import { AgentId, DefaultAgentProfile } from '@shared/agent';
 
 interface AgentDisplaySource {
   id: string;
@@ -12,19 +10,7 @@ export const isDefaultAgentId = (agentId?: string | null): boolean => {
   return agentId?.trim() === AgentId.Main;
 };
 
-export const isDefaultAgentProfileName = (agent: Pick<AgentDisplaySource, 'id' | 'name'>): boolean => {
-  if (!isDefaultAgentId(agent.id)) return false;
-  const normalizedName = agent.name?.trim() ?? '';
-  return !normalizedName
-    || normalizedName.toLowerCase() === LegacyAgentName.Main
-    || normalizedName === DefaultAgentProfile.Name;
-};
-
 export const getAgentDisplayName = (agent: Pick<AgentDisplaySource, 'id' | 'name'>): string => {
-  if (isDefaultAgentProfileName(agent)) {
-    return i18nService.t('defaultAgentDisplayName');
-  }
-
   const normalizedName = agent.name?.trim();
   return normalizedName || agent.id;
 };
@@ -40,7 +26,7 @@ export const getAgentDisplayNameById = (
   if (agent) return getAgentDisplayName(agent);
 
   if (isDefaultAgentId(normalizedAgentId)) {
-    return i18nService.t('defaultAgentDisplayName');
+    return DefaultAgentProfile.Name;
   }
 
   return normalizedAgentId;
