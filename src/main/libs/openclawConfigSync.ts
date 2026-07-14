@@ -752,20 +752,14 @@ const resolveModelMaxTokensForOpenClaw = (options: {
   descriptor: ProviderDescriptor;
   contextWindow?: number;
 }): number | undefined => {
-  const catalogMaxTokens = options.api === OpenClawApiConst.AnthropicMessages
-    ? resolveCatalogModelMaxTokens(
-      options.descriptor.providerId,
-      options.modelId,
-      options.sessionModelId,
-    )
-    : undefined;
+  const catalogMaxTokens = resolveCatalogModelMaxTokens(
+    options.descriptor.providerId,
+    options.modelId,
+    options.sessionModelId,
+  );
   const rawMaxTokens = catalogMaxTokens
     ?? options.descriptor.modelDefaults?.maxTokens
-    ?? (
-      options.api === OpenClawApiConst.AnthropicMessages
-        ? OPENCLAW_DEFAULT_MODEL_MAX_TOKENS
-        : undefined
-    );
+    ?? OPENCLAW_DEFAULT_MODEL_MAX_TOKENS;
   return clampModelMaxTokens(rawMaxTokens, options.contextWindow);
 };
 

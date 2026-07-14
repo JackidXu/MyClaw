@@ -67,6 +67,12 @@ const BUILT_IN_MODEL_MAX_TOKENS = new Map<string, number>([
   ['deepseek/deepseek-v4-pro', 16_384],
   ['volcengine/deepseek-v4-flash', 16_384],
   ['volcengine/deepseek-v4-pro', 16_384],
+  ['volcengine/doubao-seed-2.0-lite', 16_384],
+  ['volcengine/doubao-seed-2.0-mini', 16_384],
+  ['volcengine/doubao-seed-2.0-pro', 16_384],
+  ['openai/doubao-seed-2.0-lite', 16_384],
+  ['openai/doubao-seed-2.0-mini', 16_384],
+  ['openai/doubao-seed-2.0-pro', 16_384],
 ]);
 
 const BUILT_IN_PROVIDER_ALIASES = new Map<string, string>([
