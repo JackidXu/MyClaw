@@ -822,7 +822,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             aria-current={activeView === 'experts' ? 'page' : undefined}
           >
             <SidebarKitsIcon className="h-4 w-4 shrink-0" />
-            <span className="min-w-0 truncate">专家</span>
+            <span className="min-w-0 truncate">AI 团队</span>
           </button>
         </div>
       </div>
