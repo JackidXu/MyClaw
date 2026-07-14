@@ -1148,7 +1148,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     coworkGreetingEvening: '晚上好',
     coworkGreetingLateNight: '夜深了',
     coworkHomeTagline: '我是 HeyClaw，你的全场景办公 Agent',
-    coworkCurrentAgent: '当前 Agent',
+    coworkCurrentAgent: '当前专家',
     coworkSelectAgent: '选择 Agent',
 
     // Multi-Agent 管理
