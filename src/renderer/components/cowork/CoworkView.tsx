@@ -842,7 +842,9 @@ const CoworkView: React.FC<CoworkViewProps> = ({
               className="mt-4 text-2xl font-semibold leading-[var(--lobster-leading-2xl)] tracking-normal text-foreground animate-fade-in-up"
               style={{ animationDelay: '70ms', animationFillMode: 'both' }}
             >
-              {i18nService.t(resolveHomeGreetingKey())}
+              {currentAgent && currentAgent.id !== 'main'
+                ? currentAgent.name
+                : i18nService.t(resolveHomeGreetingKey())}
             </h2>
             <p
               className="mt-2 text-[length:var(--lobster-text-promptLarge)] font-normal leading-[var(--lobster-leading-promptLarge)] text-secondary animate-fade-in-up"
