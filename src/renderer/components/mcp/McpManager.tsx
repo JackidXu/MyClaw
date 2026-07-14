@@ -44,6 +44,8 @@ const LAUNCH_STATUS_COLORS: Record<string, string> = {
 
 type McpTab = 'installed' | 'marketplace' | 'custom';
 
+// 注释：判断是否为企查查的注册项。虽然本地静态配置中已移除“企查查”，
+// 但保留此判断和后续授权逻辑以兼容已安装的企查查服务或作为安全兜底。
 const isQichachaRegistryEntry = (entry: McpRegistryEntry): boolean =>
   entry.oauthProvider === 'qichacha';
 

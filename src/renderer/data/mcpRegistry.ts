@@ -160,19 +160,7 @@ export const mcpRegistry: McpRegistryEntry[] = [
     defaultArgs: ['-y', 'firecrawl-mcp@latest'],
     requiredEnvKeys: ['FIRECRAWL_API_KEY'],
   },
-  {
-    id: 'qichacha',
-    name: '企查查',
-    descriptionKey: 'mcpDesc_qichacha',
-    category: 'data-api',
-    categoryKey: 'mcpCategoryDataApi',
-    transportType: 'http',
-    command: 'https://agent.qcc.com/mcp',
-    defaultArgs: ['6 servers'],
-    oauthProvider: 'qichacha',
-    kind: McpRegistryEntryKind.Bundle,
-    marketplacePosition: 4,
-  },
+  // 注释：已移除“企查查”相关的本地静态 MCP 配置，防止其在 MCP 市场中展示
 ];
 
 /**
