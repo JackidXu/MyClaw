@@ -415,10 +415,10 @@ const AssistantTurnBlock: React.FC<{
                 const hasToolGroupAfter = consolidatedItems
                   .slice(index + 1)
                   .some(laterItem => laterItem.type === 'tool_group' || laterItem.type === 'media_polling_group');
-                const isLastAssistant = showCopyButtons && !hasToolGroupAfter;
                 const hasAssistantAfter = consolidatedItems
                   .slice(index + 1)
                   .some(laterItem => laterItem.type === 'assistant');
+                const isLastAssistant = showCopyButtons && !hasToolGroupAfter && !hasAssistantAfter;
 
                 return (
                   <AssistantMessageItem
@@ -429,7 +429,7 @@ const AssistantTurnBlock: React.FC<{
                     showCopyButton={isLastAssistant}
                     onFork={isLastAssistant ? onForkMessage : undefined}
                     turnMetadata={isLastAssistant ? (item.message.metadata as CoworkMessageMetadata) : undefined}
-                    completedGoal={isLastAssistant && !hasAssistantAfter ? completedGoal : null}
+                    completedGoal={isLastAssistant ? completedGoal : null}
                     planConfirmationMessageId={planConfirmationMessageId}
                     onConfirmPlan={onConfirmPlan}
                     onAdjustPlan={onAdjustPlan}
