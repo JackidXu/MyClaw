@@ -427,15 +427,15 @@ const plugin = {
           'Segment an image to extract the foreground subject with a transparent background, using Aliyun vision intelligence via HeyClaw server.',
           'CRITICAL WORKFLOW: Use this tool when you need to extract a specific subject (clothing, product, person, object, etc.) from a photo before generating a high-quality e-commerce white-background image.',
           'First call this tool to segment the subject, then pass the returned transparent PNG URL as the `image` parameter to `heyclaw_image_generate`.',
-          'REQUIRED: Analyze the input image content before calling:',
-          '- If the image contains clothing/apparel (tops, pants, skirt, shoes, bag, hat), set type="clothing". Optionally set clothClass to the specific category you identified (e.g. ["tops"], ["pants"], ["skirt"]).',
-          '- For any other subject (product, person, animal, object, etc.), set type="general".',
-          'Do NOT guess type blindly — examine the image first.',
+          'REQUIRED: Analyze the input image and user instruction before calling:',
+          '- Set type="clothing" ONLY if the user explicitly wants to isolate or extract a specific piece of clothing/garment item itself (e.g. isolating only the jacket, pants, or skirt) rather than the whole person.',
+          '- For all general subject extraction (including human portraits, characters, avatars, animals, objects, products, or general background removal), you MUST set type="general". Do NOT use "clothing" just because the character in the image is wearing clothes.',
+          'Do NOT guess type blindly — examine the image and user instructions first.',
         ].join(' '),
         parameters: Type.Object({
           image: Type.String({ description: 'The exact absolute local file path (e.g., "/Users/.../photo.jpg") or http(s) URL of the image. Do NOT include any explanations or chat reasoning in this parameter.' }),
           type: Type.String({
-            description: 'Segmentation model type. Must be determined by analyzing the image: "clothing" for apparel/fashion images; "general" for all other subjects.',
+            description: 'Segmentation model type. "clothing" ONLY for isolating a specific clothing item itself; "general" for all portraits, people, characters, products, objects, and general subject extraction.',
             enum: ['clothing', 'general'],
           }),
           clothClass: Type.Optional(Type.Array(Type.String(), {
