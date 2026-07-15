@@ -226,6 +226,7 @@ export class OpenClawEngineManager extends EventEmitter {
     ensureDir(this.baseDir);
     ensureDir(this.logsDir);
     ensureDir(this.stateDir);
+    this.cleanLegacyLocks();
     this.pruneGatewayLogsIfNeeded();
 
     const runtime = this.resolveRuntimeMetadata();
@@ -244,6 +245,33 @@ export class OpenClawEngineManager extends EventEmitter {
           message: `Bundled OpenClaw runtime is missing. Expected: ${runtime.expectedPathHint}`,
           canRetry: true,
         };
+  }
+
+  private cleanLegacyLocks(): void {
+    try {
+      const agentsDir = path.join(this.stateDir, 'agents');
+      if (!fs.existsSync(agentsDir)) return;
+
+      const cleanDirRecursively = (dir: string) => {
+        const entries = fs.readdirSync(dir, { withFileTypes: true });
+        for (const entry of entries) {
+          const fullPath = path.join(dir, entry.name);
+          if (entry.isDirectory()) {
+            cleanDirRecursively(fullPath);
+          } else if (entry.isFile() && entry.name.endsWith('.lock')) {
+            try {
+              fs.unlinkSync(fullPath);
+              console.log(`[OpenClaw] Cleaned legacy lock file at startup: ${fullPath}`);
+            } catch (e) {
+              console.warn(`[OpenClaw] Failed to clean lock file: ${fullPath}`, e);
+            }
+          }
+        }
+      };
+      cleanDirRecursively(agentsDir);
+    } catch (e) {
+      console.error(`[OpenClaw] Error cleaning legacy locks:`, e);
+    }
   }
 
   /**

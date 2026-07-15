@@ -4566,6 +4566,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       mediaSelection?: CoworkMediaSelection;
       mediaReferences?: CoworkMediaAttachmentRef[];
       selectedTextSnippets?: CoworkSelectedTextSnippet[];
+      isRetryAttempt?: boolean;
     },
   ): Promise<void> {
     if (!prompt.trim() && (!options.imageAttachments || options.imageAttachments.length === 0)) {
@@ -4905,6 +4906,69 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
         this.bindRunIdToTurn(sessionId, returnedRunId);
       }
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const isLockError = errorMessage.includes('session file locked (timeout');
+
+      if (isLockError && !options.isRetryAttempt) {
+        console.warn(`[OpenClawRuntime] Detected session file lock error. Attempting auto-recovery. Error: ${errorMessage}`);
+
+        // 1. 解析 pid 与 lockPath
+        const pidMatch = errorMessage.match(/pid=(\d+)/);
+        const lockPathMatch = errorMessage.match(/(\/[^\r\n]+\.lock)/);
+
+        const pid = pidMatch ? parseInt(pidMatch[1], 10) : null;
+        const lockPath = lockPathMatch ? lockPathMatch[1] : null;
+
+        // 2. 终止残留进程
+        if (pid) {
+          try {
+            console.log(`[OpenClawRuntime] Killing lock-holding process pid=${pid}`);
+            process.kill(pid, 'SIGKILL');
+          } catch (killErr) {
+            console.warn(`[OpenClawRuntime] Failed to kill pid=${pid}:`, killErr);
+          }
+        }
+
+        // 3. 删除锁文件
+        if (lockPath && fs.existsSync(lockPath)) {
+          try {
+            console.log(`[OpenClawRuntime] Deleting zombie lock file at ${lockPath}`);
+            fs.unlinkSync(lockPath);
+          } catch (unlinkErr) {
+            console.warn(`[OpenClawRuntime] Failed to delete lock file:`, unlinkErr);
+          }
+        }
+
+        // 4. 清除刚才 handleChatFinal 添加的临时系统错误消息与错误状态
+        try {
+          const session = this.store.getSession(sessionId);
+          const sessionMsgs = session?.messages || [];
+          const lastMsg = sessionMsgs[sessionMsgs.length - 1];
+          if (lastMsg && lastMsg.type === 'system' && lastMsg.content === errorMessage) {
+            this.store.deleteMessage(sessionId, lastMsg.id);
+            for (const win of BrowserWindow.getAllWindows()) {
+              if (!win.isDestroyed()) {
+                win.webContents.send('cowork:sessions:changed');
+              }
+            }
+          }
+        } catch (msgCleanErr) {
+          console.warn(`[OpenClawRuntime] Failed to clean up transient error message:`, msgCleanErr);
+        }
+
+        // 清理状态，防止重试进入 runTurn 时报 "Session is still running" 导致死锁
+        this.cleanupSessionTurn(sessionId);
+        this.pendingTurns.delete(sessionId);
+
+        // 5. 自动重试
+        console.log(`[OpenClawRuntime] Retrying runTurn for session ${sessionId}...`);
+        return this.runTurn(sessionId, prompt, {
+          ...options,
+          skipInitialUserMessage: true, // 避免重复插入用户消息
+          isRetryAttempt: true,
+        });
+      }
+
       this.cleanupSessionTurn(sessionId);
       this.store.updateSession(sessionId, { status: 'error' });
       const message = error instanceof Error ? error.message : String(error);
