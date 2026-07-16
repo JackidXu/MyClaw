@@ -10,7 +10,7 @@ import ImagePreviewModal, { type ImagePreviewSource } from './ImagePreviewModal'
 
 interface AttachmentCardProps {
   attachment: DraftAttachment;
-  onRemove: (path: string) => void;
+  onRemove?: (path: string) => void;
   label?: string;
 }
 
@@ -96,15 +96,17 @@ const ImageCard: React.FC<AttachmentCardProps> = ({ attachment, onRemove, label 
       )}
 
       {/* Delete button — top-right */}
-      <button
-        type="button"
-        onClick={() => onRemove(attachment.path)}
-        className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-neutral-950 text-white shadow-subtle hover:bg-neutral-800"
-        aria-label={i18nService.t('coworkAttachmentRemove')}
-        title={i18nService.t('coworkAttachmentRemove')}
-      >
-        <XMarkIcon className="h-2.5 w-2.5" />
-      </button>
+      {onRemove && (
+        <button
+          type="button"
+          onClick={() => onRemove(attachment.path)}
+          className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-neutral-950 text-white shadow-subtle hover:bg-neutral-800"
+          aria-label={i18nService.t('coworkAttachmentRemove')}
+          title={i18nService.t('coworkAttachmentRemove')}
+        >
+          <XMarkIcon className="h-2.5 w-2.5" />
+        </button>
+      )}
 
       <ImagePreviewModal image={preview} onClose={() => setPreview(null)} />
     </div>
@@ -142,15 +144,17 @@ const FileCard: React.FC<AttachmentCardProps> = ({ attachment, onRemove, label }
       </div>
 
       {/* Delete button — top-right */}
-      <button
-        type="button"
-        onClick={() => onRemove(attachment.path)}
-        className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-neutral-950 text-white shadow-subtle hover:bg-neutral-800"
-        aria-label={i18nService.t('coworkAttachmentRemove')}
-        title={i18nService.t('coworkAttachmentRemove')}
-      >
-        <XMarkIcon className="h-2.5 w-2.5" />
-      </button>
+      {onRemove && (
+        <button
+          type="button"
+          onClick={() => onRemove(attachment.path)}
+          className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-neutral-950 text-white shadow-subtle hover:bg-neutral-800"
+          aria-label={i18nService.t('coworkAttachmentRemove')}
+          title={i18nService.t('coworkAttachmentRemove')}
+        >
+          <XMarkIcon className="h-2.5 w-2.5" />
+        </button>
+      )}
     </div>
   );
 };

@@ -25,6 +25,7 @@ import GoalIcon from '../icons/GoalIcon';
 import MessageCopyIcon from '../icons/MessageCopyIcon';
 import SidebarKitsIcon from '../icons/SidebarKitsIcon';
 import SkillIcon from '../icons/SkillIcon';
+import AttachmentCard from './AttachmentCard';
 import { reportConversationMessageAction } from './conversationAnalytics';
 import ImagePreviewModal, { type ImagePreviewSource } from './ImagePreviewModal';
 import {
@@ -254,6 +255,51 @@ const UserMessageItem: React.FC<{
     [message.content, metadata?.localMediaAttachments]
   );
 
+  const { parsedContent, parsedAttachments } = useMemo(() => {
+    const lines = (displayContent || '').split('\n');
+    const attachmentsList: any[] = [];
+    const contentLines: string[] = [];
+
+    // 精确的来自 i18n 代码文件的文案
+    const FILE_LABELS = ['输入文件', 'Input Files'];
+    const FOLDER_LABELS = ['输入文件夹', 'Input Folder'];
+
+    lines.forEach((line) => {
+      const colonIndex = line.indexOf(':') !== -1 ? line.indexOf(':') : line.indexOf('：');
+      if (colonIndex !== -1) {
+        const prefix = line.slice(0, colonIndex).trim();
+        const filePath = line.slice(colonIndex + 1).trim();
+
+        const isFile = FILE_LABELS.includes(prefix);
+        const isFolder = FOLDER_LABELS.includes(prefix);
+
+        if ((isFile || isFolder) && filePath) {
+          const isDirectory = isFolder;
+          const name = filePath.replace(/\\/g, '/').split('/').pop() || '';
+          const isImage = /\.(jpg|jpeg|png|gif|webp|bmp|svg|ico|tiff|tif|avif)$/i.test(name);
+          attachmentsList.push({
+            path: filePath,
+            name,
+            isDirectory,
+            isImage,
+          });
+        } else {
+          contentLines.push(line);
+        }
+      } else {
+        contentLines.push(line);
+      }
+    });
+
+    let cleanContent = contentLines.join('\n');
+    cleanContent = cleanContent.replace(/\n{3,}/g, '\n\n').trim();
+
+    return {
+      parsedContent: cleanContent,
+      parsedAttachments: attachmentsList,
+    };
+  }, [displayContent]);
+
   const messageSkillIds = Array.isArray(metadata?.skillIds) ? metadata.skillIds : [];
   const messageSkills = messageSkillIds
     .map(id => skills.find(s => s.id === id))
@@ -288,6 +334,8 @@ const UserMessageItem: React.FC<{
     onReEdit?.(message);
   }, [message, onReEdit]);
 
+  const hasAnyContentOrAttachments = parsedContent?.trim() || displayImageAttachments.length > 0 || parsedAttachments.length > 0;
+
   return (
     <div
       className={`py-2 ${COWORK_DETAIL_GUTTER_CLASS} focus:outline-none`}
@@ -303,7 +351,7 @@ const UserMessageItem: React.FC<{
             <div className="w-full min-w-0 flex flex-col items-end">
               <div className="w-fit max-w-full rounded-2xl px-4 py-2.5 bg-surface text-foreground shadow-subtle">
                 {selectedTextSnippets.length > 0 && (
-                  <div className={(displayContent?.trim() || displayImageAttachments.length > 0 || hasCapabilityBadges) ? 'mb-2' : ''}>
+                  <div className={(hasAnyContentOrAttachments || hasCapabilityBadges) ? 'mb-2' : ''}>
                     <SelectedTextSnippetBadge
                       snippets={selectedTextSnippets}
                       align="right"
@@ -312,22 +360,22 @@ const UserMessageItem: React.FC<{
                   </div>
                 )}
                 {hasCapabilityBadges && (
-                  <div className={(displayContent?.trim() || displayImageAttachments.length > 0) ? 'mb-2' : ''}>
+                  <div className={hasAnyContentOrAttachments ? 'mb-2' : ''}>
                     <UserMessageCapabilityBadges
                       kitReferences={messageKitReferences}
                       skills={messageSkills}
                     />
                   </div>
                 )}
-                {displayContent?.trim() && (
+                {parsedContent?.trim() && (
                   <UserMessageContent
-                    content={displayContent}
+                    content={parsedContent}
                     className="max-w-none"
                     onImageClick={handleImagePreviewOpen}
                   />
                 )}
                 {displayImageAttachments.length > 0 && (
-                  <div className={`flex flex-wrap gap-2 ${displayContent?.trim() ? 'mt-2' : ''}`}>
+                  <div className={`flex flex-wrap gap-2 ${parsedContent?.trim() ? 'mt-2' : ''}`}>
                     {displayImageAttachments.map((img, idx) => (
                       <div key={idx} className="relative group">
                         <img
@@ -346,6 +394,16 @@ const UserMessageItem: React.FC<{
                           <span className="truncate">{img.name}</span>
                         </div>
                       </div>
+                    ))}
+                  </div>
+                )}
+                {parsedAttachments.length > 0 && (
+                  <div className={`flex flex-wrap gap-2 ${(parsedContent?.trim() || displayImageAttachments.length > 0) ? 'mt-2' : ''}`}>
+                    {parsedAttachments.map((attachment) => (
+                      <AttachmentCard
+                        key={attachment.path}
+                        attachment={attachment}
+                      />
                     ))}
                   </div>
                 )}
