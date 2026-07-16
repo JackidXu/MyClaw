@@ -2818,7 +2818,7 @@ export class CoworkStore {
 
     const rows = this.getAll<AgentRow>(`
       SELECT * FROM agents
-      ORDER BY COALESCE(sort_order, 2147483647) ASC, is_default DESC, created_at ASC
+      ORDER BY CASE WHEN id = 'main' THEN 0 ELSE 1 END ASC, COALESCE(sort_order, 2147483647) ASC, is_default DESC, created_at ASC
     `);
 
     return rows.map(row => this.mapAgentRow(row));
