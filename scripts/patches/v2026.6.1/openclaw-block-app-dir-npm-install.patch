@@ -94,10 +94,10 @@ index a0db2ab5be..7ad0d5a5ce 100644
          return;
        }
 diff --git a/src/agents/bash-tools.exec-runtime.ts b/src/agents/bash-tools.exec-runtime.ts
-index c425e0dccb..37462d7149 100644
+index c425e0dccb..062f4e900b 100644
 --- a/src/agents/bash-tools.exec-runtime.ts
 +++ b/src/agents/bash-tools.exec-runtime.ts
-@@ -667,6 +667,72 @@ export async function runExecProcess(opts: {
+@@ -667,6 +667,75 @@ export async function runExecProcess(opts: {
    const startedAt = Date.now();
    const sessionId = createSessionSlug();
    const execCommand = opts.execCommand ?? opts.command;
@@ -119,16 +119,21 @@ index c425e0dccb..37462d7149 100644
 +    return false;
 +  };
 +
-+  const hasGatewayOrAppPathInCommand = (cmd: string): boolean => {
++  const hasGatewayOrAppPathInCommandArgs = (cmd: string): boolean => {
 +    if (!cmd) return false;
 +    const cleanCmd = cmd.toLowerCase().replace(/\\/g, "/");
++    const parts = cleanCmd.split(/\s+/);
++    if (parts.length <= 1) return false;
++    
++    // Check if any arguments after the executable (index 0) target the app or gateway paths
++    const argsStr = parts.slice(1).join(" ");
 +    if (
-+      cleanCmd.includes("/cfmind") || 
-+      cleanCmd.includes("vendor/openclaw-runtime") ||
-+      cleanCmd.includes("/applications/heyclaw.app") ||
-+      cleanCmd.includes("/program files/heyclaw") ||
-+      cleanCmd.includes("/programs/heyclaw") ||
-+      cleanCmd.includes("/appdata/local/heyclaw")
++      argsStr.includes("/cfmind") || 
++      argsStr.includes("vendor/openclaw-runtime") ||
++      argsStr.includes("/applications/heyclaw.app") ||
++      argsStr.includes("/program files/heyclaw") ||
++      argsStr.includes("/programs/heyclaw") ||
++      argsStr.includes("/appdata/local/heyclaw")
 +    ) {
 +      return true;
 +    }
@@ -153,14 +158,12 @@ index c425e0dccb..37462d7149 100644
 +    return false;
 +  };
 +
++  // Block only if executing inside the app/gateway directory with side effect commands,
++  // or if the write/delete command explicitly targets paths within the app/gateway directories (excluding the executable itself).
 +  if (
-+    (isAppOrGatewayPath(opts.workdir) || 
-+     isAppOrGatewayPath(opts.command) || 
-+     isAppOrGatewayPath(execCommand) ||
-+     hasGatewayOrAppPathInCommand(opts.command) ||
-+     hasGatewayOrAppPathInCommand(execCommand)
-+    ) &&
-+    (hasSideEffectCommand(opts.command) || hasSideEffectCommand(execCommand))
++    (isAppOrGatewayPath(opts.workdir) && hasSideEffectCommand(opts.command)) ||
++    (hasGatewayOrAppPathInCommandArgs(opts.command) && hasSideEffectCommand(opts.command)) ||
++    (hasGatewayOrAppPathInCommandArgs(execCommand) && hasSideEffectCommand(execCommand))
 +  ) {
 +    throw new Error(
 +      `Security Exception: Modifying, writing, or deleting files inside the application package or gateway resource directory is strictly forbidden.`
