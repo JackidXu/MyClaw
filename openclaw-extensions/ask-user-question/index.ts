@@ -67,9 +67,9 @@ const QuestionSchema = Type.Object({
   question: Type.String({ description: 'The question to ask. Should be clear and end with a question mark.' }),
   header: Type.Optional(Type.String({ description: 'Short label displayed as a tag (max 12 chars). Examples: "Auth method", "Confirm".' })),
   options: Type.Array(QuestionOptionSchema, {
-    minItems: 2,
+    minItems: 1,
     maxItems: 4,
-    description: 'Available choices (2-4 options).',
+    description: 'Available choices (1-4 options).',
   }),
   multiSelect: Type.Optional(Type.Boolean({ description: 'Allow selecting multiple options.' })),
 });

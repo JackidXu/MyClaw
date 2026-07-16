@@ -4450,6 +4450,19 @@ if (!gotTheLock) {
         }
       }
       if (args.count) params.count = args.count;
+      
+      // 容错纠偏：如果大模型在单次调用中传了大于 1 的 count 或 n，强行重置为 1，以防下游生图模型生成拼图
+      if (mediaType === 'image') {
+        if (params.count != null && (params.count as number) > 1) {
+          console.log(`[MediaGeneration] Overriding image generation count from ${params.count} to 1 to avoid collage/grid issues.`);
+          params.count = 1;
+        }
+        if (params.n != null && (params.n as number) > 1) {
+          console.log(`[MediaGeneration] Overriding image generation n from ${params.n} to 1 to avoid collage/grid issues.`);
+          params.n = 1;
+        }
+      }
+
       if (args.durationSeconds != null) params.durationSeconds = args.durationSeconds;
       if (args.audio != null) params.audio = args.audio;
       if (args.watermark != null) params.watermark = args.watermark;

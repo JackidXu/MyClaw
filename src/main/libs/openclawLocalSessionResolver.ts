@@ -28,6 +28,23 @@ const getSessionRowByClaudeSessionId = (
   return row ?? null;
 };
 
+const getParentSessionIdBySubagentSessionKey = (
+  db: Database.Database,
+  sessionKey: string,
+): string | null => {
+  const normalized = sessionKey.trim();
+  if (!normalized) return null;
+  try {
+    const row = db
+      .prepare('SELECT parent_session_id FROM subagent_runs WHERE session_key = ? LIMIT 1')
+      .get(normalized) as { parent_session_id: string } | undefined;
+    return row?.parent_session_id ?? null;
+  } catch {
+    // 防御有些测试数据库中可能没有 subagent_runs 表
+    return null;
+  }
+};
+
 export function resolveCoworkSessionIdByOpenClawSessionKey(
   db: Database.Database,
   sessionKey: string | undefined | null,
@@ -37,6 +54,9 @@ export function resolveCoworkSessionIdByOpenClawSessionKey(
 
   const persisted = getSessionRowByClaudeSessionId(db, normalized);
   if (persisted) return persisted.id;
+
+  const subagentParentId = getParentSessionIdBySubagentSessionKey(db, normalized);
+  if (subagentParentId) return subagentParentId;
 
   const managed = parseManagedSessionKey(normalized);
   if (!managed) return null;

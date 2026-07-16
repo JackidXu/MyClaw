@@ -22,6 +22,11 @@ const createDb = (): Database.Database => {
     CREATE TABLE im_session_mappings (
       cowork_session_id TEXT
     );
+    CREATE TABLE subagent_runs (
+      id TEXT PRIMARY KEY,
+      parent_session_id TEXT,
+      session_key TEXT
+    );
   `);
   return db;
 };
@@ -34,6 +39,16 @@ const insertSession = (
 ) => {
   db.prepare('INSERT INTO cowork_sessions (id, claude_session_id, parent_session_id) VALUES (?, ?, ?)')
     .run(id, claudeSessionId, parentSessionId);
+};
+
+const insertSubagentRun = (
+  db: Database.Database,
+  id: string,
+  parentSessionId: string,
+  sessionKey: string,
+) => {
+  db.prepare('INSERT INTO subagent_runs (id, parent_session_id, session_key) VALUES (?, ?, ?)')
+    .run(id, parentSessionId, sessionKey);
 };
 
 afterEach(() => {
@@ -63,6 +78,18 @@ describe('openclaw local session resolver', () => {
       'agent:qa-reviewer:subagent:run-1',
     )).toBe('child-1');
     expect(getCoworkParentSessionId(db, 'child-1')).toBe('parent-1');
+  });
+
+  test('resolves parent session ID for unmaterialized subagents via subagent_runs', () => {
+    const db = createDb();
+    insertSession(db, 'parent-1');
+    // 子代理没有写入 cowork_sessions 表（未物化），但被登记在 subagent_runs 表
+    insertSubagentRun(db, 'run-1', 'parent-1', 'agent:main:subagent:run-1');
+
+    expect(resolveCoworkSessionIdByOpenClawSessionKey(
+      db,
+      'agent:main:subagent:run-1',
+    )).toBe('parent-1');
   });
 
   test('rejects IM-bound sessions and descendants for desktop callbacks', () => {
