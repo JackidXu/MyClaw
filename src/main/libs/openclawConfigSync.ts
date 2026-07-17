@@ -1880,6 +1880,9 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
       agents: {
         defaults: {
           timeoutSeconds: OPENCLAW_AGENT_TIMEOUT_SECONDS,
+          compaction: {
+            reserveTokensFloor: 50000,
+          },
           model: {
             primary: primaryModel,
           },
