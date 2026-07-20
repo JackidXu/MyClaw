@@ -1276,9 +1276,10 @@ class CoworkService {
         this.logDiagnostic('debug', `ignored stale session load result for session ${sessionId}.`);
         return result.session;
       }
-      store.dispatch(setCurrentSession(result.session));
+       store.dispatch(setCurrentSession(result.session));
       this.setCurrentSessionStreaming(sessionId, result.session.status === 'running', 'load_session_completed');
       void this.loadSessionMessageRailIndex(sessionId);
+      void this.refreshContextUsage(sessionId, { notifyCompaction: false });
       void cowork.markSessionViewed?.(sessionId).catch((error: unknown) => {
         console.warn('[CoworkService] failed to mark session viewed:', error);
       });
