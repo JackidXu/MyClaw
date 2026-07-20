@@ -27,6 +27,7 @@ export class TaskCompletionNotifier {
   private pendingCompletions = new Map<string, PendingCompletionNotification>();
   private activeNotifications = new Map<string, Notification>();
   private windowsOverlayIcons = new Map<string, Electron.NativeImage>();
+  private pendingNotificationTimers = new Map<string, NodeJS.Timeout>();
 
   constructor(private readonly options: TaskCompletionNotifierOptions) {}
 
@@ -42,25 +43,45 @@ export class TaskCompletionNotifier {
       return;
     }
 
-    const win = this.options.getWindow();
-    if (this.isWindowForeground(win)) {
-      console.debug(`[TaskCompletionNotifier] skipped completed session ${sessionId} because the app is foreground`);
+    if (this.pendingNotificationTimers.has(sessionId)) {
+      console.debug(`[TaskCompletionNotifier] ignored duplicate pending completion timer for ${sessionId}`);
       return;
     }
 
-    this.pendingCompletions.set(sessionId, {
-      sessionId,
-      completedAt: Date.now(),
-    });
-    console.log(
-      `[TaskCompletionNotifier] recorded completed session notification for ${sessionId}; pending count ${this.pendingCompletions.size}`,
-    );
+    const timer = setTimeout(() => {
+      this.pendingNotificationTimers.delete(sessionId);
 
-    this.updateAttentionState();
-    this.showSystemNotification(sessionId);
+      const win = this.options.getWindow();
+      if (this.isWindowForeground(win)) {
+        console.debug(`[TaskCompletionNotifier] skipped completed session ${sessionId} notification because the app is foreground`);
+        return;
+      }
+
+      if (this.pendingCompletions.has(sessionId)) {
+        return;
+      }
+
+      this.pendingCompletions.set(sessionId, {
+        sessionId,
+        completedAt: Date.now(),
+      });
+      console.log(
+        `[TaskCompletionNotifier] recorded completed session notification for ${sessionId}; pending count ${this.pendingCompletions.size}`,
+      );
+
+      this.updateAttentionState();
+      this.showSystemNotification(sessionId);
+    }, 1500);
+
+    this.pendingNotificationTimers.set(sessionId, timer);
   }
 
   markSessionViewed(sessionId: string): void {
+    const timer = this.pendingNotificationTimers.get(sessionId);
+    if (timer) {
+      clearTimeout(timer);
+      this.pendingNotificationTimers.delete(sessionId);
+    }
     if (!this.pendingCompletions.delete(sessionId)) return;
     this.closeNotification(sessionId);
     console.log(
@@ -70,6 +91,11 @@ export class TaskCompletionNotifier {
   }
 
   handleSessionDeleted(sessionId: string): void {
+    const timer = this.pendingNotificationTimers.get(sessionId);
+    if (timer) {
+      clearTimeout(timer);
+      this.pendingNotificationTimers.delete(sessionId);
+    }
     if (!this.pendingCompletions.delete(sessionId)) return;
     this.closeNotification(sessionId);
     console.log(
@@ -79,6 +105,10 @@ export class TaskCompletionNotifier {
   }
 
   clearAll(reason: string): void {
+    for (const timer of this.pendingNotificationTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.pendingNotificationTimers.clear();
     if (this.pendingCompletions.size === 0) return;
     const count = this.pendingCompletions.size;
     this.pendingCompletions.clear();
