@@ -3301,6 +3301,40 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       // Fallback: create a no-op tracker (should not happen in production)
       this.subagentTracker = new SubagentTracker(null as unknown as SubagentRunStore, null, () => this.gatewayClient);
     }
+
+    this.on('complete', (sessionId: string) => {
+      void this.handleSessionCompleteAutoCompaction(sessionId);
+    });
+  }
+
+  private async handleSessionCompleteAutoCompaction(sessionId: string): Promise<void> {
+    try {
+      const usage = await this.getContextUsage(sessionId);
+      if (!usage) return;
+
+      // 防御性策略：若已经在压缩中，或者在30秒内刚刚压缩过，则跳过，避免陷入死循环
+      if (usage.status === 'compacting') {
+        console.log(`[OpenClawRuntimeAdapter] 会话 ${sessionId} 正在压缩中，跳过本次自动压缩`);
+        return;
+      }
+      if (usage.latestCompactionCreatedAt && (Date.now() - usage.latestCompactionCreatedAt < 30000)) {
+        console.log(`[OpenClawRuntimeAdapter] 会话 ${sessionId} 在30秒内刚刚进行过压缩，跳过本次自动压缩`);
+        return;
+      }
+
+      // 当上下文超过 70% 阈值或达到 warning/danger 状态时触发自动压缩
+      if ((usage.percent ?? 0) >= 70 || usage.status === 'warning' || usage.status === 'danger') {
+        console.log(
+          `[OpenClawRuntimeAdapter] 检测到会话 ${sessionId} 当前上下文使用率已达上限阈值 (${usage.percent ?? 0}%, 状态: ${usage.status})。触发自动静默上下文压缩...`
+        );
+        const compactRes = await this.compactContext(sessionId);
+        console.log(
+          `[OpenClawRuntimeAdapter] 自动上下文压缩执行完毕，结果: compacted=${compactRes?.compacted}, 理由=${compactRes?.reason ?? '无'}`
+        );
+      }
+    } catch (e: any) {
+      console.error(`[OpenClawRuntimeAdapter] 自动上下文压缩失败: ${e.message}`);
+    }
   }
 
   private normalizeModelRef(modelRef: string): string {
@@ -9414,6 +9448,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       if (isInSync) {
         console.log('[Reconcile] already in sync — sessionId:', sessionId, 'entries:', localEntries.length);
         this.channelSyncCursor.set(sessionId, authoritativeEntries.length);
+        void this.handleSessionCompleteAutoCompaction(sessionId);
         return;
       }
 
@@ -9437,6 +9472,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
             'authSkipped:', alignment.authIdx,
           );
           this.channelSyncCursor.set(sessionId, authoritativeEntries.length);
+          void this.handleSessionCompleteAutoCompaction(sessionId);
           return;
         }
         // Concat preserved prefix with authoritative tail
@@ -9467,6 +9503,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
           win.webContents.send('cowork:sessions:changed');
         }
       }
+      void this.handleSessionCompleteAutoCompaction(sessionId);
     } catch (error) {
       console.warn('[Reconcile] failed — sessionId:', sessionId, 'error:', error);
     }

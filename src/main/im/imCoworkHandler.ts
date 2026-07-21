@@ -200,6 +200,27 @@ export class IMCoworkHandler extends EventEmitter {
       platform: message.platform,
     });
 
+    // 自动检测并在上下文占用过高时自动触发压缩
+    try {
+      if (
+        typeof this.coworkRuntime.getContextUsage === 'function' &&
+        typeof this.coworkRuntime.compactContext === 'function'
+      ) {
+        const usage = await this.coworkRuntime.getContextUsage(coworkSessionId);
+        if (usage && ((usage.percent ?? 0) >= 70 || usage.status === 'warning' || usage.status === 'danger')) {
+          console.log(
+            `[IMCoworkHandler] IM会话 ${coworkSessionId} 的上下文使用率已达上限阈值 (${usage.percent ?? 0}%, 状态: ${usage.status})，正在自动执行静默上下文压缩...`
+          );
+          const compactRes = await this.coworkRuntime.compactContext(coworkSessionId);
+          console.log(
+            `[IMCoworkHandler] 自动上下文压缩执行完毕，结果: compacted=${compactRes?.compacted}, 理由=${compactRes?.reason ?? '无'}`
+          );
+        }
+      }
+    } catch (e: any) {
+      console.error(`[IMCoworkHandler] 检测或自动执行上下文压缩失败: ${e.message}`);
+    }
+
     const formattedContent = this.formatMessageWithMedia(message);
     const directScheduledTaskRequest = this.createScheduledTask && this.detectScheduledTaskRequest
       ? await this.detectScheduledTaskRequest(message)
