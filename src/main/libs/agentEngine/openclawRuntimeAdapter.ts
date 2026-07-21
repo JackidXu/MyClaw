@@ -394,6 +394,7 @@ type GatewayClientCtor = new (options: Record<string, unknown>) => GatewayClient
 type OpenClawRuntimeAdapterOptions = {
   normalizeModelRef?: (modelRef: string) => string;
   onGatewayClientReady?: () => void;
+  getIMSessionKey?: (sessionId: string) => string | null;
 };
 
 const SessionModelPatchSource = {
@@ -10571,6 +10572,13 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     const managedKey = this.toSessionKey(normalizedSessionId, session?.agentId);
     if (!keys.includes(managedKey)) {
       keys.push(managedKey);
+    }
+
+    if (this.options.getIMSessionKey) {
+      const imSessionKey = this.options.getIMSessionKey(normalizedSessionId);
+      if (imSessionKey && !keys.includes(imSessionKey)) {
+        keys.push(imSessionKey);
+      }
     }
 
     keys.sort((left, right) => {

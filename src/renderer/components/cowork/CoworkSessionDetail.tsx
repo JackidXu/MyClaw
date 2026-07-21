@@ -5285,8 +5285,9 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
                   <ContextUsageIndicator
                     usage={contextUsage}
                     compacting={isContextBusy}
-                    disabled={remoteManaged || !currentSession?.id}
+                    disabled={!currentSession?.id}
                     onCompact={handleCompactContext}
+
                     showTooltip={!showCompactConfirm}
                     active={showCompactConfirm}
                     className="-mr-1"

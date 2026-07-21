@@ -2576,7 +2576,16 @@ const getCoworkEngineRouter = () => {
         {
           normalizeModelRef: normalizeOpenClawModelRef,
           onGatewayClientReady: () => getCronJobService().notifyGatewayReady(),
+          getIMSessionKey: (sessionId) => {
+            try {
+              return getIMGatewayManager().getIMStore().getSessionMappingByCoworkSessionId(sessionId)?.openClawSessionKey ?? null;
+            } catch (error) {
+              console.warn('[Main] failed to get IM session key for', sessionId, error);
+              return null;
+            }
+          },
         },
+
         new SubagentRunStore(getStore().getDatabase()),
         new SubagentMessageStore(getStore().getDatabase()),
       );
