@@ -26,6 +26,7 @@
     "viral-image-replicator": { "order": 22, "enabled": true },
     "xhs-images": { "order": 23, "enabled": true },
     "xhs-notes-writer": { "order": 24, "enabled": true },
+    "qu-ai-wei": { "order": 25, "enabled": true },
 
     "docx": { "order": 10010, "enabled": true },
     "web-search": { "order": 10020, "enabled": true },

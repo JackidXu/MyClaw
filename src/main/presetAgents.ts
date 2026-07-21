@@ -298,7 +298,7 @@ const RAW_EXPERTS = [
     department: '图文部',
     level: '高级' as const,
     description: '统筹所有图文内容的选题方向、发布频率、质量标准。对接 IP 部和策略部确保方向一致，审批重大选题，把控最终质量。',
-    skillIds: ['web-search'],
+    skillIds: ['qu-ai-wei'],
   },
   {
     id: 'anna_xiaohongshu',
@@ -307,7 +307,7 @@ const RAW_EXPERTS = [
     department: '图文部',
     level: '高级' as const,
     description: '专注小红书平台：种草笔记撰写、热门话题跟进、SEO 标题优化、评论区互动引导。追踪笔记数据，迭代爆款方法论。',
-    skillIds: ['web-search'],
+    skillIds: ['qu-ai-wei'],
   },
   {
     id: 'daniel_gongzhonghao',
@@ -316,7 +316,7 @@ const RAW_EXPERTS = [
     department: '图文部',
     level: '高级' as const,
     description: '公众号长文的选题策划、写作、排版、推送时间优化。建立内容资产库，把 IP 观点沉淀为可长期传播的深度内容。',
-    skillIds: ['web-search'],
+    skillIds: ['qu-ai-wei'],
   },
   {
     id: 'chloe_anli',
@@ -325,7 +325,7 @@ const RAW_EXPERTS = [
     department: '图文部',
     level: '中级' as const,
     description: '撰写"种草型"软文：以用户视角出发的真实体验感文案，而非硬广。适用于小红书/朋友圈/社群，是私域培育的内容弹药。',
-    skillIds: ['web-search'],
+    skillIds: ['qu-ai-wei'],
   },
   {
     id: 'felix_seo',
@@ -334,7 +334,7 @@ const RAW_EXPERTS = [
     department: '图文部',
     level: '初级' as const,
     description: '在知乎、百度知道、贴吧、头条问答等内容搜索引擎上做关键词布局和长尾占位。让用户搜索相关问题时优先看到公司内容。',
-    skillIds: ['web-search'],
+    skillIds: ['qu-ai-wei'],
   },
   {
     id: 'ivy_xiaolushu',
@@ -343,7 +343,7 @@ const RAW_EXPERTS = [
     department: '图文部',
     level: '中级' as const,
     description: '微信小绿书（视频号配套图文）的内容运营：贴图式笔记、与视频号联动引流。把视频号流量通过图文沉淀到私域。',
-    skillIds: ['web-search'],
+    skillIds: ['qu-ai-wei'],
   },
 
   // 7. 老板IP部
