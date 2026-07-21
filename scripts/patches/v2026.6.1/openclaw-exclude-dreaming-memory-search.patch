@@ -1,0 +1,15 @@
+diff --git a/extensions/memory-core/src/tools.ts b/extensions/memory-core/src/tools.ts
+index f199e7bc5b..02f0082675 100644
+--- a/extensions/memory-core/src/tools.ts
++++ b/extensions/memory-core/src/tools.ts
+@@ -494,6 +494,10 @@ export function createMemorySearchTool(options: {
+                   sandboxed: options.sandboxed === true,
+                   hits: rawResults,
+                 });
++                rawResults = rawResults.filter((hit) => {
++                  const normalizedPath = hit.path.replace(/\\/g, "/").toLowerCase();
++                  return !normalizedPath.includes("memory/dreaming/");
++                });
+                 if (requestedCorpus === "sessions") {
+                   rawResults = rawResults.filter((hit) => hit.source === "sessions");
+                 } else if (requestedCorpus === "memory") {
