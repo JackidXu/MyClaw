@@ -77,6 +77,60 @@ export function normalizeProjectDirectoryForDedup(projectDirectory: string): str
   return normalized.toLowerCase();
 }
 
+/**
+ * Resolve a detected artifact path to an absolute path, mirroring the
+ * resolution used when loading artifact files from disk: strip file:
+ * prefixes, keep absolute paths as-is, and join relative paths to the
+ * session working directory.
+ */
+export function toAbsoluteArtifactPath(filePath: string, cwd?: string): string {
+  let rawPath = filePath;
+  if (rawPath.startsWith('file:///')) {
+    rawPath = rawPath.slice(7);
+  } else if (rawPath.startsWith('file://')) {
+    rawPath = rawPath.slice(7);
+  } else if (rawPath.startsWith('file:/')) {
+    rawPath = rawPath.slice(5);
+  }
+  // Strip leading / before Windows drive letter (e.g. /D:/path from file:///D:/path)
+  if (/^\/[A-Za-z]:/.test(rawPath)) {
+    rawPath = rawPath.slice(1);
+  }
+  if (rawPath.startsWith('/') || /^[A-Za-z]:/.test(rawPath) || rawPath.startsWith('~')) {
+    return rawPath;
+  }
+  const base = cwd?.trim().replace(/[\\/]+$/, '');
+  if (!base) return rawPath;
+  return `${base}/${rawPath.replace(/^\.\//, '')}`;
+}
+
+/**
+ * Directories whose contents are intermediate/tooling files and must not
+ * surface as deliverable artifact cards. Dot-prefixed segments (.cowork-temp,
+ * .git, hidden files) are ignored by rule; this set covers non-dot names.
+ */
+const IGNORED_ARTIFACT_DIRECTORY_NAMES = new Set(['node_modules']);
+
+export function isIgnoredArtifactPath(filePath: string): boolean {
+  const normalized = normalizeArtifactFilePath(filePath).replace(/\\/g, '/');
+  const segments = normalized
+    .split('/')
+    .filter(segment => segment && segment !== '.' && segment !== '..' && segment !== '~');
+  return segments.some(segment => {
+    const lower = segment.toLowerCase();
+    return lower.startsWith('.') || IGNORED_ARTIFACT_DIRECTORY_NAMES.has(lower);
+  });
+}
+
+export function isPathInsideDirectory(filePath: string, directory: string): boolean {
+  const file = normalizeFilePathForDedup(filePath);
+  const dir = normalizeProjectDirectoryForDedup(directory);
+  if (!file || !dir) return false;
+  if (file === dir) return true;
+  const prefix = dir.endsWith('/') ? dir : `${dir}/`;
+  return file.startsWith(prefix);
+}
+
 export function getLocalServicePortIdentityKey(url?: string): string {
   if (!url?.trim()) return '';
   try {
@@ -309,7 +363,7 @@ const MARKDOWN_LINK_RE = /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/gi;
 const FILE_MARKDOWN_LINK_RE = /\[([^\]]+)\]\((file:\/\/[^)\s]+)\)/gi;
 const LOCAL_SERVICE_TRAILING_PUNCTUATION_RE = /[.,;:!?，。；：！？、]+$/;
 const PROJECT_DIRECTORY_LABEL_RE = /(?:项目目录|项目路径|工程目录|工作目录|project\s+directory|project\s+path|working\s+directory)\s*[:：]\s*([^\n]+)|(?:项目位置|项目位于)\s*(?:[:：]|为|是|在)?\s*([^\n]+)/gi;
-const CD_COMMAND_RE = /(?:^|\n)\s*(?:[$>]\s*)?cd(?:\s+\/d)?\s+(?:"([^"]+)"|'([^']+)'|`([^`]+)`|([^\n;&|]+))/gi;
+const CD_COMMAND_RE = /(?:^|\n|;|&&|\|\|)\s*(?:[$>]\s*)?cd(?:\s+\/d)?\s+(?:"([^"]+)"|'([^']+)'|`([^`]+)`|([^\s\n;&|]+))/gi;
 const FILE_LIKE_PATH_EXTENSION_RE = /\.[A-Za-z0-9]{1,12}$/;
 
 
@@ -537,7 +591,7 @@ function selectBestProjectDirectoryCandidate(
   return [...candidates].sort((a, b) => b.confidence - a.confidence)[0];
 }
 
-function collectProjectDirectoryCandidatesFromText(
+export function collectProjectDirectoryCandidatesFromText(
   messageContent: string,
   fallbackProjectDirectory?: string,
   messageId?: string,
@@ -771,15 +825,53 @@ export function parseMediaTokensFromText(
   return artifacts;
 }
 
-const FILE_LINK_RE = /\[([^\]]+)\]\(file:\/\/([^)]+)\)/g;
+const ANY_MARKDOWN_LINK_RE = /\[([^\]]*)\]\(([^)]+)\)/g;
 const REMOTE_MARKDOWN_IMAGE_RE = /!\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)/g;
+
+/**
+ * Resolve a markdown link href to a local file path, or null when the href
+ * is not a local path (web URL, anchor, mail link, ...). Accepts file://
+ * URLs, absolute POSIX/Windows paths, ~-prefixed paths, and relative paths
+ * that contain a separator. Bare names without any separator are rejected
+ * as too ambiguous. Mirrors the href forms the message renderer treats as
+ * local file links.
+ */
+function resolveLocalHrefPath(rawHref: string): string | null {
+  let href = rawHref.trim();
+  if (href.startsWith('<') && href.endsWith('>')) {
+    href = href.slice(1, -1).trim();
+  }
+  if (!href || href.startsWith('#') || href.startsWith('//')) return null;
+  if (/^(?:file|localfile):/i.test(href)) {
+    let decoded = href;
+    try {
+      decoded = decodeURIComponent(href);
+    } catch {
+      // Keep the original value if it contains a literal percent sign.
+    }
+    return normalizeArtifactFilePath(decoded) || null;
+  }
+  const isWindowsAbsolute = /^[A-Za-z]:[\\/]/.test(href);
+  // Any other scheme (http:, https:, mailto:, tel:, ...) is not a local path.
+  if (!isWindowsAbsolute && /^[a-z][a-z0-9+.-]*:/i.test(href)) return null;
+
+  const candidate = normalizeArtifactFilePath(href);
+  if (!candidate) return null;
+  const isPosixAbsolute = candidate.startsWith('/');
+  const isHomePath = candidate === '~' || candidate.startsWith('~/') || candidate.startsWith('~\\');
+  const hasSeparator = candidate.includes('/') || candidate.includes('\\');
+  if (isPosixAbsolute || isWindowsAbsolute || isHomePath || hasSeparator) {
+    return candidate;
+  }
+  return null;
+}
 const REMOTE_IMAGE_URL_RE = /(?:^|[\s<("'`])(https?:\/\/[^\s<>"'`)]*\.(?:png|jpe?g|gif|webp|bmp|avif)(?:\?[^\s<>"'`)]*)?)(?:[\s>)"'`]|$)/gi;
 
 export function stripFileLinksFromText(text: string): string {
   return text.replace(/\[([^\]]+)\]\(file:\/\/([^)]+)\)/g, '');
 }
 
-const BARE_FILE_PATH_RE = /(?:^|[\s"'`(])(\/?(?:[^\s"'`()\[\]]+\/)+[^\s"'`()\[\]]+\.(?:png|jpe?g|gif|webp|bmp|avif|mp4|webm|mov|docx|xlsx|pptx|pdf|md|txt|log|csv))(?:[\s"'`)]|$)/gm;
+const BARE_FILE_PATH_RE = /(?:^|[\s"'`(])((?:\/|[A-Za-z]:[\\/])?(?:[^\s"'`()\[\]\\/]+[\\/]+)+[^\s"'`()\[\]\\/]+\.(?:png|jpe?g|gif|webp|bmp|avif|mp4|webm|mov|docx|xlsx|pptx|pdf|md|txt|log|csv|html?|svg))(?:[\s"'`)]|$)/gm;
 
 export function parseFilePathsFromText(
   messageContent: string,
@@ -830,18 +922,14 @@ export function parseFileLinksFromMessage(
   if (!messageContent) return [];
 
   const artifacts: Artifact[] = [];
-  const re = new RegExp(FILE_LINK_RE.source, 'g');
+  const re = new RegExp(ANY_MARKDOWN_LINK_RE.source, 'g');
   let match: RegExpExecArray | null;
   let index = 0;
 
   while ((match = re.exec(messageContent)) !== null) {
     const linkText = match[1];
-    let filePath: string;
-    try {
-      filePath = normalizeArtifactFilePath(decodeURIComponent(match[2]));
-    } catch {
-      filePath = normalizeArtifactFilePath(match[2]);
-    }
+    const filePath = resolveLocalHrefPath(match[2]);
+    if (!filePath) continue;
     const ext = getFileExtension(filePath);
     if (isSensitiveSkillFile(filePath, linkText)) continue;
     const artifactType = getArtifactTypeFromExtension(ext);
@@ -966,7 +1054,21 @@ export function parseToolResultMediaArtifacts(
   return artifacts;
 }
 
-const WRITE_TOOL_NAMES = new Set(['write', 'writefile', 'write_file']);
+/**
+ * Tool names (after normalizeToolName: lowercased, underscores/spaces
+ * stripped) whose tool input names a file the turn created or updated.
+ * Covers both write-style and edit-style tools so edited deliverables get
+ * artifact cards without relying on the model linking them in its reply.
+ */
+const WRITE_TOOL_NAMES = new Set([
+  'write',
+  'writefile',
+  'write_file',
+  'edit',
+  'editfile',
+  'multiedit',
+  'createfile',
+]);
 
 /**
  * Tool names whose tool_result content may contain bare file paths that should

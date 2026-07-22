@@ -115,6 +115,7 @@ import ModelSelector, {
 import { ActiveSkillBadge, SkillsPopover } from '../skills';
 import { resolveAgentModelSelection, resolveEffectiveModel, useAgentSelectedModel } from './agentModelSelection';
 import AttachmentCard from './AttachmentCard';
+import { getClipboardAttachmentFiles } from './clipboardAttachments';
 import { CoworkUiEvent } from './constants';
 import FolderSelectorPopover from './FolderSelectorPopover';
 import { getCaretPixelPosition } from './getCaretPosition';
@@ -289,35 +290,6 @@ const getFileNameFromPath = (path: string): string => {
   return parts[parts.length - 1] || path;
 };
 
-const normalizeClipboardFileUrlPath = (rawPath: string): string | null => {
-  const trimmed = rawPath.trim();
-  if (!trimmed) return null;
-  try {
-    const url = new URL(trimmed);
-    if (url.protocol !== 'file:') return null;
-    let pathname = decodeURIComponent(url.pathname);
-    if (/^\/[A-Za-z]:/.test(pathname)) {
-      pathname = pathname.slice(1);
-    }
-    return pathname || null;
-  } catch {
-    return null;
-  }
-};
-
-const getClipboardFileUrlPath = (clipboardData: DataTransfer | null): string | null => {
-  const uriList = clipboardData?.getData('text/uri-list') ?? '';
-  const uriCandidate = uriList
-    .split(/\r?\n/)
-    .map(line => line.trim())
-    .find(line => line && !line.startsWith('#'));
-  if (uriCandidate) {
-    return normalizeClipboardFileUrlPath(uriCandidate);
-  }
-  const plainText = clipboardData?.getData('text/plain') ?? '';
-  return normalizeClipboardFileUrlPath(plainText);
-};
-
 const SEND_SHORTCUT_OPTIONS = [
   { value: 'Enter', label: 'Enter', labelMac: 'Enter' },
   { value: 'Shift+Enter', label: 'Shift+Enter', labelMac: 'Shift+Enter' },
@@ -335,6 +307,10 @@ const ContextLabelMaxLength = {
 
 const READ_ONLY_CONTEXT_COMPACT_WIDTH = 168;
 const LARGE_TOOLBAR_COMPACT_WIDTH = 520;
+// Fixed textarea height while it holds quick-action template text (~7 lines
+// at 22px line-height plus padding). Shorter than maxHeight so the shortest
+// templates don't leave a large blank area; longer templates scroll inside.
+const TEMPLATE_LOCKED_TEXTAREA_HEIGHT = 170;
 type GoalInputMode = 'start' | 'set';
 
 const truncateDisplayText = (value: string, maxLength: number): string => {
@@ -528,6 +504,9 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     const [showVoiceLoginPrompt, setShowVoiceLoginPrompt] = useState(false);
     const [showVoiceQuotaPrompt, setShowVoiceQuotaPrompt] = useState(false);
     const [isLargeToolbarCompact, setIsLargeToolbarCompact] = useState(false);
+    // While the input holds quick-action template text, pin the textarea to
+    // maxHeight so switching templates doesn't bounce the layout around it.
+    const [isTemplateHeightLocked, setIsTemplateHeightLocked] = useState(false);
 
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const addMenuButtonRef = useRef<HTMLButtonElement>(null);
@@ -557,14 +536,18 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
       } else if (!newValue.trim()) {
         inputSourceOverrideRef.current = null;
       }
-      // 触发自动调整高度
-      requestAnimationFrame(() => {
-        const textarea = textareaRef.current;
-        if (textarea) {
-          textarea.style.height = 'auto';
-          textarea.style.height = `${Math.min(Math.max(textarea.scrollHeight, minHeight), maxHeight)}px`;
-        }
-      });
+      setIsTemplateHeightLocked(inputSource === 'template' && newValue.trim().length > 0);
+      // Height sync happens in the auto-resize effect after re-render.
+      if (inputSource === 'template') {
+        // Anchor the filled template at its start so it reads top-down — the
+        // controlled value swap otherwise leaves the caret/scroll at the end.
+        requestAnimationFrame(() => {
+          const textarea = textareaRef.current;
+          if (!textarea) return;
+          textarea.setSelectionRange(0, 0);
+          textarea.scrollTop = 0;
+        });
+      }
     },
     setImageAttachments: (images: CoworkImageAttachment[]) => {
       const newAttachments: CoworkAttachment[] = images.map((img, idx) => ({
@@ -702,8 +685,6 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     value,
     setValue,
     textareaRef,
-    minHeight,
-    maxHeight,
     isLoggedIn,
     disabled,
     onQuotaExhausted: () => setShowVoiceQuotaPrompt(true),
@@ -879,14 +860,39 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     };
   }, [dispatch]);
 
-  // Auto-resize textarea
+  // Release the template height lock once the input no longer holds template
+  // text (submitted, cleared, or manually deleted).
+  useEffect(() => {
+    if (isTemplateHeightLocked && !value.trim()) {
+      setIsTemplateHeightLocked(false);
+    }
+  }, [isTemplateHeightLocked, value]);
+
+  // Auto-resize textarea. Template-filled content is pinned to a fixed height
+  // so picking a different template keeps the input (and the panel below it)
+  // stable; height changes animate to avoid layout jumps.
   useEffect(() => {
     const textarea = textareaRef.current;
-    if (textarea) {
-      textarea.style.height = 'auto';
-      textarea.style.height = `${Math.min(Math.max(textarea.scrollHeight, minHeight), maxHeight)}px`;
+    if (!textarea) return;
+    const previousHeight = textarea.getBoundingClientRect().height;
+    // Measure with transitions off: reading scrollHeight while height is
+    // 'auto' forces a reflow, which would otherwise shift the animation start.
+    textarea.style.transition = 'none';
+    textarea.style.height = 'auto';
+    const contentHeight = Math.min(Math.max(textarea.scrollHeight, minHeight), maxHeight);
+    const targetHeight = isTemplateHeightLocked
+      ? Math.min(TEMPLATE_LOCKED_TEXTAREA_HEIGHT, maxHeight)
+      : contentHeight;
+    if (Math.abs(targetHeight - previousHeight) < 1) {
+      textarea.style.height = `${targetHeight}px`;
+      textarea.style.transition = '';
+      return;
     }
-  }, [value, minHeight, maxHeight]);
+    textarea.style.height = `${previousHeight}px`;
+    void textarea.offsetHeight;
+    textarea.style.transition = 'height 180ms ease-out';
+    textarea.style.height = `${targetHeight}px`;
+  }, [value, minHeight, maxHeight, isTemplateHeightLocked]);
 
   useEffect(() => {
     const handleFocusInput = (event: Event) => {
@@ -897,6 +903,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
       }
       if (detail?.text !== undefined) {
         setValue(detail.text);
+        setIsTemplateHeightLocked(false);
         dispatch(clearDraftAttachments(draftKey));
         dispatch(clearDraftSelectedTextSnippets(draftKey));
         setImageVisionHint(false);
@@ -1040,6 +1047,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     setValue(draftPrompt);
     setSteerValue(steerDraft);
     setSteerInputActive(false);
+    setIsTemplateHeightLocked(false);
     // Re-derive imageVisionHint from the new session's draft attachments
     const hasImageWithoutVision = !modelSupportsImage && attachments.some(a => a.isImage || isImagePath(a.path));
     setImageVisionHint(hasImageWithoutVision);
@@ -2550,42 +2558,11 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
 
   const handlePaste = useCallback((event: React.ClipboardEvent<HTMLTextAreaElement>) => {
     if (disabled || voiceInputLocksEditing) return;
-    const files = Array.from(event.clipboardData?.files ?? []);
-    if (files.length > 0) {
-      event.preventDefault();
-      void handleIncomingFiles(files, 'paste');
-      return;
-    }
-
-    const clipboardPath = getClipboardFileUrlPath(event.clipboardData);
-    if (!clipboardPath) return;
+    const files = getClipboardAttachmentFiles(event.clipboardData);
+    if (files.length === 0) return;
     event.preventDefault();
-    void (async () => {
-      const stat = await statNativePath(clipboardPath);
-      if (!stat?.isDirectory && !stat?.isFile) {
-        console.debug('[CoworkPromptInput] pasted file URL did not resolve to a file or directory', {
-          path: clipboardPath,
-        });
-        return;
-      }
-
-      console.debug('[CoworkPromptInput] handlePaste: file URL attachment added', {
-        path: clipboardPath,
-        isDirectory: stat.isDirectory,
-      });
-      addAttachment(clipboardPath, { isDirectory: stat.isDirectory });
-      reportPromptControl('attachment_add_success', {
-        source: 'paste',
-        modelSupportsImage,
-        hasImageWithoutVision: false,
-        ...getAttachmentAnalyticsParams([{
-          path: clipboardPath,
-          name: getFileNameFromPath(clipboardPath),
-          isImage: false,
-        }]),
-      });
-    })();
-  }, [addAttachment, disabled, handleIncomingFiles, modelSupportsImage, reportPromptControl, statNativePath, voiceInputLocksEditing]);
+    void handleIncomingFiles(files, 'paste');
+  }, [disabled, handleIncomingFiles, voiceInputLocksEditing]);
 
   const canSubmit = !disabled
     && !isVoiceRecognizing
@@ -3365,7 +3342,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
   );
 
   return (
-    <div className="relative">
+    <div data-skin-prompt-input="true" className="relative">
       {goalEditModalOpen && (
         <Modal
           onClose={handleCloseGoalEditModal}

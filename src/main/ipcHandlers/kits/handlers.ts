@@ -32,6 +32,7 @@ import {
 import { cpRecursiveSync } from '../../fsCompat';
 import { OpenClawConfigImpact } from '../../libs/openclawConfigImpact';
 import type { SkillManager } from '../../skills/skillManager';
+import { createSkinPackKitLifecycle } from '../../skins/skinPackKitLifecycle';
 import type { SqliteStore } from '../../sqliteStore';
 
 const KITS_INSTALLED_KEY: KitStoreKey = KitStoreKeyValue.Installed;
@@ -84,40 +85,6 @@ function sha256Buffer(buffer: Buffer): string {
 type InstalledKitsMap = Record<string, InstalledKitRecord>;
 
 const normalizeCapabilityList = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
-
-function appendBuiltInKitsToStoreResponse(data: string): string {
-  if (!isComputerUseKitSupportedPlatform()) {
-    return data;
-  }
-
-  const parsed = JSON.parse(data) as Record<string, unknown>;
-  const valueContainer = (parsed as { data?: { value?: unknown } }).data;
-  const rawValue = valueContainer?.value;
-  if (!valueContainer || !rawValue) {
-    return data;
-  }
-
-  const value =
-    typeof rawValue === 'string'
-      ? (JSON.parse(rawValue) as Record<string, unknown>)
-      : (rawValue as Record<string, unknown>);
-
-  // 新数据结构下，我们将 buildComputerUseMarketplaceKit 拼装到 marketplace 数组里
-  const marketplace = Array.isArray(value.marketplace) ? value.marketplace : [];
-  const withoutDuplicate = marketplace.filter(
-    kit =>
-      !kit ||
-      typeof kit !== 'object' ||
-      (kit as Record<string, unknown>).id !== ComputerUseKitId.BuiltIn,
-  );
-  const nextValue = {
-    ...value,
-    marketplace: [...withoutDuplicate, buildComputerUseMarketplaceKit()],
-  };
-
-  valueContainer.value = typeof rawValue === 'string' ? JSON.stringify(nextValue) : nextValue;
-  return JSON.stringify(parsed);
-}
 
 const normalizeLocalizedText = (value: unknown): string | LocalizedText | undefined => {
   if (typeof value === 'string') {
@@ -246,6 +213,15 @@ function notifySkillsChanged(): void {
 
 export function registerKitHandlers(deps: KitHandlerDeps): void {
   const { getStore, getKitStoreUrl, getSkillManager, syncOpenClawConfig } = deps;
+  const skinPackKitLifecycle = createSkinPackKitLifecycle({
+    getStore,
+    getSkillManager,
+    notifySkillsChanged,
+    syncOpenClawConfig,
+  });
+  const getAdditionalBuiltInKits = (): Record<string, unknown>[] => (
+    isComputerUseKitSupportedPlatform() ? [buildComputerUseMarketplaceKit()] : []
+  );
 
   // Fetch kit store catalog from overmind
   ipcMain.handle('kits:fetchStore', async () => {
@@ -271,10 +247,17 @@ export function registerKitHandlers(deps: KitHandlerDeps): void {
         req.on('error', reject);
         req.on('timeout', () => { req.destroy(); reject(new Error('Request timeout')); });
       });
-      return { success: true, data: appendBuiltInKitsToStoreResponse(data) };
+      return {
+        success: true,
+        data: skinPackKitLifecycle.appendToStoreResponse(data, getAdditionalBuiltInKits()),
+      };
     } catch (error) {
       console.error('[KitStore] fetch failed:', error);
-      return { success: false, error: error instanceof Error ? error.message : 'Failed to fetch kit store' };
+      return {
+        success: true,
+        data: skinPackKitLifecycle.buildOfflineStoreResponse(getAdditionalBuiltInKits()),
+        warning: error instanceof Error ? error.message : 'Failed to fetch kit store',
+      };
     }
   });
 
@@ -350,12 +333,27 @@ export function registerKitHandlers(deps: KitHandlerDeps): void {
       const isComputerUseKit = kitId === ComputerUseKitId.BuiltIn;
       console.log(`[KitStore] Installing kit "${kitId}" v${version} from ${bundleUrl || 'local'}`);
 
-      let tempRoot: string | null = null;
-      let skillWatchingStopped = false;
-      let skillWatchingRestarted = false;
-      try {
-        if (isComputerUseKit && bundleUrl !== ComputerUseKitBundle.BuiltIn) {
-          throw new Error('Computer Use kit bundle URL does not match the built-in catalog entry');
+    let tempRoot: string | null = null;
+    let skillWatchingStopped = false;
+    let skillWatchingRestarted = false;
+    try {
+      if (isComputerUseKit && bundleUrl !== ComputerUseKitBundle.BuiltIn) {
+        throw new Error('Computer Use kit bundle URL does not match the built-in catalog entry');
+      }
+      if (isComputerUseKit && !isComputerUseKitSupportedPlatform()) {
+        throw new Error('Computer Use kit is only available on Windows x64.');
+      }
+      const skinPackInstallResult = await skinPackKitLifecycle.installIfHandled({ kitId, bundleUrl });
+      if (skinPackInstallResult !== undefined) {
+        return skinPackInstallResult;
+      }
+
+      // 1. Download zip
+      tempRoot = fs.mkdtempSync(path.join(app.getPath('temp'), 'lobsterai-kit-'));
+      const buffer = await downloadBuffer(bundleUrl);
+      if (isComputerUseKit) {
+        if (buffer.length !== ComputerUseKitBundleIntegrity.SizeBytes) {
+          throw new Error('Computer Use kit bundle size verification failed');
         }
         if (isComputerUseKit && !isComputerUseKitSupportedPlatform()) {
           throw new Error('Computer Use kit is only available on Windows x64.');
@@ -516,7 +514,8 @@ export function registerKitHandlers(deps: KitHandlerDeps): void {
           `[KitStore] Kit "${kitId}" installed successfully with skills: ${installedSkillIds.join(', ')}`,
         );
         return { success: true, skillIds: installedSkillIds };
-      } catch (error) {
+      } 
+    } catch (error) {
         console.error(`[KitStore] Install failed for kit "${kitId}":`, error);
         return {
           success: false,
@@ -548,6 +547,11 @@ export function registerKitHandlers(deps: KitHandlerDeps): void {
     let skillWatchingStopped = false;
     let skillWatchingRestarted = false;
     try {
+      const skinPackUninstallResult = await skinPackKitLifecycle.uninstallIfHandled(kitId);
+      if (skinPackUninstallResult !== undefined) {
+        return skinPackUninstallResult;
+      }
+
       const installedMap = getInstalledKitsMap(getStore());
       const kitRecord = installedMap[kitId];
       if (!kitRecord) {
@@ -595,7 +599,6 @@ export function registerKitHandlers(deps: KitHandlerDeps): void {
           );
         }
       }
-
       // Notify
       skillManager.startWatching();
       skillWatchingRestarted = true;

@@ -51,8 +51,8 @@ interface SidebarProps {
   updateBadge?: React.ReactNode;
   onWidthChange?: (width: number) => void;
   updateNotice?: React.ReactNode;
-  /** The expanded update card owns the sidebar bottom; suppress the promo
-   * banner while it shows so the two never stack. */
+  /** The expanded update card owns the sidebar bottom; temporarily hide the
+   * promo banner while preserving it for a smooth return after collapse. */
   hideAdBanner?: boolean;
   hideLogin?: boolean;
 }
@@ -473,12 +473,16 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   const handleSelectSession = async (session: CoworkSessionSummary) => {
     const agentId = session.agentId?.trim() || AgentId.Main;
-    if (agentId !== currentAgentId) {
-      agentService.switchAgent(agentId);
-      await coworkService.loadSessions(agentId);
+    try {
+      if (agentId !== currentAgentId) {
+        agentService.switchAgent(agentId, { targetSessionId: session.id });
+        await coworkService.loadSessions(agentId);
+      }
+      onShowCowork();
+      await coworkService.loadSession(session.id);
+    } finally {
+      coworkService.finishSessionNavigation(session.id);
     }
-    onShowCowork();
-    await coworkService.loadSession(session.id);
   };
 
   const handleEnterBatchMode = useCallback((sessionId: string, agentId: string) => {
@@ -722,6 +726,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <aside
+      data-skin-sidebar="true"
       className={`relative shrink-0 overflow-hidden bg-surface-raised ${
         isResizing ? '' : 'sidebar-transition'
       }`}
@@ -839,7 +844,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             selectedKeys={selectedKeys}
             onShowCowork={onShowCowork}
             onShowExperts={onShowExperts}
-            onTaskSelected={(params) => {
+            onTaskSelected={(params: any) => {
               console.debug('[Sidebar] reporting agent sidebar task selection analytics');
               void reportYdAnalyzer({
                 action: LogReporterAction.SidebarAction,
@@ -849,7 +854,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 ...params,
               });
             }}
-            onSidebarAction={(actionType, params) => {
+            onSidebarAction={(actionType: any, params: any) => {
               reportSidebarAction(actionType, {
                 source: 'home_agent_sidebar',
                 ...params,

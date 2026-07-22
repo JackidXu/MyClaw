@@ -31,11 +31,12 @@ describe('OpenClaw extension manifests', () => {
     expect(readContractTools('ask-user-question')).toEqual(['AskUserQuestion']);
   });
 
-  test('declares LobsterAI media generation agent tool contracts', () => {
+  test('declares LobsterAI media generation and skin agent tool contracts', () => {
     expect(readContractTools('lobster-media-generation')).toEqual([
       'heyclaw_image_generate',
       'heyclaw_video_generate',
-      'heyclaw_image_segment',
+      'heyclaw_skin_manage',
+      'heyclaw_image_segment'
     ]);
   });
 

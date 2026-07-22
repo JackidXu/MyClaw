@@ -622,9 +622,12 @@ const KitsManager: React.FC<KitsManagerProps> = ({ onTryAsking }) => {
         {i18nService.t('kitDescription')}
       </p>
 
-      {/* Sticky toolbar: Search + Marketplace tab */}
-      <div className="sticky top-0 z-10 space-y-4 bg-background pb-4">
-        {/* 1. 搜索框置顶 */}
+      {/* Sticky toolbar: Search + tabs */}
+      <div
+        data-skin-management-toolbar="true"
+        className="sticky top-0 z-10 space-y-4 bg-background pb-4"
+      >
+        {/* Search */}
         <div className="flex items-center gap-3">
           <div className="relative flex-1">
             <SearchIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-secondary" />

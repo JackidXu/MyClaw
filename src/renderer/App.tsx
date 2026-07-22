@@ -25,12 +25,21 @@ import { ScheduledTasksView } from './components/scheduledTasks';
 import Settings, { type SettingsOpenOptions } from './components/Settings';
 import Sidebar from './components/Sidebar';
 import { SkillsView } from './components/skills';
+import SkinBackdrop, { SkinBackdropVariant } from './components/skin/SkinBackdrop';
+import SkinPresentationScope from './components/skin/SkinPresentationScope';
 import Toast from './components/Toast';
 import AppUpdateBadge from './components/update/AppUpdateBadge';
+import AppUpdateBlockingPanel from './components/update/AppUpdateBlockingPanel';
 import AppUpdateCard from './components/update/AppUpdateCard';
+import AppUpdateInteractionOverlay from './components/update/AppUpdateInteractionOverlay';
+import {
+  isAppUpdateInteractionBlockingStatus,
+  shouldBlockAppInteractionForUpdate,
+} from './components/update/appUpdateInteractionState';
 import AppUpdateModal from './components/update/AppUpdateModal';
 import WindowsAppTitleBar from './components/window/WindowsAppTitleBar';
 import { defaultConfig, getProviderDisplayName, ShortcutAction } from './config';
+import { SkinProvider } from './providers/SkinProvider';
 import type { ApiConfig } from './services/api';
 import { apiService } from './services/api';
 import { authService } from './services/auth';
@@ -48,7 +57,12 @@ import {
   selectFirstCurrentSessionPendingPermission,
   selectPendingPermissions,
 } from './store/selectors/coworkSelectors';
-import { setDraftCollaborationMode, setDraftPrompt } from './store/slices/coworkSlice';
+import {
+  clearDraftAttachments,
+  clearDraftSelectedTextSnippets,
+  setDraftCollaborationMode,
+  setDraftPrompt,
+} from './store/slices/coworkSlice';
 import { setAvailableModels, setDefaultSelectedModel } from './store/slices/modelSlice';
 import { clearSelection } from './store/slices/quickActionSlice';
 import { CoworkCollaborationMode, type CoworkPermissionResult } from './types/cowork';
@@ -87,6 +101,22 @@ const SETTINGS_TAB_SHORTCUT_ACTIONS: Array<{
 const INIT_STEP_TIMEOUT_MS_WINDOWS = 24_000;
 const INIT_STEP_TIMEOUT_MS_DEFAULT = 16_000;
 
+const logAppUpdateRendererLifecycle = (
+  message: string,
+  level: 'debug' | 'warn' = 'debug',
+): void => {
+  if (level === 'warn') {
+    console.warn(`[AppUpdate] ${message}`);
+  } else {
+    console.debug(`[AppUpdate] ${message}`);
+  }
+  try {
+    window.electron?.log?.fromRenderer?.(level, 'AppUpdate', message);
+  } catch {
+    // Best-effort diagnostic only.
+  }
+};
+
 const App: React.FC = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [settingsOptions, setSettingsOptions] = useState<SettingsOpenOptions & { requestId: number }>({ requestId: 0 });
@@ -110,6 +140,7 @@ const App: React.FC = () => {
   });
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [isUpdateCardExpanded, setIsUpdateCardExpanded] = useState(false);
+  const [isUserInitiatedUpdateFlowActive, setIsUserInitiatedUpdateFlowActive] = useState(false);
   const [privacyAgreed, setPrivacyAgreed] = useState<boolean | null>(null);
   const [showWelcome, setShowWelcome] = useState(false);
   const [enterpriseConfig, setEnterpriseConfig] = useState<{
@@ -117,10 +148,12 @@ const App: React.FC = () => {
     disableUpdate?: boolean;
   } | null>(null);
   const toastTimerRef = useRef<number | null>(null);
+  const askAiFocusTimerRef = useRef<number | null>(null);
   const hasInitialized = useRef(false);
   const hasReportedAppStartedRef = useRef(false);
   const previousUpdateStatusRef = useRef<AppUpdateRuntimeState['status']>(AppUpdateStatus.Idle);
   const shouldInstallReadyUpdateRef = useRef(false);
+  const isUserInitiatedUpdateFlowActiveRef = useRef(false);
   const dispatch = useDispatch();
   const defaultSelectedModel = useSelector((state: RootState) => state.model.defaultSelectedModel);
   const currentSessionId = useSelector(selectCurrentSessionId);
@@ -133,6 +166,10 @@ const App: React.FC = () => {
     ? minimizedPermissionIds.includes(pendingPermission.requestId)
     : false;
   const isPermissionModalOpen = pendingPermission !== null && !isPendingPermissionMinimized;
+  const isUpdateInteractionBlocked = shouldBlockAppInteractionForUpdate(
+    isUserInitiatedUpdateFlowActive,
+    appUpdateState.status,
+  );
 
   const syncModelsToRedux = useCallback(() => {
     const config = configService.getConfig();
@@ -556,6 +593,22 @@ const App: React.FC = () => {
     }, 2200);
   }, []);
 
+  const startUserInitiatedUpdateFlow = useCallback((reason: string) => {
+    if (!isUserInitiatedUpdateFlowActiveRef.current) {
+      logAppUpdateRendererLifecycle(`interaction lock started reason=${reason}`);
+    }
+    isUserInitiatedUpdateFlowActiveRef.current = true;
+    setIsUserInitiatedUpdateFlowActive(true);
+  }, []);
+
+  const stopUserInitiatedUpdateFlow = useCallback((reason: string) => {
+    if (!isUserInitiatedUpdateFlowActiveRef.current) return;
+
+    isUserInitiatedUpdateFlowActiveRef.current = false;
+    setIsUserInitiatedUpdateFlowActive(false);
+    logAppUpdateRendererLifecycle(`interaction lock released reason=${reason}`);
+  }, []);
+
   useEffect(() => {
     let mounted = true;
 
@@ -583,14 +636,40 @@ const App: React.FC = () => {
       previousUpdateStatusRef.current = state.status;
       setAppUpdateState(state);
 
-      if (state.status === AppUpdateStatus.Ready && previousStatus !== AppUpdateStatus.Ready) {
-        if (shouldInstallReadyUpdateRef.current && state.readyFilePath) {
-          shouldInstallReadyUpdateRef.current = false;
-          void window.electron.appUpdate.installReady().then((installResult) => {
-            if (!installResult.success) {
-              showToast(installResult.error || i18nService.t('updateInstallFailed'));
-            }
-          });
+      if (!isAppUpdateInteractionBlockingStatus(state.status)) {
+        shouldInstallReadyUpdateRef.current = false;
+        stopUserInitiatedUpdateFlow(`state=${state.status}`);
+      }
+
+      if (
+        state.status === AppUpdateStatus.Ready
+        && previousStatus !== AppUpdateStatus.Ready
+        && shouldInstallReadyUpdateRef.current
+      ) {
+        shouldInstallReadyUpdateRef.current = false;
+        if (state.readyFilePath) {
+          logAppUpdateRendererLifecycle(
+            `download ready; starting install version=${state.info?.latestVersion ?? 'unknown'}`,
+          );
+          void window.electron.appUpdate.installReady()
+            .then((installResult) => {
+              if (!installResult.success) {
+                stopUserInitiatedUpdateFlow('install-result-failed');
+                showToast(installResult.error || i18nService.t('updateInstallFailed'));
+              }
+            })
+            .catch((error) => {
+              stopUserInitiatedUpdateFlow('install-ipc-failed');
+              console.error('[AppUpdate] failed to install downloaded update:', error);
+              showToast(i18nService.t('updateInstallFailed'));
+            });
+        } else {
+          stopUserInitiatedUpdateFlow('ready-file-missing');
+          logAppUpdateRendererLifecycle(
+            `ready update is missing its installer path version=${state.info?.latestVersion ?? 'unknown'}`,
+            'warn',
+          );
+          showToast(i18nService.t('updateInstallFailed'));
         }
       }
     });
@@ -599,7 +678,7 @@ const App: React.FC = () => {
       mounted = false;
       unsubscribe();
     };
-  }, [showToast]);
+  }, [showToast, stopUserInitiatedUpdateFlow]);
 
   const handleShowLogin = useCallback(() => {
     setIsActivated(false);
@@ -623,12 +702,7 @@ const App: React.FC = () => {
     if (!updateInfo) return;
 
     const message = `update modal requested status=${appUpdateState.status} source=${appUpdateState.source ?? 'none'} version=${updateInfo.latestVersion}`;
-    console.debug(`[AppUpdate] ${message}`);
-    try {
-      window.electron?.log?.fromRenderer?.('debug', 'AppUpdate', message);
-    } catch {
-      // Best-effort diagnostic only.
-    }
+    logAppUpdateRendererLifecycle(message);
     setShowUpdateModal(true);
   }, [appUpdateState.source, appUpdateState.status, updateInfo]);
 
@@ -640,22 +714,50 @@ const App: React.FC = () => {
     if (!updateInfo) return;
 
     if (appUpdateState.readyFilePath) {
+      setShowUpdateModal(false);
       shouldInstallReadyUpdateRef.current = false;
-      const installResult = await window.electron.appUpdate.installReady();
-      if (!installResult.success) {
-        showToast(installResult.error || i18nService.t('updateInstallFailed'));
+      startUserInitiatedUpdateFlow(
+        `install-ready version=${updateInfo.latestVersion}`,
+      );
+      try {
+        const installResult = await window.electron.appUpdate.installReady();
+        if (!installResult.success) {
+          stopUserInitiatedUpdateFlow('install-result-failed');
+          showToast(installResult.error || i18nService.t('updateInstallFailed'));
+        }
+      } catch (error) {
+        stopUserInitiatedUpdateFlow('install-ipc-failed');
+        console.error('[AppUpdate] failed to install ready update:', error);
+        showToast(i18nService.t('updateInstallFailed'));
       }
       return;
     }
 
     if (appUpdateState.status === AppUpdateStatus.Error || appUpdateState.status === AppUpdateStatus.Available) {
       if (!isManualDownloadUrl(updateInfo.url)) {
+        setShowUpdateModal(false);
         // The user explicitly asked to update (or retry), so finish the whole
         // flow in one click: install and restart as soon as the download lands.
         shouldInstallReadyUpdateRef.current = true;
-        const retryResult = await window.electron.appUpdate.retryDownload();
-        if (!retryResult.success) {
+        startUserInitiatedUpdateFlow(
+          `download-and-install version=${updateInfo.latestVersion}`,
+        );
+        try {
+          const retryResult = await window.electron.appUpdate.retryDownload();
+          if (
+            !retryResult.success
+            || retryResult.state.status !== AppUpdateStatus.Downloading
+          ) {
+            stopUserInitiatedUpdateFlow(
+              `download-not-started state=${retryResult.state.status}`,
+            );
+            shouldInstallReadyUpdateRef.current = false;
+            showToast(i18nService.t('updateDownloadFailed'));
+          }
+        } catch (error) {
+          stopUserInitiatedUpdateFlow('download-ipc-failed');
           shouldInstallReadyUpdateRef.current = false;
+          console.error('[AppUpdate] failed to start update download:', error);
           showToast(i18nService.t('updateDownloadFailed'));
         }
         return;
@@ -676,24 +778,35 @@ const App: React.FC = () => {
       }
       return;
     }
-  }, [appUpdateState.readyFilePath, appUpdateState.status, showToast, updateInfo]);
+  }, [
+    appUpdateState.readyFilePath,
+    appUpdateState.status,
+    showToast,
+    startUserInitiatedUpdateFlow,
+    stopUserInitiatedUpdateFlow,
+    updateInfo,
+  ]);
 
   const handleCancelDownload = useCallback(async () => {
     shouldInstallReadyUpdateRef.current = false;
-    await window.electron.appUpdate.cancelDownload();
-  }, []);
+    stopUserInitiatedUpdateFlow('download-cancel-requested');
+    try {
+      const cancelResult = await window.electron.appUpdate.cancelDownload();
+      if (cancelResult.state.status === AppUpdateStatus.Downloading) {
+        logAppUpdateRendererLifecycle(
+          'download cancel request completed but the update is still downloading',
+          'warn',
+        );
+      }
+    } catch (error) {
+      console.error('[AppUpdate] failed to cancel update download:', error);
+      showToast(i18nService.t('updateDownloadFailed'));
+    }
+  }, [showToast, stopUserInitiatedUpdateFlow]);
 
   const handleRetryUpdate = useCallback(async () => {
-    if (!updateInfo) return;
-    if (isManualDownloadUrl(updateInfo.url)) {
-      shouldInstallReadyUpdateRef.current = false;
-      setShowUpdateModal(false);
-      await window.electron.shell.openExternal(updateInfo.url);
-      return;
-    }
-    shouldInstallReadyUpdateRef.current = false;
-    await window.electron.appUpdate.retryDownload();
-  }, [updateInfo]);
+    await handleConfirmUpdate();
+  }, [handleConfirmUpdate]);
 
   const handlePrivacyAccept = useCallback(async () => {
     await window.electron.store.set('privacy_agreed', true);
@@ -800,7 +913,7 @@ const App: React.FC = () => {
         return;
       }
 
-      if (showUpdateModal || isPermissionModalOpen) return;
+      if (showUpdateModal || isPermissionModalOpen || isUpdateInteractionBlocked) return;
 
       if (matchesAction(ShortcutAction.NewChat)) {
         event.preventDefault();
@@ -950,6 +1063,7 @@ const App: React.FC = () => {
     handleShowSettings,
     handleShowSkills,
     handleToggleSidebar,
+    isUpdateInteractionBlocked,
     mainView,
     isPermissionModalOpen,
     showSettings,
@@ -1017,13 +1131,45 @@ const App: React.FC = () => {
     return () => window.removeEventListener('app:deactivate', handleDeactivate);
   }, [dispatch]);
 
-  // Listen for ask-ai events: close settings, navigate to cowork, pre-fill input
+  // Listen for ask-ai events: close settings, open a new chat, and pre-fill its input.
   useEffect(() => {
     const handler = (e: Event) => {
       const text = (e as CustomEvent<string>).detail;
+      if (typeof text !== 'string' || !text.trim()) {
+        console.warn('[AskAI] ignored navigation request because the prompt was empty.');
+        return;
+      }
+
+      const coworkState = store.getState().cowork;
+      const diagnostic = [
+        'opening new chat with prefilled prompt;',
+        `hadCurrentSession=${Boolean(coworkState.currentSessionId)},`,
+        `remoteManaged=${coworkState.remoteManaged},`,
+        `promptLength=${text.length}`,
+      ].join(' ');
+      console.debug(`[AskAI] ${diagnostic}`);
+      try {
+        window.electron?.log?.fromRenderer?.('debug', 'AskAI', diagnostic);
+      } catch {
+        // Logging must not block navigation.
+      }
+
+      coworkService.clearSession({ restoreAgentSkills: true });
+      dispatch(clearSelection());
+      dispatch(setDraftCollaborationMode({
+        draftKey: '__home__',
+        mode: CoworkCollaborationMode.Default,
+      }));
+      dispatch(setDraftPrompt({ sessionId: '__home__', draft: text }));
+      dispatch(clearDraftAttachments('__home__'));
+      dispatch(clearDraftSelectedTextSnippets('__home__'));
       setShowSettings(false);
       setMainView('cowork');
-      window.setTimeout(() => {
+      if (askAiFocusTimerRef.current !== null) {
+        window.clearTimeout(askAiFocusTimerRef.current);
+      }
+      askAiFocusTimerRef.current = window.setTimeout(() => {
+        askAiFocusTimerRef.current = null;
         window.dispatchEvent(
           new CustomEvent(CoworkUiEvent.FocusInput, {
             detail: { text },
@@ -1032,8 +1178,14 @@ const App: React.FC = () => {
       }, 50);
     };
     window.addEventListener('app:ask-ai', handler);
-    return () => window.removeEventListener('app:ask-ai', handler);
-  }, []);
+    return () => {
+      window.removeEventListener('app:ask-ai', handler);
+      if (askAiFocusTimerRef.current !== null) {
+        window.clearTimeout(askAiFocusTimerRef.current);
+        askAiFocusTimerRef.current = null;
+      }
+    };
+  }, [dispatch]);
 
   // 监听托盘菜单打开设置的 IPC 事件
   useEffect(() => {
@@ -1061,6 +1213,15 @@ const App: React.FC = () => {
     return unsubscribe;
   }, []);
 
+  // Tell the main process which session is currently visible so desktop
+  // notifications for that session can be suppressed and cleared.
+  useEffect(() => {
+    const visibleSessionId = mainView === 'cowork' && !showSettings ? currentSessionId ?? null : null;
+    void window.electron.cowork.setActiveSession?.(visibleSessionId)?.catch?.((error: unknown) => {
+      console.debug('[App] failed to report active session:', error);
+    });
+  }, [mainView, showSettings, currentSessionId]);
+
   useEffect(() => {
     if (!isInitialized) return;
 
@@ -1082,7 +1243,7 @@ const App: React.FC = () => {
     // 启动时立即检查
     void maybeCheck('startup');
 
-    // 心跳：每 30 分钟检测是否距上次检查已超过 12 小时
+    // 心跳：每 30 分钟检测是否距上次检查已超过 2 小时
     const timer = window.setInterval(() => {
       void maybeCheck('heartbeat');
     }, APP_UPDATE_HEARTBEAT_INTERVAL_MS);
@@ -1138,7 +1299,10 @@ const App: React.FC = () => {
     );
   }, [pendingPermission, handlePermissionResponse, handleMinimizePermission, isPendingPermissionMinimized]);
 
-  const isOverlayActive = showSettings || showUpdateModal || isPermissionModalOpen;
+  const isOverlayActive = showSettings
+    || showUpdateModal
+    || isPermissionModalOpen
+    || isUpdateInteractionBlocked;
   // Keep the badge visible while downloading so the collapsed-sidebar layouts
   // still surface progress; only a plain re-check hides nothing new.
   const shouldShowUpdateBadge = updateInfo && appUpdateState.status !== AppUpdateStatus.Checking;
@@ -1159,7 +1323,7 @@ const App: React.FC = () => {
       onExpandedChange={setIsUpdateCardExpanded}
     />
   ) : null;
-  const canUseWindowsTopBarActions = isInitialized && !initError;
+  const canUseWindowsTopBarActions = isInitialized && !initError && !isUpdateInteractionBlocked;
   const canUseWindowsCollapsedTopBarActions = canUseWindowsTopBarActions && isSidebarCollapsed;
   const collapsedHeaderUpdateBadge = isSidebarCollapsed && !isWindows ? updateBadge : null;
   const windowsStandaloneTitleBar = isWindows ? (
@@ -1235,14 +1399,16 @@ const App: React.FC = () => {
             </div>
           </div>
           {showSettings && (
-            <Settings
-              onClose={handleCloseSettings}
-              initialTab={settingsOptions.initialTab}
-              initialTabRequestId={settingsOptions.requestId}
-              notice={settingsOptions.notice}
-              onUpdateFound={handleUpdateFound}
-              enterpriseConfig={enterpriseConfig}
-            />
+            <SkinProvider>
+              <Settings
+                onClose={handleCloseSettings}
+                initialTab={settingsOptions.initialTab}
+                initialTabRequestId={settingsOptions.requestId}
+                notice={settingsOptions.notice}
+                onUpdateFound={handleUpdateFound}
+                enterpriseConfig={enterpriseConfig}
+              />
+            </SkinProvider>
           )}
         </div>
       </div>
@@ -1250,12 +1416,23 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="h-screen overflow-hidden flex flex-col bg-surface-raised">
+    <SkinProvider>
+      <SkinPresentationScope
+        enabled
+        className="h-screen overflow-hidden flex flex-col bg-surface-raised"
+      >
       {toastMessage && (
-        <Toast message={toastMessage} onClose={() => setToastMessage(null)} />
+        <Toast
+          message={toastMessage}
+          closeLabel={i18nService.t('close')}
+          onClose={() => setToastMessage(null)}
+        />
       )}
       {windowsStandaloneTitleBar}
-      <div className="flex flex-1 min-h-0 overflow-hidden">
+      <div
+        className="relative flex flex-1 min-h-0 overflow-hidden"
+        aria-busy={isUpdateInteractionBlocked}
+      >
         <Sidebar
           onShowLogin={handleShowLogin}
           onShowSettings={handleShowSettings}
@@ -1270,12 +1447,19 @@ const App: React.FC = () => {
           onToggleCollapse={handleToggleSidebar}
           updateBadge={!isSidebarCollapsed ? updateBadge : null}
           onWidthChange={setSidebarWidth}
-          updateNotice={!isSidebarCollapsed ? updateCard : null}
+          updateNotice={!isSidebarCollapsed && !isUpdateInteractionBlocked ? updateCard : null}
           hideAdBanner={isUpdateCardExpanded}
           hideLogin={enterpriseConfig?.ui?.login === 'hide'}
         />
         <div className={`flex-1 min-w-0 transition-[padding] duration-200 ease-out ${isSidebarCollapsed ? 'pl-1.5' : ''}`}>
-          <div className="relative h-full min-h-0 rounded-xl border border-border bg-background overflow-hidden">
+          <div
+            data-skin-cowork-frame={mainView === 'cowork' ? 'true' : undefined}
+            data-skin-management-frame={mainView !== 'cowork' ? 'true' : undefined}
+            className="relative h-full min-h-0 rounded-xl border border-border bg-background overflow-hidden"
+          >
+            {mainView !== 'cowork' && (
+              <SkinBackdrop variant={SkinBackdropVariant.Management} />
+            )}
             <EngineStartupOverlay />
             {mainView === 'skills' ? (
               <SkillsView
@@ -1325,6 +1509,14 @@ const App: React.FC = () => {
             )}
           </div>
         </div>
+        {isUpdateInteractionBlocked && (
+          <AppUpdateInteractionOverlay>
+            <AppUpdateBlockingPanel
+              updateState={appUpdateState}
+              onCancelDownload={handleCancelDownload}
+            />
+          </AppUpdateInteractionOverlay>
+        )}
       </div>
 
       <EngineFailureOverlay
@@ -1363,7 +1555,8 @@ const App: React.FC = () => {
           onReject={handlePrivacyReject}
         />
       )}
-    </div>
+      </SkinPresentationScope>
+    </SkinProvider>
   );
 };
 

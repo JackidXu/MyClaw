@@ -1,11 +1,12 @@
 {
   "id": "lobster-media-generation",
   "name": "LobsterMediaGeneration",
-  "description": "Image and video generation tools powered by LobsterAI server.",
+  "description": "Image/video generation and AI skin management tools powered by LobsterAI.",
   "contracts": {
     "tools": [
       "heyclaw_image_generate",
       "heyclaw_video_generate",
+      "heyclaw_skin_manage",
       "heyclaw_image_segment"
     ]
   },

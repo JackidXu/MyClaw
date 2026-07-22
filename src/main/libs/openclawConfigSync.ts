@@ -12,6 +12,8 @@ import {
   normalizeBrowserHostnamePolicyList,
   normalizeBrowserWebAccessConfig,
 } from '../../shared/browserWebAccess/constants';
+import { COWORK_TEMP_DIR_NAME } from '../../shared/cowork/constants';
+import { CoworkErrorModelSource } from '../../shared/cowork/errorDetail';
 import { normalizeMcpServerUrlInput } from '../../shared/mcp/url';
 import {
   AuthType,
@@ -27,6 +29,7 @@ import { OpenClawSessionKeepAlive } from '../openclawSessionPolicy/constants';
 import { buildOpenClawSessionConfig } from '../openclawSessionPolicy/store';
 import {
   getAllServerModelMetadata,
+  listProviderSourceEntries,
   resolveAllEnabledProviderConfigs,
   resolveAllProviderApiKeys,
   resolveRawApiConfig,
@@ -377,6 +380,25 @@ const buildManagedSkillCreationPrompt = (skillsDirPath: string): string => [
   `  ${skillsDirPath}/<skill-name>/SKILL.md`,
   '',
   'Do NOT create skills under the workspace `skills/` subdirectory.',
+].join('\n');
+
+const MANAGED_DELIVERABLE_LINKS_PROMPT = [
+  '## Deliverable File Links',
+  '',
+  'When a turn creates or updates user-facing deliverable files (documents, spreadsheets,',
+  'presentations, HTML pages, images, audio, video, and similar outputs), you MUST list each',
+  'deliverable at the end of the final reply as a Markdown link with an absolute path:',
+  '',
+  '  `[report.docx](/absolute/path/to/report.docx)`',
+  '',
+  '- Both `[name](/absolute/path)` and `[name](file:///absolute/path)` are accepted.',
+  '- This also applies when files are produced indirectly, e.g. by a Python/Node script or a',
+  '  shell command you ran. Always link the final output files.',
+  `- Keep intermediate files (helper scripts, scratch data, drafts) inside the \`${COWORK_TEMP_DIR_NAME}/\``,
+  '  directory under the session working directory, and do not link them in the final reply.',
+  `- The user can clean up \`${COWORK_TEMP_DIR_NAME}/\` at any time;`,
+  '  anything the user should keep must be saved outside of it.',
+  '- Only link files that exist on disk after your work. Never link files you merely read.',
 ].join('\n');
 
 const MANAGED_MEMORY_POLICY_PROMPT = [
@@ -1064,6 +1086,69 @@ export const buildProviderSelection = (options: {
     },
   };
 };
+
+export type OpenClawProviderModelSource = {
+  source: CoworkErrorModelSource;
+  providerName?: string;
+  providerDisplayName?: string;
+};
+
+/**
+ * Classifies an OpenClaw provider id (as reported in gateway error metadata)
+ * back to the LobsterAI Settings entry it was generated from, so runtime
+ * errors can tell the user whether the failing model is the LobsterAI plan,
+ * a vendor coding plan, or their own custom provider.
+ */
+export function resolveModelSourceForOpenClawProvider(
+  openclawProviderId: string,
+): OpenClawProviderModelSource | undefined {
+  const providerId = openclawProviderId?.trim();
+  if (!providerId) return undefined;
+
+  if (providerId === OpenClawProviderId.LobsteraiServer) {
+    return {
+      source: CoworkErrorModelSource.LobsterAIPlan,
+      providerName: ProviderName.LobsteraiServer,
+    };
+  }
+
+  for (const entry of listProviderSourceEntries()) {
+    const descriptor = resolveDescriptor(
+      entry.providerName,
+      entry.codingPlanEnabled,
+      entry.authType,
+    );
+    if (descriptor.providerId !== providerId) continue;
+
+    if (entry.providerName === ProviderName.Custom) {
+      return {
+        source: CoworkErrorModelSource.CustomProvider,
+        providerName: entry.providerName,
+        providerDisplayName: entry.displayName,
+      };
+    }
+    // Built-in providers rarely carry a user displayName; fall back to the
+    // registry label ("DeepSeek", "Zhipu", ...) so the error card can name them.
+    const providerDisplayName =
+      entry.displayName || ProviderRegistry.get(entry.providerName)?.label || undefined;
+    if (entry.codingPlanEnabled) {
+      return {
+        source: CoworkErrorModelSource.CodingPlan,
+        providerName: entry.providerName,
+        providerDisplayName,
+      };
+    }
+    return {
+      source: entry.authType === 'oauth'
+        ? CoworkErrorModelSource.BuiltinOAuth
+        : CoworkErrorModelSource.BuiltinProvider,
+      providerName: entry.providerName,
+      providerDisplayName,
+    };
+  }
+
+  return undefined;
+}
 
 const buildProviderModelCatalog = (
   providers: Record<string, OpenClawProviderSelection['providerConfig']>,
@@ -2126,7 +2211,7 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
         config: {
           callbackUrl: mediaCallbackUrl,
           secret: '${LOBSTER_MCP_BRIDGE_SECRET}',
-          requestTimeoutMs: 120000,
+          requestTimeoutMs: 150000,
         },
       };
     }
@@ -3173,6 +3258,7 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
       sections.push(MANAGED_BINARY_FILE_READ_POLICY_PROMPT);
       sections.push(MANAGED_TEMPORARY_FILE_POLICY_PROMPT);
       sections.push(MANAGED_EXEC_SAFETY_PROMPT);
+      sections.push(MANAGED_DELIVERABLE_LINKS_PROMPT);
       sections.push(MANAGED_MEMORY_POLICY_PROMPT);
       sections.push(MANAGED_HEARTBEAT_POLICY_PROMPT);
       sections.push(buildManagedSkillCreationPrompt(resolveSkillCreationPath()));

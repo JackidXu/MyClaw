@@ -14,6 +14,7 @@ import {
   CoworkForkMode,
   type CoworkForkMode as CoworkForkModeType,
 } from '../shared/cowork/constants';
+import type { CoworkErrorDetail } from '../shared/cowork/errorDetail';
 import {
   type CoworkGoal,
   normalizeCoworkGoal,
@@ -434,6 +435,7 @@ export interface CoworkMessageMetadata {
   toolResult?: string;
   toolUseId?: string | null;
   error?: string;
+  errorDetail?: CoworkErrorDetail;
   isError?: boolean;
   isStreaming?: boolean;
   isFinal?: boolean;
@@ -2220,6 +2222,34 @@ export class CoworkStore {
     if (config.dreamingTimezone !== undefined) {
       this.upsertConfig('dreamingTimezone', String(config.dreamingTimezone), now);
     }
+  }
+
+  /**
+   * Distinct session working directories with activity since the given
+   * timestamp. Used by the cowork temp janitor to scope its sweep.
+   */
+  listRecentSessionCwds(sinceMs: number): string[] {
+    const rows = this.getAll<{ cwd: string }>(
+      `
+      SELECT cwd FROM cowork_sessions
+      WHERE cwd IS NOT NULL AND cwd != ''
+      GROUP BY cwd
+      HAVING MAX(updated_at) >= ?
+    `,
+      [sinceMs],
+    );
+    return rows.map(row => row.cwd);
+  }
+
+  /** Distinct working directories of the given sessions. */
+  listSessionCwds(sessionIds: string[]): string[] {
+    if (sessionIds.length === 0) return [];
+    const placeholders = sessionIds.map(() => '?').join(', ');
+    const rows = this.getAll<{ cwd: string }>(
+      `SELECT DISTINCT cwd FROM cowork_sessions WHERE id IN (${placeholders}) AND cwd IS NOT NULL AND cwd != ''`,
+      sessionIds,
+    );
+    return rows.map(row => row.cwd);
   }
 
   getAppLanguage(): 'zh' | 'en' {
