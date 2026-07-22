@@ -887,6 +887,11 @@ export function parseFilePathsFromText(
   let index = 0;
 
   while ((match = re.exec(messageContent)) !== null) {
+    const matchStart = match.index;
+    const prefixContext = messageContent.slice(Math.max(0, matchStart - 10), matchStart + match[0].length);
+    if (/https?:\/\//i.test(prefixContext) || /^https?:\/\//i.test(match[1])) {
+      continue;
+    }
     const filePath = normalizeArtifactFilePath(match[1]);
     if (isSensitiveSkillFile(filePath)) continue;
 
