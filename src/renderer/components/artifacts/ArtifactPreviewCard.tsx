@@ -12,7 +12,6 @@ import { revealLocalPathWithToast, showShellFailureToast } from '@/utils/localFi
 import ServiceDeploymentIcon from '../icons/ServiceDeploymentIcon';
 import { reportArtifactPreviewAction } from './artifactAnalytics';
 import { useOptionalArtifactFileShare } from './ArtifactFileShareController';
-import { isArtifactFileShareable } from './artifactFileSharePolicy';
 import ArtifactPreviewIdentity, { ArtifactPreviewGlobeIcon } from './ArtifactPreviewIdentity';
 import { getPreviewCardDescriptor } from './previewCardPolicy';
 
@@ -397,9 +396,7 @@ const ArtifactPreviewCard: React.FC<ArtifactPreviewCardProps> = ({
 
   const descriptor = getPreviewCardDescriptor(artifact);
   const supportsOpenMenu = descriptor.supportsOpenMenu;
-  const canShare = artifact.type !== ArtifactTypeValue.LocalService &&
-    Boolean(artifactFileShare) &&
-    isArtifactFileShareable(artifact);
+  const canShare = false;
   const canDeploy = artifact.type === ArtifactTypeValue.LocalService &&
     Boolean(onDeployLocalService);
   const cardClassName = 'artifact-preview-card-row group flex min-h-[58px] items-center gap-3 px-4 py-3 transition-colors w-full text-left';

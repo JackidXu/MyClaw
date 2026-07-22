@@ -1,4 +1,3 @@
-import { ShareIcon } from '@heroicons/react/20/solid';
 import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -60,7 +59,7 @@ const AgentTaskRow: React.FC<AgentTaskRowProps> = ({
   hasActiveSubagent = false,
   onSelect,
   onDelete,
-  onShare,
+  onShare: _onShare,
   onTogglePin,
   onRename,
   onToggleSelection,
@@ -386,19 +385,7 @@ const AgentTaskRow: React.FC<AgentTaskRowProps> = ({
             <PushPinIcon slashed={task.pinned} className={menuIconClassName} />
             {task.pinned ? i18nService.t('coworkUnpinSession') : i18nService.t('coworkPinSession')}
           </button>
-          <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation();
-              closeMenu();
-              void onShare();
-            }}
-            className={menuItemClassName}
-            role="menuitem"
-          >
-            <ShareIcon className={menuIconClassName} />
-            {i18nService.t('coworkShareSession')}
-          </button>
+
           <button
             type="button"
             onClick={(event) => {
