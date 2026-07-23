@@ -622,7 +622,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     return rawActiveSkillIds.filter(id => {
       const skill = skills.find(s => s.id === id);
       if (!skill?.requiredExpert) return true;
-      return vipService.isExpertUnlocked(skill.requiredExpert);
+      return vipService.isSkillUnlocked(skill.requiredExpert);
     });
   }, [rawActiveSkillIds, skills]);
   const hasActiveSkills = activeSkillIds.some(id => skills.some(skill => skill.id === id));

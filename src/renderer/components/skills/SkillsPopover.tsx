@@ -4,12 +4,12 @@ import { useSelector } from 'react-redux';
 
 import { i18nService } from '../../services/i18n';
 import { skillService } from '../../services/skill';
+import { vipService } from '../../services/vipService';
 import { RootState } from '../../store';
 import { Skill } from '../../types/skill';
 import Cog6ToothIcon from '../icons/Cog6ToothIcon';
 import SearchIcon from '../icons/SearchIcon';
 import SkillIcon from '../icons/SkillIcon';
-import { vipService } from '../../services/vipService';
 
 interface SkillsPopoverProps {
   isOpen: boolean;
@@ -48,7 +48,7 @@ const SkillsPopover: React.FC<SkillsPopoverProps> = ({
     .filter(s => s.enabled)
     .filter(s => {
       if (!s.requiredExpert) return true;
-      return vipService.isExpertUnlocked(s.requiredExpert);
+      return vipService.isSkillUnlocked(s.requiredExpert);
     })
     .filter(s => {
       const query = searchQuery.toLowerCase();

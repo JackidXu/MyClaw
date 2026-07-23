@@ -60,6 +60,11 @@ class VipService {
     );
   }
 
+  public isSkillUnlocked(requiredExpert?: string[]): boolean {
+    if (!requiredExpert || requiredExpert.length === 0) return true;
+    return requiredExpert.some(expertId => this.isExpertUnlocked(expertId));
+  }
+
   public async refreshStatus(): Promise<VipStatusState> {
     const userIdStr = localStorage.getItem('heyclaw_user_id');
     const session = localStorage.getItem('heyclaw_session');

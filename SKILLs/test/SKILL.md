@@ -1,7 +1,8 @@
 ---
 name: "test"
 description: "黑墙智库专属测试技能，当用户输入 test 时响应 hello"
-requiredExpert: "heiqiang-think-tank"
+requiredExpert:
+  - "heiqiang-think-tank"
 version: "1.0.0"
 official: true
 ---

@@ -223,7 +223,7 @@ const SkillsManager: React.FC<SkillsManagerProps> = ({ readOnly, onCreateByChat 
   const filteredSkills = useMemo(() => {
     const query = skillSearchQuery.trim().replace(/\s+/g, ' ').toLowerCase();
     return skills.filter(skill => {
-      if (skill.requiredExpert && !vipService.isExpertUnlocked(skill.requiredExpert)) {
+      if (skill.requiredExpert && !vipService.isSkillUnlocked(skill.requiredExpert)) {
         return false;
       }
       const matchesSearch = skillService.getLocalizedSkillName(skill).toLowerCase().includes(query)

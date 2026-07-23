@@ -329,7 +329,7 @@ export type SkillRecord = {
   prompt: string;
   skillPath: string;
   version?: string;
-  requiredExpert?: string;
+  requiredExpert?: string[];
 };
 
 type SkillStateMap = Record<string, { enabled: boolean }>;
@@ -2537,7 +2537,13 @@ export class SkillManager {
       const v = frontmatter.version ?? meta?.version;
       const version = typeof v === 'string' ? v : typeof v === 'number' ? String(v) : undefined;
       const reqExp = frontmatter.requiredExpert ?? meta?.requiredExpert;
-      const requiredExpert = typeof reqExp === 'string' ? reqExp.trim() : undefined;
+      let requiredExpert: string[] | undefined;
+      if (Array.isArray(reqExp)) {
+        requiredExpert = reqExp.map(item => String(item).trim()).filter(Boolean);
+        if (requiredExpert.length === 0) requiredExpert = undefined;
+      } else if (typeof reqExp === 'string' && reqExp.trim()) {
+        requiredExpert = [reqExp.trim()];
+      }
       const updatedAt = fs.statSync(skillFile).mtimeMs;
       const id = path.basename(dir);
       const prompt = content.trim();
