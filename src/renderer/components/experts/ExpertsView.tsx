@@ -35,7 +35,7 @@ interface PresetAgent {
   name: string;
   icon: string;
   description: string;
-  identity: string;
+  identity?: string;
   level?: '高级' | '中级' | '初级';
   department?: string;
 }
@@ -70,7 +70,7 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
 
   // VIP 开通弹窗状态
   const [isGuideOpen, setIsGuideOpen] = useState(false);
-  const [selectedPaidExpert, setSelectedPaidExpert] = useState<PresetAgent | null>(null);
+  const [selectedPaidExpert, setSelectedPaidExpert] = useState<PresetAgent | any | null>(null);
   const [, setVipState] = useState(vipService.getState());
 
   // 监听 VIP 状态
