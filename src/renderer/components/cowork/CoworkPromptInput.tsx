@@ -1316,14 +1316,8 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
         + `id=${clientSteerId}; chars=${steerText.length}; `
         + `mode=${steerInputActive ? 'explicit' : 'inline'}.`,
       );
-      const accepted = await coworkService.submitSteer({
-        sessionId,
-        text: steerText,
-        clientSteerId,
-      });
-      if (!accepted) {
-        return;
-      }
+      const previousSteerValue = steerValue;
+      const previousValue = value;
       if (steerInputActive) {
         setSteerValue('');
         dispatch(setSteerDraft({ sessionId, draft: '' }));
@@ -1331,6 +1325,23 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
       } else {
         setValue('');
         dispatch(setDraftPrompt({ sessionId: draftKey, draft: '' }));
+      }
+
+      const accepted = await coworkService.submitSteer({
+        sessionId,
+        text: steerText,
+        clientSteerId,
+      });
+      if (!accepted) {
+        if (steerInputActive) {
+          setSteerValue(previousSteerValue);
+          dispatch(setSteerDraft({ sessionId, draft: previousSteerValue }));
+          setSteerInputActive(true);
+        } else {
+          setValue(previousValue);
+          dispatch(setDraftPrompt({ sessionId: draftKey, draft: previousValue }));
+        }
+        return;
       }
       reportPromptSubmit({
         ...getPromptContextAnalyticsParams(),
@@ -1653,6 +1664,16 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
       return;
     }
 
+    const previousValue = value;
+    setValue('');
+    dispatch(setDraftPrompt({ sessionId: draftKey, draft: '' }));
+    dispatch(clearDraftAttachments(draftKey));
+    dispatch(clearDraftSelectedTextSnippets(draftKey));
+    setImageVisionHint(false);
+    resetGoalInput(false);
+    draftStartedAnalyticsRef.current = false;
+    inputSourceOverrideRef.current = null;
+
     const result = await onSubmit(
       promptPayload.finalPrompt,
       skillPrompt,
@@ -1662,6 +1683,8 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
       effectiveCollaborationMode,
     );
     if (result === false) {
+      setValue(previousValue);
+      dispatch(setDraftPrompt({ sessionId: draftKey, draft: previousValue }));
       reportPromptControl('submit_blocked', {
         blockedReason: 'submit_rejected',
         submitMethod: effectiveSubmitMethod,
@@ -1708,14 +1731,6 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     if (exitsPlanModeForImplementation) {
       dispatch(setDraftCollaborationMode({ draftKey, mode: CoworkCollaborationMode.Default }));
     }
-    setValue('');
-    dispatch(setDraftPrompt({ sessionId: draftKey, draft: '' }));
-    dispatch(clearDraftAttachments(draftKey));
-    dispatch(clearDraftSelectedTextSnippets(draftKey));
-    setImageVisionHint(false);
-    resetGoalInput(false);
-    draftStartedAnalyticsRef.current = false;
-    inputSourceOverrideRef.current = null;
   }, [value, steerInputActive, steerValue, isVoiceRecording, stopVoiceRecordingAndRecognize, goalInputActive, goalInputMode, resetGoalInput, isStreaming, canSteer, remoteManaged, disabled, isPatchingModel, onSubmit, onGoalCommand, activeSkillIds, skills, activeKitIds, marketplaceKits, installedKits, attachments, showFolderSelector, workingDirectory, dispatch, draftKey, selectedTextSnippets, pendingSteers.length, resolveSubmitModelAccessPrompt, isPlanMode, planConfirmation, reportPromptControl, getPromptCapabilityAnalyticsParams, getPromptContextAnalyticsParams, getPromptInputSource, goal, sessionId, preparePromptPayload, modelSupportsImage, queuedMediaSelection, currentAgent?.presetId, currentAgentId]);
 
   const handleSelectSkill = useCallback((skill: Skill) => {
