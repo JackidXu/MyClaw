@@ -337,7 +337,7 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
                   : 'text-secondary hover:text-foreground'
               }`}
             >
-              <span>🏰</span>
+              <span>💎</span>
               <span>付费专家</span>
             </button>
             <button
@@ -364,8 +364,8 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
             </button>
           </div>
 
-          {/* 部门过滤滑动标签栏 (仅在付费或内置专家下展示) */}
-          {expertType !== 'custom' && (
+          {/* 部门过滤滑动标签栏 (仅在内置专家下展示) */}
+          {expertType === 'preset' && (
             <div className="overflow-x-auto scrollbar-hidden">
               <div className="flex space-x-2.5">
                 {DEPARTMENTS.map((dept) => {
@@ -439,28 +439,32 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
 
                   const isPaid = expertType === 'paid';
                   const isUnlocked = isPaid ? vipService.isExpertUnlocked(expert.id) : true;
+                  const isLocked = isPaid && !isUnlocked;
 
                   return (
                     <div
                       key={expert.id}
-                      className={`group relative flex flex-col items-center justify-between rounded-2xl border border-border/80 bg-surface px-4 py-6 text-center shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-300 overflow-hidden ${
-                        isPaid && !isUnlocked ? 'opacity-90' : ''
+                      className={`group relative flex flex-col items-center rounded-2xl p-6 text-center shadow-sm transition-all duration-300 overflow-hidden ${
+                        isLocked
+                          ? 'bg-gradient-to-b from-amber-500/[0.05] via-surface to-amber-500/[0.02] border border-amber-500/30 hover:border-amber-500/60 hover:shadow-xl hover:shadow-amber-500/10'
+                          : 'bg-surface border border-border hover:shadow-md hover:border-primary/20'
                       }`}
                     >
+                      {/* 专家角标状态 */}
                       {isPaid ? (
                         <span
-                          className={`absolute right-3.5 top-3.5 text-[11px] font-bold px-2 py-0.5 rounded border flex items-center gap-1 ${
+                          className={`absolute right-3.5 top-3.5 text-[11px] font-bold px-2.5 py-0.5 rounded-full border flex items-center gap-1 shadow-2xs select-none backdrop-blur-sm z-10 ${
                             isUnlocked
-                              ? 'bg-emerald-50 text-emerald-600 border-emerald-200'
-                              : 'bg-amber-50 text-amber-600 border-amber-200'
+                              ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30'
+                              : 'bg-gradient-to-r from-amber-500/15 to-purple-500/15 text-amber-700 border-amber-500/40 shadow-amber-500/10'
                           }`}
                         >
-                          {isUnlocked ? '👑 已授权' : '🔒 未开通'}
+                          {isUnlocked ? '✓ 已开通' : '✨ PRO 专属'}
                         </span>
                       ) : expertType === 'preset' ? (
                         expert.level && (
                           <span
-                            className={`absolute right-3.5 top-3.5 text-[10px] font-bold px-2 py-0.5 rounded border ${getLevelBadge(
+                            className={`absolute right-3.5 top-3.5 text-[10px] font-bold px-2 py-0.5 rounded border z-10 ${getLevelBadge(
                               expert.level
                             )}`}
                           >
@@ -489,14 +493,31 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
                         </div>
                       )}
 
-                      <div className="relative mt-2">
-                        <AgentAvatarIcon value={expert.icon} className="h-20 w-20 shadow-md ring-2 ring-background ring-offset-2 transition-transform duration-300 group-hover:scale-105" />
+                      {/* 头像区域：付费专家使用高奢黑金盾牌框与👑皇冠勋章，普通专家使用经典圆图 */}
+                      <div className="relative mt-2 z-10">
+                        {isPaid ? (
+                          <div className="relative group/avatar">
+                            <div className="bg-gradient-to-tr from-amber-500 via-amber-300 to-amber-600 p-[2.5px] rounded-[26px] shadow-lg shadow-amber-500/20 transition-all duration-300 group-hover:shadow-amber-500/35 group-hover:scale-105">
+                              <div className="bg-surface rounded-[24px] overflow-hidden flex items-center justify-center p-0.5">
+                                <AgentAvatarIcon value={expert.icon} className="h-20 w-20 rounded-[22px] object-cover" />
+                              </div>
+                            </div>
+                            <div className="absolute -bottom-1 -right-1 bg-gradient-to-r from-amber-500 to-amber-300 text-slate-950 font-black text-[10px] px-1.5 py-0.5 rounded-full shadow-md border-2 border-white flex items-center gap-0.5 select-none">
+                              <span>👑</span>
+                              <span className="text-[9px] tracking-tight">PRO</span>
+                            </div>
+                          </div>
+                        ) : (
+                          <AgentAvatarIcon value={expert.icon} className="h-20 w-20 shadow-md ring-2 ring-background ring-offset-2 transition-transform duration-300 group-hover:scale-105" />
+                        )}
                       </div>
 
-                      <div className="flex flex-col items-center flex-1 mt-4">
-                        <h3 className="text-base font-semibold text-foreground">{expert.name}</h3>
+                      <div className="flex flex-col items-center flex-1 mt-4 z-10">
+                        <h3 className="text-base font-semibold text-foreground flex items-center gap-1.5">
+                          {expert.name}
+                        </h3>
                         {showTag && (
-                          <span className="mt-1.5 inline-flex items-center rounded-full bg-purple-50 text-purple-600 border border-purple-100 px-2.5 py-0.5 text-xs font-semibold select-none">
+                          <span className="mt-1.5 inline-flex items-center rounded-full bg-amber-500/10 text-amber-800 border border-amber-500/20 px-2.5 py-0.5 text-xs font-semibold select-none">
                             {shortTag}
                           </span>
                         )}
@@ -505,21 +526,25 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
                         </p>
                       </div>
 
-                      <div className="w-full mt-5">
-                        {isPaid && !isUnlocked ? (
+                      {/* 操作按钮区 */}
+                      <div className="w-full mt-5 z-10">
+                        {isLocked ? (
                           <button
                             type="button"
-                            onClick={() => setIsGuideOpen(true)}
-                            className="w-full flex items-center justify-center gap-1 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white py-2 text-xs font-bold shadow-md shadow-amber-500/20 transition-all duration-200 select-none cursor-pointer"
+                            onClick={() => {
+                              setSelectedPaidExpert(expert);
+                              setIsGuideOpen(true);
+                            }}
+                            className="w-full flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:brightness-110 text-slate-950 py-2.5 text-xs font-extrabold shadow-md shadow-amber-500/25 active:scale-[0.98] transition-all duration-200 select-none cursor-pointer"
                           >
-                            <span>🔒 立即开通</span>
+                            <span>✨ 立即解锁</span>
                           </button>
                         ) : (
                           <button
                             type="button"
                             onClick={() => handleStartWork(expert)}
                             disabled={hiringId !== null}
-                            className="w-full flex items-center justify-center rounded-xl bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white py-2 text-xs font-semibold shadow-sm transition-all duration-200 disabled:opacity-50 select-none cursor-pointer"
+                            className="w-full flex items-center justify-center rounded-xl bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white py-2.5 text-xs font-semibold shadow-sm active:scale-[0.98] transition-all duration-200 disabled:opacity-50 select-none cursor-pointer"
                           >
                             {hiringId === expert.id ? (
                               <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white"></div>

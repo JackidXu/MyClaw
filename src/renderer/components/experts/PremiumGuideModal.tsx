@@ -34,13 +34,8 @@ export const PremiumGuideModal: React.FC<PremiumGuideModalProps> = ({
           ✕
         </button>
 
-        {/* 图标/徽章 */}
-        <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-amber-500 to-amber-300 flex items-center justify-center text-3xl shadow-lg shadow-amber-500/20 mb-4">
-          🏰
-        </div>
-
         {/* 标题与描述 */}
-        <h3 className="text-xl font-bold text-gray-900 tracking-tight mb-2">{displayTitle}</h3>
+        <h3 className="text-xl font-bold text-gray-900 tracking-tight mb-2 pt-2">{displayTitle}</h3>
         <p className="text-sm text-gray-500 max-w-xs mb-6 leading-relaxed">
           {displayDescription}
         </p>
@@ -49,9 +44,6 @@ export const PremiumGuideModal: React.FC<PremiumGuideModalProps> = ({
         <div className="w-full bg-amber-50/60 border border-amber-100/80 rounded-xl p-3.5 mb-6 text-left space-y-2">
           <div className="flex items-center text-xs text-amber-900 font-medium">
             <span className="text-amber-500 mr-2">✓</span> 包含深度商业情报及竞争洞察 Skill 套件
-          </div>
-          <div className="flex items-center text-xs text-amber-900 font-medium">
-            <span className="text-amber-500 mr-2">✓</span> 支持最多 5 台设备同时使用与授权绑定
           </div>
           <div className="flex items-center text-xs text-amber-900 font-medium">
             <span className="text-amber-500 mr-2">✓</span> 一对一专属技术客服与服务支持
