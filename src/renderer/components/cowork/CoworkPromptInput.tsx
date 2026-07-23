@@ -13,6 +13,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom';
 import { useDispatch, useSelector } from 'react-redux';
 
+import { isPaidExpert } from '../../../shared/agent/constants';
 import {
   type CoworkGoal,
   CoworkGoalStatus,
@@ -1281,10 +1282,8 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
 
   const handleSubmit = useCallback(async (submitMethod: 'button' | 'keyboard' | 'voice' = 'button') => {
     // 拦截未授权的付费专家发送
-    if (
-      (currentAgent?.presetId === 'heiqiang-think-tank' || currentAgentId === 'heiqiang-think-tank') &&
-      !vipService.isExpertUnlocked('heiqiang-think-tank')
-    ) {
+    const targetExpertId = currentAgent?.presetId || currentAgentId;
+    if (isPaidExpert(targetExpertId) && !vipService.isExpertUnlocked(targetExpertId)) {
       setIsGuideOpen(true);
       return;
     }
@@ -2608,9 +2607,8 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     enabled: true,
   };
   const enabledAgentOptions = agents.filter((agent) => {
-    const isUnlocked = agent.presetId === 'heiqiang-think-tank' || agent.id === 'heiqiang-think-tank'
-      ? vipService.isExpertUnlocked('heiqiang-think-tank')
-      : true;
+    const targetId = agent.presetId || agent.id;
+    const isUnlocked = isPaidExpert(targetId) ? vipService.isExpertUnlocked(targetId) : true;
     return (agent.enabled || agent.id === currentAgentId) && isUnlocked;
   });
   const agentOptions = enabledAgentOptions.some((agent) => agent.id === currentAgentForDisplay.id)
@@ -3809,6 +3807,8 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
       {/* VIP 订阅购买引导弹窗 */}
       <PremiumGuideModal
         isOpen={isGuideOpen}
+        expertName={currentAgent?.name}
+        expertDescription={currentAgent?.description}
         onClose={() => setIsGuideOpen(false)}
       />
     </div>

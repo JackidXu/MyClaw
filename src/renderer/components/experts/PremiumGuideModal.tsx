@@ -3,6 +3,8 @@ import React from 'react';
 interface PremiumGuideModalProps {
   isOpen: boolean;
   onClose: () => void;
+  expertName?: string;
+  expertDescription?: string;
   title?: string;
   description?: string;
 }
@@ -10,10 +12,15 @@ interface PremiumGuideModalProps {
 export const PremiumGuideModal: React.FC<PremiumGuideModalProps> = ({
   isOpen,
   onClose,
-  title = '解锁黑墙智库付费专家',
-  description = '获取商业情报深度分析、竞争对手实时监控与专属专家决策辅助功能。',
+  expertName,
+  expertDescription,
+  title,
+  description,
 }) => {
   if (!isOpen) return null;
+
+  const displayTitle = title || (expertName ? `解锁【${expertName}】付费专家` : '解锁付费专家');
+  const displayDescription = description || expertDescription || '解锁高端专有商业情报、竞争洞察与定制 AI 技能。';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-200 select-none">
@@ -33,9 +40,9 @@ export const PremiumGuideModal: React.FC<PremiumGuideModalProps> = ({
         </div>
 
         {/* 标题与描述 */}
-        <h3 className="text-xl font-bold text-gray-900 tracking-tight mb-2">{title}</h3>
+        <h3 className="text-xl font-bold text-gray-900 tracking-tight mb-2">{displayTitle}</h3>
         <p className="text-sm text-gray-500 max-w-xs mb-6 leading-relaxed">
-          {description}
+          {displayDescription}
         </p>
 
         {/* 权益亮点 */}

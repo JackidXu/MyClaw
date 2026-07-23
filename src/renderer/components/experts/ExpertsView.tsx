@@ -28,6 +28,8 @@ const DEPARTMENTS = [
   '客户成功部',
 ];
 
+import { isPaidExpert } from '../../../shared/agent/constants';
+
 interface PresetAgent {
   id: string;
   name: string;
@@ -37,18 +39,6 @@ interface PresetAgent {
   level?: '高级' | '中级' | '初级';
   department?: string;
 }
-
-const PAID_EXPERTS: PresetAgent[] = [
-  {
-    id: 'heiqiang-think-tank',
-    name: '黑墙智库',
-    icon: '🏯',
-    description: '专业商业情报分析机构，提供深度竞争对手洞察与市场预警。',
-    identity: '我是黑墙智库分析师，专注于商业情报收集与解读。',
-    level: '高级',
-    department: '策略部',
-  },
-];
 
 interface ExpertsViewProps {
   isSidebarCollapsed?: boolean;
@@ -80,6 +70,7 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
 
   // VIP 开通弹窗状态
   const [isGuideOpen, setIsGuideOpen] = useState(false);
+  const [selectedPaidExpert, setSelectedPaidExpert] = useState<PresetAgent | null>(null);
   const [, setVipState] = useState(vipService.getState());
 
   // 监听 VIP 状态
@@ -121,10 +112,15 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
     return installedAgents.filter((a) => a.source === 'custom' && a.id !== 'main');
   }, [installedAgents]);
 
+  // 付费专家列表（从全量 preset 模版中过滤出 isPaidExpert 标记的专家）
+  const paidExperts = useMemo(() => {
+    return presets.filter((p) => isPaidExpert(p.id));
+  }, [presets]);
+
   // 2. 根据所选部门及搜索关键字进行多维度模糊过滤
   const filteredExperts = useMemo(() => {
     if (expertType === 'paid') {
-      return PAID_EXPERTS.filter((expert) => {
+      return paidExperts.filter((expert) => {
         const matchDept = selectedDept === '全部' || expert.department === selectedDept;
         const matchSearch =
           expert.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -133,6 +129,7 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
       });
     } else if (expertType === 'preset') {
       return presets.filter((expert) => {
+        if (isPaidExpert(expert.id)) return false;
         const matchDept = selectedDept === '全部' || expert.department === selectedDept;
         const matchSearch =
           expert.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -149,12 +146,13 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
         return matchSearch;
       });
     }
-  }, [presets, customExperts, selectedDept, searchQuery, expertType]);
+  }, [presets, paidExperts, customExperts, selectedDept, searchQuery, expertType]);
 
   // 3. 点击“开始干活”
   const handleStartWork = async (expert: PresetAgent | any) => {
     // 如果是付费专家且未解锁，弹出购买引导
-    if (expertType === 'paid' && !vipService.isExpertUnlocked(expert.id)) {
+    if (isPaidExpert(expert.id) && !vipService.isExpertUnlocked(expert.id)) {
+      setSelectedPaidExpert(expert);
       setIsGuideOpen(true);
       return;
     }
@@ -602,6 +600,8 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
       {/* VIP 订阅购买引导弹窗 */}
       <PremiumGuideModal
         isOpen={isGuideOpen}
+        expertName={selectedPaidExpert?.name}
+        expertDescription={selectedPaidExpert?.description}
         onClose={() => setIsGuideOpen(false)}
       />
     </div>

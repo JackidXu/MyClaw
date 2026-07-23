@@ -1,3 +1,4 @@
+import { PAID_EXPERT_IDS } from '../../shared/agent/constants';
 import { store } from '../store';
 import { agentService } from './agent';
 import { coworkService } from './cowork';
@@ -161,7 +162,6 @@ class VipService {
 
   private async syncRevokedAgents(): Promise<void> {
     try {
-      const PAID_EXPERT_IDS = ['heiqiang-think-tank'];
       const agents = await window.electron.agents.list();
 
       for (const expertId of PAID_EXPERT_IDS) {
