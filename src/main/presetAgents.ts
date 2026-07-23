@@ -45,7 +45,7 @@ const RAW_EXPERTS = [
     department: '策略部',
     level: '高级' as const,
     description: '专业商业情报分析机构，提供深度竞争对手洞察与市场预警。',
-    skillIds: ['test'],
+    skillIds: [],
   },
   // 1. 策略部
   {
