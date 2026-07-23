@@ -43,6 +43,7 @@ import { SkinProvider } from './providers/SkinProvider';
 import type { ApiConfig } from './services/api';
 import { apiService } from './services/api';
 import { authService } from './services/auth';
+import { vipService } from './services/vipService';
 import { configService } from './services/config';
 import { coworkService } from './services/cowork';
 import { i18nService } from './services/i18n';
@@ -266,6 +267,14 @@ const App: React.FC = () => {
         mark('authService.init begin');
         await authService.init();
         mark('authService.init done');
+
+        // 初始化拉取与注册 VIP 状态
+        try {
+          await vipService.refreshStatus();
+          mark('vipService.refreshStatus done');
+        } catch (vipErr) {
+          console.warn('[App] vipService refresh failed on startup:', vipErr);
+        }
 
         const config = await configService.getConfig();
         

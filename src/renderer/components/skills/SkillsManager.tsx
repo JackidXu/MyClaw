@@ -12,6 +12,7 @@ import type { SkillSecurityReport as SkillSecurityReportData } from '../../../ma
 import { ENABLE_OPENCLAW_SKILL_SYNC } from '../../../shared/featureFlags';
 import { i18nService } from '../../services/i18n';
 import { compareVersions,resolveLocalizedText, skillService } from '../../services/skill';
+import { vipService } from '../../services/vipService';
 import { RootState } from '../../store';
 import { setSkills } from '../../store/slices/skillSlice';
 import { MarketplaceSkill, MarketTag,Skill } from '../../types/skill';
@@ -222,6 +223,9 @@ const SkillsManager: React.FC<SkillsManagerProps> = ({ readOnly, onCreateByChat 
   const filteredSkills = useMemo(() => {
     const query = skillSearchQuery.trim().replace(/\s+/g, ' ').toLowerCase();
     return skills.filter(skill => {
+      if (skill.requiredExpert && !vipService.isExpertUnlocked(skill.requiredExpert)) {
+        return false;
+      }
       const matchesSearch = skillService.getLocalizedSkillName(skill).toLowerCase().includes(query)
         || skillService.getLocalizedSkillDescription(skill.id, skill.name, skill.description).toLowerCase().includes(query);
       return matchesSearch;

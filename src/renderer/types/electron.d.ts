@@ -526,6 +526,7 @@ interface HtmlShareResult {
 interface IElectronAPI {
   platform: string;
   arch: string;
+  getDeviceInfo: () => Promise<{ deviceId: string; platform: string; hostname: string }>;
   store: {
     get: (key: string) => Promise<any>;
     set: (key: string, value: any) => Promise<void>;

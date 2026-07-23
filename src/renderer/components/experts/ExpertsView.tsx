@@ -3,6 +3,7 @@ import { useSelector } from 'react-redux';
 
 import { agentService } from '../../services/agent';
 import { coworkService } from '../../services/cowork';
+import { vipService } from '../../services/vipService';
 import { RootState } from '../../store';
 import AgentAvatarIcon from '../agent/AgentAvatarIcon';
 import AgentCreateModal from '../agent/AgentCreateModal';
@@ -11,6 +12,7 @@ import Modal from '../common/Modal';
 import ComposeIcon from '../icons/ComposeIcon';
 import SidebarToggleIcon from '../icons/SidebarToggleIcon';
 import SkillsView from '../skills/SkillsView';
+import { PremiumGuideModal } from './PremiumGuideModal';
 
 // 9个核心部门定义
 const DEPARTMENTS = [
@@ -36,6 +38,18 @@ interface PresetAgent {
   department?: string;
 }
 
+const PAID_EXPERTS: PresetAgent[] = [
+  {
+    id: 'heiqiang-think-tank',
+    name: '黑墙智库',
+    icon: '🏯',
+    description: '专业商业情报分析机构，提供深度竞争对手洞察与市场预警。',
+    identity: '我是黑墙智库分析师，专注于商业情报收集与解读。',
+    level: '高级',
+    department: '策略部',
+  },
+];
+
 interface ExpertsViewProps {
   isSidebarCollapsed?: boolean;
   onToggleSidebar?: () => void;
@@ -58,11 +72,20 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
   // 子视图 Tab 状态
   const [activeTab, setActiveTab] = useState<'experts' | 'skills' | 'mcp'>('experts');
   
-  // 内置专家 / 自定义专家 Tab 状态
-  const [expertType, setExpertType] = useState<'preset' | 'custom'>('preset');
+  // 付费专家 / 内置专家 / 自定义专家 Tab 状态 (默认显示付费专家)
+  const [expertType, setExpertType] = useState<'paid' | 'preset' | 'custom'>('paid');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingAgentId, setEditingAgentId] = useState<string | null>(null);
   const [agentToDelete, setAgentToDelete] = useState<any | null>(null);
+
+  // VIP 开通弹窗状态
+  const [isGuideOpen, setIsGuideOpen] = useState(false);
+  const [, setVipState] = useState(vipService.getState());
+
+  // 监听 VIP 状态
+  useEffect(() => {
+    return vipService.subscribe(state => setVipState(state));
+  }, []);
 
   const installedAgents = useSelector((state: RootState) => state.agent.agents);
   const currentAgentId = useSelector((state: RootState) => state.agent.currentAgentId);
@@ -100,7 +123,15 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
 
   // 2. 根据所选部门及搜索关键字进行多维度模糊过滤
   const filteredExperts = useMemo(() => {
-    if (expertType === 'preset') {
+    if (expertType === 'paid') {
+      return PAID_EXPERTS.filter((expert) => {
+        const matchDept = selectedDept === '全部' || expert.department === selectedDept;
+        const matchSearch =
+          expert.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          expert.description.toLowerCase().includes(searchQuery.toLowerCase());
+        return matchDept && matchSearch;
+      });
+    } else if (expertType === 'preset') {
       return presets.filter((expert) => {
         const matchDept = selectedDept === '全部' || expert.department === selectedDept;
         const matchSearch =
@@ -122,6 +153,12 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
 
   // 3. 点击“开始干活”
   const handleStartWork = async (expert: PresetAgent | any) => {
+    // 如果是付费专家且未解锁，弹出购买引导
+    if (expertType === 'paid' && !vipService.isExpertUnlocked(expert.id)) {
+      setIsGuideOpen(true);
+      return;
+    }
+
     try {
       setHiringId(expert.id);
       
@@ -178,6 +215,7 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
                 type="button"
                 onClick={onToggleSidebar}
                 className="h-8 w-8 inline-flex items-center justify-center rounded-lg text-secondary hover:bg-surface-raised transition-colors"
+                title="展开侧边栏"
               >
                 <SidebarToggleIcon className="h-4 w-4" isCollapsed={true} />
               </button>
@@ -185,6 +223,7 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
                 type="button"
                 onClick={onNewChat}
                 className="h-8 w-8 inline-flex items-center justify-center rounded-lg text-secondary hover:bg-surface-raised transition-colors"
+                title="新建对话"
               >
                 <ComposeIcon className="h-4 w-4" />
               </button>
@@ -193,7 +232,7 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
           )}
           
           {/* 页签选择组 */}
-          <div className="non-draggable flex items-center space-x-6 h-8 text-[13.5px] font-semibold select-none">
+          <div className="non-draggable flex items-center space-x-4 h-8 text-[13.5px] font-semibold select-none">
             <button
               type="button"
               onClick={() => setActiveTab('experts')}
@@ -219,7 +258,7 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
                   : 'text-secondary hover:text-foreground font-medium'
               }`}
             >
-              技能
+              技能库
               <div
                 className={`absolute bottom-[-10px] left-0 right-0 h-0.5 rounded-full transition-colors ${
                   activeTab === 'skills' ? 'bg-primary' : 'bg-transparent'
@@ -289,8 +328,20 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
       {/* 部门/专家类型标签栏 (仅在 AI 专家库下展示) */}
       {activeTab === 'experts' && (
         <div className="border-b border-border bg-surface shrink-0 py-2.5 px-6 flex flex-col gap-2.5">
-          {/* 内置/自定义分类 Tab (Segmented Control 样式，与顶层 tab 区分且更加大气) */}
+          {/* 付费/内置/自定义分类 Tab */}
           <div className="flex bg-secondary/10 p-0.5 rounded-lg w-fit select-none">
+            <button
+              type="button"
+              onClick={() => setExpertType('paid')}
+              className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+                expertType === 'paid'
+                  ? 'bg-surface text-amber-600 shadow-sm'
+                  : 'text-secondary hover:text-foreground'
+              }`}
+            >
+              <span>🏰</span>
+              <span>付费专家</span>
+            </button>
             <button
               type="button"
               onClick={() => setExpertType('preset')}
@@ -315,8 +366,8 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
             </button>
           </div>
 
-          {/* 部门过滤滑动标签栏 (仅在内置专家下展示) */}
-          {expertType === 'preset' && (
+          {/* 部门过滤滑动标签栏 (仅在付费或内置专家下展示) */}
+          {expertType !== 'custom' && (
             <div className="overflow-x-auto scrollbar-hidden">
               <div className="flex space-x-2.5">
                 {DEPARTMENTS.map((dept) => {
@@ -326,10 +377,10 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
                       key={dept}
                       type="button"
                       onClick={() => setSelectedDept(dept)}
-                      className={`px-3.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all ${
+                      className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-all duration-200 cursor-pointer ${
                         isSelected
-                          ? 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-sm scale-105'
-                          : 'text-secondary bg-surface-raised hover:bg-secondary/10'
+                          ? 'bg-primary text-primary-foreground shadow-sm'
+                          : 'bg-surface-raised hover:bg-secondary/10 text-secondary hover:text-foreground'
                       }`}
                     >
                       {dept}
@@ -343,7 +394,23 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
       )}
 
       {/* 主体渲染区 */}
-      {activeTab === 'experts' ? (
+      {activeTab === 'skills' ? (
+        <SkillsView
+          activeTab="skills"
+          hideHeader={true}
+          isSidebarCollapsed={isSidebarCollapsed}
+          onToggleSidebar={onToggleSidebar}
+          onNewChat={onNewChat}
+        />
+      ) : activeTab === 'mcp' ? (
+        <SkillsView
+          activeTab="mcp"
+          hideHeader={true}
+          isSidebarCollapsed={isSidebarCollapsed}
+          onToggleSidebar={onToggleSidebar}
+          onNewChat={onNewChat}
+        />
+      ) : (
         <div className="flex-1 overflow-y-auto min-h-0 [scrollbar-gutter:stable] bg-surface-raised/40">
           <div className="mx-auto w-full max-w-[1200px] px-6 py-6">
             {loading ? (
@@ -352,52 +419,47 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
               </div>
             ) : filteredExperts.length === 0 ? (
               <div className="flex h-64 flex-col items-center justify-center text-secondary">
-                <svg
-                  className="h-12 w-12 text-border mb-3"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={1.5}
-                    d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
                 <p className="text-sm font-medium">该分类下没有专家</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
                 {filteredExperts.map((expert) => {
-                  // 级别背景色映射
                   const getLevelBadge = (level?: string) => {
                     switch (level) {
-                      case '高级':
-                        return 'bg-amber-100 text-amber-700 border-amber-200';
-                      case '中级':
-                        return 'bg-blue-100 text-blue-700 border-blue-200';
-                      case '初级':
-                        return 'bg-gray-100 text-gray-700 border-gray-200';
-                      default:
-                        return 'bg-amber-100 text-amber-700 border-amber-200';
+                      case '高级': return 'bg-amber-100 text-amber-700 border-amber-200';
+                      case '中级': return 'bg-blue-100 text-blue-700 border-blue-200';
+                      case '初级': return 'bg-gray-100 text-gray-700 border-gray-200';
+                      default: return 'bg-amber-100 text-amber-700 border-amber-200';
                     }
                   };
 
-                  // 从名称提炼一个显示 tag，比如“首席策略官”
                   const shortTag = expert.identity
                     ? expert.identity.split('的')?.[1]?.split('。')?.[0]?.trim() || expert.department
                     : expert.department;
 
                   const showTag = shortTag && shortTag !== '其他' && shortTag !== 'undefined' && shortTag.trim() !== '';
 
+                  const isPaid = expertType === 'paid';
+                  const isUnlocked = isPaid ? vipService.isExpertUnlocked(expert.id) : true;
+
                   return (
                     <div
                       key={expert.id}
-                      className="group relative flex flex-col items-center justify-between rounded-2xl border border-border/80 bg-surface px-4 py-6 text-center shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-300 overflow-hidden"
+                      className={`group relative flex flex-col items-center justify-between rounded-2xl border border-border/80 bg-surface px-4 py-6 text-center shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-300 overflow-hidden ${
+                        isPaid && !isUnlocked ? 'opacity-90' : ''
+                      }`}
                     >
-                      {/* 右上角操作：内置专家显示级别标签，自定义专家显示下拉菜单操作 */}
-                      {expertType === 'preset' ? (
+                      {isPaid ? (
+                        <span
+                          className={`absolute right-3.5 top-3.5 text-[11px] font-bold px-2 py-0.5 rounded border flex items-center gap-1 ${
+                            isUnlocked
+                              ? 'bg-emerald-50 text-emerald-600 border-emerald-200'
+                              : 'bg-amber-50 text-amber-600 border-amber-200'
+                          }`}
+                        >
+                          {isUnlocked ? '👑 已授权' : '🔒 未开通'}
+                        </span>
+                      ) : expertType === 'preset' ? (
                         expert.level && (
                           <span
                             className={`absolute right-3.5 top-3.5 text-[10px] font-bold px-2 py-0.5 rounded border ${getLevelBadge(
@@ -411,47 +473,30 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
                         <div className="absolute right-3.5 top-3.5 group/menu cursor-pointer z-20">
                           <div className="p-1 rounded hover:bg-secondary/15 text-secondary hover:text-foreground">
                             <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                              <path d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
                             </svg>
                           </div>
-                          <div className="absolute right-0 top-full mt-1 hidden group-hover/menu:block bg-surface border border-border rounded-lg shadow-lg w-20 py-1 z-30 animate-in fade-in duration-100 before:content-[''] before:absolute before:bottom-full before:left-0 before:right-0 before:h-2">
+                          <div className="absolute right-0 top-full mt-1 hidden group-hover/menu:block bg-surface border border-border rounded-lg shadow-lg w-20 py-1 z-30 animate-in fade-in duration-100">
                             <button
                               type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setEditingAgentId(expert.id);
-                              }}
+                              onClick={(e) => { e.stopPropagation(); setEditingAgentId(expert.id); }}
                               className="w-full text-left px-3 py-1.5 text-xs text-foreground hover:bg-secondary/15 transition-colors cursor-pointer font-medium"
-                            >
-                              编辑
-                            </button>
+                            >编辑</button>
                             <button
                               type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setAgentToDelete(expert);
-                              }}
+                              onClick={(e) => { e.stopPropagation(); setAgentToDelete(expert); }}
                               className="w-full text-left px-3 py-1.5 text-xs text-red-500 hover:bg-red-50 transition-colors cursor-pointer font-medium"
-                            >
-                              删除
-                            </button>
+                            >删除</button>
                           </div>
                         </div>
                       )}
 
-                      {/* 圆形专家头像 */}
                       <div className="relative mt-2">
-                        <AgentAvatarIcon
-                          value={expert.icon}
-                          className="h-20 w-20 shadow-md ring-2 ring-background ring-offset-2 transition-transform duration-300 group-hover:scale-105"
-                        />
+                        <AgentAvatarIcon value={expert.icon} className="h-20 w-20 shadow-md ring-2 ring-background ring-offset-2 transition-transform duration-300 group-hover:scale-105" />
                       </div>
 
-                      {/* 姓名职务与描述 */}
                       <div className="flex flex-col items-center flex-1 mt-4">
-                        <h3 className="text-base font-semibold text-foreground">
-                          {expert.name}
-                        </h3>
+                        <h3 className="text-base font-semibold text-foreground">{expert.name}</h3>
                         {showTag && (
                           <span className="mt-1.5 inline-flex items-center rounded-full bg-purple-50 text-purple-600 border border-purple-100 px-2.5 py-0.5 text-xs font-semibold select-none">
                             {shortTag}
@@ -462,20 +507,29 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
                         </p>
                       </div>
 
-                      {/*Hover开始干活按钮 */}
                       <div className="w-full mt-5">
-                        <button
-                          type="button"
-                          onClick={() => handleStartWork(expert)}
-                          disabled={hiringId !== null}
-                          className="w-full flex items-center justify-center rounded-xl bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white py-2 text-xs font-semibold shadow-sm transition-all duration-200 disabled:opacity-50 select-none cursor-pointer"
-                        >
-                          {hiringId === expert.id ? (
-                            <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white"></div>
-                          ) : (
-                            '开始干活'
-                          )}
-                        </button>
+                        {isPaid && !isUnlocked ? (
+                          <button
+                            type="button"
+                            onClick={() => setIsGuideOpen(true)}
+                            className="w-full flex items-center justify-center gap-1 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white py-2 text-xs font-bold shadow-md shadow-amber-500/20 transition-all duration-200 select-none cursor-pointer"
+                          >
+                            <span>🔒 立即开通</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleStartWork(expert)}
+                            disabled={hiringId !== null}
+                            className="w-full flex items-center justify-center rounded-xl bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white py-2 text-xs font-semibold shadow-sm transition-all duration-200 disabled:opacity-50 select-none cursor-pointer"
+                          >
+                            {hiringId === expert.id ? (
+                              <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white"></div>
+                            ) : (
+                              '开始干活'
+                            )}
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
@@ -484,14 +538,6 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
             )}
           </div>
         </div>
-      ) : (
-        <SkillsView
-          activeTab={activeTab === 'skills' ? 'skills' : 'mcp'}
-          hideHeader={true}
-          isSidebarCollapsed={isSidebarCollapsed}
-          onToggleSidebar={onToggleSidebar}
-          onNewChat={onNewChat}
-        />
       )}
 
       {/* 创建专家弹窗 */}
@@ -552,6 +598,12 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
           </button>
         </div>
       </Modal>
+
+      {/* VIP 订阅购买引导弹窗 */}
+      <PremiumGuideModal
+        isOpen={isGuideOpen}
+        onClose={() => setIsGuideOpen(false)}
+      />
     </div>
   );
 };

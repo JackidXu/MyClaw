@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 
 import { configService } from '../services/config';
+import { vipService } from '../services/vipService';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -156,6 +157,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
         }
       });
 
+
+      // 刷新并注册 VIP 与设备状态
+      try {
+        await vipService.refreshStatus();
+      } catch (vipErr) {
+        console.warn('[AuthModal] Failed to refresh VIP status after login:', vipErr);
+      }
 
       // 触发成功回调
       onSuccess();

@@ -329,6 +329,7 @@ export type SkillRecord = {
   prompt: string;
   skillPath: string;
   version?: string;
+  requiredExpert?: string;
 };
 
 type SkillStateMap = Record<string, { enabled: boolean }>;
@@ -2535,12 +2536,14 @@ export class SkillManager {
       const meta = frontmatter.metadata as Record<string, unknown> | undefined;
       const v = frontmatter.version ?? meta?.version;
       const version = typeof v === 'string' ? v : typeof v === 'number' ? String(v) : undefined;
+      const reqExp = frontmatter.requiredExpert ?? meta?.requiredExpert;
+      const requiredExpert = typeof reqExp === 'string' ? reqExp.trim() : undefined;
       const updatedAt = fs.statSync(skillFile).mtimeMs;
       const id = path.basename(dir);
       const prompt = content.trim();
       const defaultEnabled = defaults[id]?.enabled ?? true;
       const enabled = state[id]?.enabled ?? defaultEnabled;
-      return { id, name, description, enabled, isOfficial, isBuiltIn, updatedAt, prompt, skillPath: skillFile, version };
+      return { id, name, description, enabled, isOfficial, isBuiltIn, updatedAt, prompt, skillPath: skillFile, version, requiredExpert };
     } catch (error) {
       console.warn('[skills] Failed to parse skill:', dir, error);
       return null;

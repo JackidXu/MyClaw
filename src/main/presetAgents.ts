@@ -37,6 +37,16 @@ function buildIdentity(name: string, department: string, roleTag: string): strin
 }
 
 const RAW_EXPERTS = [
+  // 0. 付费专家
+  {
+    id: 'heiqiang-think-tank',
+    name: '黑墙智库',
+    roleTag: '商业情报分析机构 · 深度竞争对手洞察与市场预警',
+    department: '策略部',
+    level: '高级' as const,
+    description: '专业商业情报分析机构，提供深度竞争对手洞察与市场预警。',
+    skillIds: ['test'],
+  },
   // 1. 策略部
   {
     id: 'wang_moulue',

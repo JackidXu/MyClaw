@@ -9,6 +9,7 @@ import { Skill } from '../../types/skill';
 import Cog6ToothIcon from '../icons/Cog6ToothIcon';
 import SearchIcon from '../icons/SearchIcon';
 import SkillIcon from '../icons/SkillIcon';
+import { vipService } from '../../services/vipService';
 
 interface SkillsPopoverProps {
   isOpen: boolean;
@@ -42,9 +43,13 @@ const SkillsPopover: React.FC<SkillsPopoverProps> = ({
   const activeSkillIds = useSelector((state: RootState) => state.skill.activeSkillIds);
   const shouldUseFallbackDescription = i18nReady || i18nService.getLanguage() !== 'zh';
 
-  // Filter enabled skills based on search query
+  // Filter enabled skills based on search query and VIP expert entitlement
   const filteredSkills = skills
     .filter(s => s.enabled)
+    .filter(s => {
+      if (!s.requiredExpert) return true;
+      return vipService.isExpertUnlocked(s.requiredExpert);
+    })
     .filter(s => {
       const query = searchQuery.toLowerCase();
       const description = shouldUseFallbackDescription

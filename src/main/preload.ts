@@ -63,6 +63,7 @@ import { OpenClawSessionPolicyIpc } from './openclawSessionPolicy/constants';
 contextBridge.exposeInMainWorld('electron', {
   platform: process.platform,
   arch: process.arch,
+  getDeviceInfo: () => ipcRenderer.invoke('get-device-info'),
   store: {
     get: (key: string) => ipcRenderer.invoke('store:get', key),
     set: (key: string, value: any) => ipcRenderer.invoke('store:set', key, value),

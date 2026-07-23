@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { getDeviceInfo } from './libs/deviceId';
 import {
   app,
   BrowserWindow,
@@ -4145,6 +4146,7 @@ if (!gotTheLock) {
 
   ipcMain.handle('app:getVersion', () => app.getVersion());
   ipcMain.handle('app:getSystemLocale', () => app.getLocale());
+  ipcMain.handle('get-device-info', () => getDeviceInfo());
   ipcMain.handle(AppIpcChannel.GetKeyfromAttribution, () => getKeyfromAttribution(getStore()));
 
   ipcMain.handle(AppIpcChannel.OpenSystemNotificationSettings, async () => {

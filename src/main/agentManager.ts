@@ -13,11 +13,24 @@ export class AgentManager {
   }
 
   listAgents(): Agent[] {
-    return this.store.listAgents();
+    const agents = this.store.listAgents();
+    return agents.map(agent => this.enrichPresetAgent(agent));
   }
 
   getAgent(agentId: string): Agent | null {
-    return this.store.getAgent(agentId);
+    const agent = this.store.getAgent(agentId);
+    return agent ? this.enrichPresetAgent(agent) : null;
+  }
+
+  private enrichPresetAgent(agent: Agent): Agent {
+    if (agent.source === 'preset' || agent.presetId) {
+      const presetId = agent.presetId || agent.id;
+      const preset = PRESET_AGENTS.find(p => p.id === presetId);
+      if (preset) {
+        return { ...agent, skillIds: preset.skillIds || [] };
+      }
+    }
+    return agent;
   }
 
   getDefaultAgent(): Agent {

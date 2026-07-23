@@ -46,6 +46,7 @@ import {
   reportYdAnalyzer,
 } from '../../services/logReporter';
 import { resolveLocalizedText, skillService } from '../../services/skill';
+import { vipService } from '../../services/vipService';
 import { RootState } from '../../store';
 import { selectDraftPrompts } from '../../store/selectors/coworkSelectors';
 import {
@@ -95,6 +96,7 @@ import {
   ACTIVE_CONTEXT_BADGE_REMOVE_ICON_CLASS,
 } from '../common/activeContextBadgeStyles';
 import Modal from '../common/Modal';
+import { PremiumGuideModal } from '../experts/PremiumGuideModal';
 import DefaultAgentIcon from '../icons/DefaultAgentIcon';
 import EditIcon from '../icons/EditIcon';
 import GoalIcon from '../icons/GoalIcon';
@@ -613,8 +615,15 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     },
   }));
 
-  const activeSkillIds = useSelector((state: RootState) => state.skill.activeSkillIds);
+  const rawActiveSkillIds = useSelector((state: RootState) => state.skill.activeSkillIds);
   const skills = useSelector((state: RootState) => state.skill.skills);
+  const activeSkillIds = useMemo(() => {
+    return rawActiveSkillIds.filter(id => {
+      const skill = skills.find(s => s.id === id);
+      if (!skill?.requiredExpert) return true;
+      return vipService.isExpertUnlocked(skill.requiredExpert);
+    });
+  }, [rawActiveSkillIds, skills]);
   const hasActiveSkills = activeSkillIds.some(id => skills.some(skill => skill.id === id));
   const activeKitIds = useSelector((state: RootState) => state.kit.activeKitIds);
   const installedKits = useSelector((state: RootState) => state.kit.installedKits);
@@ -1268,7 +1277,18 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     reportPromptControl,
   ]);
 
+  const [isGuideOpen, setIsGuideOpen] = useState(false);
+
   const handleSubmit = useCallback(async (submitMethod: 'button' | 'keyboard' | 'voice' = 'button') => {
+    // 拦截未授权的付费专家发送
+    if (
+      (currentAgent?.presetId === 'heiqiang-think-tank' || currentAgentId === 'heiqiang-think-tank') &&
+      !vipService.isExpertUnlocked('heiqiang-think-tank')
+    ) {
+      setIsGuideOpen(true);
+      return;
+    }
+
     let effectiveSubmitMethod = submitMethod;
     const shouldSubmitAsSteer = isStreaming
       && !goalInputActive
@@ -1697,7 +1717,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     resetGoalInput(false);
     draftStartedAnalyticsRef.current = false;
     inputSourceOverrideRef.current = null;
-  }, [value, steerInputActive, steerValue, isVoiceRecording, stopVoiceRecordingAndRecognize, goalInputActive, goalInputMode, resetGoalInput, isStreaming, canSteer, remoteManaged, disabled, isPatchingModel, onSubmit, onGoalCommand, activeSkillIds, skills, activeKitIds, marketplaceKits, installedKits, attachments, showFolderSelector, workingDirectory, dispatch, draftKey, selectedTextSnippets, pendingSteers.length, resolveSubmitModelAccessPrompt, isPlanMode, planConfirmation, reportPromptControl, getPromptCapabilityAnalyticsParams, getPromptContextAnalyticsParams, getPromptInputSource, goal, sessionId, preparePromptPayload, modelSupportsImage, queuedMediaSelection]);
+  }, [value, steerInputActive, steerValue, isVoiceRecording, stopVoiceRecordingAndRecognize, goalInputActive, goalInputMode, resetGoalInput, isStreaming, canSteer, remoteManaged, disabled, isPatchingModel, onSubmit, onGoalCommand, activeSkillIds, skills, activeKitIds, marketplaceKits, installedKits, attachments, showFolderSelector, workingDirectory, dispatch, draftKey, selectedTextSnippets, pendingSteers.length, resolveSubmitModelAccessPrompt, isPlanMode, planConfirmation, reportPromptControl, getPromptCapabilityAnalyticsParams, getPromptContextAnalyticsParams, getPromptInputSource, goal, sessionId, preparePromptPayload, modelSupportsImage, queuedMediaSelection, currentAgent?.presetId, currentAgentId]);
 
   const handleSelectSkill = useCallback((skill: Skill) => {
     const willSelect = !activeSkillIds.includes(skill.id);
@@ -2587,7 +2607,12 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     icon: '',
     enabled: true,
   };
-  const enabledAgentOptions = agents.filter((agent) => agent.enabled || agent.id === currentAgentId);
+  const enabledAgentOptions = agents.filter((agent) => {
+    const isUnlocked = agent.presetId === 'heiqiang-think-tank' || agent.id === 'heiqiang-think-tank'
+      ? vipService.isExpertUnlocked('heiqiang-think-tank')
+      : true;
+    return (agent.enabled || agent.id === currentAgentId) && isUnlocked;
+  });
   const agentOptions = enabledAgentOptions.some((agent) => agent.id === currentAgentForDisplay.id)
     ? enabledAgentOptions
     : [currentAgentForDisplay, ...enabledAgentOptions];
@@ -3780,6 +3805,12 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
           </button>
         </Modal>
       )}
+
+      {/* VIP 订阅购买引导弹窗 */}
+      <PremiumGuideModal
+        isOpen={isGuideOpen}
+        onClose={() => setIsGuideOpen(false)}
+      />
     </div>
   );
   }
