@@ -1,7 +1,6 @@
 ---
-name: 'Marketing Psychology & Mental Models'
-description: 'Apply psychological principles and mental models to marketing. Understand why people buy, how to influence behavior ethically, and how to make better marketing decisions.'
-version: 1.0.0
+description: "Apply psychological principles and mental models to marketing. Understand why people buy, how to influence behavior ethically, and how to make better marketing decisions."
+name: 02-ying-xiao-xin-li-xue-shou-ce
 ---
 
 # Marketing Psychology & Mental Models
@@ -10,14 +9,14 @@ Apply psychological principles and mental models to marketing. Understand why pe
 
 ## Foundational Thinking Models
 
-| Model                     | Core Idea                           | Marketing Application                                                |
-| ------------------------- | ----------------------------------- | -------------------------------------------------------------------- |
-| **First Principles**      | Break down to basic truths          | Don't copy competitors — ask "why" 5 times                           |
-| **Jobs to Be Done**       | People "hire" products for jobs     | Frame around outcomes, not features                                  |
-| **Pareto Principle**      | 80% results from 20% effort         | Find the 20% of channels driving 80% of results                      |
-| **Theory of Constraints** | One bottleneck limits throughput    | Fix the biggest bottleneck before optimizing elsewhere               |
-| **Second-Order Thinking** | Consider effects of effects         | Flash sale → boosts revenue → trains customers to wait for discounts |
-| **Inversion**             | Ask "what would guarantee failure?" | List everything that would kill your campaign, then prevent each     |
+| Model | Core Idea | Marketing Application |
+|-------|-----------|----------------------|
+| **First Principles** | Break down to basic truths | Don't copy competitors — ask "why" 5 times |
+| **Jobs to Be Done** | People "hire" products for jobs | Frame around outcomes, not features |
+| **Pareto Principle** | 80% results from 20% effort | Find the 20% of channels driving 80% of results |
+| **Theory of Constraints** | One bottleneck limits throughput | Fix the biggest bottleneck before optimizing elsewhere |
+| **Second-Order Thinking** | Consider effects of effects | Flash sale → boosts revenue → trains customers to wait for discounts |
+| **Inversion** | Ask "what would guarantee failure?" | List everything that would kill your campaign, then prevent each |
 
 ---
 
@@ -75,14 +74,14 @@ Unfinished tasks occupy the mind. Open loops create tension.
 
 ### Cialdini's Principles
 
-| Principle                    | Description                                     | Application                                                 |
-| ---------------------------- | ----------------------------------------------- | ----------------------------------------------------------- |
-| **Reciprocity**              | People feel obligated to return favors          | Free content, free tools → reciprocal obligation            |
-| **Commitment & Consistency** | People want to stay consistent with commitments | Get small commitments first (email → free trial → paid)     |
-| **Authority**                | People defer to experts                         | Expert endorsements, certifications, "featured in" logos    |
-| **Liking**                   | People say yes to those they like               | Relatable spokespeople, founder stories, community language |
-| **Scarcity**                 | Limited availability increases perceived value  | Limited-time offers, low-stock warnings (only when genuine) |
-| **Unity**                    | Shared identity drives influence                | Insider language, shared values, "one of us" positioning    |
+| Principle | Description | Application |
+|-----------|-------------|-------------|
+| **Reciprocity** | People feel obligated to return favors | Free content, free tools → reciprocal obligation |
+| **Commitment & Consistency** | People want to stay consistent with commitments | Get small commitments first (email → free trial → paid) |
+| **Authority** | People defer to experts | Expert endorsements, certifications, "featured in" logos |
+| **Liking** | People say yes to those they like | Relatable spokespeople, founder stories, community language |
+| **Scarcity** | Limited availability increases perceived value | Limited-time offers, low-stock warnings (only when genuine) |
+| **Unity** | Shared identity drives influence | Insider language, shared values, "one of us" positioning |
 
 ### Persuasion Techniques
 
@@ -98,41 +97,41 @@ Unfinished tasks occupy the mind. Open loops create tension.
 
 ## Pricing Psychology
 
-| Technique                | How It Works                                  | When to Use            |
-| ------------------------ | --------------------------------------------- | ---------------------- |
-| **Charm Pricing**        | $99 feels much cheaper than $100              | Value-focused products |
-| **Rounded-Price Effect** | $100 signals quality                          | Premium products       |
-| **Rule of 100**          | Under $100: % discount. Over $100: $ discount | Discount framing       |
-| **Good-Better-Best**     | Middle tier seems reasonable between extremes | SaaS pricing pages     |
-| **Mental Accounting**    | "$1/day" feels cheaper than "$30/month"       | Subscription framing   |
+| Technique | How It Works | When to Use |
+|-----------|-------------|-------------|
+| **Charm Pricing** | $99 feels much cheaper than $100 | Value-focused products |
+| **Rounded-Price Effect** | $100 signals quality | Premium products |
+| **Rule of 100** | Under $100: % discount. Over $100: $ discount | Discount framing |
+| **Good-Better-Best** | Middle tier seems reasonable between extremes | SaaS pricing pages |
+| **Mental Accounting** | "$1/day" feels cheaper than "$30/month" | Subscription framing |
 
 ---
 
 ## Design & Delivery Models
 
-| Model                      | Core Idea                                |
-| -------------------------- | ---------------------------------------- |
-| **AIDA**                   | Attention → Interest → Desire → Action   |
-| **Rule of 7**              | ~7 touchpoints needed before converting  |
-| **Hick's Law**             | More options = slower decisions          |
+| Model | Core Idea |
+|-------|-----------|
+| **AIDA** | Attention → Interest → Desire → Action |
+| **Rule of 7** | ~7 touchpoints needed before converting |
+| **Hick's Law** | More options = slower decisions |
 | **BJ Fogg Behavior Model** | Behavior = Motivation × Ability × Prompt |
-| **EAST Framework**         | Make it Easy, Attractive, Social, Timely |
-| **Activation Energy**      | Reduce starting friction to the minimum  |
+| **EAST Framework** | Make it Easy, Attractive, Social, Timely |
+| **Activation Energy** | Reduce starting friction to the minimum |
 
 ---
 
 ## Quick Reference
 
-| Challenge          | Relevant Models                                       |
-| ------------------ | ----------------------------------------------------- |
-| Low conversions    | Hick's Law, Activation Energy, BJ Fogg                |
-| Price objections   | Anchoring, Framing, Mental Accounting, Loss Aversion  |
-| Building trust     | Authority, Social Proof, Reciprocity, Pratfall Effect |
-| Increasing urgency | Scarcity, Loss Aversion, Zeigarnik Effect             |
-| Retention/churn    | Endowment Effect, Switching Costs, Status-Quo Bias    |
-| Growth stalling    | Theory of Constraints, Local vs Global Optima         |
-| Decision paralysis | Paradox of Choice, Default Effect, Nudge Theory       |
-| Onboarding         | Goal-Gradient, IKEA Effect, Commitment & Consistency  |
+| Challenge | Relevant Models |
+|-----------|-----------------|
+| Low conversions | Hick's Law, Activation Energy, BJ Fogg |
+| Price objections | Anchoring, Framing, Mental Accounting, Loss Aversion |
+| Building trust | Authority, Social Proof, Reciprocity, Pratfall Effect |
+| Increasing urgency | Scarcity, Loss Aversion, Zeigarnik Effect |
+| Retention/churn | Endowment Effect, Switching Costs, Status-Quo Bias |
+| Growth stalling | Theory of Constraints, Local vs Global Optima |
+| Decision paralysis | Paradox of Choice, Default Effect, Nudge Theory |
+| Onboarding | Goal-Gradient, IKEA Effect, Commitment & Consistency |
 
 ---
 
