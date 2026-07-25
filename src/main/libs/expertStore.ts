@@ -15,6 +15,7 @@ export interface PaidExpert {
   skillIds: string[];
   sortOrder?: number;
   enabled: boolean;
+  model?: string;
 }
 
 // 内存缓存（单次运行期内有效）

@@ -89,9 +89,12 @@ export class AgentManager {
     const existing = this.store.getAgent(preset.id);
     if (existing) return existing;
 
+    const createReq = presetToCreateRequest(preset);
+    const finalModel = createReq.model?.trim() || defaultModel?.trim() || '';
+
     return this.store.createAgent({
-      ...presetToCreateRequest(preset),
-      model: defaultModel?.trim() || '',
+      ...createReq,
+      model: finalModel,
       workingDirectory: '',
     });
   }

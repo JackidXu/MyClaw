@@ -15,6 +15,7 @@ export interface PresetAgent {
   skillIds: string[];
   level?: '高级' | '中级' | '初级';
   department?: string;
+  model?: string;
 }
 
 
@@ -36,5 +37,6 @@ export function presetToCreateRequest(preset: PresetAgent): CreateAgentRequest {
     department: preset.department,
     source: 'preset',
     presetId: preset.id,
+    model: preset.model || '',
   };
 }

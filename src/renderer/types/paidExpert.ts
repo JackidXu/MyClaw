@@ -12,4 +12,5 @@ export interface PaidExpert {
   skillIds: string[];
   sortOrder?: number;
   enabled: boolean;
+  model?: string;
 }
