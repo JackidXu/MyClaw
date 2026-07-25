@@ -30,7 +30,7 @@ const LazyRenderTurn: React.FC<LazyRenderTurnProps> = ({
   turnId,
   rootMargin = 600,
   alwaysRender = false,
-  dependency,
+  dependency: _dependency,
   children,
   style,
   ...restProps

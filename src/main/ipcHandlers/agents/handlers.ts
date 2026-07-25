@@ -6,11 +6,11 @@ import {
   type AgentLegacyIdentityCleanupResult,
   AgentLegacyIdentityCleanupStatus,
 } from '../../../shared/agent/constants';
-import { getPaidExperts } from '../../libs/expertStore';
 import type { AgentManager } from '../../agentManager';
 import type { CoworkStore, CreateAgentRequest, UpdateAgentRequest } from '../../coworkStore';
 import type { IMGatewayManager } from '../../im';
 import type { CoworkEngineRouter } from '../../libs/agentEngine';
+import { getPaidExperts } from '../../libs/expertStore';
 import { cleanupLegacyAgentsMdIdentityBlockInWorkspace } from '../../libs/openclawAgentsMdIdentityMigration';
 
 type SyncOpenClawConfig = (options: {

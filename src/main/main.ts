@@ -1,5 +1,4 @@
 import crypto from 'crypto';
-import { getDeviceInfo } from './libs/deviceId';
 import {
   app,
   BrowserWindow,
@@ -235,6 +234,7 @@ import {
   performPendingDataMigrationRestoreSync,
 } from './libs/dataMigration/dataMigrationService';
 import { DesktopNotificationManager } from './libs/desktopNotificationManager';
+import { getDeviceInfo } from './libs/deviceId';
 import {
   getHtmlSharePublicBaseUrl,
   getKitStoreUrl,
@@ -242,12 +242,12 @@ import {
   getSkillStoreUrl,
   refreshEndpointsTestMode,
 } from './libs/endpoints';
-import { fetchExpertsFromCloud } from './libs/expertStore';
 import {
   mergeEnterpriseOpenclawConfig,
   resolveEnterpriseConfigPath,
   syncEnterpriseConfig,
 } from './libs/enterpriseConfigSync';
+import { fetchExpertsFromCloud } from './libs/expertStore';
 import {
   createOfficePreviewSession,
   createPreviewSession,

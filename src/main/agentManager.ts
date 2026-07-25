@@ -1,6 +1,6 @@
 import type { Agent, CoworkStore, CreateAgentRequest, UpdateAgentRequest } from './coworkStore';
+import { getPaidExperts,getPresetExperts } from './libs/expertStore';
 import { type PresetAgent, presetToCreateRequest } from './presetAgents';
-import { getPresetExperts, getPaidExperts } from './libs/expertStore';
 
 /**
  * AgentManager handles CRUD operations for agents and preset agent installation.

@@ -43,7 +43,6 @@ import { SkinProvider } from './providers/SkinProvider';
 import type { ApiConfig } from './services/api';
 import { apiService } from './services/api';
 import { authService } from './services/auth';
-import { vipService } from './services/vipService';
 import { configService } from './services/config';
 import { coworkService } from './services/cowork';
 import { i18nService } from './services/i18n';
@@ -52,6 +51,7 @@ import { scheduledTaskService } from './services/scheduledTask';
 import { matchesShortcut } from './services/shortcuts';
 import { themeService } from './services/theme';
 import { applyTypographyPreferences } from './services/typography';
+import { vipService } from './services/vipService';
 import { RootState, store } from './store';
 import {
   selectCurrentSessionId,

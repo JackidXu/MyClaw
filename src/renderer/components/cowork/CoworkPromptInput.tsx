@@ -37,7 +37,6 @@ import {
   prepareCoworkPromptPayload,
   type PreparedCoworkPromptPayload,
 } from '../../services/coworkPromptPayload';
-import Modal from '../common/Modal';
 import { getPortalPricingUrl } from '../../services/endpoints';
 import { expertService } from '../../services/expertService';
 import { i18nService } from '../../services/i18n';
@@ -97,6 +96,7 @@ import {
   ACTIVE_CONTEXT_BADGE_ICON_WRAP_CLASS,
   ACTIVE_CONTEXT_BADGE_REMOVE_ICON_CLASS,
 } from '../common/activeContextBadgeStyles';
+import Modal from '../common/Modal';
 import { PremiumGuideModal } from '../experts/PremiumGuideModal';
 import EditIcon from '../icons/EditIcon';
 import GoalIcon from '../icons/GoalIcon';
