@@ -1,6 +1,6 @@
 ---
-description: "Guide short-form video creation from concept through publication using practitioner methodology: fast prototyping, finding what works before building process, and 'sponge then sharpen' creative phi..."
-name: 02-duan-shi-pin-chuang-zuo-mo-dao
+description: "基于一线短视频实操方法论，引导从选题概念到发布的全流程短视频创作，包含快速原型、钩子设计与口播打磨。"
+name: "短视频创作磨刀"
 ---
 name: 02-duan-shi-pin-chuang-zuo-mo-dao
 # Short-Form Video Production

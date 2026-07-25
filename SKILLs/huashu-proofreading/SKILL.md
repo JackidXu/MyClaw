@@ -1,6 +1,6 @@
 ---
-description: "系统化降低文章AI检测率，增加人味的三遍审校专业能力。"
-name: 01-huashu-san-bian-shen-xiao
+description: "系统化降低文章与口播稿的 AI 机械痕迹，增加真实口语感与表达穿透力的专业审校能力。"
+name: "审校打磨三遍法"
 ---
 name: 01-huashu-san-bian-shen-xiao
 # AI味审校

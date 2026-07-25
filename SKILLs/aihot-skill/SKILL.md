@@ -1,6 +1,6 @@
 ---
-description: "中文 AI 资讯查询 Skill。当用户想知道'今天 AI 圈有什么'、'AI 日报'、'AI 资讯'、'AI 热点'、'最近 AI'、'OpenAI/the AI provider/Google 最近发布了什么'、'AI hot today'、'AI news today'等任何中文 AI 资讯查询时使用。Skill 会直接 curl 公开 REST API 拉数据并整理成中文 markd..."
-name: 01-ai-re-dian-ri-bao
+description: "实时抓取全网中文 AI 资讯与热点动态，自动整理生成每日 AI 行业简报与趋势洞察。"
+name: "AI 热点日报"
 ---
 name: 01-ai-re-dian-ri-bao
 # AI HOT Skill（AI热点日报）

@@ -1,6 +1,6 @@
 ---
-description: "Generate a complete 30-day content calendar with platform-specific posts, hooks, hashtags, and a content repurposing strategy."
-name: 02-san-shi-tian-she-mei-pai-qi
+description: "一键生成 30 天跨平台内容排期表，包含选题分布、发布频率、选题钩子与内容复用拆解方案。"
+name: "30天社媒排期表"
 ---
 name: 02-san-shi-tian-she-mei-pai-qi
 # Social Media Content Calendar & Generation

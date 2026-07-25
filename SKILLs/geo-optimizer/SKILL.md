@@ -1,6 +1,6 @@
 ---
-description: "AI 搜索优化全流程工具，基于 10 步 GEO 实战框架，帮助品牌内容被 AI 引擎引用。"
-name: 03-geo-quan-liu-cheng
+description: "基于 GEO 10步优化框架，帮助品牌内容在 Perplexity、Kimi 等 AI 搜索引擎中获得高频引用卡位。"
+name: "GEO 全流程优化"
 ---
 
 # GEO Optimizer

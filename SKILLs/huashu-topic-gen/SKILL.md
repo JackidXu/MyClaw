@@ -1,6 +1,6 @@
 ---
-description: "快速生成3-4个公众号文章选题方向，每个选题包含标题、大纲、优劣分析。"
-name: 01-huashu-xuan-ti-sheng-cheng
+description: "快速生成 3-4 个大流量选题方向，包含爆款标题建议、文章大纲与传播优劣势深度拆解。"
+name: "爆款选题生成"
 ---
 name: 01-huashu-xuan-ti-sheng-cheng
 # 选题生成

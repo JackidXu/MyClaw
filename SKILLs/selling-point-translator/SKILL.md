@@ -1,6 +1,6 @@
 ---
-name: selling-point-translator
-description: "A guided methodology for extracting, refining, and translating business selling points (seller language: features, advantages, values, trust proofs) into customer buying points (buyer language: tasks, gains, outcomes, risk relief). This skill should be used when the user wants to extract their business's unique selling propositions, craft purchase reasons, or translate internal technical language into customer-facing messaging. Trigger phrases include: 提炼卖点, 卖点梳理, 购买理由, 买点, 价值主张, 业务亮点, 怎么说服客户, 产品卖点, 差异化优势, 营销话术, 销售话术, why should customers buy."
+name: "买点卖点翻译"
+description: "引导式将企业内部的卖家卖点翻译为客户听得懂、愿意买的买点理由。"
 agent_created: true
 ---
 

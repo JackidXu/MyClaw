@@ -1,6 +1,6 @@
 ---
-name: "IP Business Strategy Report Skill (HeiQiang v7.0 Five-Layer Progressive Model)"
-description: "This skill creates client-ready IP (Personal Brand) commercial strategy reports using the HeiQiang v7.0 Five-Layer Progressive Model."
+name: "黑墙IP战略报告"
+description: "基于黑墙 v7.0 五层递进模型，为个人与商业品牌生成可落地交付的 IP 商业定位与执行战略报告。"
 ---
 
 # IP Business Strategy Report Skill (HeiQiang v7.0 Five-Layer Progressive Model)

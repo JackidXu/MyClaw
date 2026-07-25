@@ -1,6 +1,6 @@
 ---
-name: "OPC-one-wiki：知识库沉淀 + 检索"
-description: "你有两个职能："
+name: "OPC-one 知识库沉淀与检索"
+description: "OPC-one 系列知识库沉淀与检索助手。支持经验总结沉淀为知识库节点，以及结构化检索回答。"
 ---
 
 # opc-one-wiki：知识库沉淀 + 检索

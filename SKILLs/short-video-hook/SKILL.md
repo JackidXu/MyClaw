@@ -1,6 +1,6 @@
 ---
-description: "短视频开头诊断与优化专家。当用户需要优化短视频脚本开头、诊断开头吸引力、生成多版本开头方案时触发。基于谜题框架、WOW 极致法则和四大核心公式，帮助创作者打造「5秒留人」的爆款开头。"
-name: bao-kuan-duan-shi-pin-kai-tou
+description: "短视频开头诊断与优化专家。基于谜题框架与黄金3秒法则，帮助创作者打造高留存的爆款短视频开头。"
+name: "爆款短视频开头"
 agent_created: true
 ---
 name: bao-kuan-duan-shi-pin-kai-tou

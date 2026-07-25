@@ -1,6 +1,6 @@
 ---
-description: "检查选题是否符合发布标准，给出通过/不通过判断及修改建议。当用户说'审核选题'、'这个选题行不行'、'帮我看看这个能不能写'时触发。"
-name: 01-xuan-ti-shen-he
+description: "审查选题是否符合平台风向与企业定位，给出严格的通过/驳回判断及可行改写建议。"
+name: "选题审核"
 ---
 name: 01-xuan-ti-shen-he
 # Topic Reviewer - 选题审核

@@ -1,6 +1,6 @@
 ---
-description: "Create hooks and headlines that stop the scroll and compel action using systematic frameworks, not guesswork."
-name: 02-bao-kuan-biao-ti-sheng-cheng
+description: "运用科学的点击率与注意力模型，为短视频、小红书及文章创作具有高吸引力的黄金标题与开头钩子。"
+name: "爆款标题生成"
 ---
 name: 02-bao-kuan-biao-ti-sheng-cheng
 # Hook and Headline Writer

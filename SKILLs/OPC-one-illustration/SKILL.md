@@ -1,6 +1,6 @@
 ---
-name: "Article Illustration Generator"
-description: "This skill automatically generates relevant illustrations for a text article using the Gemini Image API."
+name: "文章插图生成器"
+description: "自动分析文案意象，生成高质量、风格统一的场景插图提示词与极具吸引力的配图。"
 ---
 
 # Article Illustration Generator
