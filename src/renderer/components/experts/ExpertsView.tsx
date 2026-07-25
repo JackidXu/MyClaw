@@ -445,17 +445,17 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
                       key={expert.id}
                       className={`group relative flex flex-col items-center rounded-2xl p-6 text-center shadow-sm transition-all duration-300 overflow-hidden ${
                         isLocked
-                          ? 'bg-gradient-to-b from-amber-500/[0.05] via-surface to-amber-500/[0.02] border border-amber-500/30 hover:border-amber-500/60 hover:shadow-xl hover:shadow-amber-500/10'
+                          ? 'bg-gradient-to-b from-amber-500/[0.06] via-surface to-surface border border-amber-500/30 hover:border-amber-500/60 hover:shadow-md'
                           : 'bg-surface border border-border hover:shadow-md hover:border-primary/20'
                       }`}
                     >
                       {/* 专家角标状态 */}
                       {isPaid ? (
                         <span
-                          className={`absolute right-3.5 top-3.5 text-[11px] font-bold px-2.5 py-0.5 rounded-full border flex items-center gap-1 shadow-2xs select-none backdrop-blur-sm z-10 ${
+                          className={`absolute right-3.5 top-3.5 text-[11px] font-bold px-2.5 py-0.5 rounded-full border flex items-center gap-1 shadow-2xs select-none z-10 ${
                             isUnlocked
                               ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30'
-                              : 'bg-gradient-to-r from-amber-500/15 to-purple-500/15 text-amber-700 border-amber-500/40 shadow-amber-500/10'
+                              : 'bg-gradient-to-r from-amber-500/15 via-orange-500/15 to-purple-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/35'
                           }`}
                         >
                           {isUnlocked ? '✓ 已开通' : '✨ PRO 专属'}
