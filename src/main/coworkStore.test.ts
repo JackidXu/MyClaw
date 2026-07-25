@@ -912,20 +912,20 @@ test('agent CRUD normalizes legacy icons to the default svg avatar', () => {
   });
 
   const missingIconAgent = store.createAgent({ name: 'Missing Icon Agent' });
-  const legacyIconAgent = store.createAgent({ name: 'Legacy Icon Agent', icon: 'legacy-icon' });
+  const legacyIconAgent = store.createAgent({ name: 'Legacy Icon Agent', avatar: 'legacy-icon' });
   const legacyDesignedIconAgent = store.createAgent({
     name: 'Legacy Designed Icon Agent',
-    icon: 'agent-avatar:blue:code',
+    avatar: 'agent-avatar:blue:code',
   });
-  const designedIconAgent = store.createAgent({ name: 'Designed Icon Agent', icon: designedIcon });
+  const designedIconAgent = store.createAgent({ name: 'Designed Icon Agent', avatar: designedIcon });
 
-  expect(missingIconAgent.icon).toBe(DefaultAgentAvatarIcon);
-  expect(legacyIconAgent.icon).toBe(DefaultAgentAvatarIcon);
-  expect(legacyDesignedIconAgent.icon).toBe(DefaultAgentAvatarIcon);
-  expect(designedIconAgent.icon).toBe(designedIcon);
+  expect(missingIconAgent.avatar).toBe(DefaultAgentAvatarIcon);
+  expect(legacyIconAgent.avatar).toBe(DefaultAgentAvatarIcon);
+  expect(legacyDesignedIconAgent.avatar).toBe(DefaultAgentAvatarIcon);
+  expect(designedIconAgent.avatar).toBe(designedIcon);
 
-  const updated = store.updateAgent(designedIconAgent.id, { icon: 'legacy-icon' });
-  expect(updated?.icon).toBe(DefaultAgentAvatarIcon);
+  const updated = store.updateAgent(designedIconAgent.id, { avatar: 'legacy-icon' });
+  expect(updated?.avatar).toBe(DefaultAgentAvatarIcon);
 });
 
 test('agent pinning stores first-pinned-first order', () => {

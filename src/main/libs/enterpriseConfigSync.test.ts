@@ -729,7 +729,7 @@ describe('enterpriseConfigSync', () => {
         syncedAgents.push({
           id: agent.id,
           name: agent.name,
-          icon: agent.icon,
+          avatar: agent.avatar,
           model: agent.model,
           skillIds: agent.skillIds,
           enabled: agent.enabled,
@@ -742,7 +742,7 @@ describe('enterpriseConfigSync', () => {
       {
         id: 'main',
         name: 'Main Enterprise Agent',
-        icon: '🦞',
+        avatar: '🦞',
         model: 'enterprise/primary',
         skillIds: ['docx'],
         enabled: true,
@@ -751,7 +751,7 @@ describe('enterpriseConfigSync', () => {
       {
         id: 'support',
         name: 'Support Agent',
-        icon: '🛟',
+        avatar: '🛟',
         model: 'enterprise/support',
         skillIds: ['xlsx'],
         enabled: true,

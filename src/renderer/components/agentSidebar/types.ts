@@ -4,7 +4,7 @@ import type { AgentSidebarIndicator } from './constants';
 export interface AgentSidebarAgentSummary {
   id: string;
   name: string;
-  icon: string;
+  avatar?: string;
   enabled: boolean;
   pinned: boolean;
   pinOrder?: number | null;

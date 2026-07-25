@@ -42,7 +42,7 @@ const makeAgent = (
 ): AgentSidebarAgentSummary => ({
   id,
   name: id,
-  icon: '',
+  avatar: '',
   enabled: true,
   pinned,
   pinOrder,

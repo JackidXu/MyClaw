@@ -3,7 +3,7 @@ import { AgentId, DefaultAgentProfile } from '@shared/agent';
 interface AgentDisplaySource {
   id: string;
   name?: string;
-  icon?: string;
+  avatar?: string;
 }
 
 export const isDefaultAgentId = (agentId?: string | null): boolean => {

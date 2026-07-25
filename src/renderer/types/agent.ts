@@ -28,7 +28,7 @@ export interface PresetAgent {
   id: string;
   name: string;
   nameEn: string;
-  icon: string;
+  avatar?: string;
   description: string;
   descriptionEn: string;
   identity: string;
@@ -49,7 +49,7 @@ export interface CreateAgentRequest {
   identity?: string;
   model?: string;
   workingDirectory?: string;
-  icon?: string;
+  avatar?: string;
   skillIds?: string[];
   subagentAllowAgentIds?: string[];
   level?: '高级' | '中级' | '初级';
@@ -66,7 +66,7 @@ export interface UpdateAgentRequest {
   identity?: string;
   model?: string;
   workingDirectory?: string;
-  icon?: string;
+  avatar?: string;
   skillIds?: string[];
   subagentAllowAgentIds?: string[];
   level?: '高级' | '中级' | '初级';

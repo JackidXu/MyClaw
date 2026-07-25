@@ -19,7 +19,7 @@ import { PremiumGuideModal } from './PremiumGuideModal';
 interface PresetAgent {
   id: string;
   name: string;
-  icon: string;
+  avatar?: string;
   description: string;
   identity?: string;
   level?: '高级' | '中级' | '初级';

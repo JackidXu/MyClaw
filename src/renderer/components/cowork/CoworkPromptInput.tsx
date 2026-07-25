@@ -37,6 +37,7 @@ import {
   prepareCoworkPromptPayload,
   type PreparedCoworkPromptPayload,
 } from '../../services/coworkPromptPayload';
+import Modal from '../common/Modal';
 import { getPortalPricingUrl } from '../../services/endpoints';
 import { expertService } from '../../services/expertService';
 import { i18nService } from '../../services/i18n';
