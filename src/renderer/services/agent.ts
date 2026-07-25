@@ -77,7 +77,7 @@ class AgentService {
     identity?: string;
     model?: string;
     workingDirectory?: string;
-    icon?: string;
+    avatar?: string;
     skillIds?: string[];
     subagentAllowAgentIds?: string[];
     level?: '高级' | '中级' | '初级';
@@ -99,7 +99,7 @@ class AgentService {
           pinOrder: agent.pinOrder ?? null,
           sortOrder: agent.sortOrder ?? null,
           isDefault: agent.isDefault,
-          source: agent.source,
+          source: agent.source ?? 'custom',
           presetId: agent.presetId,
           skillIds: agent.skillIds ?? [],
           subagentAllowAgentIds: agent.subagentAllowAgentIds ?? [],
@@ -107,6 +107,7 @@ class AgentService {
           department: agent.department,
           identity: agent.identity,
         }));
+        syncActiveSkillsForCurrentAgent(agent.id, agent.skillIds ?? []);
         return agent;
       }
       return null;
@@ -123,7 +124,7 @@ class AgentService {
     identity?: string;
     model?: string;
     workingDirectory?: string;
-    icon?: string;
+    avatar?: string;
     skillIds?: string[];
     subagentAllowAgentIds?: string[];
     level?: '高级' | '中级' | '初级';
