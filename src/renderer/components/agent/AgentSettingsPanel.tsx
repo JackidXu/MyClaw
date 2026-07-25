@@ -128,7 +128,7 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
     if (systemPrompt !== init.systemPrompt) changedFields.push('systemPrompt');
     if (identity !== init.identity) changedFields.push('identity');
     if (userInfo !== init.userInfo) changedFields.push('userInfo');
-    if (icon !== init.icon) changedFields.push('icon');
+    if (icon !== init.icon) changedFields.push('avatar');
     if ((model ? toOpenClawModelRef(model) : '') !== init.model) changedFields.push('model');
     if (workingDirectory !== init.workingDirectory) changedFields.push('workingDirectory');
     if (skillIds.length !== init.skillIds.length || skillIds.some((id, i) => id !== init.skillIds[i])) {
@@ -269,7 +269,7 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
       setSystemPrompt(nextSystemPrompt);
       setIdentity(nextIdentity);
       setUserInfo(nextUserInfo);
-      setIcon(a.icon);
+      setIcon(a.avatar || '');
       const resolvedModel = resolveOpenClawModelRef(a.model, availableModels) ?? defaultSelectedModel ?? null;
       const resolvedModelRef = resolvedModel ? toOpenClawModelRef(resolvedModel) : '';
       setModel(resolvedModel);
@@ -284,7 +284,7 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
         systemPrompt: nextSystemPrompt,
         identity: nextIdentity,
         userInfo: nextUserInfo,
-        icon: a.icon,
+        icon: a.avatar || '',
         model: resolvedModelRef,
         workingDirectory: a.workingDirectory ?? '',
         skillIds: a.skillIds ?? [],

@@ -5,14 +5,17 @@ import { useDispatch, useSelector } from 'react-redux';
 import Modal from '../../components/common/Modal';
 import { agentService } from '../../services/agent';
 import { coworkService } from '../../services/cowork';
+import { expertService } from '../../services/expertService';
 import { RootState } from '../../store';
 import {
   selectCoworkSessions,
   selectCurrentSessionId,
   selectUnreadSessionIds,
 } from '../../store/selectors/coworkSelectors';
+import type { AgentSummary } from '../../store/slices/agentSlice';
 import { setDraftCollaborationMode } from '../../store/slices/coworkSlice';
 import { CoworkCollaborationMode } from '../../types/cowork';
+import type { PaidExpert } from '../../types/paidExpert';
 import { isDefaultAgentId } from '../../utils/agentDisplay';
 import AgentAvatarIcon from '../agent/AgentAvatarIcon';
 import AgentCreateModal from '../agent/AgentCreateModal';
@@ -106,7 +109,15 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
 
   // 获取所有已经启用(已添加)的专家列表
   const enabledExperts = useMemo(() => {
-    return agents.filter((a) => a.enabled);
+    const list: Array<AgentSummary | PaidExpert> = [
+      ...agents.filter((a) => a.enabled),
+    ];
+    expertService.getPaidExperts().forEach((pe) => {
+      if (pe.enabled && !list.some((a) => a.id === pe.id)) {
+        list.push(pe);
+      }
+    });
+    return list;
   }, [agents]);
 
   // 将所有会话进行更新时间降序及置顶排序
@@ -312,8 +323,7 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
                   title={expert.name}
                   className="relative w-9 h-9 flex items-center justify-center animate-in fade-in duration-100"
                 >
-                  <AgentAvatarIcon
-                    value={expert.icon}
+                  <AgentAvatarIcon avatar={expert.avatar} agentId={expert.id}
                     className={`h-9 w-9 shadow-sm transition-all rounded-full ${
                       isSelected
                         ? 'ring-2 ring-primary ring-offset-1 shadow-md'
@@ -408,7 +418,7 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
           ) : (
             sortedSessions.map((session) => {
               const isSelected = session.id === currentSessionId;
-              const expert = agents.find((a) => a.id === session.agentId);
+              const expert = agents.find((a) => a.id === session.agentId) || expertService.getPaidExperts().find((pe) => pe.id === session.agentId);
               const relativeTime = formatAgentTaskRelativeTime(session.updatedAt || session.createdAt);
               const isRunning = session.status === 'running';
               const isCompletedUnread = session.status === 'completed' && unreadSessionIdSet.has(session.id);
@@ -432,7 +442,8 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
                   <div className="flex items-center min-w-0 flex-1 space-x-2.5 pr-6">
                     {/* 会话绑定专家的头像 */}
                     <AgentAvatarIcon
-                      value={expert?.icon}
+                      avatar={expert?.avatar}
+                      agentId={session.agentId}
                       className="h-7 w-7 rounded-full shadow-sm"
                       useDefaultWhenEmpty
                     />
@@ -626,7 +637,7 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
             <div className="flex-1 overflow-y-auto space-y-2 pr-1 [scrollbar-width:thin]">
               {enabledExperts.map((expert) => {
                 const isMain = expert.id === AgentId.Main;
-                const isPreset = expert.source === 'preset';
+                const isPreset = 'source' in expert && expert.source === 'preset';
 
                 const isConfirmingRecall = confirmingRecallAgentId === expert.id;
                 const isConfirmingDelete = confirmingDeleteAgentId === expert.id;
@@ -639,7 +650,7 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
                     {/* 左侧：头像 + 专家名字属性 */}
                     <div className="flex items-center space-x-2.5 min-w-0">
                       <AgentAvatarIcon
-                        value={expert.icon}
+                        avatar={expert.avatar}
                         className="h-8 w-8 rounded-full shadow-sm"
                       />
                       <div className="min-w-0">

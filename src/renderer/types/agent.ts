@@ -8,7 +8,7 @@ export interface Agent {
   identity: string;
   model: string;
   workingDirectory: string;
-  icon: string;
+  avatar?: string;
   skillIds: string[];
   subagentAllowAgentIds: string[];
   level?: '高级' | '中级' | '初级';

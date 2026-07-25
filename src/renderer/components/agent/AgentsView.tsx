@@ -107,7 +107,7 @@ const AgentsView: React.FC<AgentsViewProps> = ({
                 {presetAgents.map((agent) => (
                   <AgentCard
                     key={agent.id}
-                    icon={agent.icon}
+                    icon={agent.avatar || ''}
                     name={agent.name}
                     description={agent.description}
                     isActive={agent.id === currentAgentId}
@@ -120,7 +120,7 @@ const AgentsView: React.FC<AgentsViewProps> = ({
                   return (
                     <UninstalledPresetCard
                       key={preset.id}
-                      icon={preset.icon}
+                      icon={preset.avatar || ''}
                       name={isEn && preset.nameEn ? preset.nameEn : preset.name}
                       description={isEn && preset.descriptionEn ? preset.descriptionEn : preset.description}
                       isAdding={addingPreset === preset.id}
@@ -141,7 +141,7 @@ const AgentsView: React.FC<AgentsViewProps> = ({
               {customAgents.map((agent) => (
                 <AgentCard
                   key={agent.id}
-                  icon={agent.icon}
+                  icon={agent.avatar || ''}
                   name={agent.name}
                   description={agent.description}
                   isActive={agent.id === currentAgentId}
@@ -199,10 +199,8 @@ const AgentCard: React.FC<{
     }`}
   >
     <AgentAvatarIcon
-      value={icon}
+      avatar={icon}
       className="h-11 w-11"
-      iconClassName="h-[22px] w-[22px]"
-      legacyClassName="text-3xl"
     />
     <div className="min-w-0 w-full">
       <div className="text-sm font-semibold text-foreground truncate">
@@ -228,10 +226,8 @@ const UninstalledPresetCard: React.FC<{
 }> = ({ icon, name, description, isAdding, onAdd }) => (
   <div className="flex flex-col items-start gap-2 p-4 rounded-xl border-2 border-dashed border-border opacity-60 hover:opacity-80 transition-opacity min-h-[140px]">
     <AgentAvatarIcon
-      value={icon}
+      avatar={icon}
       className="h-11 w-11"
-      iconClassName="h-[22px] w-[22px]"
-      legacyClassName="text-3xl"
     />
     <div className="min-w-0 w-full flex-1">
       <div className="text-sm font-semibold text-foreground truncate">

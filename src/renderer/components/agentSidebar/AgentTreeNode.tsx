@@ -70,7 +70,7 @@ const AgentAvatar: React.FC<{ agent: AgentSidebarAgentNode }> = ({ agent }) => {
 
   return (
     <AgentAvatarIcon
-      value={agent.icon}
+      avatar={agent.avatar}
       className="h-4 w-4"
       iconClassName="h-4 w-4"
       legacyClassName="text-[14px]"

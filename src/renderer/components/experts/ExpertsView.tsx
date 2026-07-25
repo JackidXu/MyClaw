@@ -498,7 +498,7 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
                       {/* 头像区域：全量统一圆形头像，清爽简洁 */}
                       <div className="relative mt-2 z-10">
                         <AgentAvatarIcon
-                          value={expert.avatar}
+                          avatar={expert.avatar}
                           className="h-20 w-20 rounded-full shadow-md ring-2 ring-background ring-offset-2 transition-transform duration-300 group-hover:scale-105"
                         />
                       </div>

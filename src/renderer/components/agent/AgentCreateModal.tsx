@@ -1,5 +1,4 @@
 import { XMarkIcon } from '@heroicons/react/24/outline';
-import { DefaultAgentAvatarIcon } from '@shared/agent/avatar';
 import type { Platform } from '@shared/platform';
 import { PlatformRegistry } from '@shared/platform';
 import { ProviderName } from '@shared/providers';
@@ -88,7 +87,7 @@ const AgentCreateModal: React.FC<AgentCreateModalProps> = ({
   const [systemPrompt, setSystemPrompt] = useState('');
   const [identity, setIdentity] = useState('');
   const [userInfo, setUserInfo] = useState('');
-  const [icon, setIcon] = useState(DefaultAgentAvatarIcon);
+  const [icon, setIcon] = useState('avatar_1');
   const [model, setModel] = useState<Model | null>(null);
   const [workingDirectory, setWorkingDirectory] = useState('');
   const [skillIds, setSkillIds] = useState<string[]>([]);
@@ -127,7 +126,7 @@ const AgentCreateModal: React.FC<AgentCreateModalProps> = ({
     if (systemPrompt.trim()) changedFields.push('systemPrompt');
     if (identity.trim()) changedFields.push('identity');
     if (userInfo !== initialUserInfoRef.current) changedFields.push('userInfo');
-    if (icon !== DefaultAgentAvatarIcon) changedFields.push('icon');
+    if (icon !== 'avatar_1') changedFields.push('avatar');
     if ((model ? toOpenClawModelRef(model) : '') !== initialModelRef.current) changedFields.push('model');
     if (workingDirectory !== initialWorkingDirectoryRef.current) changedFields.push('workingDirectory');
     if (skillIds.length > 0) changedFields.push('skillIds');
@@ -241,7 +240,7 @@ const AgentCreateModal: React.FC<AgentCreateModalProps> = ({
     setIdentity('');
     setUserInfo('');
     initialUserInfoRef.current = '';
-    setIcon(DefaultAgentAvatarIcon);
+    setIcon('avatar_1');
     const currentAgent = agents.find((agent) => agent.id === currentAgentId);
     const defaultWorkingDirectory = currentAgent?.workingDirectory?.trim() || coworkConfig.workingDirectory || '';
     initialWorkingDirectoryRef.current = defaultWorkingDirectory;
@@ -286,7 +285,7 @@ const AgentCreateModal: React.FC<AgentCreateModalProps> = ({
     setIdentity('');
     setUserInfo('');
     initialUserInfoRef.current = '';
-    setIcon(DefaultAgentAvatarIcon);
+    setIcon('avatar_1');
     setLevel('高级');
     setDepartment('其他');
     setModel(null);
@@ -311,7 +310,7 @@ const AgentCreateModal: React.FC<AgentCreateModalProps> = ({
     setDescription(isEn && preset.descriptionEn ? preset.descriptionEn : preset.description);
     setSystemPrompt(isEn && preset.systemPromptEn ? preset.systemPromptEn : preset.systemPrompt);
     setIdentity(isEn && preset.identityEn ? preset.identityEn : preset.identity);
-    setIcon(preset.icon?.trim() || DefaultAgentAvatarIcon);
+    setIcon(preset.avatar?.trim() || '');
     setSkillIds(preset.skillIds ?? []);
     if (preset.level) setLevel(preset.level);
     if (preset.department) setDepartment(preset.department);
@@ -934,10 +933,8 @@ const AgentTemplatePickerContent: React.FC<{
                 >
                   <div className="flex w-full items-center gap-3">
                     <AgentAvatarIcon
-                      value={preset.icon}
+                      avatar={preset.avatar}
                       className="h-8 w-8"
-                      iconClassName="h-5 w-5"
-                      legacyClassName="text-2xl"
                     />
                     <div className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">
                       {name}

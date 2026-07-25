@@ -58,9 +58,8 @@ const AgentAvatarPicker: React.FC<AgentAvatarPickerProps> = ({ value, onChange }
         }`}
       >
         <AgentAvatarIcon
-          value={value || 'avatar_1'}
+          avatar={value || 'avatar_1'}
           className="h-11 w-11 rounded-full shadow-sm"
-          useDefaultWhenEmpty
         />
       </button>
 
@@ -87,9 +86,8 @@ const AgentAvatarPicker: React.FC<AgentAvatarPickerProps> = ({ value, onChange }
                   }`}
                 >
                   <AgentAvatarIcon
-                    value={avatarName}
+                    avatar={avatarName}
                     className="h-12 w-12 rounded-full"
-                    useDefaultWhenEmpty={false}
                   />
                 </button>
               );

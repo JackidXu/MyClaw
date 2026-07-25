@@ -189,7 +189,7 @@ export const useAgentSidebarState = () => {
       .map((agent) => ({
         id: agent.id,
         name: agent.name,
-        icon: agent.icon,
+        avatar: agent.avatar,
         enabled: agent.enabled,
         pinned: agent.pinned ?? false,
         pinOrder: agent.pinOrder ?? null,

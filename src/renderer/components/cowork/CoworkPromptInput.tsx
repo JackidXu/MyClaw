@@ -361,11 +361,8 @@ interface AgentSelectorOption {
 const AgentContextAvatar: React.FC<{ agent: AgentSelectorOption; className?: string }> = ({ agent, className = 'h-4 w-4' }) => {
   return (
     <AgentAvatarIcon
-      value={agent.avatar || agent.icon}
+      avatar={agent.avatar}
       className={className}
-      iconClassName={className}
-      legacyClassName="text-[13px]"
-      fallbackText={getAgentDisplayName(agent).trim().slice(0, 1).toUpperCase() || 'A'}
     />
   );
 };
@@ -635,6 +632,18 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
   );
   const isPlanMode = draftCollaborationMode === CoworkCollaborationMode.Plan;
   const currentAgent = agents.find((agent) => agent.id === currentAgentId);
+  const defaultSkillIdsForCurrentAgent = useMemo(() => {
+    let ids: string[] = [];
+    if (currentAgent?.skillIds?.length) {
+      ids = currentAgent.skillIds;
+    } else {
+      const paidExpert = expertService.getPaidExperts().find((e) => e.id === currentAgentId);
+      if (paidExpert?.skillIds?.length) {
+        ids = paidExpert.skillIds;
+      }
+    }
+    return ids;
+  }, [currentAgent, currentAgentId]);
   const currentAgentSelectedModel = useAgentSelectedModel(currentAgentId, currentAgent?.model ?? '');
   const {
     isPersistingAgentModel,
@@ -1085,7 +1094,8 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
   // Restore active kit/skill IDs from draft when draftKey changes
   useEffect(() => {
     dispatch(setActiveKitIds(draftKitIdsForKey || []));
-    dispatch(setActiveSkillIds(draftSkillIdsForKey || []));
+    const targetSkillIds = draftSkillIdsForKey !== undefined ? draftSkillIdsForKey : defaultSkillIdsForCurrentAgent;
+    dispatch(setActiveSkillIds(targetSkillIds));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftKey]); // intentionally only trigger on session/draft switch
 

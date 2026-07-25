@@ -64,6 +64,9 @@ import {
   togglePanel,
   updateLocalServiceProjectMetadata,
 } from '../../store/slices/artifactSlice';
+
+const EMPTY_TEXT_SNIPPETS: any[] = [];
+
 import {
   addDraftSelectedTextSnippet,
   PlanConfirmationState,
@@ -1232,7 +1235,7 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
   const installedKits = useSelector((state: RootState) => state.kit.installedKits);
   const marketplaceKits = useSelector((state: RootState) => state.kit.marketplaceKits);
   const selectedDraftSnippets = useSelector((state: RootState) =>
-    currentSession?.id ? state.cowork.draftSelectedTextSnippets[currentSession.id] ?? [] : []
+    currentSession?.id ? state.cowork.draftSelectedTextSnippets[currentSession.id] ?? EMPTY_TEXT_SNIPPETS : EMPTY_TEXT_SNIPPETS
   );
   const contextUsage = useSelector((state: RootState) =>
     currentSession?.id ? state.cowork.contextUsageBySessionId[currentSession.id] : undefined

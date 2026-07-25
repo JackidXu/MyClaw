@@ -32,6 +32,6 @@ export const getAgentDisplayNameById = (
   return normalizedAgentId;
 };
 
-export const shouldUseDefaultAgentIcon = (agent: Pick<AgentDisplaySource, 'id' | 'icon'>): boolean => {
-  return isDefaultAgentId(agent.id) && !agent.icon?.trim();
+export const shouldUseDefaultAgentIcon = (agent: { id: string; avatar?: string }): boolean => {
+  return isDefaultAgentId(agent.id) && !agent.avatar?.trim();
 };

@@ -17,6 +17,7 @@ import { clearCurrentSession } from '../store/slices/coworkSlice';
 import { clearAgentSelectedModel } from '../store/slices/modelSlice';
 import { clearActiveSkills, setActiveSkillIds } from '../store/slices/skillSlice';
 import type { Agent, PresetAgent } from '../types/agent';
+import { expertService } from './expertService';
 
 const syncActiveSkillsForCurrentAgent = (agentId: string, skillIds: string[]): void => {
   if (store.getState().agent.currentAgentId !== agentId) {
@@ -44,7 +45,7 @@ class AgentService {
           id: a.id,
           name: a.name,
           description: a.description,
-          icon: a.icon,
+          avatar: a.avatar,
           model: a.model ?? '',
           workingDirectory: a.workingDirectory ?? '',
           enabled: a.enabled,
@@ -90,7 +91,7 @@ class AgentService {
           id: agent.id,
           name: agent.name,
           description: agent.description,
-          icon: agent.icon,
+          avatar: agent.avatar,
           model: agent.model ?? '',
           workingDirectory: agent.workingDirectory ?? '',
           enabled: agent.enabled,
@@ -140,7 +141,7 @@ class AgentService {
           updates: {
             name: agent.name,
             description: agent.description,
-            icon: agent.icon,
+            avatar: agent.avatar,
             model: agent.model ?? '',
             workingDirectory: agent.workingDirectory ?? '',
             enabled: agent.enabled,
@@ -177,7 +178,7 @@ class AgentService {
         id: agent.id,
         name: agent.name,
         description: agent.description,
-        icon: agent.icon,
+        avatar: agent.avatar,
         model: agent.model ?? '',
         workingDirectory: agent.workingDirectory ?? '',
         enabled: agent.enabled,
@@ -265,7 +266,7 @@ class AgentService {
           id: agent.id,
           name: agent.name,
           description: agent.description,
-          icon: agent.icon,
+          avatar: agent.avatar,
           model: agent.model ?? '',
           workingDirectory: agent.workingDirectory ?? '',
           enabled: agent.enabled,
@@ -291,9 +292,20 @@ class AgentService {
     store.dispatch(clearCurrentSession(options.targetSessionId
       ? { sessionNavigationTargetId: options.targetSessionId }
       : undefined));
+
+    let skillIds: string[] = [];
     const agent = store.getState().agent.agents.find((a) => a.id === agentId);
     if (agent?.skillIds?.length) {
-      store.dispatch(setActiveSkillIds(agent.skillIds));
+      skillIds = agent.skillIds;
+    } else {
+      const paidExpert = expertService.getPaidExperts().find((e) => e.id === agentId);
+      if (paidExpert?.skillIds?.length) {
+        skillIds = paidExpert.skillIds;
+      }
+    }
+
+    if (skillIds.length > 0) {
+      store.dispatch(setActiveSkillIds(skillIds));
     } else {
       store.dispatch(clearActiveSkills());
     }

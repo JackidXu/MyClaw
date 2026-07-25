@@ -1,5 +1,5 @@
 import { ArrowPathIcon, ExclamationTriangleIcon, ShieldCheckIcon } from '@heroicons/react/24/outline';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 
 import { buildGoalSettingMessageMetadata } from '../../../common/goalCommandDisplay';
@@ -9,6 +9,7 @@ import type { CoworkSelectedTextSnippet } from '../../../shared/cowork/selectedT
 import { agentService } from '../../services/agent';
 import { coworkService } from '../../services/cowork';
 import { buildCoworkCapabilitySelection } from '../../services/coworkCapabilitySelection';
+import { expertService } from '../../services/expertService';
 import { i18nService } from '../../services/i18n';
 import { quickActionService } from '../../services/quickAction';
 import { RootState } from '../../store';
@@ -34,6 +35,7 @@ import {
 import type { MediaAttachmentRef } from '../../types/mediaGeneration';
 import { applyOptimisticGoalCommand } from '../../utils/goalCommand';
 import { toOpenClawModelRef } from '../../utils/openclawModelRef';
+import AgentAvatarIcon from '../agent/AgentAvatarIcon';
 import CreditsResetCampaignFloat from '../CreditsResetCampaignFloat';
 import ComposeIcon from '../icons/ComposeIcon';
 import SidebarToggleIcon from '../icons/SidebarToggleIcon';
@@ -129,6 +131,14 @@ const CoworkView: React.FC<CoworkViewProps> = ({
   const currentAgentId = useSelector((state: RootState) => state.agent.currentAgentId);
   const agents = useSelector((state: RootState) => state.agent.agents);
   const currentAgent = agents.find((agent) => agent.id === currentAgentId);
+  const activeExpert = useMemo(() => {
+    if (currentAgentId === 'main') return null;
+    const custom = agents.find((agent) => agent.id === currentAgentId);
+    if (custom) return custom;
+    const paid = expertService.getPaidExperts().find((e) => e.id === currentAgentId);
+    if (paid) return paid;
+    return null;
+  }, [agents, currentAgentId]);
   const shouldPresentConversation = Boolean(currentSession || sessionNavigationTargetId);
   const currentAgentWorkingDirectory = currentAgent?.workingDirectory?.trim() || config.workingDirectory || '';
   const currentAgentSelectedModel = useAgentSelectedModel(currentAgentId, currentAgent?.model ?? '');
@@ -850,21 +860,38 @@ const CoworkView: React.FC<CoworkViewProps> = ({
               <div aria-hidden="true" className="w-full min-h-[56px] flex-[2_0_0px]" />
               {/* Welcome Section - staggered entrance animation */}
               <div data-skin-home-copy="true" className="w-full max-w-3xl text-center">
-                <HomeSkinEmblem
-                  className="mx-auto h-12 w-12 animate-fade-in-up"
-                />
-                <h2
-                  className="mt-4 text-2xl font-semibold leading-[var(--lobster-leading-2xl)] tracking-normal text-foreground animate-fade-in-up"
-                  style={{ animationDelay: '70ms', animationFillMode: 'both' }}
-                >
-                  {i18nService.t(resolveHomeGreetingKey())}
-                </h2>
-                <p
-                  className="mt-2 text-[length:var(--lobster-text-promptLarge)] font-normal leading-[var(--lobster-leading-promptLarge)] text-secondary animate-fade-in-up"
-                  style={{ animationDelay: '120ms', animationFillMode: 'both' }}
-                >
-                  {i18nService.t('coworkHomeTagline')}
-                </p>
+                {activeExpert ? (
+                  <div className="flex flex-col items-center animate-fade-in-up">
+                    <AgentAvatarIcon
+                      avatar={activeExpert.avatar}
+                      className="mx-auto h-16 w-16 rounded-full shadow-md mb-3 ring-2 ring-background ring-offset-2"
+                    />
+                    <h2 className="text-2xl font-bold tracking-tight text-foreground">
+                      {activeExpert.name}
+                    </h2>
+                    <p className="mt-2 text-sm text-secondary max-w-xl mx-auto line-clamp-2 leading-relaxed">
+                      {activeExpert.description}
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <HomeSkinEmblem
+                      className="mx-auto h-12 w-12 animate-fade-in-up"
+                    />
+                    <h2
+                      className="mt-4 text-2xl font-semibold leading-[var(--lobster-leading-2xl)] tracking-normal text-foreground animate-fade-in-up"
+                      style={{ animationDelay: '70ms', animationFillMode: 'both' }}
+                    >
+                      {i18nService.t(resolveHomeGreetingKey())}
+                    </h2>
+                    <p
+                      className="mt-2 text-[length:var(--lobster-text-promptLarge)] font-normal leading-[var(--lobster-leading-promptLarge)] text-secondary animate-fade-in-up"
+                      style={{ animationDelay: '120ms', animationFillMode: 'both' }}
+                    >
+                      {i18nService.t('coworkHomeTagline')}
+                    </p>
+                  </>
+                )}
               </div>
 
               {/* Prompt Input Area - Large version with folder selector */}
