@@ -1,6 +1,6 @@
 import type { Agent, CoworkStore, CreateAgentRequest, UpdateAgentRequest } from './coworkStore';
 import { type PresetAgent, presetToCreateRequest } from './presetAgents';
-import { getPresetExperts } from './libs/expertStore';
+import { getPresetExperts, getPaidExperts } from './libs/expertStore';
 
 /**
  * AgentManager handles CRUD operations for agents and preset agent installation.
@@ -26,7 +26,8 @@ export class AgentManager {
   private enrichPresetAgent(agent: Agent): Agent {
     if (agent.source === 'preset' || agent.presetId) {
       const presetId = agent.presetId || agent.id;
-      const preset = getPresetExperts().find(p => p.id === presetId);
+      const allExperts: any[] = [...getPresetExperts(), ...getPaidExperts()];
+      const preset = allExperts.find(p => p.id === presetId);
       if (preset) {
         return { ...agent, skillIds: preset.skillIds || [] };
       }
@@ -80,7 +81,8 @@ export class AgentManager {
   }
 
   addPresetAgent(presetId: string, defaultModel?: string): Agent | null {
-    const preset = getPresetExperts().find(p => p.id === presetId);
+    const allExperts: any[] = [...getPresetExperts(), ...getPaidExperts()];
+    const preset = allExperts.find(p => p.id === presetId);
     if (!preset) return null;
 
     // Check if already installed

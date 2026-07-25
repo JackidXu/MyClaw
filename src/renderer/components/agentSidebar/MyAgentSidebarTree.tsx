@@ -309,8 +309,8 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
           </button>
         </div>
 
-        {/* 圆形头像网格（一行4个，高和宽完全对齐约束，保持极致清爽） */}
-        <div className="grid grid-cols-4 gap-3 max-h-[140px] overflow-y-auto pr-1 py-1 [scrollbar-width:none]">
+        {/* 圆形头像网格（一行4个，自适应展开，最多展示多行） */}
+        <div className="grid grid-cols-4 gap-3 max-h-[260px] overflow-y-auto pr-1 py-1 custom-scrollbar">
           {enabledExperts.map((expert) => {
             const isSelected = filterAgentId === expert.id;
             return (
