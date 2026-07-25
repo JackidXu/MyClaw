@@ -3,8 +3,10 @@ import { useSelector } from 'react-redux';
 
 import { agentService } from '../../services/agent';
 import { coworkService } from '../../services/cowork';
+import { expertService } from '../../services/expertService';
 import { vipService } from '../../services/vipService';
 import { RootState } from '../../store';
+import type { PaidExpert } from '../../types/paidExpert';
 import AgentAvatarIcon from '../agent/AgentAvatarIcon';
 import AgentCreateModal from '../agent/AgentCreateModal';
 import AgentSettingsPanel from '../agent/AgentSettingsPanel';
@@ -13,22 +15,6 @@ import ComposeIcon from '../icons/ComposeIcon';
 import SidebarToggleIcon from '../icons/SidebarToggleIcon';
 import SkillsView from '../skills/SkillsView';
 import { PremiumGuideModal } from './PremiumGuideModal';
-
-// 9个核心部门定义
-const DEPARTMENTS = [
-  '全部',
-  '策略部',
-  '数据部',
-  '设计部',
-  '短视频部',
-  '直播部',
-  '图文部',
-  '老板IP部',
-  '销售运营部',
-  '客户成功部',
-];
-
-import { isPaidExpert } from '../../../shared/agent/constants';
 
 interface PresetAgent {
   id: string;
@@ -56,6 +42,7 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
   const [selectedDept, setSelectedDept] = useState('全部');
   const [searchQuery, setSearchQuery] = useState('');
   const [presets, setPresets] = useState<PresetAgent[]>([]);
+  const [paidExpertList, setPaidExpertList] = useState<PaidExpert[]>([]);
   const [loading, setLoading] = useState(true);
   const [hiringId, setHiringId] = useState<string | null>(null);
 
@@ -83,15 +70,19 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
   const isMac = window.electron.platform === 'darwin';
   const isWindows = window.electron.platform === 'win32';
 
-  // 1. 初始化拉取 Preset 专家模版列表
+  // 1. 初始化拉取 Preset 专家模版列表 + 付费专家列表
   useEffect(() => {
     let active = true;
-    const fetchPresets = async () => {
+    const fetchData = async () => {
       try {
         setLoading(true);
-        const data = await window.electron.agents.presetTemplates();
+        const [presetsData, paidData] = await Promise.all([
+          window.electron.agents.presetTemplates(),
+          window.electron.agents.getPaidExperts(),
+        ]);
         if (active) {
-          setPresets(data);
+          setPresets(presetsData);
+          setPaidExpertList(paidData);
         }
       } catch (err) {
         console.error('Failed to load presets:', err);
@@ -101,7 +92,7 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
         }
       }
     };
-    void fetchPresets();
+    void fetchData();
     return () => {
       active = false;
     };
@@ -112,15 +103,26 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
     return installedAgents.filter((a) => a.source === 'custom' && a.id !== 'main');
   }, [installedAgents]);
 
-  // 付费专家列表（从全量 preset 模版中过滤出 isPaidExpert 标记的专家）
-  const paidExperts = useMemo(() => {
-    return presets.filter((p) => isPaidExpert(p.id));
-  }, [presets]);
+  // 付费/高级专家列表（从云端动态获取）
+  const paidExperts = paidExpertList;
+
+  // 动态提取当前 Tab（高级专家或默认专家）下的部门分类列表并去重
+  const departments = useMemo(() => {
+    const set = new Set<string>();
+    const list = expertType === 'paid' ? paidExperts : presets;
+    list.forEach((p: any) => {
+      if (p.department && p.department.trim()) {
+        set.add(p.department.trim());
+      }
+    });
+    const result = Array.from(set);
+    return result.length > 0 ? ['全部', ...result] : [];
+  }, [expertType, presets, paidExperts]);
 
   // 2. 根据所选部门及搜索关键字进行多维度模糊过滤
   const filteredExperts = useMemo(() => {
     if (expertType === 'paid') {
-      return paidExperts.filter((expert) => {
+      return paidExperts.filter((expert: any) => {
         const matchDept = selectedDept === '全部' || expert.department === selectedDept;
         const matchSearch =
           expert.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -129,7 +131,7 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
       });
     } else if (expertType === 'preset') {
       return presets.filter((expert) => {
-        if (isPaidExpert(expert.id)) return false;
+        if (expertService.isPaidExpert(expert.id)) return false;
         const matchDept = selectedDept === '全部' || expert.department === selectedDept;
         const matchSearch =
           expert.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -151,7 +153,7 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
   // 3. 点击“开始干活”
   const handleStartWork = async (expert: PresetAgent | any) => {
     // 如果是付费专家且未解锁，弹出购买引导
-    if (isPaidExpert(expert.id) && !vipService.isExpertUnlocked(expert.id)) {
+    if (expertService.isPaidExpert(expert.id) && !vipService.isExpertUnlocked(expert.id)) {
       setSelectedPaidExpert(expert);
       setIsGuideOpen(true);
       return;
@@ -326,11 +328,11 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
       {/* 部门/专家类型标签栏 (仅在 AI 专家库下展示) */}
       {activeTab === 'experts' && (
         <div className="border-b border-border bg-surface shrink-0 py-2.5 px-6 flex flex-col gap-2.5">
-          {/* 付费/内置/自定义分类 Tab */}
+          {/* 高级/默认/自定义分类 Tab */}
           <div className="flex bg-secondary/10 p-0.5 rounded-lg w-fit select-none">
             <button
               type="button"
-              onClick={() => setExpertType('paid')}
+              onClick={() => { setExpertType('paid'); setSelectedDept('全部'); }}
               className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
                 expertType === 'paid'
                   ? 'bg-surface text-amber-600 shadow-sm'
@@ -338,22 +340,22 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
               }`}
             >
               <span>💎</span>
-              <span>付费专家</span>
+              <span>高级专家</span>
             </button>
             <button
               type="button"
-              onClick={() => setExpertType('preset')}
+              onClick={() => { setExpertType('preset'); setSelectedDept('全部'); }}
               className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
                 expertType === 'preset'
                   ? 'bg-surface text-foreground shadow-sm'
                   : 'text-secondary hover:text-foreground'
               }`}
             >
-              内置专家
+              默认专家
             </button>
             <button
               type="button"
-              onClick={() => setExpertType('custom')}
+              onClick={() => { setExpertType('custom'); setSelectedDept('全部'); }}
               className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
                 expertType === 'custom'
                   ? 'bg-surface text-foreground shadow-sm'
@@ -364,11 +366,11 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
             </button>
           </div>
 
-          {/* 部门过滤滑动标签栏 (仅在内置专家下展示) */}
-          {expertType === 'preset' && (
+          {/* 部门/分类过滤滑动标签栏 (在包含分类时展示，如高级专家的“黑墙IP战略”或默认专家的“策略部”等) */}
+          {departments.length > 0 && (
             <div className="overflow-x-auto scrollbar-hidden">
               <div className="flex space-x-2.5">
-                {DEPARTMENTS.map((dept) => {
+                {departments.map((dept) => {
                   const isSelected = selectedDept === dept;
                   return (
                     <button
@@ -431,11 +433,8 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
                     }
                   };
 
-                  const shortTag = expert.identity
-                    ? expert.identity.split('的')?.[1]?.split('。')?.[0]?.trim() || expert.department
-                    : expert.department;
-
-                  const showTag = shortTag && shortTag !== '其他' && shortTag !== 'undefined' && shortTag.trim() !== '';
+                  const department = 'department' in expert ? (expert as any).department : undefined;
+                  const tagText = department && department.trim() && department !== '其他' && department !== 'undefined' ? department.trim() : null;
 
                   const isPaid = expertType === 'paid';
                   const isUnlocked = isPaid ? vipService.isExpertUnlocked(expert.id) : true;
@@ -462,13 +461,13 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
                           {isUnlocked ? '✓ 已开通' : '✨ PRO 专属'}
                         </span>
                       ) : expertType === 'preset' ? (
-                        expert.level && (
+                        ('level' in expert && (expert as PresetAgent).level) && (
                           <span
                             className={`absolute right-3.5 top-3.5 text-[10px] font-bold px-2 py-0.5 rounded border z-10 ${getLevelBadge(
-                              expert.level
+                              (expert as PresetAgent).level!
                             )}`}
                           >
-                            {expert.level}
+                            {(expert as PresetAgent).level}
                           </span>
                         )
                       ) : (
@@ -478,47 +477,39 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
                               <path d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
                             </svg>
                           </div>
-                          <div className="absolute right-0 top-full mt-1 hidden group-hover/menu:block bg-surface border border-border rounded-lg shadow-lg w-20 py-1 z-30 animate-in fade-in duration-100">
-                            <button
-                              type="button"
-                              onClick={(e) => { e.stopPropagation(); setEditingAgentId(expert.id); }}
-                              className="w-full text-left px-3 py-1.5 text-xs text-foreground hover:bg-secondary/15 transition-colors cursor-pointer font-medium"
-                            >编辑</button>
-                            <button
-                              type="button"
-                              onClick={(e) => { e.stopPropagation(); setAgentToDelete(expert); }}
-                              className="w-full text-left px-3 py-1.5 text-xs text-red-500 hover:bg-red-50 transition-colors cursor-pointer font-medium"
-                            >删除</button>
+                          {/* 增加 pt-1 透明阻挡垫片，防止鼠标下滑过程离焦关闭 */}
+                          <div className="absolute right-0 top-full pt-1 hidden group-hover/menu:block z-30">
+                            <div className="bg-surface border border-border rounded-lg shadow-lg w-20 py-1 animate-in fade-in duration-100">
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); setEditingAgentId(expert.id); }}
+                                className="w-full text-left px-3 py-1.5 text-xs text-foreground hover:bg-secondary/15 transition-colors cursor-pointer font-medium"
+                              >编辑</button>
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); setAgentToDelete(expert); }}
+                                className="w-full text-left px-3 py-1.5 text-xs text-red-500 hover:bg-red-50 transition-colors cursor-pointer font-medium"
+                              >删除</button>
+                            </div>
                           </div>
                         </div>
                       )}
 
-                      {/* 头像区域：付费专家使用高奢黑金盾牌框与👑皇冠勋章，普通专家使用经典圆图 */}
+                      {/* 头像区域：全量统一圆形头像，清爽简洁 */}
                       <div className="relative mt-2 z-10">
-                        {isPaid ? (
-                          <div className="relative group/avatar">
-                            <div className="bg-gradient-to-tr from-amber-500 via-amber-300 to-amber-600 p-[2.5px] rounded-[26px] shadow-lg shadow-amber-500/20 transition-all duration-300 group-hover:shadow-amber-500/35 group-hover:scale-105">
-                              <div className="bg-surface rounded-[24px] overflow-hidden flex items-center justify-center p-0.5">
-                                <AgentAvatarIcon value={expert.icon} className="h-20 w-20 rounded-[22px] object-cover" />
-                              </div>
-                            </div>
-                            <div className="absolute -bottom-1 -right-1 bg-gradient-to-r from-amber-500 to-amber-300 text-slate-950 font-black text-[10px] px-1.5 py-0.5 rounded-full shadow-md border-2 border-white flex items-center gap-0.5 select-none">
-                              <span>👑</span>
-                              <span className="text-[9px] tracking-tight">PRO</span>
-                            </div>
-                          </div>
-                        ) : (
-                          <AgentAvatarIcon value={expert.icon} className="h-20 w-20 shadow-md ring-2 ring-background ring-offset-2 transition-transform duration-300 group-hover:scale-105" />
-                        )}
+                        <AgentAvatarIcon
+                          value={expert.avatar}
+                          className="h-20 w-20 rounded-full shadow-md ring-2 ring-background ring-offset-2 transition-transform duration-300 group-hover:scale-105"
+                        />
                       </div>
 
                       <div className="flex flex-col items-center flex-1 mt-4 z-10">
                         <h3 className="text-base font-semibold text-foreground flex items-center gap-1.5">
                           {expert.name}
                         </h3>
-                        {showTag && (
+                        {tagText && (
                           <span className="mt-1.5 inline-flex items-center rounded-full bg-amber-500/10 text-amber-800 border border-amber-500/20 px-2.5 py-0.5 text-xs font-semibold select-none">
-                            {shortTag}
+                            {tagText}
                           </span>
                         )}
                         <p className="mt-3.5 text-xs text-secondary leading-relaxed px-1 line-clamp-3 text-justify">

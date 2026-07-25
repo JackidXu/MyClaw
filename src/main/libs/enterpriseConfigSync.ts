@@ -31,7 +31,7 @@ export type EnterpriseAgentConfig = {
   identity?: string;
   model: string;
   workingDirectory?: string;
-  icon: string;
+  avatar?: string;
   skillIds: string[];
   enabled: boolean;
   isDefault: boolean;
@@ -794,7 +794,7 @@ function readEnterpriseAgentConfig(entry: unknown): EnterpriseAgentConfig | null
     systemPrompt: normalizeOptionalString(entry.systemPrompt),
     identity: normalizeOptionalString(entry.instructions) ?? normalizeOptionalString(entry.identityText),
     model: normalizeOptionalString(model.primary) ?? '',
-    icon: normalizeOptionalString(identity.emoji) ?? '',
+    avatar: normalizeOptionalString(identity.emoji) ?? '',
     skillIds: skills,
     enabled: entry.enabled !== false,
     isDefault: entry.default === true || id === 'main',

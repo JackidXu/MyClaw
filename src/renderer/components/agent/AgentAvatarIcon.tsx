@@ -147,6 +147,7 @@ export const getAgentAvatarSvgUrl = (svg: AgentAvatarSvg): string => {
 
 interface AgentAvatarIconProps {
   value?: string | null;
+  avatar?: string | null;
   className?: string;
   iconClassName?: string;
   legacyClassName?: string;
@@ -156,35 +157,33 @@ interface AgentAvatarIconProps {
 
 const AgentAvatarIcon: React.FC<AgentAvatarIconProps> = ({
   value,
+  avatar: avatarProp,
   className = 'h-10 w-10',
   iconClassName = 'h-5 w-5',
   legacyClassName = 'text-2xl',
-  fallbackText = 'A',
   useDefaultWhenEmpty = true,
 }) => {
   void iconClassName;
   void legacyClassName;
-  const normalized = value?.trim() ?? '';
+  const rawInput = avatarProp?.trim() || value?.trim() || '';
+  let imageUrl = rawInput;
 
-  // 1. 如果值是 avatar_x 的图片名称或有效路径
-  if (normalized && AVATAR_IMAGES[normalized]) {
+  // 1. 如果是历史数据中保存的 avatar_x 或 avatar_x.jpg 格式，自动转换为 CDN URL
+  if (rawInput.startsWith('avatar_')) {
+    const cleanName = rawInput.replace(/\.(png|jpg)$/i, '');
+    imageUrl = `https://scrm0.cdn.banchengyun.com/heyclaw/server-assets/avatars/${cleanName}.jpg`;
+  }
+
+  // 2. 如果是有效的图片 URL
+  if (imageUrl && (imageUrl.startsWith('http') || imageUrl.startsWith('data:') || imageUrl.startsWith('/') || imageUrl.startsWith('file:'))) {
     return (
       <span className={`inline-flex shrink-0 items-center justify-center rounded-full overflow-hidden ${className}`}>
-        <img src={AVATAR_IMAGES[normalized]} alt="Avatar" className="w-full h-full object-cover select-none" />
+        <img src={imageUrl} alt="Avatar" className="w-full h-full object-cover select-none" />
       </span>
     );
   }
 
-  // 2. 兼容如果是图片 URL 或带 http / data: 等的路径
-  if (normalized.startsWith('http') || normalized.startsWith('data:') || normalized.startsWith('/') || normalized.startsWith('file:')) {
-    return (
-      <span className={`inline-flex shrink-0 items-center justify-center rounded-full overflow-hidden ${className}`}>
-        <img src={normalized} alt="Avatar" className="w-full h-full object-cover select-none" />
-      </span>
-    );
-  }
-
-  // 3. 兼容旧 SVG 头像，将其映射为新图片
+  const normalized = rawInput;
   const parsedAvatar = parseAgentAvatarIcon(normalized);
   const avatar = parsedAvatar ?? (!normalized && useDefaultWhenEmpty ? DefaultAgentAvatar : null);
 
@@ -223,17 +222,28 @@ const AgentAvatarIcon: React.FC<AgentAvatarIconProps> = ({
       }
     };
 
-    const imageUrl = getMappedAvatarImage(avatar.svg);
+    const localImg = getMappedAvatarImage(avatar.svg);
     return (
       <span className={`inline-flex shrink-0 items-center justify-center rounded-full overflow-hidden ${className}`}>
-        <img src={imageUrl} alt="Avatar" className="w-full h-full object-cover select-none" />
+        <img src={localImg} alt="Avatar" className="w-full h-full object-cover select-none" />
       </span>
     );
   }
 
+  // 4. 如果是普通的短 Emoji 或者单个文字，正常渲染；如果是长字符串（如未过滤的 ID）则防护不渲染
+  const isEmojiOrShortText = normalized.length <= 4 && !/^[a-zA-Z0-9_-]+$/.test(normalized);
+  if (isEmojiOrShortText) {
+    return (
+      <span className={`inline-flex shrink-0 items-center justify-center leading-none ${className} ${legacyClassName}`}>
+        {normalized}
+      </span>
+    );
+  }
+
+  // 默认防护
   return (
-    <span className={`inline-flex shrink-0 items-center justify-center leading-none ${className} ${legacyClassName}`}>
-      {normalized || fallbackText}
+    <span className={`inline-flex shrink-0 items-center justify-center rounded-full overflow-hidden bg-secondary/10 ${className}`}>
+      <img src={avatar1} alt="Avatar" className="w-full h-full object-cover select-none opacity-80" />
     </span>
   );
 };

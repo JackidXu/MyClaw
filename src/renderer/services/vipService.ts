@@ -1,7 +1,8 @@
-import { PAID_EXPERT_IDS } from '../../shared/agent/constants';
 import { store } from '../store';
 import { agentService } from './agent';
 import { coworkService } from './cowork';
+import { getServerApiBaseUrl } from './endpoints';
+import { expertService } from './expertService';
 
 export interface VipSubscription {
   expertId: string;
@@ -56,7 +57,7 @@ class VipService {
   public isExpertUnlocked(expertId: string): boolean {
     if (!this.state.authorized) return false;
     return this.state.subscriptions.some(
-      sub => sub.expertId === expertId && sub.isActive && !sub.revokedAt
+      sub => sub.expertId === expertId && sub.isActive && !sub.revokedAt,
     );
   }
 
@@ -99,13 +100,10 @@ class VipService {
       // 获取设备指纹
       const deviceInfo = await window.electron.getDeviceInfo();
 
-      // 判断请求的 admin-claw 接口地址
-      const adminBaseUrl =
-        window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-          ? 'http://localhost:8082'
-          : 'https://admin.claw.chaohui.ai';
+      // 获取 admin-claw 统一服务地址
+      const adminBaseUrl = getServerApiBaseUrl();
 
-      const res = await window.electron.api.fetch({
+      const res = (await window.electron.api.fetch({
         url: `${adminBaseUrl}/api/vip/status`,
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -116,7 +114,7 @@ class VipService {
           hostname: deviceInfo.hostname,
           session,
         }),
-      }) as any;
+      })) as any;
 
       if (res.ok && res.data) {
         const data = res.data;
@@ -169,10 +167,11 @@ class VipService {
     try {
       const agents = await window.electron.agents.list();
 
-      for (const expertId of PAID_EXPERT_IDS) {
+      for (const expert of expertService.getPaidExperts()) {
+        const expertId = expert.id;
         if (!this.isExpertUnlocked(expertId)) {
           const installed = agents.find(
-            a => (a.presetId === expertId || a.id === expertId) && a.enabled
+            a => (a.presetId === expertId || a.id === expertId) && a.enabled,
           );
 
           if (installed) {

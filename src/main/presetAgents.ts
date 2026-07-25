@@ -5,7 +5,7 @@ export interface PresetAgent {
   id: string;
   name: string;
   nameEn: string;
-  icon: string;
+  avatar?: string;
   description: string;
   descriptionEn: string;
   identity: string;
@@ -552,7 +552,7 @@ export function presetToCreateRequest(preset: PresetAgent): CreateAgentRequest {
     description: isEn && preset.descriptionEn ? preset.descriptionEn : preset.description,
     identity: isEn && preset.identityEn ? preset.identityEn : preset.identity,
     systemPrompt: isEn && preset.systemPromptEn ? preset.systemPromptEn : preset.systemPrompt,
-    icon: preset.icon,
+    avatar: preset.avatar || '',
     skillIds: preset.skillIds,
     level: preset.level,
     department: preset.department,

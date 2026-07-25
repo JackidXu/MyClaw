@@ -13,7 +13,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom';
 import { useDispatch, useSelector } from 'react-redux';
 
-import { isPaidExpert } from '../../../shared/agent/constants';
 import {
   type CoworkGoal,
   CoworkGoalStatus,
@@ -39,6 +38,7 @@ import {
   type PreparedCoworkPromptPayload,
 } from '../../services/coworkPromptPayload';
 import { getPortalPricingUrl } from '../../services/endpoints';
+import { expertService } from '../../services/expertService';
 import { i18nService } from '../../services/i18n';
 import { getInstalledKitSkillIds } from '../../services/kitCapability';
 import {
@@ -84,7 +84,7 @@ import { setActiveSkillIds, setSkills, toggleActiveSkill } from '../../store/sli
 import { CoworkCollaborationMode, CoworkImageAttachment } from '../../types/cowork';
 import type { MediaAttachmentRef } from '../../types/mediaGeneration';
 import { Skill } from '../../types/skill';
-import { getAgentDisplayName, shouldUseDefaultAgentIcon } from '../../utils/agentDisplay';
+import { getAgentDisplayName } from '../../utils/agentDisplay';
 import { applyOptimisticGoalCommand } from '../../utils/goalCommand';
 import { toOpenClawModelRef } from '../../utils/openclawModelRef';
 import { getCompactFolderName } from '../../utils/path';
@@ -96,9 +96,7 @@ import {
   ACTIVE_CONTEXT_BADGE_ICON_WRAP_CLASS,
   ACTIVE_CONTEXT_BADGE_REMOVE_ICON_CLASS,
 } from '../common/activeContextBadgeStyles';
-import Modal from '../common/Modal';
 import { PremiumGuideModal } from '../experts/PremiumGuideModal';
-import DefaultAgentIcon from '../icons/DefaultAgentIcon';
 import EditIcon from '../icons/EditIcon';
 import GoalIcon from '../icons/GoalIcon';
 import PaperClipIcon from '../icons/PaperClipIcon';
@@ -356,17 +354,14 @@ interface AgentSelectorOption {
   id: string;
   name?: string;
   icon?: string;
+  avatar?: string;
   enabled?: boolean;
 }
 
 const AgentContextAvatar: React.FC<{ agent: AgentSelectorOption; className?: string }> = ({ agent, className = 'h-4 w-4' }) => {
-  if (shouldUseDefaultAgentIcon(agent)) {
-    return <DefaultAgentIcon className={className} />;
-  }
-
   return (
     <AgentAvatarIcon
-      value={agent.icon}
+      value={agent.avatar || agent.icon}
       className={className}
       iconClassName={className}
       legacyClassName="text-[13px]"
@@ -1283,7 +1278,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
   const handleSubmit = useCallback(async (submitMethod: 'button' | 'keyboard' | 'voice' = 'button') => {
     // 拦截未授权的付费专家发送
     const targetExpertId = currentAgent?.presetId || currentAgentId;
-    if (isPaidExpert(targetExpertId) && !vipService.isExpertUnlocked(targetExpertId)) {
+    if (expertService.isPaidExpert(targetExpertId) && !vipService.isExpertUnlocked(targetExpertId)) {
       setIsGuideOpen(true);
       return;
     }
@@ -2623,7 +2618,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
   };
   const enabledAgentOptions = agents.filter((agent) => {
     const targetId = agent.presetId || agent.id;
-    const isUnlocked = isPaidExpert(targetId) ? vipService.isExpertUnlocked(targetId) : true;
+    const isUnlocked = expertService.isPaidExpert(targetId) ? vipService.isExpertUnlocked(targetId) : true;
     return (agent.enabled || agent.id === currentAgentId) && isUnlocked;
   });
   const agentOptions = enabledAgentOptions.some((agent) => agent.id === currentAgentForDisplay.id)

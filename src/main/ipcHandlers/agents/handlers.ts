@@ -6,6 +6,7 @@ import {
   type AgentLegacyIdentityCleanupResult,
   AgentLegacyIdentityCleanupStatus,
 } from '../../../shared/agent/constants';
+import { getPaidExperts } from '../../libs/expertStore';
 import type { AgentManager } from '../../agentManager';
 import type { CoworkStore, CreateAgentRequest, UpdateAgentRequest } from '../../coworkStore';
 import type { IMGatewayManager } from '../../im';
@@ -261,6 +262,18 @@ export function registerAgentHandlers(deps: AgentHandlerDeps): void {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to get preset templates',
+      };
+    }
+  });
+
+  ipcMain.handle(AgentIpcChannel.GetPaidExperts, async () => {
+    try {
+      const experts = getPaidExperts();
+      return { success: true, experts };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to get paid experts',
       };
     }
   });

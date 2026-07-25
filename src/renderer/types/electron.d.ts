@@ -683,7 +683,7 @@ interface IElectronAPI {
         identity?: string;
         model?: string;
         workingDirectory?: string;
-        icon?: string;
+        avatar?: string;
         skillIds?: string[];
         subagentAllowAgentIds?: string[];
         enabled?: boolean;
@@ -697,6 +697,7 @@ interface IElectronAPI {
     presets: () => Promise<PresetAgent[]>;
     presetTemplates: () => Promise<PresetAgent[]>;
     addPreset: (presetId: string) => Promise<Agent>;
+    getPaidExperts: () => Promise<import('./paidExpert').PaidExpert[]>;
   };
   api: {
     fetch: (options: {

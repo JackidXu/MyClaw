@@ -19,7 +19,7 @@ export function refreshEndpointsTestMode(store: SqliteStore): void {
  * Uses cached value after init; falls back to !app.isPackaged before init.
  */
 export const isTestModeEnabled = (): boolean => {
-  return cachedTestMode ?? !app.isPackaged;
+  return cachedTestMode ?? !app?.isPackaged;
 };
 
 /**

@@ -36,7 +36,7 @@ export const PremiumGuideModal: React.FC<PremiumGuideModalProps> = ({
 
         {/* 标题与描述 */}
         <h3 className="text-xl font-bold text-gray-900 tracking-tight mb-2 pt-2">{displayTitle}</h3>
-        <p className="text-sm text-gray-500 max-w-xs mb-6 leading-relaxed">
+        <p className="text-sm text-gray-500 w-full max-w-sm mb-6 whitespace-nowrap truncate">
           {displayDescription}
         </p>
 
@@ -52,14 +52,14 @@ export const PremiumGuideModal: React.FC<PremiumGuideModalProps> = ({
 
         {/* 客服二维码 / 联系引导 */}
         <div className="w-full bg-gray-50 rounded-xl p-4 flex flex-col items-center justify-center border border-gray-100 mb-4">
-          <div className="w-32 h-32 bg-white border border-gray-200 rounded-lg p-2 flex items-center justify-center shadow-inner mb-2">
-            <div className="w-full h-full bg-gray-100 flex flex-col items-center justify-center text-gray-400 text-xs">
-              <span className="text-2xl mb-1">📱</span>
-              <span>客服二维码</span>
-              <span className="text-[10px] text-gray-300">(联系开通)</span>
-            </div>
+          <div className="w-36 h-36 bg-white border border-gray-200 rounded-xl p-1.5 flex items-center justify-center shadow-sm mb-2 overflow-hidden">
+            <img
+              src="https://scrm0.cdn.banchengyun.com/heyclaw/server-assets/customer-service-qrcode.jpg"
+              alt="客服二维码"
+              className="w-full h-full object-cover rounded-lg select-none"
+            />
           </div>
-          <p className="text-xs text-gray-500 font-medium">请联系专属客服完成开通或续费</p>
+          <p className="text-xs text-gray-500 font-medium">请扫码联系专属客服完成开通或续费</p>
         </div>
 
         <button

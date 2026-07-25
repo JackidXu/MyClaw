@@ -351,7 +351,7 @@ contextBridge.exposeInMainWorld('electron', {
       identity?: string;
       model?: string;
       workingDirectory?: string;
-      icon?: string;
+      avatar?: string;
       skillIds?: string[];
       subagentAllowAgentIds?: string[];
       level?: '高级' | '中级' | '初级';
@@ -371,7 +371,7 @@ contextBridge.exposeInMainWorld('electron', {
         identity?: string;
         model?: string;
         workingDirectory?: string;
-        icon?: string;
+        avatar?: string;
         skillIds?: string[];
         subagentAllowAgentIds?: string[];
         level?: '高级' | '中级' | '初级';
@@ -410,6 +410,10 @@ contextBridge.exposeInMainWorld('electron', {
     addPreset: async (presetId: string) => {
       const result = await ipcRenderer.invoke(AgentIpcChannel.AddPreset, presetId);
       return result?.success ? result.agent : null;
+    },
+    getPaidExperts: async () => {
+      const result = await ipcRenderer.invoke(AgentIpcChannel.GetPaidExperts);
+      return result?.success ? result.experts : [];
     },
   },
   cowork: {

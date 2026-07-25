@@ -117,13 +117,25 @@ const CONTEXT_USAGE_REFRESH_DELAY_MS = 800;
 const FINAL_CONTEXT_USAGE_REFRESH_DELAYS_MS = [800, 2500, 6000, 12000] as const;
 const CONTEXT_USAGE_AUTO_SUPPRESSION_MS = 5 * 60 * 1000;
 const CONTEXT_USAGE_REFRESH_BACKOFF_MS = 30_000;
+import { expertService } from './expertService';
+
 const MANUAL_CONTEXT_COMPACTION_WATCHDOG_MS = 130_000;
 
 const restoreCurrentAgentDefaultSkills = (): void => {
   const state = store.getState();
-  const currentAgent = state.agent.agents.find((agent) => agent.id === state.agent.currentAgentId);
-  if (currentAgent?.skillIds?.length) {
-    store.dispatch(setActiveSkillIds(currentAgent.skillIds));
+  const currentAgentId = state.agent.currentAgentId;
+  const currentAgent = state.agent.agents.find((agent) => agent.id === currentAgentId);
+  
+  let skillIds: string[] = currentAgent?.skillIds || [];
+  if (!skillIds.length) {
+    const paidExpert = expertService.getPaidExperts().find((e) => e.id === currentAgentId);
+    if (paidExpert?.skillIds?.length) {
+      skillIds = paidExpert.skillIds;
+    }
+  }
+
+  if (skillIds.length) {
+    store.dispatch(setActiveSkillIds(skillIds));
   } else {
     store.dispatch(clearActiveSkills());
   }

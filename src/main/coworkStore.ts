@@ -377,7 +377,7 @@ export interface Agent {
   identity: string;
   model: string;
   workingDirectory: string;
-  icon: string;
+  avatar?: string;
   skillIds: string[];
   subagentAllowAgentIds: string[];
   level?: '高级' | '中级' | '初级';
@@ -401,7 +401,7 @@ export interface CreateAgentRequest {
   identity?: string;
   model?: string;
   workingDirectory?: string;
-  icon?: string;
+  avatar?: string;
   skillIds?: string[];
   subagentAllowAgentIds?: string[];
   level?: '高级' | '中级' | '初级';
@@ -418,7 +418,7 @@ export interface UpdateAgentRequest {
   identity?: string;
   model?: string;
   workingDirectory?: string;
-  icon?: string;
+  avatar?: string;
   skillIds?: string[];
   subagentAllowAgentIds?: string[];
   level?: '高级' | '中级' | '初级';
@@ -2921,7 +2921,7 @@ export class CoworkStore {
           request.identity || '',
           request.model || '',
           request.workingDirectory || '',
-          normalizeAgentAvatarIcon(request.icon),
+          normalizeAgentAvatarIcon(request.avatar),
           JSON.stringify(normalizeStringIdList(request.skillIds)),
           JSON.stringify(normalizeStringIdList(request.subagentAllowAgentIds)),
           request.level || '高级',
@@ -2985,9 +2985,9 @@ export class CoworkStore {
       setClauses.push('working_directory = ?');
       values.push(updates.workingDirectory);
     }
-    if (updates.icon !== undefined) {
+    if (updates.avatar !== undefined) {
       setClauses.push('icon = ?');
-      values.push(normalizeAgentAvatarIcon(updates.icon));
+      values.push(normalizeAgentAvatarIcon(updates.avatar));
     }
     if (updates.skillIds !== undefined) {
       setClauses.push('skill_ids = ?');
@@ -3111,7 +3111,11 @@ export class CoworkStore {
       identity: row.identity,
       model: row.model,
       workingDirectory: row.working_directory || '',
-      icon: row.icon,
+      avatar: (row.icon && row.icon.startsWith('http'))
+        ? row.icon
+        : (row.icon && row.icon.startsWith('avatar_'))
+          ? `https://scrm0.cdn.banchengyun.com/heyclaw/server-assets/avatars/${row.icon.replace(/\.(png|jpg)$/i, '')}.jpg`
+          : (row.icon || ''),
       skillIds,
       subagentAllowAgentIds,
       level: (row.level || '高级') as '高级' | '中级' | '初级',

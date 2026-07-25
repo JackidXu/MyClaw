@@ -15,6 +15,7 @@ export const AgentIpcChannel = {
   Presets: 'agents:presets',
   PresetTemplates: 'agents:presetTemplates',
   AddPreset: 'agents:addPreset',
+  GetPaidExperts: 'agents:getPaidExperts',
 } as const;
 
 export type AgentIpcChannel = typeof AgentIpcChannel[keyof typeof AgentIpcChannel];
@@ -60,12 +61,3 @@ export const DefaultAgentProfile = {
   Name: 'HeyClaw',
 } as const;
 
-/** 统一配置的付费专家列表（支持后续持续扩展） */
-export const PAID_EXPERT_IDS = [
-  'heiqiang-think-tank',
-] as const;
-
-export function isPaidExpert(agentId?: string | null): boolean {
-  if (!agentId) return false;
-  return (PAID_EXPERT_IDS as readonly string[]).includes(agentId);
-}

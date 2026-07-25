@@ -57,3 +57,9 @@ export const getPortalInvitationUrl = () => `${getPortalBase()}/invitation`;
 export const getPortalCreditsResetActivityUrl = (campaignCode?: string) => (
   `${getPortalBase()}/profile?activity=credits_reset${campaignCode ? `&campaignCode=${encodeURIComponent(campaignCode)}` : ''}`
 );
+
+export const getServerApiBaseUrl = (): string => {
+  return isTestModeEnabled()
+    ? 'http://localhost:8082'
+    : 'https://admin.claw.chaohui.ai';
+};

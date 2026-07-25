@@ -242,6 +242,7 @@ import {
   getSkillStoreUrl,
   refreshEndpointsTestMode,
 } from './libs/endpoints';
+import { fetchExpertsFromCloud } from './libs/expertStore';
 import {
   mergeEnterpriseOpenclawConfig,
   resolveEnterpriseConfigPath,
@@ -11641,6 +11642,10 @@ if (!gotTheLock) {
     console.log('[Main] initApp: store initialized');
     initializeKeyfromAttribution(store);
     refreshEndpointsTestMode(store);
+    // 后台异步拉取云端专家数据（失败时不阻塞启动）
+    fetchExpertsFromCloud().catch(err => {
+      console.error('[Main] Failed to fetch experts from cloud:', err);
+    });
     sqliteBackupManager = new SqliteBackupManager(app.getPath('userData'));
 
     const startSqliteBackupLoop = async (): Promise<void> => {
@@ -11824,7 +11829,7 @@ if (!gotTheLock) {
               systemPrompt: agent.systemPrompt,
               identity: agent.identity,
               model: agent.model,
-              icon: agent.icon,
+              avatar: agent.avatar,
               skillIds: agent.skillIds,
               enabled: agent.enabled,
             };
@@ -11838,7 +11843,7 @@ if (!gotTheLock) {
                 systemPrompt: agent.systemPrompt,
                 identity: agent.identity,
                 model: agent.model,
-                icon: agent.icon,
+                avatar: agent.avatar,
                 skillIds: agent.skillIds,
                 source: 'custom',
               });

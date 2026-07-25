@@ -244,7 +244,7 @@ export function buildAgentEntry(
     primaryModel = fallbackPrimaryModel;
   }
 
-  const legacyIcon = isDesignedAgentAvatarIcon(agent.icon) ? '' : agent.icon;
+  const legacyIcon = isDesignedAgentAvatarIcon(agent.avatar || '') ? '' : (agent.avatar || '');
   const subagentConfig = buildSubagentConfig(agent);
 
   return {
