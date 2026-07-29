@@ -1966,7 +1966,7 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
         defaults: {
           timeoutSeconds: OPENCLAW_AGENT_TIMEOUT_SECONDS,
           compaction: {
-            reserveTokensFloor: 50000,
+            reserveTokensFloor: 70000,
           },
           model: {
             primary: primaryModel,
