@@ -261,9 +261,12 @@ const Sidebar: React.FC<SidebarProps> = ({
           // 根据 New API 官方定义，用户的当前可用剩余配额即为 quota 字段
           remainQuota = Number(userProfile.quota || 0);
           const dispName = userProfile.display_name || userProfile.username || 'HeyClaw 用户';
-          localStorage.setItem('heyclaw_user_name', dispName);
-          setUserNickname(dispName);
-          setEditNickname(dispName);
+          const savedName = localStorage.getItem('heyclaw_user_name');
+          if (!savedName) {
+            localStorage.setItem('heyclaw_user_name', dispName);
+            setUserNickname(dispName);
+            setEditNickname(dispName);
+          }
         } else {
           // 提取错误原因 (安全获取 message，避免 TypeError)
           const errorMsg = selfResp.data?.message || 
