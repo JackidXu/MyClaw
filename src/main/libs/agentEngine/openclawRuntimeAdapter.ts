@@ -9549,9 +9549,12 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     const sessionAfterReconcile = this.store.getSession(sessionId);
     if (sessionAfterReconcile) {
       const hadToolCall = this.hasTurnToolWork(sessionId, turn);
-      const lastApiResponseHadNoText = !turn.currentText.trim();
+      // 当发生过工具调用时，检查工具之后最新产生的回复/思考文本是否为空。
+      // 若工具调用前包含话术，turn.currentText 会保留前文，但 turn.currentAssistantSegmentText 代表工具之后最新一节文本。
+      const lastApiResponseHadNoText = !turn.currentAssistantSegmentText.trim() && !turn.thinking.currentText.trim();
       console.debug('[OpenClawRuntime] run end diagnostics, sessionId:', sessionId,
         'turn.currentText:', JSON.stringify(turn.currentText?.slice(0, 100)),
+        'turn.currentAssistantSegmentText:', JSON.stringify(turn.currentAssistantSegmentText?.slice(0, 100)),
         'turn.committedAssistantText:', JSON.stringify(turn.committedAssistantText?.slice(0, 100)),
         'hadToolCall:', hadToolCall,
         'lastApiResponseHadNoText:', lastApiResponseHadNoText);
