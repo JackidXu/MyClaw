@@ -6709,20 +6709,36 @@ if (!gotTheLock) {
         }
         appConfig.providers.oneapi.models = chat;
         
-        const otherModels = (appConfig.model?.availableModels || []).filter(
-          (m: any) => m.provider !== 'oneapi' && m.providerKey !== 'oneapi'
-        );
+        // 收集所有已启用的非 oneapi 自定义提供商模型，避免被全量覆盖丢失
+        const customModels: any[] = [];
+        if (appConfig.providers) {
+          Object.entries(appConfig.providers).forEach(([providerName, providerConfig]: [string, any]) => {
+            if (providerName !== 'oneapi' && providerConfig?.enabled && Array.isArray(providerConfig.models)) {
+              providerConfig.models.forEach((model: any) => {
+                customModels.push({
+                  id: model.id,
+                  name: model.name,
+                  provider: providerName,
+                  providerKey: providerName,
+                  supportsImage: model.supportsImage ?? false,
+                });
+              });
+            }
+          });
+        }
         
-        const newOneApiModels = chat.map(m => ({
+        const newOneApiModels = chat.map((m: any) => ({
           ...m,
           provider: 'oneapi',
           providerKey: 'oneapi'
         }));
 
+        const mergedAvailableModels = [...customModels, ...newOneApiModels];
+
         if (!appConfig.model) {
           appConfig.model = {};
         }
-        appConfig.model.availableModels = [...otherModels, ...newOneApiModels];
+        appConfig.model.availableModels = mergedAvailableModels;
 
         // 强制使用唯一的对话大模型作为默认模型，实现无感热更新
         const defaultChatModel = chat[0]?.id;
@@ -6736,7 +6752,7 @@ if (!gotTheLock) {
         // 主动广播更新通知渲染进程同步更新内存及 Redux 模型状态
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('config:sync-models', {
-            availableModels: [...otherModels, ...newOneApiModels],
+            availableModels: mergedAvailableModels,
             defaultModel: defaultChatModel,
           });
         }
