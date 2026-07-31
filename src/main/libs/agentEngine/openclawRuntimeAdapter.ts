@@ -6636,9 +6636,18 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       const existingText = turn.toolResultTextByToolCallId.get(msgToolCallId) ?? '';
       if (text.length <= existingText.length) continue;
 
+      let textToStore = text;
+      const toolName = getHistoryToolName(msg) || '';
+      const toolNameLower = toolName.toLowerCase();
+      const isFileReadTool = toolNameLower === 'read' || toolNameLower === 'read_file' || toolNameLower === 'view_file' || toolNameLower === 'readfile';
+      const MAX_FILE_READ_RESULT_CHARS = 20000;
+      if (isFileReadTool && textToStore.length > MAX_FILE_READ_RESULT_CHARS) {
+        textToStore = textToStore.slice(0, MAX_FILE_READ_RESULT_CHARS);
+      }
+
       const isError = Boolean(msg.isError);
       const metadata = {
-        toolResult: text,
+        toolResult: textToStore,
         toolUseId: msgToolCallId,
         isError,
         isStreaming: false,
@@ -6647,19 +6656,19 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
 
       if (existingResultMsgId) {
         this.store.updateMessage(sessionId, existingResultMsgId, {
-          content: text,
+          content: textToStore,
           metadata,
         });
-        turn.toolResultTextByToolCallId.set(msgToolCallId, text);
-        this.emit('messageUpdate', sessionId, existingResultMsgId, text);
+        turn.toolResultTextByToolCallId.set(msgToolCallId, textToStore);
+        this.emit('messageUpdate', sessionId, existingResultMsgId, textToStore);
       } else {
         const resultMessage = this.store.addMessage(sessionId, {
           type: 'tool_result',
-          content: text,
+          content: textToStore,
           metadata,
         });
         turn.toolResultMessageIdByToolCallId.set(msgToolCallId, resultMessage.id);
-        turn.toolResultTextByToolCallId.set(msgToolCallId, text);
+        turn.toolResultTextByToolCallId.set(msgToolCallId, textToStore);
         this.emit('message', sessionId, resultMessage);
       }
 
@@ -6734,11 +6743,18 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       }
 
       if (!turn.toolResultMessageIdByToolCallId.has(entry.toolCallId) && !existingToolResult) {
+        let resultTextToStore = entry.resultText;
+        const toolNameLower = (entry.toolName || '').toLowerCase();
+        const isFileReadTool = toolNameLower === 'read' || toolNameLower === 'read_file' || toolNameLower === 'view_file' || toolNameLower === 'readfile';
+        const MAX_FILE_READ_RESULT_CHARS = 20000;
+        if (isFileReadTool && resultTextToStore.length > MAX_FILE_READ_RESULT_CHARS) {
+          resultTextToStore = resultTextToStore.slice(0, MAX_FILE_READ_RESULT_CHARS);
+        }
         const resultMessage = this.store.addMessage(sessionId, {
           type: 'tool_result',
-          content: entry.resultText,
+          content: resultTextToStore,
           metadata: {
-            toolResult: entry.resultText,
+            toolResult: resultTextToStore,
             toolUseId: entry.toolCallId,
             isError: entry.resultIsError,
             isStreaming: false,
@@ -6746,10 +6762,10 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
           },
         });
         turn.toolResultMessageIdByToolCallId.set(entry.toolCallId, resultMessage.id);
-        turn.toolResultTextByToolCallId.set(entry.toolCallId, entry.resultText);
+        turn.toolResultTextByToolCallId.set(entry.toolCallId, resultTextToStore);
         existingToolResultIds.set(entry.toolCallId, {
           messageId: resultMessage.id,
-          text: entry.resultText,
+          text: resultTextToStore,
         });
         materializedToolResults++;
         this.emit('message', sessionId, resultMessage);

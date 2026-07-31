@@ -171,11 +171,13 @@ export async function prepareCoworkPromptPayload(
   }
 
   const attachmentLines = options.attachments
-    .filter(attachment => (
-      !attachment.path.startsWith('inline:')
-      && !(attachment.isImage && imageAttachmentPathsWithPayload.has(attachment.path))
-    ))
-    .map(attachment => `${attachment.isDirectory ? options.folderLabel : options.fileLabel}: ${attachment.path}`)
+    .filter(attachment => !(attachment.isImage && imageAttachmentPathsWithPayload.has(attachment.path)))
+    .map(attachment => {
+      const displayPath = attachment.path.startsWith('inline:')
+        ? (attachment.name || attachment.path)
+        : attachment.path;
+      return `${attachment.isDirectory ? options.folderLabel : options.fileLabel}: ${displayPath}`;
+    })
     .join('\n');
   const finalPrompt = options.basePrompt
     ? (attachmentLines ? `${options.basePrompt}\n\n${attachmentLines}` : options.basePrompt)
