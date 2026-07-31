@@ -254,6 +254,10 @@ test('rate: Gemini RESOURCE_EXHAUSTED', () => {
 test('model response timeout: OpenClaw idle timeout', () => {
   expect(classifyError('LLM idle timeout (330s): no response from model'))
     .toBe('coworkErrorModelResponseTimeout');
+  expect(classifyError('LLM idle timeout (120s): no response from model'))
+    .toBe('coworkErrorModelResponseTimeout');
+  expect(classifyError('The model did not produce a response before the model idle timeout.'))
+    .toBe('coworkErrorModelResponseTimeout');
 });
 
 test('model response timeout: OpenClaw request timeout', () => {

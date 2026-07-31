@@ -101,6 +101,7 @@ const mapExecutionModeToSandboxMode = (
  */
 export const OPENCLAW_AGENT_TIMEOUT_SECONDS = 3600;
 export const OPENCLAW_LOBSTERAI_MODEL_TIMEOUT_SECONDS = 330;
+export const OPENCLAW_DEFAULT_PROVIDER_TIMEOUT_SECONDS = 600;
 export const OPENCLAW_HEARTBEAT_EVERY_ENABLED = '1h';
 export const OPENCLAW_HEARTBEAT_EVERY_DISABLED = '0m';
 const DINGTALK_OPENCLAW_CHANNEL = 'dingtalk-connector';
@@ -1188,7 +1189,7 @@ export const buildProviderSelection = (options: {
       auth,
       ...(descriptor.providerId === OpenClawProviderId.LobsteraiServer
         ? { timeoutSeconds: OPENCLAW_LOBSTERAI_MODEL_TIMEOUT_SECONDS }
-        : {}),
+        : { timeoutSeconds: OPENCLAW_DEFAULT_PROVIDER_TIMEOUT_SECONDS }),
       ...(request ? { request } : {}),
       models: [
         {
