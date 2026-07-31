@@ -77,7 +77,7 @@ export const buildMediaGenerationTurnInstruction = (
   ];
 
   if (selection.mode === 'image') {
-    lines.push('If the current user request asks to create, generate, draw, render, or make an image/photo/picture, you must call the heyclaw_image_generate tool exactly once with action="generate".');
+    lines.push('If the current user request asks to create, generate, draw, render, or make an image/photo/picture.');
     lines.push('Use the current user request and relevant prior conversation as the image prompt.');
     lines.push('Do not answer with only a text prompt when the user asked for an image.');
     const imageModel = selection.imageModelId?.trim() || selection.modelId?.trim();

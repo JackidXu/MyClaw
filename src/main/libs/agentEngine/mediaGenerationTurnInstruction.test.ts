@@ -34,7 +34,6 @@ describe('buildMediaGenerationTurnInstruction', () => {
     expect(instruction).toContain('action="register_asset" succeeds');
     expect(instruction).toContain('action="apply" with the same skinId');
     expect(instruction).toContain('Never start parallel generations');
-    expect(instruction).not.toContain('you must call the heyclaw_image_generate tool exactly once');
   });
 
   test('uses the native image route for a skin workflow without HeyClaw image selection', () => {
