@@ -5237,6 +5237,13 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     this.stoppedSessions.delete(sessionId);
     this.manuallyStoppedSessions.delete(sessionId);
     if (this.activeTurns.has(sessionId)) {
+      const waitForClearStartMs = Date.now();
+      const MAX_WAIT_ACTIVE_TURN_CLEAR_MS = 2500;
+      while (this.activeTurns.has(sessionId) && Date.now() - waitForClearStartMs < MAX_WAIT_ACTIVE_TURN_CLEAR_MS) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    }
+    if (this.activeTurns.has(sessionId)) {
       throw new Error(`Session ${sessionId} is still running.`);
     }
 
