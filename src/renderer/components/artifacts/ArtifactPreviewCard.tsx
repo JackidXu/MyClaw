@@ -10,7 +10,11 @@ import { type Artifact, ArtifactTypeValue } from '@/types/artifact';
 import { revealLocalPathWithToast, showShellFailureToast } from '@/utils/localFileActions';
 
 import ServiceDeploymentIcon from '../icons/ServiceDeploymentIcon';
-import { reportArtifactPreviewAction } from './artifactAnalytics';
+import {
+  ArtifactPreviewActionSource,
+  ArtifactPublishEntryPoint,
+  reportArtifactPreviewAction,
+} from './artifactAnalytics';
 import { useOptionalArtifactFileShare } from './ArtifactFileShareController';
 import ArtifactPreviewIdentity, { ArtifactPreviewGlobeIcon } from './ArtifactPreviewIdentity';
 import { getPreviewCardDescriptor } from './previewCardPolicy';
@@ -386,7 +390,10 @@ const ArtifactPreviewCard: React.FC<ArtifactPreviewCardProps> = ({
 
   const handleShareClick = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
-    void artifactFileShare?.openShare(artifact);
+    void artifactFileShare?.openShare(artifact, {
+      source: ArtifactPreviewActionSource.ConversationArtifactCard,
+      entryPoint: ArtifactPublishEntryPoint.PreviewCard,
+    });
   }, [artifact, artifactFileShare]);
 
   const handleDeployClick = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
@@ -471,7 +478,7 @@ const ArtifactPreviewCard: React.FC<ArtifactPreviewCardProps> = ({
           <button
             type="button"
             onClick={handleShareClick}
-            className="inline-flex h-9 min-w-[82px] flex-shrink-0 items-center justify-center gap-1.5 rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover"
+            className="inline-flex h-9 min-w-[82px] flex-shrink-0 items-center justify-center gap-1.5 rounded-lg border border-border bg-transparent px-3 text-sm font-medium text-foreground transition-colors hover:bg-surface"
             aria-label={t('htmlShare')}
           >
             <ShareIcon className="h-4 w-4" />
@@ -482,10 +489,10 @@ const ArtifactPreviewCard: React.FC<ArtifactPreviewCardProps> = ({
           <button
             type="button"
             onClick={handleDeployClick}
-            className="inline-flex h-9 min-w-[82px] flex-shrink-0 items-center justify-center gap-1.5 rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover"
+            className="inline-flex h-9 min-w-[82px] flex-shrink-0 items-center justify-center gap-1.5 rounded-lg border border-border bg-transparent px-3 text-sm font-medium text-foreground transition-colors hover:bg-surface"
             aria-label={t('nodeDeploymentProgressDeploy')}
           >
-            <ServiceDeploymentIcon className="h-4 w-4" />
+            <ServiceDeploymentIcon className="h-4 w-4 translate-y-px" />
             <span>{t('nodeDeploymentProgressDeploy')}</span>
           </button>
         )}
@@ -541,7 +548,7 @@ const ArtifactPreviewCard: React.FC<ArtifactPreviewCardProps> = ({
         <button
           type="button"
           onClick={handleShareClick}
-          className="inline-flex h-9 min-w-[82px] flex-shrink-0 items-center justify-center gap-1.5 rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover"
+          className="inline-flex h-9 min-w-[82px] flex-shrink-0 items-center justify-center gap-1.5 rounded-lg border border-border bg-transparent px-3 text-sm font-medium text-foreground transition-colors hover:bg-surface"
           aria-label={t('htmlShare')}
         >
           <ShareIcon className="h-4 w-4" />

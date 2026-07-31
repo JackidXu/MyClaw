@@ -1,4 +1,5 @@
 import { ArrowPathIcon, ExclamationTriangleIcon, ShieldCheckIcon } from '@heroicons/react/24/outline';
+import type { CoworkBrowserAnnotationMessageBatch } from '@shared/cowork/browserAnnotations';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 
@@ -267,6 +268,7 @@ const CoworkView: React.FC<CoworkViewProps> = ({
     imageAttachments?: CoworkImageAttachment[],
     mediaReferences?: MediaAttachmentRef[],
     selectedTextSnippets?: CoworkSelectedTextSnippet[],
+    browserAnnotations?: CoworkBrowserAnnotationMessageBatch[],
     collaborationMode: CoworkCollaborationModeType = CoworkCollaborationMode.Default,
   ): Promise<boolean | void> => {
     console.log('[CoworkView] handleStartSession: imageAttachments diagnosis', {
@@ -361,7 +363,7 @@ const CoworkView: React.FC<CoworkViewProps> = ({
             type: 'user',
             content: prompt,
             timestamp: now,
-            metadata: (displayDirectSkillIds.length > 0 || displayKitIds.length > 0 || imageAttachmentPreviews?.length || (selectedTextSnippets && selectedTextSnippets.length > 0) || goalSettingMetadata)
+            metadata: (displayDirectSkillIds.length > 0 || displayKitIds.length > 0 || imageAttachmentPreviews?.length || (selectedTextSnippets && selectedTextSnippets.length > 0) || (browserAnnotations && browserAnnotations.length > 0) || goalSettingMetadata)
               ? {
                 ...goalSettingMetadata,
                 ...(displayDirectSkillIds.length > 0 ? { skillIds: displayDirectSkillIds } : {}),
@@ -371,6 +373,7 @@ const CoworkView: React.FC<CoworkViewProps> = ({
                   resolvedKitCapabilities,
                 } : {}),
                 ...(selectedTextSnippets && selectedTextSnippets.length > 0 ? { selectedTextSnippets } : {}),
+                ...(browserAnnotations && browserAnnotations.length > 0 ? { browserAnnotations } : {}),
                 ...(imageAttachmentPreviews?.length ? { imageAttachmentPreviews } : {}),
               }
               : undefined,
@@ -427,6 +430,7 @@ const CoworkView: React.FC<CoworkViewProps> = ({
         mediaSelection: mediaSelection && mediaSelection.mode !== 'none' ? mediaSelection : undefined,
         mediaReferences,
         selectedTextSnippets,
+        browserAnnotations,
       });
 
       if (!startedSession && startError) {
@@ -497,6 +501,7 @@ const CoworkView: React.FC<CoworkViewProps> = ({
     imageAttachments?: CoworkImageAttachment[],
     mediaReferences?: MediaAttachmentRef[],
     selectedTextSnippets?: CoworkSelectedTextSnippet[],
+    browserAnnotations?: CoworkBrowserAnnotationMessageBatch[],
     collaborationMode: CoworkCollaborationModeType = CoworkCollaborationMode.Default,
   ) => {
     if (!currentSession) return false;
@@ -551,6 +556,7 @@ const CoworkView: React.FC<CoworkViewProps> = ({
         mediaSelection: mediaSelection && mediaSelection.mode !== 'none' ? mediaSelection : undefined,
         mediaReferences,
         selectedTextSnippets,
+        browserAnnotations,
       });
       if (sent && (sessionSkillIds.length > 0 || sessionKitIds.length > 0)) {
         dispatch(clearActiveSkills());

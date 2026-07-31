@@ -24,6 +24,7 @@ import PrivacyDialog from './components/PrivacyDialog';
 import { ScheduledTasksView } from './components/scheduledTasks';
 import Settings, { type SettingsOpenOptions } from './components/Settings';
 import Sidebar from './components/Sidebar';
+import { SitesView } from './components/sites';
 import { SkillsView } from './components/skills';
 import SkinBackdrop, { SkinBackdropVariant } from './components/skin/SkinBackdrop';
 import SkinPresentationScope from './components/skin/SkinPresentationScope';
@@ -31,6 +32,7 @@ import Toast from './components/Toast';
 import AppUpdateBadge from './components/update/AppUpdateBadge';
 import AppUpdateBlockingPanel from './components/update/AppUpdateBlockingPanel';
 import AppUpdateCard from './components/update/AppUpdateCard';
+import { formatAppUpdateError } from './components/update/appUpdateErrorText';
 import AppUpdateInteractionOverlay from './components/update/AppUpdateInteractionOverlay';
 import {
   isAppUpdateInteractionBlockingStatus,
@@ -45,6 +47,7 @@ import { apiService } from './services/api';
 import { authService } from './services/auth';
 import { configService } from './services/config';
 import { coworkService } from './services/cowork';
+import { isTestModeEnabled } from './services/endpoints';
 import { i18nService } from './services/i18n';
 import { LogReporterAction, reportYdAnalyzer } from './services/logReporter';
 import { scheduledTaskService } from './services/scheduledTask';
@@ -121,7 +124,7 @@ const logAppUpdateRendererLifecycle = (
 const App: React.FC = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [settingsOptions, setSettingsOptions] = useState<SettingsOpenOptions & { requestId: number }>({ requestId: 0 });
-  const [mainView, setMainView] = useState<'cowork' | 'skills' | 'scheduledTasks' | 'kits' | 'mcp' | 'experts'>('cowork');
+  const [mainView, setMainView] = useState<'cowork' | 'skills' | 'scheduledTasks' | 'kits' | 'mcp' | 'sites' | 'experts'>('cowork');
   const [skillsActiveTab, setSkillsActiveTab] = useState<'skills' | 'mcp'>('skills');
   const [isInitialized, setIsInitialized] = useState(false);
   const [isActivated, setIsActivated] = useState<boolean>(true);
@@ -536,6 +539,10 @@ const App: React.FC = () => {
     setSkillsActiveTab('mcp');
   }, []);
 
+  const handleShowSites = useCallback(() => {
+    setMainView('sites');
+  }, []);
+
   const handleShowKits = useCallback(() => {
     setMainView('kits');
   }, []);
@@ -591,6 +598,24 @@ const App: React.FC = () => {
     setMainView('cowork');
   }, [dispatch]);
 
+  const handleCreateSiteByChat = useCallback((prompt: string) => {
+    coworkService.clearSession({ restoreAgentSkills: true });
+    dispatch(clearSelection());
+    dispatch(clearDraftAttachments('__home__'));
+    dispatch(clearDraftSelectedTextSnippets('__home__'));
+    dispatch(setDraftCollaborationMode({
+      draftKey: '__home__',
+      mode: CoworkCollaborationMode.Default,
+    }));
+    dispatch(setDraftPrompt({ sessionId: '__home__', draft: prompt }));
+    setMainView('cowork');
+    window.setTimeout(() => {
+      window.dispatchEvent(new CustomEvent(CoworkUiEvent.FocusInput, {
+        detail: { clear: false, resetCollaborationMode: true, text: prompt },
+      }));
+    }, 0);
+  }, [dispatch]);
+
   const showToast = useCallback((message: string) => {
     setToastMessage(message);
     if (toastTimerRef.current) {
@@ -633,6 +658,12 @@ const App: React.FC = () => {
             setShowUpdateModal(true);
           }
         }
+        // Silent installs relaunch the app with no visible install step, so
+        // this toast is the only confirmation the update actually happened.
+        const completed = await window.electron.appUpdate.getCompletedUpdate?.();
+        if (mounted && completed?.version) {
+          showToast(`${i18nService.t('updateInstalledToast')} v${completed.version}`);
+        }
       } catch (error) {
         console.error('[App] failed to load initial app update state:', error);
       }
@@ -664,7 +695,11 @@ const App: React.FC = () => {
             .then((installResult) => {
               if (!installResult.success) {
                 stopUserInitiatedUpdateFlow('install-result-failed');
-                showToast(installResult.error || i18nService.t('updateInstallFailed'));
+                showToast(
+                  installResult.error
+                    ? formatAppUpdateError(installResult.error)
+                    : i18nService.t('updateInstallFailed'),
+                );
               }
             })
             .catch((error) => {
@@ -732,7 +767,11 @@ const App: React.FC = () => {
         const installResult = await window.electron.appUpdate.installReady();
         if (!installResult.success) {
           stopUserInitiatedUpdateFlow('install-result-failed');
-          showToast(installResult.error || i18nService.t('updateInstallFailed'));
+          showToast(
+            installResult.error
+              ? formatAppUpdateError(installResult.error)
+              : i18nService.t('updateInstallFailed'),
+          );
         }
       } catch (error) {
         stopUserInitiatedUpdateFlow('install-ipc-failed');
@@ -885,6 +924,10 @@ const App: React.FC = () => {
       });
       dispatch(setAvailableModels(allModels));
     }
+  };
+
+  const handleStartAiSkinFromSettings = () => {
+    handleCloseSettings();
   };
 
   const isShortcutInputActive = () => {
@@ -1451,6 +1494,8 @@ const App: React.FC = () => {
           onShowScheduledTasks={handleShowScheduledTasks}
           onShowKits={handleShowKits}
           onShowExperts={handleShowExperts}
+          onShowMcp={handleShowMcp}
+          onShowSites={handleShowSites}
           onNewChat={handleNewChat}
           isCollapsed={isSidebarCollapsed}
           onToggleCollapse={handleToggleSidebar}
@@ -1459,6 +1504,7 @@ const App: React.FC = () => {
           updateNotice={!isSidebarCollapsed && !isUpdateInteractionBlocked ? updateCard : null}
           hideAdBanner={isUpdateCardExpanded}
           hideLogin={enterpriseConfig?.ui?.login === 'hide'}
+          hideSites={!isTestModeEnabled() || enterpriseConfig?.ui?.sites === 'hide'}
         />
         <div className={`flex-1 min-w-0 transition-[padding] duration-200 ease-out ${isSidebarCollapsed ? 'pl-1.5' : ''}`}>
           <div
@@ -1502,6 +1548,15 @@ const App: React.FC = () => {
                 onNewChat={handleNewChat}
                 updateBadge={collapsedHeaderUpdateBadge}
               />
+            ) : mainView === 'sites' ? (
+              <SitesView
+                isAuthenticated={Boolean(authUser)}
+                onCreateSiteByChat={handleCreateSiteByChat}
+                isSidebarCollapsed={isSidebarCollapsed}
+                onToggleSidebar={handleToggleSidebar}
+                updateBadge={collapsedHeaderUpdateBadge}
+                readOnly={enterpriseConfig?.ui?.sites === 'readonly'}
+              />
             ) : (
               <CoworkView
                 onRequestAppSettings={privacyAgreed === true && !showWelcome ? handleShowSettings : undefined}
@@ -1537,6 +1592,7 @@ const App: React.FC = () => {
       {showSettings && (
         <Settings
           onClose={handleCloseSettings}
+          onStartAiSkin={handleStartAiSkinFromSettings}
           initialTab={settingsOptions.initialTab}
           initialTabRequestId={settingsOptions.requestId}
           notice={settingsOptions.notice}
