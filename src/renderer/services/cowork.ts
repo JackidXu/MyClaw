@@ -685,6 +685,12 @@ class CoworkService {
         } else {
           await this.refreshContextUsage(sessionId);
         }
+        const isCompactionFailed = result.compacted === false && Boolean(result.reason && result.reason !== 'noop' && result.reason !== 'none');
+        if (isCompactionFailed) {
+          window.dispatchEvent(new CustomEvent('app:showToast', {
+            detail: i18nService.t('coworkContextManualCompactFailed'),
+          }));
+        }
         store.dispatch(addMessage({
           sessionId,
           message: {
@@ -692,7 +698,9 @@ class CoworkService {
             type: 'system',
             content: result.compacted
               ? i18nService.t('coworkContextManualCompacted')
-              : i18nService.t('coworkContextManualCompactNoop'),
+              : isCompactionFailed
+                ? i18nService.t('coworkContextManualCompactFailed')
+                : i18nService.t('coworkContextManualCompactNoop'),
             timestamp: Date.now(),
             metadata: {
               kind: CoworkSystemMessageKind.ContextCompaction,
@@ -704,7 +712,7 @@ class CoworkService {
             },
           },
         }));
-        return true;
+        return !isCompactionFailed;
       }
       console.warn(`[CoworkService] manual context compaction failed for session ${sessionId}: ${result.error ?? 'Unknown error'}`);
       if (result.error) {
