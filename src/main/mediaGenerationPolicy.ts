@@ -44,6 +44,14 @@ export const resolveMediaGenerationGate = (input: {
     return { allowed: true };
   }
 
+  if (input.tool !== MediaGenerationTool.Image && input.tool !== MediaGenerationTool.Video) {
+    return {
+      allowed: false,
+      reason: MediaGenerationGateReason.WrongMediaType,
+      message: `Tool unavailable: "${input.tool}" is not a recognized media generation tool.`,
+    };
+  }
+
   if (!input.selection || input.selection.mode === MediaSelectionMode.None) {
     return {
       allowed: false,

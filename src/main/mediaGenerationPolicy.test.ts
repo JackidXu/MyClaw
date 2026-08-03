@@ -48,3 +48,15 @@ test('media generation gate blocks wrong media type from selected turn model', (
     message: 'Image generation is not available. The user selected a video generation model for this turn.',
   });
 });
+
+test('media generation gate blocks unrecognized tool names', () => {
+  expect(resolveMediaGenerationGate({
+    action: 'generate',
+    tool: 'unknown_tool_name',
+    selection: { mode: MediaSelectionMode.Image, modelId: 'doubao-seedream-5-0-260128' },
+  })).toEqual({
+    allowed: false,
+    reason: MediaGenerationGateReason.WrongMediaType,
+    message: 'Tool unavailable: "unknown_tool_name" is not a recognized media generation tool.',
+  });
+});

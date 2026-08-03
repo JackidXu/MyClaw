@@ -4819,7 +4819,9 @@ if (!gotTheLock) {
     const explicitModel = canonicalizeMediaModelId(typeof args.model === 'string' ? args.model : '');
     const resolvedModelFromSelection = tool === MediaGenerationTool.Image
       ? canonicalizeMediaModelId(selection?.imageModelId || selection?.modelId || '')
-      : canonicalizeMediaModelId(selection?.videoModelId || selection?.modelId || '');
+      : tool === MediaGenerationTool.Video
+      ? canonicalizeMediaModelId(selection?.videoModelId || selection?.modelId || '')
+      : '';
     let selectedModel = explicitModel || resolvedModelFromSelection;
     let selectedModelSource = explicitModel ? 'tool' : resolvedModelFromSelection ? 'selection' : 'none';
 
@@ -5007,10 +5009,13 @@ if (!gotTheLock) {
       }
 
       // action === 'generate'
+      if (tool !== MediaGenerationTool.Image && tool !== MediaGenerationTool.Video) {
+        return { content: [{ type: 'text', text: `Unsupported media generation tool: ${tool}` }], isError: true };
+      }
       const mediaType = tool === MediaGenerationTool.Image ? 'image' : 'video';
 
       // Video generation confirmation
-      if (mediaType === 'video') {
+      if (tool === MediaGenerationTool.Video) {
         const questionText = [
           '请确认当前描述无误，提交后将无法取消。',
           '视频生成任务耗时较长，请耐心等待。',
