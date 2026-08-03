@@ -1143,6 +1143,7 @@ export class AppUpdateCoordinator {
           );
           this.clearStoredReadyFile(source);
           void this.cleanupReadyFile(storedReadyFile.filePath);
+          void this.pruneCachedInstallerFiles(source);
           continue;
         }
         const stat = fs.lstatSync(storedReadyFile.filePath);

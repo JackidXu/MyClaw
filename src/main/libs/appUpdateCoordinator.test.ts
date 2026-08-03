@@ -77,7 +77,7 @@ function readyFileStoreKey(source: AppUpdateSource): string {
 function seedReadyFile(store: SqliteStore, updatesDir: string, source: AppUpdateSource): string {
   fs.mkdirSync(updatesDir, { recursive: true });
   const extension = process.platform === 'darwin' ? '.dmg' : '.exe';
-  const filePath = path.join(updatesDir, `lobsterai-update-${source}-1${extension}`);
+  const filePath = path.join(updatesDir, `heyclaw-update-${source}-1${extension}`);
   const bytes = 'installer-bytes';
   fs.writeFileSync(filePath, bytes);
   const fileHash = crypto.createHash('sha256').update(bytes).digest('hex');
@@ -159,7 +159,7 @@ describe('AppUpdateCoordinator', () => {
   test('accepts a changing HTTPS CDN without passing a fixed origin allowlist', async () => {
     Object.defineProperty(process, 'platform', { value: 'win32' });
     const installerUrl = `https://replacement-cdn.example.net/LobsterAI-${READY_VERSION}.exe`;
-    const downloadedFile = path.join(updatesDir, 'lobsterai-update-auto-1.exe');
+    const downloadedFile = path.join(updatesDir, 'heyclaw-update-auto-1.exe');
     mocks.fetch.mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -323,7 +323,7 @@ describe('AppUpdateCoordinator', () => {
     const store = createStoreStub();
     fs.mkdirSync(updatesDir, { recursive: true });
     const targetPath = path.join(tmpDir, 'symlink-target.exe');
-    const symlinkPath = path.join(updatesDir, 'lobsterai-update-auto-2.exe');
+    const symlinkPath = path.join(updatesDir, 'heyclaw-update-auto-2.exe');
     const targetBytes = 'symlink-target';
     fs.writeFileSync(targetPath, targetBytes);
     fs.symlinkSync(targetPath, symlinkPath);
