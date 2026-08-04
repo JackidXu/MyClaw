@@ -693,6 +693,17 @@ export class OpenClawEngineManager extends EventEmitter {
     }
     console.log(`[OpenClaw] forking gateway: entry=${openclawEntry}, cwd=${runtime.root}, port=${port}, args=${JSON.stringify(forkArgs)}`);
 
+    // Clean up stale lock files if no active gateway is running
+    try {
+      const lockPath = `${this.configPath}.lock`;
+      if (fs.existsSync(lockPath)) {
+        fs.unlinkSync(lockPath);
+        console.log(`[OpenClaw] Cleaned up stale lock file: ${lockPath}`);
+      }
+    } catch {
+      /* ignore */
+    }
+
     // On Windows, use child_process.spawn with ELECTRON_RUN_AS_NODE=1 instead of
     // utilityProcess.fork(). Benchmark shows utilityProcess has ~5x overhead for
     // cold ESM compilation on Windows (163s vs 34s for a 28MB bundle).
