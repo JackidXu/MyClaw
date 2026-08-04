@@ -4,13 +4,13 @@ import { SkinAssetSlot, SkinWorkflowKind } from '../../../shared/skin/constants'
 import { buildMediaGenerationTurnInstruction } from './mediaGenerationTurnInstruction';
 
 describe('buildMediaGenerationTurnInstruction', () => {
-  test('keeps an ordinary image request to exactly one generation call', () => {
+  test('keeps an ordinary image request instruction prompt without hard single-turn quota', () => {
     const instruction = buildMediaGenerationTurnInstruction({
       mode: 'image',
       imageModelId: 'image-model',
     });
 
-    expect(instruction).toContain('exactly once with action="generate"');
+    expect(instruction).toContain('If the current user request asks to create, generate, draw, render, or make an image/photo/picture.');
     expect(instruction).not.toContain('[AI skin pack workflow: strict two-asset transaction]');
     expect(instruction).not.toContain('heyclaw_skin_manage');
   });

@@ -62,9 +62,13 @@ export function resolveOpenClawModelRef<T extends ModelRefInput>(
       if (migratedMatch) return migratedMatch;
     }
 
-    const bareMatch = availableModels.find((model) => model.id === modelId) ?? null;
-    if (bareMatch) return bareMatch;
+    const idMatches = availableModels.filter((model) => model.id === modelId);
+    if (idMatches.length === 1) {
+      return idMatches[0];
+    }
+    return null;
   }
 
-  return availableModels.find((model) => model.id === normalizedRef) ?? null;
+  const matchingModels = availableModels.filter((model) => model.id === normalizedRef);
+  return matchingModels.length === 1 ? matchingModels[0] : null;
 }
