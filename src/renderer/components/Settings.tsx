@@ -45,7 +45,7 @@ import {
 import { applyTypographyPreferences } from '../services/typography';
 import type { RootState } from '../store';
 import { selectCoworkConfig } from '../store/selectors/coworkSelectors';
-import { setAvailableModels } from '../store/slices/modelSlice';
+import { clearServerModels, setAvailableModels } from '../store/slices/modelSlice';
 import type {
   CoworkAgentEngine,
   CoworkMemoryStats,
@@ -3504,6 +3504,10 @@ const Settings: React.FC<SettingsProps> = ({
         }
       });
       dispatch(setAvailableModels(allModels));
+      const isServerProviderEnabled = normalizedProviders[ProviderName.LobsteraiServer]?.enabled !== false;
+      if (!isServerProviderEnabled) {
+        dispatch(clearServerModels());
+      }
 
       if (hasCoworkConfigChanges) {
         const updated = await coworkService.updateConfig({

@@ -6732,11 +6732,14 @@ if (!gotTheLock) {
           });
         }
         
-        const newOneApiModels = chat.map((m: any) => ({
-          ...m,
-          provider: 'oneapi',
-          providerKey: 'oneapi'
-        }));
+        const isOneApiEnabled = appConfig.providers?.oneapi?.enabled !== false;
+        const newOneApiModels = isOneApiEnabled
+          ? chat.map((m: any) => ({
+            ...m,
+            provider: 'oneapi',
+            providerKey: 'oneapi',
+          }))
+          : [];
 
         const mergedAvailableModels = [...customModels, ...newOneApiModels];
 
@@ -6745,20 +6748,16 @@ if (!gotTheLock) {
         }
         appConfig.model.availableModels = mergedAvailableModels;
 
-        // 强制使用唯一的对话大模型作为默认模型，实现无感热更新
-        const defaultChatModel = chat[0]?.id;
-        if (defaultChatModel) {
-          appConfig.model.defaultModel = defaultChatModel;
-        }
+        appConfig.model.defaultModel = 'system/auto';
 
         sqliteStore.set('app_config', appConfig);
         console.log('[MediaGeneration] Successfully fetched and synced models from OneAPI. Count:', chat.length);
 
-        // 主动广播更新通知渲染进程同步更新内存及 Redux 模型状态
+        // 主动广播更新通知渲染进程同步更新内存及 Redux 模型状态（默认固定为 system/auto）
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('config:sync-models', {
             availableModels: mergedAvailableModels,
-            defaultModel: defaultChatModel,
+            defaultModel: 'system/auto',
           });
         }
       }
@@ -12460,6 +12459,7 @@ if (!gotTheLock) {
     await startCoworkOpenAICompatProxy().catch(error => {
       console.error('Failed to start OpenAI compatibility proxy:', error);
     });
+    resolveCurrentApiConfig('local');
     profiler.measure('coworkOpenAICompatProxy');
 
     // ── Pre-warm quota & model caches so provider resolution and config sync
