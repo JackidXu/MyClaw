@@ -1,4 +1,4 @@
-import { type ApiFormat,type ProviderConfig, ProviderName, ProviderRegistry, resolveCodingPlanBaseUrl } from '../../shared/providers';
+import { type ApiFormat, type ProviderConfig, ProviderName, ProviderRegistry, resolveCodingPlanBaseUrl } from '../../shared/providers';
 import {
   applyModelRuntimeProfileMetadata,
   ModelRuntimeProfile,
@@ -8,7 +8,7 @@ import {
 } from '../../shared/providers/modelRuntimeProfiles';
 import type { SqliteStore } from '../sqliteStore';
 import type { CoworkApiConfig } from './coworkConfigStore';
-import { type AnthropicApiFormat,normalizeProviderApiFormat } from './coworkFormatTransform';
+import { type AnthropicApiFormat, normalizeProviderApiFormat } from './coworkFormatTransform';
 import {
   configureCoworkOpenAICompatProxy,
   getCoworkOpenAICompatProxyBaseURL,
@@ -700,6 +700,15 @@ export function resolveCurrentApiConfig(target: OpenAICompatProxyTarget = 'local
   const effectiveApiKey = resolvedApiKey
     || (!providerRequiresApiKey(matched.providerName) ? 'sk-lobsterai-local' : '');
 
+  const openAIBaseURL = ProviderRegistry.getSwitchableBaseUrl(matched.providerName, 'openai') || resolvedBaseURL;
+
+  configureCoworkOpenAICompatProxy({
+    baseURL: openAIBaseURL,
+    apiKey: resolvedApiKey || undefined,
+    model: matched.modelId,
+    provider: matched.providerName,
+  });
+
   if (matched.apiFormat === 'anthropic') {
     return {
       config: {
@@ -729,13 +738,6 @@ export function resolveCurrentApiConfig(target: OpenAICompatProxyTarget = 'local
       error: 'OpenAI compatibility proxy is not running.',
     };
   }
-
-  configureCoworkOpenAICompatProxy({
-    baseURL: resolvedBaseURL,
-    apiKey: resolvedApiKey || undefined,
-    model: matched.modelId,
-    provider: matched.providerName,
-  });
 
   const proxyBaseURL = getCoworkOpenAICompatProxyBaseURL(target);
   if (!proxyBaseURL) {
@@ -965,7 +967,7 @@ export function resolveAllEnabledProviderConfigs(): ProviderRawConfig[] {
 
   for (const [providerName, providerConfig] of Object.entries(appConfig.providers)) {
     if (!providerConfig?.enabled) continue;
-    if (providerName === ProviderName.LobsteraiServer) continue;
+
 
     // When minimax is in OAuth mode, use oauthAccessToken and oauthBaseUrl
     // (independent from the user's manually entered apiKey/baseUrl).
@@ -1068,3 +1070,5 @@ export function getCopilotGithubToken(): string | null {
   const token = sqliteStore.get<string>('github_copilot_github_token');
   return token?.trim() || null;
 }
+
+

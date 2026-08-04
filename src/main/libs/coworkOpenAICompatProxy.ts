@@ -15,6 +15,8 @@ import {
   type OpenAIStreamChunk,
   openAIToAnthropic,
 } from './coworkFormatTransform';
+import { isAutoModelRef } from './modelResolver';
+
 
 export type OpenAICompatUpstreamConfig = {
   baseURL: string;
@@ -2516,7 +2518,7 @@ async function handleRequest(
     }
     try {
       const parsed = JSON.parse(body);
-      if (parsed.model === 'system/auto' || parsed.model === 'auto') {
+      if (isAutoModelRef(parsed.model)) {
         parsed.model = upstreamConfig.model;
         body = JSON.stringify(parsed);
         console.info(`[CoworkProxy] Remapped passthrough model: system/auto -> ${upstreamConfig.model}`);
@@ -2672,7 +2674,7 @@ async function handleRequest(
   // for probe/warmup requests, which non-Anthropic providers don't recognize.
   const requestModel = typeof openAIRequest.model === 'string' ? openAIRequest.model : '';
 
-  if (requestModel === 'system/auto' || requestModel === 'auto') {
+  if (isAutoModelRef(requestModel)) {
     console.info(`[CoworkProxy] Remapping auto model: ${requestModel} -> ${upstreamConfig.model}`);
     openAIRequest.model = upstreamConfig.model;
   } else if (upstreamConfig.provider && upstreamConfig.provider !== 'anthropic' && upstreamConfig.provider !== 'openai') {
