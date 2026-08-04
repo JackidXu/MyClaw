@@ -1,4 +1,4 @@
-import { OpenClawProviderId, ProviderName, ProviderRegistry } from '@shared/providers/constants';
+import { OpenClawProviderId, ProviderRegistry } from '@shared/providers/constants';
 
 import type { Model } from '../store/slices/modelSlice';
 
@@ -12,6 +12,9 @@ function resolveModelOpenClawProviderId(model: ModelRefInput): string {
 }
 
 export function toOpenClawModelRef(model: ModelRefInput): string {
+  if (model.id === 'system/auto' || (model as any).isAutoModel) {
+    return 'system/auto';
+  }
   return `${resolveModelOpenClawProviderId(model)}/${model.id}`;
 }
 
@@ -21,6 +24,9 @@ export function matchesOpenClawModelRef(
 ): boolean {
   const normalizedRef = modelRef.trim();
   if (!normalizedRef) return false;
+  if (normalizedRef === 'system/auto' || normalizedRef === 'auto') {
+    return model.id === 'system/auto' || (model as any).isAutoModel === true;
+  }
   if (normalizedRef.includes('/')) {
     return normalizedRef === toOpenClawModelRef(model);
   }
@@ -34,39 +40,31 @@ export function resolveOpenClawModelRef<T extends ModelRefInput>(
   const normalizedRef = modelRef.trim();
   if (!normalizedRef) return null;
 
+  if (normalizedRef === 'system/auto' || normalizedRef === 'auto') {
+    const autoModel = availableModels.find((m) => m.id === 'system/auto' || (m as any).isAutoModel);
+    if (autoModel) return autoModel;
+  }
+
   if (normalizedRef.includes('/')) {
     const exact = availableModels.find((model) => toOpenClawModelRef(model) === normalizedRef) ?? null;
     if (exact) return exact;
-
-    console.log('[openclawModelRef] exact match failed for', normalizedRef, 'available refs:', availableModels.map(m => toOpenClawModelRef(m)));
 
     const slashIndex = normalizedRef.indexOf('/');
     const providerId = normalizedRef.slice(0, slashIndex);
     const modelId = normalizedRef.slice(slashIndex + 1);
 
-    // OpenAI OAuth provider migration compatibility between older
-    // `openai-codex/*` refs and the current `openai/*` refs.
     if (providerId === OpenClawProviderId.OpenAI || providerId === OpenClawProviderId.OpenAICodex) {
       const migratedProviderId = providerId === OpenClawProviderId.OpenAICodex
         ? OpenClawProviderId.OpenAI
         : OpenClawProviderId.OpenAICodex;
-      const migratedMatch = availableModels.find((model) => (
-        model.id === modelId
-        && model.providerKey === ProviderName.OpenAI
-        && resolveModelOpenClawProviderId(model) === migratedProviderId
-      )) ?? null;
+      const migratedRef = `${migratedProviderId}/${modelId}`;
+      const migratedMatch = availableModels.find((model) => toOpenClawModelRef(model) === migratedRef) ?? null;
       if (migratedMatch) return migratedMatch;
     }
 
-    // Generic provider fallback: match by model ID if unique
-    const idMatches = availableModels.filter((model) => model.id === modelId);
-    if (idMatches.length === 1) {
-      console.log('[openclawModelRef] provider fallback: resolved', normalizedRef, 'to', toOpenClawModelRef(idMatches[0]));
-      return idMatches[0];
-    }
-    return null;
+    const bareMatch = availableModels.find((model) => model.id === modelId) ?? null;
+    if (bareMatch) return bareMatch;
   }
 
-  const matchingModels = availableModels.filter((model) => model.id === normalizedRef);
-  return matchingModels.length === 1 ? matchingModels[0] : null;
+  return availableModels.find((model) => model.id === normalizedRef) ?? null;
 }

@@ -23,8 +23,6 @@ import {
   type Platform,
   PlatformRegistry,
 } from '../../../shared/platform';
-import { resolveAllEnabledProviderConfigs } from '../../libs/claudeSettings';
-import { buildProviderSelection } from '../../libs/openclawConfigSync';
 import {
   dedupeConversationMappings,
   filterConversationMappingsForSelectedAccount,
@@ -91,37 +89,6 @@ function normalizeImAnnounceDeliveryTo(
     return rawTo.slice(colonIdx + 1);
   }
   return rawTo;
-}
-
-function resolveFallbackModelForAuto(model: string | undefined): string | undefined {
-  if (model === 'auto' || model === 'system/auto') {
-    try {
-      const enabledProviders = resolveAllEnabledProviderConfigs();
-      for (const provider of enabledProviders) {
-        const fallbackModel = provider.models.find((m) => m.id?.trim());
-        if (fallbackModel) {
-          const mid = fallbackModel.id.trim();
-          const sel = buildProviderSelection({
-            apiKey: provider.apiKey,
-            baseURL: provider.baseURL,
-            modelId: mid,
-            apiType: provider.apiType,
-            providerName: provider.providerName,
-            authType: provider.authType,
-            codingPlanEnabled: provider.codingPlanEnabled,
-            supportsImage: fallbackModel.supportsImage,
-            supportsThinking: fallbackModel.supportsThinking,
-            modelName: fallbackModel.name,
-            contextWindow: fallbackModel.contextWindow,
-          });
-          return sel.primaryModel;
-        }
-      }
-    } catch (e) {
-      console.warn('[ScheduledTaskHandler] failed to resolve fallback model for auto:', e);
-    }
-  }
-  return model;
 }
 
 export interface ScheduledTaskHandlerDeps {
@@ -613,9 +580,6 @@ export function registerScheduledTaskHandlers(deps: ScheduledTaskHandlerDeps): v
         getOpenClawRuntimeAdapter,
       });
 
-      if (normalizedInput.payload && typeof normalizedInput.payload === 'object') {
-        normalizedInput.payload.model = resolveFallbackModelForAuto(normalizedInput.payload.model);
-      }
 
       const task = await getCronJobService().addJob(normalizedInput);
       console.log('[IPC][scheduledTask:create] result task id:', task?.id, 'name:', task?.name);
@@ -641,9 +605,6 @@ export function registerScheduledTaskHandlers(deps: ScheduledTaskHandlerDeps): v
         getOpenClawRuntimeAdapter,
       });
 
-      if (normalizedInput.payload && typeof normalizedInput.payload === 'object') {
-        normalizedInput.payload.model = resolveFallbackModelForAuto(normalizedInput.payload.model);
-      }
 
       const task = await getCronJobService().updateJob(id, normalizedInput);
       console.log('[IPC][scheduledTask:update] result task id:', task?.id, 'name:', task?.name);

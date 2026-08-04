@@ -8,6 +8,7 @@ import { PlatformRegistry } from '@shared/platform';
 import React, { useEffect, useRef, useState } from 'react';
 import { useSelector } from 'react-redux';
 
+import { AUTO_MODEL_REF } from '../../../main/libs/modelResolver';
 import { DeliveryMode, PayloadKind, ScheduleKind, SessionTarget, WakeMode } from '../../../scheduledTask/constants';
 import type {
   ScheduledTask,
@@ -173,7 +174,7 @@ export function createScheduledTaskFormState(
   template?: ScheduledTaskTemplate | null,
 ): FormState {
   if (!task) {
-    const form = { ...DEFAULT_FORM_STATE, ...nowDefaults(), modelId: fallbackModelRef };
+    const form = { ...DEFAULT_FORM_STATE, ...nowDefaults(), modelId: fallbackModelRef || AUTO_MODEL_REF };
     return template ? applyScheduledTaskTemplate(form, template) : form;
   }
 

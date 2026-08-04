@@ -74,6 +74,7 @@ import type { SubagentMessageStore } from '../../subagentMessageStore';
 import type { SubagentRunStore } from '../../subagentRunStore';
 import { resolveAllEnabledProviderConfigs } from '../claudeSettings';
 import { setCoworkProxySessionId } from '../coworkOpenAICompatProxy';
+import { isAutoModelRef } from '../modelResolver';
 import { extractOpenClawAssistantStreamParts,extractOpenClawAssistantStreamText } from '../openclawAssistantText';
 import {
   buildManagedSessionKey,
@@ -5350,7 +5351,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     }
 
     // 智能适配：当用户选择了 Auto 虚拟模型时，在本地评估 Prompt 复杂度并静默路由到合适的物理模型。
-    if (currentModel.endsWith('/auto') || currentModel === 'auto' || currentModel === 'system/auto') {
+    if (isAutoModelRef(currentModel)) {
       const routedModel = this.selectPhysicalModelForAutoRouting(
         prompt,
         options.imageAttachments,
