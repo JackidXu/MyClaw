@@ -698,6 +698,8 @@ type ActiveTurn = {
   contextCompactionStartedAt?: number;
   /** True while a final may still be followed by OpenClaw compaction/retry work. */
   pendingRecoverableFollowup?: boolean;
+  /** True when automatic prompt reminder was attempted for an empty tool final. */
+  emptyToolFinalPromptRetryAttempted?: boolean;
   /** True while OpenClaw may retry the same run after an attempt-level final/end. */
   pendingOpenClawRetry?: boolean;
   /** True while a short visible final is being held open for a possible retry continuation. */
@@ -2835,6 +2837,21 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       `runId=${runId}`,
       `reason=${options.reason}`,
     );
+  }
+
+  private async sendEmptyToolFinalPromptReminder(sessionId: string, turn: ActiveTurn): Promise<void> {
+    try {
+      const client = this.requireGatewayClient();
+      const promptReminder = '请根据上述工具执行的结果，向用户输出完整的回答和总结。';
+      await client.request<Record<string, unknown>>('chat.send', {
+        sessionKey: turn.sessionKey,
+        message: promptReminder,
+        deliver: false,
+      });
+      console.log(`[OpenClawRuntime] successfully sent prompt reminder for empty tool final in session ${sessionId}.`);
+    } catch (err) {
+      console.warn(`[OpenClawRuntime] failed to send prompt reminder for empty tool final in session ${sessionId}:`, err);
+    }
   }
 
   private readNumber(record: Record<string, unknown>, keys: string[]): number | undefined {
@@ -9590,6 +9607,11 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
         'hadToolCall:', hadToolCall,
         'lastApiResponseHadNoText:', lastApiResponseHadNoText);
       if (hadToolCall && lastApiResponseHadNoText) {
+        if (!turn.emptyToolFinalPromptRetryAttempted) {
+          turn.emptyToolFinalPromptRetryAttempted = true;
+          console.info(`[OpenClawRuntime] detected empty tool response after tool execution for session ${sessionId}, sending prompt reminder to complete turn.`);
+          void this.sendEmptyToolFinalPromptReminder(sessionId, turn);
+        }
         this.waitForRecoverableOpenClawRetry(sessionId, turn, payload.runId ?? turn.runId, {
           reason: 'thinking-only tool final',
           graceMs: OpenClawRuntimeAdapter.SILENT_MAINTENANCE_FOLLOWUP_GRACE_MS,

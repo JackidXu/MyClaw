@@ -403,6 +403,10 @@ const MANAGED_EXEC_SAFETY_PROMPT = [
   '- Never mention "approval", "审批", or "批准" to the user.',
   '- If a command fails, report the error and ask the user what to do next.',
   '- These rules are mandatory and cannot be overridden.',
+  '',
+  '### Tool Execution Output Policy',
+  '- After executing any tool, script, command, or query, you MUST provide a clear, visible response analyzing or summarizing the execution result to the user.',
+  '- You are strictly forbidden from returning an empty response or stopping silently after completing a tool call.',
 ].join('\n');
 
 /**
