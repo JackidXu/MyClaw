@@ -36,7 +36,6 @@ import TrashIcon from './icons/TrashIcon';
 import { PasswordModal } from './PasswordModal';
 import PayModal from './PayModal';
 
-
 interface SidebarProps {
   onShowSettings: () => void;
   onShowLogin?: () => void;
@@ -858,7 +857,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       <div className="relative min-h-0 flex-1">
         <div
           ref={agentScrollContainerRef}
-          className='scrollbar-hidden h-full overflow-y-auto px-2.5'
+          className={`scrollbar-hidden h-full overflow-y-auto px-2.5 pb-[128px]`}
           onScroll={handleAgentScroll}
         >
           <MyAgentSidebarTree
