@@ -1,0 +1,41 @@
+diff --git a/src/auto-reply/inbound.test.ts b/src/auto-reply/inbound.test.ts
+index dfb61f33a4..fffdd14e7c 100644
+--- a/src/auto-reply/inbound.test.ts
++++ b/src/auto-reply/inbound.test.ts
+@@ -1061,6 +1061,20 @@ describe("mention helpers", () => {
+     const stripped = stripMentions("<@12345> hello", { Provider: "discord" } as MsgContext, {});
+     expect(stripped).toBe("< > hello");
+   });
++
++  it("strips Chinese bot name mentions correctly", () => {
++    const stripped = stripMentions("@黑墙小秘书 /new", {} as MsgContext, {
++      agents: {
++        list: [
++          {
++            id: "main",
++            identity: { name: "黑墙小秘书" },
++          },
++        ],
++      },
++    }, "main");
++    expect(stripped).toBe("/new");
++  });
+ });
+ 
+ describe("resolveGroupRequireMention", () => {
+diff --git a/src/auto-reply/reply/mentions.ts b/src/auto-reply/reply/mentions.ts
+index ff0a35d95b..a38bc108a9 100644
+--- a/src/auto-reply/reply/mentions.ts
++++ b/src/auto-reply/reply/mentions.ts
+@@ -23,7 +23,10 @@ function deriveMentionPatterns(identity?: { name?: string; emoji?: string }) {
+   if (name) {
+     const parts = name.split(/\s+/).filter(Boolean).map(escapeRegExp);
+     const re = parts.length ? parts.join(String.raw`\s+`) : escapeRegExp(name);
+-    patterns.push(String.raw`\b@?${re}\b`);
++    const hasNonAscii = /[^\x00-\x7F]/.test(name);
++    const leftBoundary = hasNonAscii ? String.raw`(?:^|\s|@)` : String.raw`\b`;
++    const rightBoundary = hasNonAscii ? String.raw`(?:$|\s)` : String.raw`\b`;
++    patterns.push(String.raw`${leftBoundary}@?${re}${rightBoundary}`);
+   }
+   const emoji = normalizeOptionalString(identity?.emoji);
+   if (emoji) {
