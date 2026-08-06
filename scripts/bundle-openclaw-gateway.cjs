@@ -25,11 +25,22 @@ const runtimeDir = process.argv[2]
 
 const bundleOutPath = path.join(runtimeDir, 'gateway-bundle.mjs');
 
-// Prefer gateway-entry.js (dedicated gateway entry, skips CLI overhead).
-// Fall back to entry.js (full CLI entry) if gateway-entry.js doesn't exist.
+// Prefer local openclaw source if present for instant dev bundling
+const openclawSrcDir = process.env.OPENCLAW_SRC || path.resolve(rootDir, '../openclaw');
+const srcGatewayEntry = path.join(openclawSrcDir, 'src', 'gateway-entry.ts');
+const srcFullEntry = path.join(openclawSrcDir, 'src', 'entry.ts');
+
 const gatewayEntryPath = path.join(runtimeDir, 'dist', 'gateway-entry.js');
 const fullEntryPath = path.join(runtimeDir, 'dist', 'entry.js');
-const entryPath = fs.existsSync(gatewayEntryPath) ? gatewayEntryPath : fullEntryPath;
+
+let entryPath;
+if (fs.existsSync(srcGatewayEntry)) {
+  entryPath = srcGatewayEntry;
+} else if (fs.existsSync(srcFullEntry)) {
+  entryPath = srcFullEntry;
+} else {
+  entryPath = fs.existsSync(gatewayEntryPath) ? gatewayEntryPath : fullEntryPath;
+}
 
 if (!fs.existsSync(entryPath)) {
   console.error(`[bundle-openclaw-gateway] Entry point not found: ${entryPath}`);
