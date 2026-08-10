@@ -299,10 +299,10 @@ Migrations are mostly ad-hoc `PRAGMA table_info()` checks in
 OpenClaw runtime state is under Electron `userData/openclaw`.
 
 Important paths:
-- `%APPDATA%/LobsterAI/openclaw/state/openclaw.json` on Windows: generated
+- `%APPDATA%/HeyClaw/openclaw/state/openclaw.json` on Windows: generated
   OpenClaw config.
-- `%APPDATA%/LobsterAI/openclaw/state/workspace-main`: main agent workspace.
-- `%APPDATA%/LobsterAI/openclaw/state/workspace-{agentId}`: non-main agent
+- `%APPDATA%/HeyClaw/openclaw/state/workspace-main`: main agent workspace.
+- `%APPDATA%/HeyClaw/openclaw/state/workspace-{agentId}`: non-main agent
   workspaces.
 
 The main workspace path is resolved by `getMainAgentWorkspacePath()`.
@@ -326,15 +326,15 @@ Main process logging uses `electron-log` via `src/main/logger.ts`, which
 intercepts `console.*`.
 
 Main logs:
-- Windows: `%APPDATA%/LobsterAI/logs/main-YYYY-MM-DD.log`
-- macOS: `~/Library/Logs/LobsterAI/main-YYYY-MM-DD.log`
-- Linux: `~/.config/LobsterAI/logs/main-YYYY-MM-DD.log`
+- Windows: `%APPDATA%/HeyClaw/logs/main-YYYY-MM-DD.log`
+- macOS: `~/Library/Logs/HeyClaw/main-YYYY-MM-DD.log`
+- Linux: `~/.config/HeyClaw/logs/main-YYYY-MM-DD.log`
 
 Main log retention is 7 days. Max file size is 80 MB; overflow rotates to
 `.old.log`.
 
 OpenClaw gateway capture logs:
-- Windows: `%APPDATA%/LobsterAI/openclaw/logs/gateway-YYYY-MM-DD.log`
+- Windows: `%APPDATA%/HeyClaw/openclaw/logs/gateway-YYYY-MM-DD.log`
 - Retention is 3 days.
 
 OpenClaw's own daily logs may also exist in a temp directory. On Windows,
