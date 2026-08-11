@@ -41,7 +41,7 @@ const PayModal: React.FC<PayModalProps> = ({ onClose, onSuccess }) => {
     setErrorMessage(null);
     try {
       const res = await window.electron.api.fetch({
-        url: 'https://zhike.banchengyun.com/api/chaohuixie/claw/versionList',
+        url: 'https://zhike.banchengyun.com/api/chaohuixie/claw/trade/versionList',
         method: 'GET',
         headers: {},
       }) as { ok: boolean; data?: any };
@@ -84,7 +84,7 @@ const PayModal: React.FC<PayModalProps> = ({ onClose, onSuccess }) => {
 
     try {
       const res = await window.electron.api.fetch({
-        url: 'https://zhike.banchengyun.com/api/chaohuixie/claw/pay',
+        url: 'https://zhike.banchengyun.com/api/chaohuixie/claw/trade/pay',
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -124,7 +124,7 @@ const PayModal: React.FC<PayModalProps> = ({ onClose, onSuccess }) => {
       try {
         const query = new URLSearchParams({ orderId: String(id) }).toString();
         const res = await window.electron.api.fetch({
-          url: `https://zhike.banchengyun.com/api/chaohuixie/claw/payState?${query}`,
+          url: `https://zhike.banchengyun.com/api/chaohuixie/claw/trade/payState?${query}`,
           method: 'GET',
           headers: {},
         }) as { ok: boolean; data?: any };
