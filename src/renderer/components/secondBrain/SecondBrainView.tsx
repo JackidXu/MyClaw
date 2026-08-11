@@ -61,6 +61,25 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
   /** 正在操作中的 itemId（防止重复点击） */
   const [actioningIds, setActioningIds] = useState<Set<number>>(new Set());
 
+  /** 用户编辑后的认知 summary：key 为 item_id，value 为最新编辑的标题 */
+  const [editedSummaries, setEditedSummaries] = useState<Record<number, string>>({});
+  const [editingItemId, setEditingItemId] = useState<number | null>(null);
+  const [editingText, setEditingText] = useState<string>('');
+
+  const startEditing = (item: CognitionItem) => {
+    const current = editedSummaries[item.item_id] ?? item.summary ?? item.content;
+    setEditingItemId(item.item_id);
+    setEditingText(current);
+  };
+
+  const saveEditing = (itemId: number) => {
+    setEditedSummaries((prev) => ({
+      ...prev,
+      [itemId]: editingText,
+    }));
+    setEditingItemId(null);
+  };
+
   const ITEMS_PER_PAGE = 10;
   const itemsLastPage = Math.max(1, Math.ceil(items.length / ITEMS_PER_PAGE));
   const paginatedItems = items.slice((itemsPage - 1) * ITEMS_PER_PAGE, itemsPage * ITEMS_PER_PAGE);
@@ -131,7 +150,8 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
     if (actioningIds.has(item.item_id)) return;
     setActioning(item.item_id, true);
     try {
-      await adoptCognitionItem({ itemId: item.item_id, content: item.content, summary: item.summary });
+      const summaryToAdopt = (editingItemId === item.item_id ? editingText : editedSummaries[item.item_id]) ?? item.summary ?? item.content;
+      await adoptCognitionItem({ itemId: item.item_id, content: item.content, summary: summaryToAdopt });
       loadItems();
       loadStats();
       showToast('success', '认知已成功采纳并存入认知大脑');
@@ -409,10 +429,47 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                       </div>
                     </div>
 
-                    {/* 认知标题（使用 summary 字段） */}
-                    <p className="text-sm font-medium text-foreground leading-relaxed">
-                      {item.summary || item.content}
-                    </p>
+                    {/* 认知标题（点击可编辑，采纳时发送最新编辑内容） */}
+                    {editingItemId === item.item_id ? (
+                      <div className="flex items-start gap-2">
+                        <textarea
+                          autoFocus
+                          rows={2}
+                          value={editingText}
+                          onChange={(e) => setEditingText(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                              e.preventDefault();
+                              saveEditing(item.item_id);
+                            }
+                          }}
+                          className="flex-1 rounded-lg border border-primary bg-background px-3 py-1.5 text-sm font-medium text-foreground outline-none shadow-xs focus:ring-2 focus:ring-primary/20 resize-none leading-relaxed"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => saveEditing(item.item_id)}
+                          className="shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary/90 transition-colors"
+                        >
+                          保存
+                        </button>
+                      </div>
+                    ) : (
+                      <div
+                        onClick={() => startEditing(item)}
+                        className="group relative cursor-pointer flex items-start justify-between gap-2 rounded-lg p-1.5 -m-1.5 transition-colors hover:bg-surface-raised/60 border border-transparent hover:border-border/40"
+                        title="点击编辑标题"
+                      >
+                        <p className="text-sm font-medium text-foreground leading-relaxed flex-1">
+                          {editedSummaries[item.item_id] ?? item.summary ?? item.content}
+                        </p>
+                        <span className="opacity-0 group-hover:opacity-100 transition-opacity text-xs text-primary flex items-center gap-1 shrink-0 mt-0.5 font-normal">
+                          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                          </svg>
+                          <span>点击编辑</span>
+                        </span>
+                      </div>
+                    )}
 
                     {/* 认知变化提示 */}
                     {hasChange && (
