@@ -57,6 +57,7 @@ import {
   LogReporterEntry,
   reportYdAnalyzer,
 } from '../../services/logReporter';
+import { fetchCognitionInjection } from '../../services/secondBrainApi';
 import { resolveLocalizedText, skillService } from '../../services/skill';
 import { vipService } from '../../services/vipService';
 import { RootState } from '../../store';
@@ -110,6 +111,7 @@ import {
 } from '../common/activeContextBadgeStyles';
 import Modal from '../common/Modal';
 import { PremiumGuideModal } from '../experts/PremiumGuideModal';
+import BrainIcon from '../icons/BrainIcon';
 import EditIcon from '../icons/EditIcon';
 import GoalIcon from '../icons/GoalIcon';
 import PaperClipIcon from '../icons/PaperClipIcon';
@@ -523,6 +525,13 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     // While the input holds quick-action template text, pin the textarea to
     // maxHeight so switching templates doesn't bounce the layout around it.
     const [isTemplateHeightLocked, setIsTemplateHeightLocked] = useState(false);
+    const [secondBrainEnabled, setSecondBrainEnabled] = useState<boolean>(() => {
+      try {
+        return localStorage.getItem('heyclaw_second_brain_enabled') !== 'false';
+      } catch {
+        return true;
+      }
+    });
 
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const draftKeyRef = useRef(draftKey);
@@ -1786,9 +1795,21 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
       preparedBrowserAnnotations.push({ ...batch, annotations: preparedAnnotations });
     }
 
+    let finalSkillPrompt = skillPrompt;
+    if (secondBrainEnabled) {
+      try {
+        const injection = await fetchCognitionInjection();
+        if (injection && injection.trim()) {
+          finalSkillPrompt = [skillPrompt, injection.trim()].filter(Boolean).join('\n\n');
+        }
+      } catch (err) {
+        console.warn('[CoworkPromptInput] fetchCognitionInjection failed:', err);
+      }
+    }
+
     const result = await onSubmit(
       promptPayload.finalPrompt,
-      skillPrompt,
+      finalSkillPrompt,
       [...(promptPayload.imageAttachments ?? []), ...annotationImages],
       promptPayload.mediaReferences,
       promptPayload.selectedTextSnippets,
@@ -3039,6 +3060,42 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     </button>
   );
 
+  const renderSecondBrainToggle = () => (
+    <div className="relative group ml-auto flex shrink-0 items-center">
+      <div className="inline-flex items-center gap-1.5 rounded-full bg-background px-3 py-1 text-xs text-foreground border border-border/40 shadow-xs transition-colors hover:border-border">
+        <BrainIcon className="h-3.5 w-3.5 text-primary shrink-0" />
+        <span className="font-medium select-none text-[12px] text-foreground">我的第二大脑</span>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={secondBrainEnabled}
+          onClick={(e) => {
+            e.stopPropagation();
+            const nextState = !secondBrainEnabled;
+            setSecondBrainEnabled(nextState);
+            try {
+              localStorage.setItem('heyclaw_second_brain_enabled', String(nextState));
+            } catch (err) {}
+          }}
+          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+            secondBrainEnabled ? 'bg-primary' : 'bg-neutral-300 dark:bg-neutral-700'
+          }`}
+        >
+          <span
+            className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+              secondBrainEnabled ? 'translate-x-4' : 'translate-x-0'
+            }`}
+          />
+        </button>
+      </div>
+
+      {/* Hover Tooltip */}
+      <div className="pointer-events-none absolute right-0 bottom-full mb-2 z-30 whitespace-nowrap rounded-xl bg-black/90 dark:bg-black px-3.5 py-2 text-xs font-medium text-white shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200">
+        启用后，AI 将结合你的长期认知、思考方式和决策习惯回答问题
+      </div>
+    </div>
+  );
+
   const largeSendButton = voiceRecordingUiState.showTaskStopButton
     ? largeTaskStopButton
     : largeSubmitButton;
@@ -3752,6 +3809,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
                     </div>
                   )}
                 </div>
+                {renderSecondBrainToggle()}
               </div>
             </>
           ) : (
@@ -3834,6 +3892,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
                   {voiceRecordingUiState.showLargeInputControls && largeInputToolActions}
                 </div>
                 <div className={`flex shrink-0 items-center ${largeToolbarControlGapClass}`}>
+                  {renderSecondBrainToggle()}
                   {contextUsageControl}
                   {voiceRecordingUiState.showLargeModelSelector && largeModelSelector}
                   {largeVoiceInputButton}
