@@ -19,6 +19,7 @@ import CoworkQuestionWizard from './components/cowork/CoworkQuestionWizard';
 import EngineFailureOverlay from './components/cowork/EngineFailureOverlay';
 import EngineStartupOverlay from './components/cowork/EngineStartupOverlay';
 import ExpertsView from './components/experts/ExpertsView';
+import SecondBrainView from './components/secondBrain/SecondBrainView';
 import KitsView from './components/kits/KitsView';
 import { ScheduledTasksView } from './components/scheduledTasks';
 import Settings, { type SettingsOpenOptions } from './components/Settings';
@@ -125,7 +126,7 @@ const logAppUpdateRendererLifecycle = (
 const App: React.FC = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [settingsOptions, setSettingsOptions] = useState<SettingsOpenOptions & { requestId: number }>({ requestId: 0 });
-  const [mainView, setMainView] = useState<'cowork' | 'skills' | 'scheduledTasks' | 'kits' | 'mcp' | 'sites' | 'experts'>('cowork');
+  const [mainView, setMainView] = useState<'cowork' | 'skills' | 'scheduledTasks' | 'kits' | 'mcp' | 'sites' | 'experts' | 'secondBrain'>('cowork');
   const [skillsActiveTab, setSkillsActiveTab] = useState<'skills' | 'mcp'>('skills');
   const [isInitialized, setIsInitialized] = useState(false);
   const [isActivated, setIsActivated] = useState<boolean>(true);
@@ -549,6 +550,10 @@ const App: React.FC = () => {
 
   const handleShowExperts = useCallback(() => {
     setMainView('experts');
+  }, []);
+
+  const handleShowSecondBrain = useCallback(() => {
+    setMainView('secondBrain');
   }, []);
 
   const handleToggleSidebar = useCallback(() => {
@@ -1524,6 +1529,7 @@ const App: React.FC = () => {
           onShowScheduledTasks={handleShowScheduledTasks}
           onShowKits={handleShowKits}
           onShowExperts={handleShowExperts}
+          onShowSecondBrain={handleShowSecondBrain}
           onShowMcp={handleShowMcp}
           onShowSites={handleShowSites}
           onNewChat={handleNewChat}
@@ -1573,6 +1579,13 @@ const App: React.FC = () => {
               />
             ) : mainView === 'experts' ? (
               <ExpertsView
+                isSidebarCollapsed={isSidebarCollapsed}
+                onToggleSidebar={handleToggleSidebar}
+                onNewChat={handleNewChat}
+                updateBadge={collapsedHeaderUpdateBadge}
+              />
+            ) : mainView === 'secondBrain' ? (
+              <SecondBrainView
                 isSidebarCollapsed={isSidebarCollapsed}
                 onToggleSidebar={handleToggleSidebar}
                 onNewChat={handleNewChat}

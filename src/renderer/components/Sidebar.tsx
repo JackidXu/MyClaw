@@ -8,6 +8,7 @@ import { configService } from '../services/config';
 import { coworkService } from '../services/cowork';
 import { i18nService } from '../services/i18n';
 import { LogReporterAction, reportYdAnalyzer } from '../services/logReporter';
+import { fetchCognitionStats } from '../services/secondBrainApi';
 import { RootState } from '../store';
 import {
   selectCoworkSessions,
@@ -28,6 +29,7 @@ import { CoworkUiEvent } from './cowork/constants';
 import CoworkSearchModal from './cowork/CoworkSearchModal';
 import Cog6ToothIcon from './icons/Cog6ToothIcon';
 import ComposeIcon from './icons/ComposeIcon';
+import BrainIcon from './icons/BrainIcon';
 import SidebarAutomationIcon from './icons/SidebarAutomationIcon';
 import SidebarKitsIcon from './icons/SidebarKitsIcon';
 import SidebarSitesIcon from './icons/SidebarSitesIcon';
@@ -39,12 +41,13 @@ import PayModal from './PayModal';
 interface SidebarProps {
   onShowSettings: () => void;
   onShowLogin?: () => void;
-  activeView: 'cowork' | 'skills' | 'scheduledTasks' | 'kits' | 'mcp' | 'sites' | 'experts';
+  activeView: 'cowork' | 'skills' | 'scheduledTasks' | 'kits' | 'mcp' | 'sites' | 'experts' | 'secondBrain';
   onShowSkills: () => void;
   onShowCowork: () => void;
   onShowScheduledTasks: () => void;
   onShowKits: () => void;
   onShowExperts: () => void;
+  onShowSecondBrain: () => void;
   onShowMcp: () => void;
   onShowSites: () => void;
   onNewChat: () => void;
@@ -141,6 +144,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onShowScheduledTasks,
   onShowKits,
   onShowExperts,
+  onShowSecondBrain,
   onShowSites,
   onNewChat,
   isCollapsed,
@@ -157,6 +161,28 @@ const Sidebar: React.FC<SidebarProps> = ({
   const currentSessionId = useSelector(selectCurrentSessionId);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isBatchMode, setIsBatchMode] = useState(false);
+  const [pendingCognitionCount, setPendingCognitionCount] = useState<number>(0);
+
+  /** 轮询待确认认知数，用于侧边栏徽章显示 */
+  useEffect(() => {
+    let cancelled = false;
+    const loadPendingCount = () => {
+      fetchCognitionStats()
+        .then((data) => {
+          if (!cancelled && data) {
+            setPendingCognitionCount(data.pending_count || 0);
+          }
+        })
+        .catch(() => {});
+    };
+
+    loadPendingCount();
+    const interval = setInterval(loadPendingCount, 8000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [activeView]);
 
   // 用户卡片状态与逻辑
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -836,6 +862,24 @@ const Sidebar: React.FC<SidebarProps> = ({
           >
             <SidebarKitsIcon className="h-4 w-4 shrink-0" />
             <span className="min-w-0 truncate">AI 团队</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setIsSearchOpen(false);
+              onShowSecondBrain();
+            }}
+            className={activeView === 'secondBrain' ? activeSidebarNavItemClassName : sidebarNavItemClassName}
+            aria-current={activeView === 'secondBrain' ? 'page' : undefined}
+          >
+            <BrainIcon className="h-4 w-4 shrink-0" />
+            <span className="min-w-0 truncate">第二大脑</span>
+            {pendingCognitionCount > 0 && (
+              <span className="ml-auto flex items-center gap-1.5 shrink-0 text-[11px] font-medium text-amber-500 dark:text-amber-400">
+                <span className="h-2 w-2 rounded-full bg-amber-500 shrink-0" />
+                <span>新增 {pendingCognitionCount} 条</span>
+              </span>
+            )}
           </button>
           {!hideSites && (
             <button
