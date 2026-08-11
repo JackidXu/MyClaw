@@ -3919,7 +3919,6 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
       : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
         ? container.clientHeight
         : 1;
-    event.preventDefault();
     container.scrollBy({
       left: event.deltaX * deltaMultiplier,
       top: event.deltaY * deltaMultiplier,
