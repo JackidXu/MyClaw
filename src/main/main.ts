@@ -33,6 +33,11 @@ import {
 import {
   AgentId,
 } from '../shared/agent/constants';
+import {
+  LogReporterAction,
+  LogReporterSource,
+  LogReporterStoreKey,
+} from '../shared/analytics/constants';
 import { AppIpcChannel } from '../shared/app/constants';
 import { AppSettingsAutoLaunchErrorCode, AppSettingsIpc } from '../shared/appSettings/constants';
 import { AppUpdateIpc } from '../shared/appUpdate/constants';
@@ -136,7 +141,13 @@ import {
   OpenClawGatewayRepairErrorCode,
 } from '../shared/openclawEngine/constants';
 import { PlatformRegistry } from '../shared/platform';
-import { ModelRuntimeProfile, OpenClawProviderId, ProviderName, ProviderRegistry } from '../shared/providers';
+import {
+  ModelRuntimeProfile,
+  OpenClawProviderId,
+  parseModelThinkingLevel,
+  ProviderName,
+  ProviderRegistry,
+} from '../shared/providers';
 import {
   ShareDeploymentCandidateSource,
   type ShareDeploymentCreateNodeInput,
@@ -306,6 +317,7 @@ import {
 import { packageHtmlFile } from './libs/htmlShare/htmlSharePackager';
 import { getKeyfromAttribution, initializeKeyfromAttribution } from './libs/keyfromAttribution';
 import { exportLogsZip } from './libs/logExport';
+import { MainLogReporter } from './libs/mainLogReporter';
 import { inferImageMimeTypeFromDataUrl, type PersistedGeneratedImageAsset, persistGeneratedImageAssets, type PersistGeneratedImageAssetsResult, persistGeneratedVideoAssets, type RemoteGeneratedMediaAsset } from './libs/mediaAssetPersistence';
 import {
   migrateAgentModelRefs,
@@ -1297,7 +1309,12 @@ function sanitizeOpenClawSessionPatch(input: unknown): OpenClawSessionPatch {
   if (model !== undefined) patch.model = model;
 
   const thinkingLevel = sanitizeOptionalPatchValue(source.thinkingLevel);
-  if (thinkingLevel !== undefined) patch.thinkingLevel = thinkingLevel;
+  if (thinkingLevel !== undefined) {
+    if (thinkingLevel !== null && thinkingLevel !== '' && !parseModelThinkingLevel(thinkingLevel)) {
+      throw new Error('Unsupported session thinking level.');
+    }
+    patch.thinkingLevel = thinkingLevel;
+  }
 
   const reasoningLevel = sanitizeOptionalPatchValue(source.reasoningLevel);
   if (reasoningLevel !== undefined) patch.reasoningLevel = reasoningLevel;
@@ -1840,8 +1857,7 @@ let coworkRuntimeForwarderBound = false;
 let memoryMigrationDone = false;
 let preventSleepBlockerId: number | null = null;
 let appUpdateCoordinator: AppUpdateCoordinator | null = null;
-
-const AUTH_USER_STORE_KEY = 'auth_user';
+let mainLogReporter: MainLogReporter | null = null;
 
 function setPreventSleepBlockerEnabled(enabled: boolean): void {
   if (enabled) {
@@ -1907,6 +1923,22 @@ const getAppUpdateCoordinator = (): AppUpdateCoordinator => {
     appUpdateCoordinator = new AppUpdateCoordinator(getStore());
   }
   return appUpdateCoordinator;
+};
+
+const getMainLogReporter = (): MainLogReporter => {
+  if (!mainLogReporter) {
+    mainLogReporter = new MainLogReporter({
+      appVersion: app.getVersion(),
+      fetch: async (url, signal) => {
+        const response = await session.defaultSession.fetch(url, { method: 'GET', signal });
+        const result = { ok: response.ok, status: response.status };
+        await response.body?.cancel();
+        return result;
+      },
+      store: getStore(),
+    });
+  }
+  return mainLogReporter;
 };
 
 const forwardOpenClawStatus = (status: OpenClawEngineStatus): void => {
@@ -2344,8 +2376,16 @@ const executeDeferredGatewayRestart = async (reason: string) => {
   console.log(
     `${gwDiagTs()} executeDeferredGatewayRestart: performing deferred restart (reason: ${reason})`,
   );
+  // When the sync below re-defers (workloads still active), the re-scheduled
+  // reason flows back here on the next attempt — don't stack another
+  // `deferred:` prefix. Unbounded stacking also breaks the
+  // selfRestartSatisfiesSync() prefix check, misclassifying restarts that a
+  // gateway self-restart would satisfy as needing a full respawn.
+  const syncReason = reason.startsWith(DEFERRED_SYNC_REASON_PREFIX)
+    ? reason
+    : `${DEFERRED_SYNC_REASON_PREFIX}${reason}`;
   await syncOpenClawConfig({
-    reason: `${DEFERRED_SYNC_REASON_PREFIX}${reason}`,
+    reason: syncReason,
     restartGatewayIfRunning: true,
     expectedImpact: OpenClawConfigImpact.Restart,
   });
@@ -2404,10 +2444,13 @@ const scheduleDeferredGatewayRestart = (reason: string) => {
     }
   }, DEFERRED_RESTART_POLL_MS);
 
-  // Hard timeout: restart anyway after max wait to avoid config drift.
+  // Hard timeout: attempt the restart after max wait to bound config drift.
+  // Not a true force — the sync still re-defers when workloads are active,
+  // so a busy gateway gets another full wait window instead of being killed
+  // mid-task.
   deferredRestartTimeout = setTimeout(() => {
     console.warn(
-      `${gwDiagTs()} scheduleDeferredGatewayRestart: max wait exceeded, forcing restart (reason: ${reason})`,
+      `${gwDiagTs()} scheduleDeferredGatewayRestart: max wait exceeded, attempting restart (re-defers if workloads are still active) (reason: ${reason})`,
     );
     void executeDeferredGatewayRestart(reason);
   }, DEFERRED_RESTART_MAX_WAIT_MS);
@@ -3027,6 +3070,13 @@ const getCoworkEngineRouter = (): any => {
         getOpenClawEngineManager(),
         {
           normalizeModelRef: normalizeOpenClawModelRef,
+          onChannelPromptSubmit: event => {
+            void getMainLogReporter().report({
+              action: LogReporterAction.ImPromptSubmit,
+              source: LogReporterSource.OpenClawChannel,
+              ...event,
+            });
+          },
           onGatewayClientReady: () => {
             getCronJobService().notifyGatewayReady();
             handleGatewaySelfRestartSettled();
@@ -4084,7 +4134,14 @@ if (!gotTheLock) {
   });
 
   // IPC 处理程序
+  // One-shot arrival log: renderer startup has stalled on this invoke in the
+  // field, and this line tells whether the request reached the main process.
+  let firstStoreGetLogged = false;
   ipcMain.handle('store:get', (_event, key) => {
+    if (!firstStoreGetLogged) {
+      firstStoreGetLogged = true;
+      console.log(`[Main] first store:get IPC received from renderer, key=${String(key)}`);
+    }
     return getStore().get(key);
   });
 
@@ -4408,7 +4465,7 @@ if (!gotTheLock) {
 
   const getAuthUser = (): Record<string, unknown> | null => {
     try {
-      return getStore().get<Record<string, unknown>>(AUTH_USER_STORE_KEY) || null;
+      return getStore().get<Record<string, unknown>>(LogReporterStoreKey.AuthUser) || null;
     } catch (error) {
       console.warn('[Auth] failed to read cached auth user:', error);
       return null;
@@ -4417,7 +4474,7 @@ if (!gotTheLock) {
 
   const saveAuthUser = (user: Record<string, unknown>) => {
     try {
-      getStore().set(AUTH_USER_STORE_KEY, user);
+      getStore().set(LogReporterStoreKey.AuthUser, user);
     } catch (error) {
       console.warn('[Auth] failed to save auth user for attribution:', error);
     }
@@ -4438,7 +4495,7 @@ if (!gotTheLock) {
 
   const clearAuthUser = () => {
     try {
-      getStore().delete(AUTH_USER_STORE_KEY);
+      getStore().delete(LogReporterStoreKey.AuthUser);
     } catch (error) {
       console.warn('[Auth] failed to clear auth user for attribution:', error);
     }
@@ -4622,6 +4679,8 @@ if (!gotTheLock) {
         supportsImage: metadata?.supportsImage,
         supportsVideo: metadata?.supportsVideo,
         supportsThinking: metadata?.supportsThinking,
+        thinkingConfig: metadata?.thinkingConfig,
+        requestCapabilities: metadata?.requestCapabilities,
         supportsToolCalling: metadata?.supportsToolCalling,
         agenticReady: metadata?.agenticReady,
         contextWindow: metadata?.contextWindow,
@@ -6053,8 +6112,6 @@ if (!gotTheLock) {
 
   registerActivityIpcHandlers({
     ipcMain,
-    isDev,
-    isPackaged: app.isPackaged,
     getMainWindow: () => mainWindow,
     getServerBaseUrl: getServerApiBaseUrl,
     getClientVersion: () => app.getVersion(),
@@ -6062,7 +6119,6 @@ if (!gotTheLock) {
     hasAuthTokens: () => getAuthTokens() !== null,
     fetchPublic: (url, options) => net.fetch(url, options),
     fetchWithAuth,
-    developmentServerBaseUrl: process.env.LOBSTER_ACTIVITY_SERVER_BASE_URL,
   });
 
   ipcMain.handle(AuthIpcChannel.Exchange, async (_event, { code }: { code: string }) => {
@@ -7661,6 +7717,7 @@ if (!gotTheLock) {
         imageAttachments?: CoworkImageAttachmentMain[];
         agentId?: string;
         modelOverride?: string;
+        thinkingLevel?: string;
         mediaSelection?: {
           mode: 'auto' | 'image' | 'video' | 'none';
           modelId?: string;
@@ -7732,6 +7789,12 @@ if (!gotTheLock) {
         const runtimeSkillIds = options.runtimeSkillIds ?? options.activeSkillIds;
         const selectedTextSnippets = normalizeSelectedTextSnippetsForIpc(options.selectedTextSnippets);
         const browserAnnotations = normalizeBrowserAnnotationBatches(options.browserAnnotations);
+        const thinkingLevel = options.thinkingLevel === undefined
+          ? ''
+          : parseModelThinkingLevel(options.thinkingLevel);
+        if (options.thinkingLevel !== undefined && !thinkingLevel) {
+          return { success: false, error: 'Unsupported session thinking level.' };
+        }
         if (selectedTextSnippets.length > 0) {
           console.log(
             `[CoworkSelectedText] accepted ${selectedTextSnippets.length} excerpts with `
@@ -7747,6 +7810,7 @@ if (!gotTheLock) {
           runtimeSkillIds || [],
           options.agentId || 'main',
           options.modelOverride || '',
+          { thinkingLevel: thinkingLevel || '' },
         );
 
         if (options.modelOverride) {
@@ -8980,18 +9044,23 @@ if (!gotTheLock) {
       const runtime = getCoworkEngineRouter();
       const patchResult = await runtime.patchSession(sessionId, patch);
 
-      if (patch.model !== undefined) {
-        const modelOverride =
-          patchResult && typeof patchResult.modelOverride === 'string'
-            ? patchResult.modelOverride
-            : patch.model ?? '';
-        getCoworkStore().updateSession(
-          sessionId,
-          {
-            modelOverride,
-          },
-          { touchUpdatedAt: false },
-        );
+      if (patch.model !== undefined || patch.thinkingLevel !== undefined) {
+        const sessionUpdates: {
+          modelOverride?: string;
+          thinkingLevel?: ReturnType<typeof parseModelThinkingLevel> | '';
+        } = {};
+        if (patch.model !== undefined) {
+          sessionUpdates.modelOverride =
+            patchResult && typeof patchResult.modelOverride === 'string'
+              ? patchResult.modelOverride
+              : patch.model ?? '';
+        }
+        if (patch.thinkingLevel !== undefined) {
+          sessionUpdates.thinkingLevel = patch.thinkingLevel
+            ? parseModelThinkingLevel(patch.thinkingLevel) ?? ''
+            : '';
+        }
+        getCoworkStore().updateSession(sessionId, sessionUpdates, { touchUpdatedAt: false });
       }
 
       const session = getCoworkStore().getSession(sessionId);
@@ -10989,6 +11058,42 @@ if (!gotTheLock) {
         };
       }
     }
+  );
+
+  ipcMain.handle(
+    DialogIpc.SaveFileCopy,
+    async (
+      event,
+      filePath?: string,
+    ): Promise<{ success: boolean; canceled?: boolean; path?: string; error?: string }> => {
+      try {
+        if (typeof filePath !== 'string' || !filePath.trim()) {
+          return { success: false, error: 'Missing file path' };
+        }
+        const resolvedPath = path.resolve(filePath.trim());
+        const stat = await fs.promises.stat(resolvedPath);
+        if (!stat.isFile()) {
+          return { success: false, error: 'Not a file' };
+        }
+        const ownerWindow = BrowserWindow.fromWebContents(event.sender);
+        const saveOptions = {
+          defaultPath: path.join(app.getPath('downloads'), path.basename(resolvedPath)),
+        };
+        const saveResult = ownerWindow
+          ? await dialog.showSaveDialog(ownerWindow, saveOptions)
+          : await dialog.showSaveDialog(saveOptions);
+        if (saveResult.canceled || !saveResult.filePath) {
+          return { success: true, canceled: true };
+        }
+        await fs.promises.copyFile(resolvedPath, saveResult.filePath);
+        return { success: true, canceled: false, path: saveResult.filePath };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to save file copy',
+        };
+      }
+    },
   );
 
   ipcMain.handle(
