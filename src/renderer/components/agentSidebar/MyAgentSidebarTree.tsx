@@ -6,6 +6,7 @@ import Modal from '../../components/common/Modal';
 import { agentService } from '../../services/agent';
 import { coworkService } from '../../services/cowork';
 import { expertService } from '../../services/expertService';
+import { i18nService } from '../../services/i18n';
 import { RootState } from '../../store';
 import {
   selectCoworkSessions,
@@ -20,8 +21,12 @@ import { isDefaultAgentId } from '../../utils/agentDisplay';
 import AgentAvatarIcon from '../agent/AgentAvatarIcon';
 import AgentCreateModal from '../agent/AgentCreateModal';
 import AgentSettingsPanel from '../agent/AgentSettingsPanel';
-import type { CoworkOpenShareOptionsEventDetail } from '../cowork/constants';
-import { CoworkUiEvent } from '../cowork/constants';
+import type {
+  CoworkOpenAgentTaskSlotEventDetail,
+  CoworkOpenShareOptionsEventDetail,
+  CoworkSwitchAgentEventDetail,
+} from '../cowork/constants';
+import { CoworkShortcutDirection, CoworkUiEvent } from '../cowork/constants';
 import SpinnerIcon from '../icons/SpinnerIcon';
 import { formatAgentTaskRelativeTime } from './time';
 import { useAgentSidebarState } from './useAgentSidebarState';
@@ -88,16 +93,10 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
   const {
     agentNodes,
     patchTaskPreview,
-    removeTaskPreview,
-    removeTaskPreviews,
-    removeAgentTaskPreviews,
-    retryLoadTasks,
-    loadMoreTasks,
     expandAgent,
     collapseAgent,
     expandTasks,
     collapseTasks,
-    toggleAgentExpanded,
   } = useAgentSidebarState();
 
   // 点击外部关闭弹出菜单
@@ -259,7 +258,7 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
 
   useEffect(() => {
     const handleSwitchAgent = (event: Event) => {
-      const direction = (event as CustomEvent<CoworkShortcutSwitchAgentEventDetail>).detail?.direction;
+      const direction = (event as CustomEvent<CoworkSwitchAgentEventDetail>).detail?.direction;
       if (!direction) return;
 
       const currentIndex = agentNodes.findIndex((agent) => agent.id === currentAgentId);
@@ -336,21 +335,6 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
       window.removeEventListener(CoworkUiEvent.ShortcutOpenAgentTaskSlot, handleOpenAgentTaskSlot);
     };
   }, [agentNodes, collapseAgent, collapseTasks, currentAgentId, expandAgent, expandTasks, onShowCowork]);
-
-  const handleDeleteTask = async (task: AgentSidebarTaskNode) => {
-    const deleted = await coworkService.deleteSession(task.id);
-    onSidebarAction?.(deleted ? 'task_delete_success' : 'task_delete_failed', {
-      agentType: isDefaultAgentId(currentAgentId) ? 'main' : 'custom',
-      isCurrentSession: sessionId === currentSessionId,
-      result: deleted ? 'success' : 'failed',
-    });
-    if (deleted) {
-      removeTaskPreview(sessionId);
-      if (sessionId === currentSessionId) {
-        coworkService.clearSession({ restoreAgentSkills: true });
-      }
-    }
-  };
 
   // 置顶/取消置顶操作
   const handleTogglePin = async (e: React.MouseEvent, session: any) => {
