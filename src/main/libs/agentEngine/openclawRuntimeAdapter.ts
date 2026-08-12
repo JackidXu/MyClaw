@@ -16,6 +16,10 @@ import {
   OpenClawSessionReasoningLevel,
 } from '../../../common/openclawSession';
 import {
+  PromptAnalyticsConversationState,
+  type PromptAnalyticsConversationState as PromptAnalyticsConversationStateValue,
+} from '../../../shared/analytics/constants';
+import {
   buildBrowserAnnotationPromptSection,
   type CoworkBrowserAnnotationMessageBatch,
 } from '../../../shared/cowork/browserAnnotations';
@@ -78,6 +82,7 @@ import { isAutoModelRef } from '../modelResolver';
 import { extractOpenClawAssistantStreamParts,extractOpenClawAssistantStreamText } from '../openclawAssistantText';
 import {
   buildManagedSessionKey,
+  extractAgentIdFromKey,
   isCronSessionKey,
   isManagedSessionKey,
   type OpenClawChannelSessionSync,
@@ -107,6 +112,7 @@ import {
   stripTrailingSilentReplyToken,
 } from '../openclawHistory';
 import { buildOpenClawLocalTimeContextPrompt } from '../openclawLocalTimeContextPrompt';
+import { resolveOpenClawThinkingLevelForModel } from '../openclawModelThinkingLevels';
 import { consumeRecentOpenClawTokenProxyQuotaError } from '../openclawTokenProxy';
 import {
   findRedundantFinalPrefixMessageId,
@@ -462,6 +468,12 @@ type ChannelSessionLifecycleRun = {
 
 type OpenClawRuntimeAdapterOptions = {
   normalizeModelRef?: (modelRef: string) => string;
+  onChannelPromptSubmit?: (event: {
+    agentId: string;
+    conversationState: PromptAnalyticsConversationStateValue;
+    isMainAgent: boolean;
+    platform: string;
+  }) => void;
   onGatewayClientReady?: () => void;
   getIMSessionKey?: (sessionId: string) => string | null;
 };
@@ -622,6 +634,31 @@ const OpenClawFailureFinalText = {
   GenericRunFailure: 'Something went wrong while processing your request',
 } as const;
 
+// A critical tool-loop veto replaces the blocked tool's result with a
+// "CRITICAL: ... Session execution blocked ..." text and terminates the run,
+// which then surfaces OpenClaw's generic incomplete-turn copy. Both strings
+// come from the pinned OpenClaw runtime (agents loop detection + embedded
+// runner); re-verify them when bumping the runtime version.
+const OPENCLAW_TOOL_LOOP_BLOCKED_RESULT_PATTERN = /^CRITICAL: [\s\S]*Session execution blocked/;
+const OPENCLAW_INCOMPLETE_TURN_TEXT = "Agent couldn't generate a response";
+
+export function isOpenClawToolLoopBlockedResultText(text: string): boolean {
+  return OPENCLAW_TOOL_LOOP_BLOCKED_RESULT_PATTERN.test(text.trim());
+}
+
+export function resolveOpenClawToolLoopErrorOverride(
+  toolLoopBlockReason: string | undefined,
+  rawErrorMessage: string,
+): { errorMessage: string; detailRawErrorMessage: string } | null {
+  if (!toolLoopBlockReason || !rawErrorMessage.includes(OPENCLAW_INCOMPLETE_TURN_TEXT)) {
+    return null;
+  }
+  return {
+    errorMessage: t('coworkErrorToolLoopBlocked'),
+    detailRawErrorMessage: `${rawErrorMessage}\n${toolLoopBlockReason}`,
+  };
+}
+
 const OpenClawHistoryRole = {
   Tool: 'tool',
   ToolResult: 'toolResult',
@@ -668,6 +705,12 @@ type ActiveTurn = {
   toolUseMessageIdByToolCallId: Map<string, string>;
   toolResultMessageIdByToolCallId: Map<string, string>;
   toolResultTextByToolCallId: Map<string, string>;
+  /**
+   * Reason text of a critical tool-loop veto seen in this turn. The runtime
+   * ends such runs with its generic incomplete-turn copy, so this context is
+   * needed to surface an honest error message instead.
+   */
+  toolLoopBlockReason?: string;
   mediaStatusPollCountByToolCallId: Map<string, number>;
   mediaStatusPollCountByTaskId: Map<string, number>;
   mediaStatusPollBaseByToolCallId: Map<string, number>;
@@ -2367,10 +2410,12 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
    * cannot immediately overwrite their loading state with `completed`.
    */
   private readonly channelLifecycleRunBySessionKey = new Map<string, ChannelSessionLifecycleRun>();
+  private readonly reportedChannelPromptRunIds = new Set<string>();
   private channelPollingTimer: ReturnType<typeof setInterval> | null = null;
 
   private static readonly CHANNEL_POLL_INTERVAL_MS = 10_000;
   private static readonly CHANNEL_LIFECYCLE_RUN_GRACE_MS = 60_000;
+  private static readonly REPORTED_CHANNEL_PROMPT_RUN_ID_LIMIT = 2_000;
   private static readonly GATEWAY_SESSION_SUBSCRIBE_TIMEOUT_MS = 5_000;
   /** Delay before pulling a cron delivery mirror into the mapped conversation,
    *  giving the gateway time to flush the transcript append. */
@@ -4006,6 +4051,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
         id: `transient-${sessionKey}`,
         title: sessionKey.split(':').pop() || 'Cron Session',
         claudeSessionId: null,
+        scheduledTaskId: null,
         status: 'completed' as CoworkSessionStatus,
         pinned: false,
         cwd: '',
@@ -4098,6 +4144,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       agentId: '',
       title: sessionKey.split(':').pop() || 'Cron Session',
       claudeSessionId: null,
+      scheduledTaskId: null,
       status: 'completed' as CoworkSessionStatus,
       pinned: false,
       cwd: '',
@@ -4963,13 +5010,32 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
         ? { model: patch.model ? this.normalizeModelRef(patch.model) : patch.model }
         : {}),
     };
+    const patchedThinkingLevel = normalizedPatch.thinkingLevel !== undefined
+      ? normalizedPatch.thinkingLevel ?? ''
+      : undefined;
+    const thinkingModelRef = normalizedPatch.model !== undefined
+      ? (normalizedPatch.model || this.resolveAgentDefaultModelRef(session))
+      : (session.modelOverride
+          ? this.normalizeModelRef(session.modelOverride)
+          : this.resolveAgentDefaultModelRef(session));
+    const gatewayPatch: OpenClawSessionPatch = {
+      ...normalizedPatch,
+      ...(typeof normalizedPatch.thinkingLevel === 'string' && normalizedPatch.thinkingLevel
+        ? {
+            thinkingLevel: resolveOpenClawThinkingLevelForModel(
+              thinkingModelRef,
+              normalizedPatch.thinkingLevel,
+            ),
+          }
+        : {}),
+    };
 
     const sendPatch = async (): Promise<OpenClawSessionPatchGatewayResult | undefined> => {
       try {
         const response = await this.requestSessionPatchWithProfile({
           sessionId,
           sessionKey: targetSessionKey,
-          patch: normalizedPatch,
+          patch: gatewayPatch,
           source: 'patchSession',
           reason: 'user-requested session patch',
           timeoutMs: OpenClawRuntimeAdapter.SESSION_PATCH_TIMEOUT_MS,
@@ -5001,11 +5067,16 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       } else {
         this.sessionModelPatchStateBySession.delete(sessionId);
       }
-      return { modelOverride: modelOverride ?? '' };
+      return {
+        modelOverride: modelOverride ?? '',
+        ...(patchedThinkingLevel !== undefined ? { thinkingLevel: patchedThinkingLevel } : {}),
+      };
     }
 
     await sendPatch();
-    return {};
+    return patchedThinkingLevel !== undefined
+      ? { thinkingLevel: patchedThinkingLevel }
+      : {};
   }
 
   stopSession(sessionId: string): void {
@@ -5102,9 +5173,10 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     sessionId: string;
     sessionKey: string;
     model: string;
+    thinkingLevel?: string;
     source: SessionModelPatchSource;
   }): Promise<void> {
-    const { sessionId, sessionKey, model, source } = options;
+    const { sessionId, sessionKey, model, thinkingLevel, source } = options;
     if (!model) {
       this.sessionModelPatchStateBySession.delete(sessionId);
       return;
@@ -5154,11 +5226,15 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
           return;
         }
 
+        const openClawThinkingLevel = thinkingLevel
+          ? resolveOpenClawThinkingLevelForModel(model, thinkingLevel)
+          : undefined;
         await this.requestSessionPatchWithProfile({
           sessionId,
           sessionKey,
           patch: {
             model,
+            ...(openClawThinkingLevel ? { thinkingLevel: openClawThinkingLevel } : {}),
             ...(isManagedSessionKey(sessionKey)
               ? { reasoningLevel: OpenClawSessionReasoningLevel.Stream }
               : {}),
@@ -5415,6 +5491,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
         sessionId,
         sessionKey,
         model: currentModel,
+        thinkingLevel: session.thinkingLevel || undefined,
         source: session.modelOverride
           ? SessionModelPatchSource.SessionOverride
           : SessionModelPatchSource.AgentModel,
@@ -6597,6 +6674,25 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     });
   }
 
+  /**
+   * The runtime ends a critically tool-loop-vetoed run with its generic
+   * incomplete-turn copy, which reads like a model failure. When this turn saw
+   * a loop veto, surface an honest localized message instead and keep the veto
+   * reason in the technical detail for diagnosis.
+   */
+  private resolveTurnErrorMessageWithToolLoopContext(
+    turn: ActiveTurn | undefined,
+    rawErrorMessage: string,
+    metadata: OpenClawSafeRuntimeErrorMetadata | undefined,
+  ): { errorMessage: string; detailRawErrorMessage: string } {
+    const override = resolveOpenClawToolLoopErrorOverride(turn?.toolLoopBlockReason, rawErrorMessage);
+    if (override) return override;
+    return {
+      errorMessage: resolveOpenClawRuntimeErrorMessage(rawErrorMessage, metadata),
+      detailRawErrorMessage: rawErrorMessage,
+    };
+  }
+
   private finalizeStoppedStreamingMessage(
     sessionId: string,
     messageId: string | null,
@@ -7477,6 +7573,9 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     if (isNewlyKnownSession) {
       this.notifySessionsChanged(sessionId);
     }
+    if (phase === AgentLifecyclePhase.Start && runId) {
+      this.reportChannelPromptSubmit(sessionId, sessionKey, runId);
+    }
   }
 
   /**
@@ -8151,8 +8250,9 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
         if (!turn) return; // Already handled by handleChatError
         // If a different run started while the fallback was pending, leave it alone.
         if (errorRunId && !turn.knownRunIds.has(errorRunId)) return;
-        const errorMessage = resolveOpenClawRuntimeErrorMessage(rawErrorMessage, errorMetadata);
-        const errorDetail = this.buildTurnErrorDetail(sessionId, turn, rawErrorMessage, errorMessage, errorMetadata);
+        const resolved = this.resolveTurnErrorMessageWithToolLoopContext(turn, rawErrorMessage, errorMetadata);
+        const errorMessage = resolved.errorMessage;
+        const errorDetail = this.buildTurnErrorDetail(sessionId, turn, resolved.detailRawErrorMessage, errorMessage, errorMetadata);
         console.log(`[OpenClawRuntime] lifecycle error fallback surfaced an error after waiting for the gateway chat error event in session ${sessionId}: ${errorMessage}`);
         // Abort the retrying run on the gateway so the session is freed for new messages.
         // Without this, the gateway continues retrying indefinitely and rejects subsequent chat.send requests.
@@ -8644,6 +8744,9 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       const previous = turn.toolResultTextByToolCallId.get(toolCallId) ?? '';
       const isError = resolveToolEventIsError(data);
       const finalContent = incoming.trim() ? incoming : previous;
+      if (isOpenClawToolLoopBlockedResultText(finalContent)) {
+        turn.toolLoopBlockReason = finalContent.trim().slice(0, 400);
+      }
       const finalError = isError ? (finalContent || 'Tool execution failed') : undefined;
       const existingResultMessageId = turn.toolResultMessageIdByToolCallId.get(toolCallId);
       const finalMetadata = {
@@ -9295,8 +9398,9 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     if (finalTextIsOpenClawFailure) {
       const rawErrorMessage = finalText.trim() || 'OpenClaw run failed';
       const errorMetadata = normalizeOpenClawSafeRuntimeErrorMetadata(payload);
-      const errorMessage = resolveOpenClawRuntimeErrorMessage(rawErrorMessage, errorMetadata);
-      const errorDetail = this.buildTurnErrorDetail(sessionId, turn, rawErrorMessage, errorMessage, errorMetadata);
+      const resolved = this.resolveTurnErrorMessageWithToolLoopContext(turn, rawErrorMessage, errorMetadata);
+      const errorMessage = resolved.errorMessage;
+      const errorDetail = this.buildTurnErrorDetail(sessionId, turn, resolved.detailRawErrorMessage, errorMessage, errorMetadata);
       const erroredSessionKey = turn.sessionKey;
       this.store.updateSession(sessionId, { status: 'error' });
       const errorMsg = this.store.addMessage(sessionId, {
@@ -10196,6 +10300,12 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
    * successful chat.final is persisted and only its deferred completion is
    * pending. Surfacing that stale notice would flip a successful turn into a
    * session error, so complete the deferred final instead.
+   *
+   * Exception: OpenClaw's surface_error failover (e.g. LLM idle timeout after a
+   * partial reply) ends the lifecycle with isError=false and delivers the real
+   * failure through this same late chat-error path, so it never reaches
+   * terminatedRunIds. Those provider-runtime failures must surface — swallowing
+   * them makes a dead run look completed.
    */
   private completeDeferredFinalOnStaleChatError(
     sessionId: string,
@@ -10213,6 +10323,15 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     }
     const staleErrorText = payload.errorMessage?.trim()
       || extractGatewayMessageText(payload.message).trim();
+    if (this.isProviderRuntimeFailureChatError(payload, staleErrorText)) {
+      console.warn(
+        '[OpenClawRuntime] surfacing a provider runtime failure that arrived as a late chat error despite a pending deferred final.',
+        `Session ${sessionId}.`,
+        `Run ${errorRunId || turn.finalCompletionRunId || turn.runId}.`,
+        `Error ${staleErrorText.slice(0, 200) || 'unknown'}.`,
+      );
+      return false;
+    }
     console.warn(
       '[OpenClawRuntime] ignored a stale chat error after a successful final; completing the deferred final instead.',
       `Session ${sessionId}.`,
@@ -10227,11 +10346,35 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     return true;
   }
 
+  /**
+   * True when a late chat error carries evidence of a real provider/LLM runtime
+   * failure rather than a stale tool-failure notice. The lifecycle-error
+   * forwarding path attaches structured observation fields; the webchat reply
+   * path (broadcastChatError) sends text only, so also match the model-timeout
+   * wording OpenClaw uses for surfaced LLM failures. Tool-failure notices carry
+   * neither: broader text classes such as network errors ("request timed out")
+   * overlap with tool error output and must stay swallowed here.
+   */
+  private isProviderRuntimeFailureChatError(payload: ChatEventPayload, errorText: string): boolean {
+    const metadata = normalizeOpenClawSafeRuntimeErrorMetadata(payload);
+    if (
+      metadata?.providerRuntimeFailureKind
+      || metadata?.failoverReason
+      || metadata?.httpCode
+      || metadata?.providerErrorType
+    ) {
+      return true;
+    }
+    if (!errorText) return false;
+    return classifyErrorKey(errorText) === CoworkErrorI18nKey.ModelResponseTimeout;
+  }
+
   private handleChatError(sessionId: string, turn: ActiveTurn, payload: ChatEventPayload): void {
     console.log('[OpenClawRuntime] handleChatError payload:', JSON.stringify(payload).slice(0, 1000));
     const rawErrorMessage = payload.errorMessage?.trim() || 'OpenClaw run failed';
     const errorMetadata = normalizeOpenClawSafeRuntimeErrorMetadata(payload);
-    let errorMessage = resolveOpenClawRuntimeErrorMessage(rawErrorMessage, errorMetadata);
+    const resolved = this.resolveTurnErrorMessageWithToolLoopContext(turn, rawErrorMessage, errorMetadata);
+    let errorMessage = resolved.errorMessage;
 
     // Detect model API errors that are likely caused by unsupported image content
     // in tool results (e.g., Read tool returning image blocks for non-vision models).
@@ -10240,7 +10383,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     if (/^400\b/.test(errorMessage)) {
       errorMessage += '\n\n[Hint: If the model attempted to read an image file, this may be because the model does not support image input. Consider using a vision-capable model or avoid sending image files.]';
     }
-    const errorDetail = this.buildTurnErrorDetail(sessionId, turn, rawErrorMessage, errorMessage, errorMetadata);
+    const errorDetail = this.buildTurnErrorDetail(sessionId, turn, resolved.detailRawErrorMessage, errorMessage, errorMetadata);
 
     const erroredSessionKey = turn.sessionKey;
     this.clearContextMaintenanceState(sessionId, turn, 'chat error');
@@ -11733,7 +11876,57 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
 
     // For channel sessions, prefetch user messages before streaming starts
     if (isChannel) {
+      this.reportChannelPromptSubmit(sessionId, sessionKey, turnRunId);
       void this.prefetchChannelUserMessages(sessionId, sessionKey);
+    }
+  }
+
+  private reportChannelPromptSubmit(sessionId: string, sessionKey: string, runId: string): void {
+    const onChannelPromptSubmit = this.options.onChannelPromptSubmit;
+    if (!onChannelPromptSubmit || !this.channelSessionSync) return;
+
+    try {
+      if (this.heartbeatSessionKeys.has(sessionKey)) return;
+
+      const channel = parseChannelSessionKey(sessionKey);
+      if (!channel || !this.channelSessionSync.isCurrentBindingKey(sessionKey)) return;
+
+      const normalizedRunId = runId.trim();
+      if (normalizedRunId && this.reportedChannelPromptRunIds.has(normalizedRunId)) return;
+
+      const session = this.store.getSession(sessionId);
+      if (!session) return;
+
+      const agentId = session.agentId?.trim() || extractAgentIdFromKey(sessionKey) || 'main';
+      const conversationState = session.messages.some(message => message.type === 'assistant')
+        ? PromptAnalyticsConversationState.ContinueSession
+        : PromptAnalyticsConversationState.NewTask;
+
+      if (normalizedRunId) {
+        this.reportedChannelPromptRunIds.add(normalizedRunId);
+        while (
+          this.reportedChannelPromptRunIds.size
+          > OpenClawRuntimeAdapter.REPORTED_CHANNEL_PROMPT_RUN_ID_LIMIT
+        ) {
+          const oldestRunId = this.reportedChannelPromptRunIds.values().next().value;
+          if (typeof oldestRunId !== 'string') break;
+          this.reportedChannelPromptRunIds.delete(oldestRunId);
+        }
+      }
+
+      onChannelPromptSubmit({
+        agentId,
+        conversationState,
+        isMainAgent: agentId === 'main',
+        platform: channel.platform,
+      });
+    } catch (error) {
+      const errorName = error instanceof Error && error.name.trim()
+        ? error.name.trim()
+        : 'UnknownError';
+      console.warn(
+        `[OpenClawRuntime] failed to report IM prompt submission analytics (${errorName})`,
+      );
     }
   }
 
