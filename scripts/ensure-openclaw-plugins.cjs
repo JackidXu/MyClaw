@@ -47,6 +47,10 @@ function die(msg) {
   process.exit(1);
 }
 
+function getErrorMessage(error) {
+  return error instanceof Error ? error.message : String(error);
+}
+
 function copyDirRecursive(src, dest) {
   const linkedOpenClawPeer = path.join(src, 'node_modules', 'openclaw');
   const shouldExcludeLinkedPeer =
@@ -564,11 +568,29 @@ function resolvePluginInstallSource(plugin) {
     };
   }
 
+  // Pack registry packages before handing them to OpenClaw. Direct npm specs
+  // make the CLI query package metadata again, which can omit the OpenClaw
+  // manifest fields for otherwise valid packages and misclassify the plugin.
   return {
-    kind: 'direct',
-    installSpec: `${npmSpec}@${version}`,
+    kind: 'packed',
+    packSpec: `${npmSpec}@${version}`,
     pinnedDisplaySpec: `${npmSpec}@${version}`,
   };
+}
+
+function buildPluginInstallEnv(plugin) {
+  const env = {
+    npm_config_legacy_peer_deps: 'true',
+  };
+
+  // npm 12 blocks transitive Git dependencies by default. NetEase Bee's
+  // pinned SDK currently depends on libsignal from GitHub, so opt in only for
+  // this explicitly declared plugin instead of weakening npm globally.
+  if (plugin.id === BEE_PACKAGE_NAME || plugin.npm === BEE_PACKAGE_NAME) {
+    env.npm_config_allow_git = 'all';
+  }
+
+  return env;
 }
 
 // ---------------------------------------------------------------------------
@@ -669,6 +691,8 @@ function main() {
           } else if (source.kind === 'packed') {
             if (source.registry) {
               log(`  Packing from custom registry: ${source.registry}`);
+            } else {
+              log('  Packing pinned npm package before OpenClaw installation.');
             }
             installSpec = npmPack(source.packSpec, source.registry, stagingDir);
           } else {
@@ -688,6 +712,11 @@ function main() {
             installSpec = prepareOpenClawNimPackage(installSpec, stagingDir, { log });
           }
 
+          const installEnv = buildPluginInstallEnv(plugin);
+          if (installEnv.npm_config_allow_git === 'all') {
+            log('  Allowing Git dependencies for this NetEase Bee installation only.');
+          }
+
           runOpenClawCli(
             ['plugins', 'install', installSpec, '--force', '--dangerously-force-unsafe-install'],
             {
@@ -698,7 +727,7 @@ function main() {
                 // gateway already provides the SDK at runtime.  Without this,
                 // npm installs the full openclaw SDK + transitive deps (~738 MB)
                 // into each plugin's node_modules.
-                npm_config_legacy_peer_deps: 'true',
+                ...installEnv,
               },
               stdio: 'inherit',
             }
@@ -737,7 +766,7 @@ function main() {
           success = true;
         } catch (err) {
           lastError = err;
-          log(`Attempt ${attempt} failed for plugin ${id}: ${err.message}`);
+          log(`Attempt ${attempt} failed for plugin ${id}: ${getErrorMessage(err)}`);
         } finally {
           // Clean up staging directory
           try {
@@ -750,11 +779,11 @@ function main() {
 
       if (!success) {
         if (optional) {
-          log(`WARNING: Failed to install optional plugin ${id} after ${maxRetries} attempts: ${lastError.message}`);
+          log(`WARNING: Failed to install optional plugin ${id} after ${maxRetries} attempts: ${getErrorMessage(lastError)}`);
           log(`Skipping ${id} — it may not be available from this network.`);
           continue;
         }
-        die(`Failed to install plugin ${id} after ${maxRetries} attempts: ${lastError.message}`);
+        die(`Failed to install plugin ${id} after ${maxRetries} attempts: ${getErrorMessage(lastError)}`);
       }
     }
 
@@ -792,6 +821,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  buildPluginInstallEnv,
   buildNpmPackEnv,
   buildGitEnv,
   copyDirRecursive,

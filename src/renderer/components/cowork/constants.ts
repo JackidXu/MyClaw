@@ -3,11 +3,13 @@ export const CoworkUiEvent = {
   SelectSubagent: 'cowork:select-subagent',
   FocusInput: 'cowork:focus-input',
   ShortcutSearch: 'cowork:shortcut:search',
+  ShortcutConversationSearch: 'cowork:shortcut:conversation-search',
   ShortcutNewSession: 'cowork:shortcut:new-session',
   ShortcutStopSession: 'cowork:shortcut:stop-session',
   ShortcutToggleArtifacts: 'cowork:shortcut:toggle-artifacts',
   ShortcutSwitchAgent: 'cowork:shortcut:switch-agent',
   ShortcutShowCurrentAgentTasks: 'cowork:shortcut:show-current-agent-tasks',
+  ShortcutCollapseCurrentAgentTasks: 'cowork:shortcut:collapse-current-agent-tasks',
   ShortcutOpenAgentTaskSlot: 'cowork:shortcut:open-agent-task-slot',
 } as const;
 
