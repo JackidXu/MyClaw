@@ -2,8 +2,10 @@ import { app } from 'electron';
 
 import { HtmlSharePublicRoute } from '../../shared/htmlShare/constants';
 import type { SqliteStore } from '../sqliteStore';
+import { resolveDevelopmentServerBaseUrl } from './developmentServerBaseUrl';
 
 let cachedTestMode: boolean | null = null;
+let loggedDevelopmentServerBaseUrl: string | null = null;
 
 /**
  * Read testMode from store and cache it.

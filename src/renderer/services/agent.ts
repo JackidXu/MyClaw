@@ -47,6 +47,7 @@ class AgentService {
           description: a.description,
           avatar: a.avatar,
           model: a.model ?? '',
+          thinkingLevel: a.thinkingLevel ?? '',
           workingDirectory: a.workingDirectory ?? '',
           enabled: a.enabled,
           pinned: a.pinned ?? false,
@@ -76,6 +77,7 @@ class AgentService {
     systemPrompt?: string;
     identity?: string;
     model?: string;
+    thinkingLevel?: Agent['thinkingLevel'];
     workingDirectory?: string;
     avatar?: string;
     skillIds?: string[];
@@ -93,6 +95,7 @@ class AgentService {
           description: agent.description,
           avatar: agent.avatar,
           model: agent.model ?? '',
+          thinkingLevel: agent.thinkingLevel ?? '',
           workingDirectory: agent.workingDirectory ?? '',
           enabled: agent.enabled,
           pinned: agent.pinned ?? false,
@@ -123,6 +126,7 @@ class AgentService {
     systemPrompt?: string;
     identity?: string;
     model?: string;
+    thinkingLevel?: Agent['thinkingLevel'];
     workingDirectory?: string;
     avatar?: string;
     skillIds?: string[];
@@ -144,6 +148,7 @@ class AgentService {
             description: agent.description,
             avatar: agent.avatar,
             model: agent.model ?? '',
+            thinkingLevel: agent.thinkingLevel ?? '',
             workingDirectory: agent.workingDirectory ?? '',
             enabled: agent.enabled,
             pinned: agent.pinned ?? false,
@@ -181,6 +186,7 @@ class AgentService {
         description: agent.description,
         avatar: agent.avatar,
         model: agent.model ?? '',
+        thinkingLevel: agent.thinkingLevel ?? '',
         workingDirectory: agent.workingDirectory ?? '',
         enabled: agent.enabled,
         pinned: agent.pinned ?? false,
@@ -269,6 +275,7 @@ class AgentService {
           description: agent.description,
           avatar: agent.avatar,
           model: agent.model ?? '',
+          thinkingLevel: agent.thinkingLevel ?? '',
           workingDirectory: agent.workingDirectory ?? '',
           enabled: agent.enabled,
           pinned: agent.pinned ?? false,
