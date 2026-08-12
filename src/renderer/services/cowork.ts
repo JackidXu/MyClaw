@@ -1359,12 +1359,33 @@ class CoworkService {
     return false;
   }
 
+  private clearSecondBrainSessionState(sessionIds: string[]): void {
+    try {
+      const raw = localStorage.getItem('heyclaw_second_brain_sessions');
+      if (!raw) return;
+      const map: Record<string, boolean> = JSON.parse(raw);
+      let changed = false;
+      for (const id of sessionIds) {
+        if (id in map) {
+          delete map[id];
+          changed = true;
+        }
+      }
+      if (changed) {
+        localStorage.setItem('heyclaw_second_brain_sessions', JSON.stringify(map));
+      }
+    } catch (err) {
+      console.warn('[CoworkService] 清理第二大脑 Session 缓存状态失败:', err);
+    }
+  }
+
   async deleteSession(sessionId: string): Promise<boolean> {
     const cowork = window.electron?.cowork;
     if (!cowork) return false;
 
     const result = await cowork.deleteSession(sessionId);
     if (result.success) {
+      this.clearSecondBrainSessionState([sessionId]);
       this.queuedFollowUpCoordinator.clearSession(sessionId);
       store.dispatch(deleteSessionAction(sessionId));
       return true;
@@ -1380,6 +1401,7 @@ class CoworkService {
 
     const result = await cowork.deleteSessions(sessionIds);
     if (result.success) {
+      this.clearSecondBrainSessionState(sessionIds);
       sessionIds.forEach(sessionId => this.queuedFollowUpCoordinator.clearSession(sessionId));
       store.dispatch(deleteSessionsAction(sessionIds));
       return true;
@@ -2056,9 +2078,17 @@ class CoworkService {
     // 延迟 600ms 保证 SQLite 与 Redux store 消息落库完成
     await new Promise((resolve) => setTimeout(resolve, 600));
     try {
-      const enabled = localStorage.getItem('heyclaw_second_brain_enabled') !== 'false';
+      let enabled = true;
+      try {
+        const raw = localStorage.getItem('heyclaw_second_brain_sessions');
+        const map: Record<string, boolean> = raw ? JSON.parse(raw) : {};
+        if (sessionId in map) {
+          enabled = map[sessionId];
+        }
+      } catch {}
+
       if (!enabled) {
-        console.debug('[SecondBrain] 对话上报未开启（开关关闭）');
+        console.debug('[SecondBrain] 对话上报未开启（该 Session 开关关闭）');
         return;
       }
 

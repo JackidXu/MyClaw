@@ -492,6 +492,8 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     const coworkAgentEngine = useSelector((state: RootState) => state.cowork.config.agentEngine);
     const availableModels = useSelector((state: RootState) => state.model.availableModels);
     const currentSession = useSelector((state: RootState) => state.cowork.currentSession);
+    // Session 内已有消息时，禁止切换第二大脑开关（注入在 Session 启动时锁定）
+    const sessionHasMessages = (currentSession?.totalMessages ?? 0) > 0;
     const isLoggedIn = useSelector((state: RootState) => state.auth.isLoggedIn);
     const authQuota = useSelector((state: RootState) => state.auth.quota);
     const asrQuota = useSelector((state: RootState) => state.asrQuota);
@@ -525,13 +527,8 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     // While the input holds quick-action template text, pin the textarea to
     // maxHeight so switching templates doesn't bounce the layout around it.
     const [isTemplateHeightLocked, setIsTemplateHeightLocked] = useState(false);
-    const [secondBrainEnabled, setSecondBrainEnabled] = useState<boolean>(() => {
-      try {
-        return localStorage.getItem('heyclaw_second_brain_enabled') !== 'false';
-      } catch {
-        return true;
-      }
-    });
+    // 新对话始终默认开启，Session 有消息后从 per-session 存储恢复
+    const [secondBrainEnabled, setSecondBrainEnabled] = useState<boolean>(true);
 
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const draftKeyRef = useRef(draftKey);
@@ -800,6 +797,31 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     dispatch(ensureAsrQuotaFreshForDay(getLocalAsrQuotaDayKey()));
   }, [dispatch]);
 
+  // 记录/恢复各 Session 的第二大脑开关状态
+  // - 有消息的 Session 切换时，从 per-session 存储恢复正确的状态
+  // - Session 首次出现消息时（刚创建），把当前开关值写入 per-session 存储
+  useEffect(() => {
+    if (!sessionId || !sessionHasMessages) {
+      // 新对话或主页：始终默认开启
+      setSecondBrainEnabled(true);
+      return;
+    }
+    // 已有消息的 Session：使用 per-session 存储
+    try {
+      const raw = localStorage.getItem('heyclaw_second_brain_sessions');
+      const map: Record<string, boolean> = raw ? JSON.parse(raw) : {};
+      if (sessionId in map) {
+        // 已记录过，恢复该 Session 的状态
+        setSecondBrainEnabled(map[sessionId]);
+      } else {
+        // 首次见到该 Session 有消息（刚创建），记录当前开关值
+        map[sessionId] = secondBrainEnabled;
+        localStorage.setItem('heyclaw_second_brain_sessions', JSON.stringify(map));
+      }
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, sessionHasMessages]);
+
   useEffect(() => {
     if (!isLoggedIn) {
       dispatch(resetAsrQuota());
@@ -807,6 +829,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     }
     ensureFreshAsrQuota();
   }, [dispatch, ensureFreshAsrQuota, isLoggedIn]);
+
 
   // ASR 服务暂不可用，handleVoiceInputClick 暂时不使用
   // const handleVoiceInputClick = useCallback(() => {
@@ -1796,7 +1819,8 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     }
 
     let finalSkillPrompt = skillPrompt;
-    if (secondBrainEnabled) {
+    // 认知注入只在 Session 第一条消息时触发，避免多轮对话 systemPrompt 频繁变化破坏 Prompt Cache
+    if (secondBrainEnabled && !sessionHasMessages) {
       try {
         const injection = await fetchCognitionInjection();
         if (injection && injection.trim()) {
@@ -3068,16 +3092,18 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
         <button
           type="button"
           role="switch"
+          disabled={sessionHasMessages}
           aria-checked={secondBrainEnabled}
           onClick={(e) => {
             e.stopPropagation();
-            const nextState = !secondBrainEnabled;
-            setSecondBrainEnabled(nextState);
-            try {
-              localStorage.setItem('heyclaw_second_brain_enabled', String(nextState));
-            } catch (err) {}
+            if (sessionHasMessages) return;
+            setSecondBrainEnabled(prev => !prev);
           }}
-          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+          className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+            sessionHasMessages
+              ? 'cursor-not-allowed opacity-50'
+              : 'cursor-pointer'
+          } ${
             secondBrainEnabled ? 'bg-primary' : 'bg-neutral-300 dark:bg-neutral-700'
           }`}
         >
