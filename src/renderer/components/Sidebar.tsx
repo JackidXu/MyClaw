@@ -930,11 +930,6 @@ const Sidebar: React.FC<SidebarProps> = ({
             onToggleSelection={handleToggleSelection}
             onEnterBatchMode={handleEnterBatchMode}
             onBatchSelectableItemsChange={handleBatchSelectableItemsChange}
-            onSearchTasks={() => {
-              reportSidebarAction('open_search', { activeView, isCollapsed });
-              onShowCowork();
-              setIsSearchOpen(true);
-            }}
           />
         </div>
         <div

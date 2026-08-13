@@ -131,8 +131,6 @@ const AgentTreeNode: React.FC<AgentTreeNodeProps> = ({
     'flex w-full items-center gap-2 whitespace-nowrap px-2.5 py-1.5 text-left text-[13px] text-foreground transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.04]';
   const dangerMenuItemClassName =
     'flex w-full items-center gap-2 whitespace-nowrap px-2.5 py-1.5 text-left text-[13px] text-red-500 transition-colors hover:bg-red-500/10';
-  const disabledMenuItemClassName =
-    'flex w-full cursor-not-allowed items-center gap-2 whitespace-nowrap px-2.5 py-1.5 text-left text-[13px] text-secondary/40';
   const rowActionButtonClassName =
     'inline-flex h-5 w-5 items-center justify-center rounded text-foreground opacity-[0.3] transition-opacity hover:opacity-[0.46]';
   const rowEditActionButtonClassName =
@@ -363,18 +361,8 @@ const AgentTreeNode: React.FC<AgentTreeNodeProps> = ({
               <PushPinIcon slashed={agent.pinned} className={menuIconClassName} />
               {agent.pinned ? i18nService.t('agentUnpin') : i18nService.t('agentPin')}
             </button>
-            {isMainAgent ? (
-              <button
-                type="button"
-                disabled
-                className={disabledMenuItemClassName}
-                role="menuitem"
-                title={i18nService.t('agentDefaultCannotDelete')}
-              >
-                <TrashIcon className={menuIconClassName} />
-                {i18nService.t('delete')}
-              </button>
-            ) : (
+            {/* 主专家不显示召回选项 */}
+            {!isMainAgent && (
               <button
                 type="button"
                 onClick={handleDeleteMenuClick}
@@ -382,7 +370,7 @@ const AgentTreeNode: React.FC<AgentTreeNodeProps> = ({
                 role="menuitem"
               >
                 <TrashIcon className={menuIconClassName} />
-                {i18nService.t('delete')}
+                {i18nService.t('agentRecall')}
               </button>
             )}
           </div>
@@ -394,7 +382,7 @@ const AgentTreeNode: React.FC<AgentTreeNodeProps> = ({
             title={i18nService.t('agentDeleteConfirmTitle')}
             message={i18nService.t('agentDeleteConfirmMessage').replace('{name}', agentName)}
             cancelLabel={i18nService.t('cancel')}
-            confirmLabel={i18nService.t('delete')}
+            confirmLabel={i18nService.t('agentRecall')}
             onCancel={() => {
               onSidebarAction?.('agent_delete_cancel', {
                 agentType: 'custom',
