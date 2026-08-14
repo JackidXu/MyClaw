@@ -6,6 +6,7 @@ import path from 'path';
 import { buildScheduledTaskEnginePrompt } from '../../scheduledTask/enginePrompt';
 import { AgentId, DefaultAgentProfile } from '../../shared/agent';
 import {
+  BrowserDisplayMode,
   BrowserNetworkMode,
   BrowserRuntimeProfile,
   type BrowserWebAccessConfig,
@@ -1969,7 +1970,7 @@ export class OpenClawConfigSync {
       enabled: true,
       defaultProfile: BrowserRuntimeProfile.Managed,
       evaluateEnabled: browserWebAccess.evaluateEnabled,
-      ...(browserWebAccess.headless === true ? { headless: true } : {}),
+      headless: browserWebAccess.displayMode === BrowserDisplayMode.Embedded,
       ...(extraArgs.length > 0 ? { extraArgs } : {}),
       ssrfPolicy,
     };

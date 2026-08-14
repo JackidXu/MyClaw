@@ -21,7 +21,13 @@ import {
   type AuthLifecycleEvent,
   type AuthSessionChangedEvent,
 } from '../shared/auth/constants';
-import { BrowserIpc, type BrowserRuntimeProfile } from '../shared/browserWebAccess/constants';
+import {
+  type AgentBrowserObservation,
+  type AgentBrowserObservationRequest,
+  type AgentBrowserObservationResponse,
+  BrowserIpc,
+  type BrowserRuntimeProfile,
+} from '../shared/browserWebAccess/constants';
 import { ClipboardIpc } from '../shared/clipboard/constants';
 import type { CoworkBrowserAnnotationMessageBatch } from '../shared/cowork/browserAnnotations';
 import type {
@@ -336,6 +342,16 @@ contextBridge.exposeInMainWorld('electron', {
       listProfiles: () => ipcRenderer.invoke(BrowserIpc.ListProfiles),
       test: (options?: { profile?: BrowserRuntimeProfile }) => ipcRenderer.invoke(BrowserIpc.Test, options),
       resetProfile: (options?: { profile?: BrowserRuntimeProfile }) => ipcRenderer.invoke(BrowserIpc.ResetProfile, options),
+      getObservation: (request: AgentBrowserObservationRequest): Promise<AgentBrowserObservationResponse> =>
+        ipcRenderer.invoke(BrowserIpc.GetObservation, request),
+      refreshObservation: (request: AgentBrowserObservationRequest): Promise<AgentBrowserObservationResponse> =>
+        ipcRenderer.invoke(BrowserIpc.RefreshObservation, request),
+      onObservation: (callback: (observation: AgentBrowserObservation) => void) => {
+        const handler = (_event: Electron.IpcRendererEvent, observation: AgentBrowserObservation) =>
+          callback(observation);
+        ipcRenderer.on(BrowserIpc.Observation, handler);
+        return () => ipcRenderer.removeListener(BrowserIpc.Observation, handler);
+      },
     },
     dataMigration: {
       backup: () => ipcRenderer.invoke(DataMigrationIpc.Backup),

@@ -13,6 +13,13 @@ export const BrowserRuntimeProfile = {
 
 export type BrowserRuntimeProfile = typeof BrowserRuntimeProfile[keyof typeof BrowserRuntimeProfile];
 
+export const BrowserDisplayMode = {
+  Embedded: 'embedded',
+  External: 'external',
+} as const;
+
+export type BrowserDisplayMode = typeof BrowserDisplayMode[keyof typeof BrowserDisplayMode];
+
 export const BrowserNetworkMode = {
   ProxyCompatible: 'proxy-compatible',
   Strict: 'strict',
@@ -50,6 +57,9 @@ export const BrowserIpc = {
   ListProfiles: 'openclaw:browser:listProfiles',
   Test: 'openclaw:browser:test',
   ResetProfile: 'openclaw:browser:resetProfile',
+  GetObservation: 'openclaw:browser:getObservation',
+  RefreshObservation: 'openclaw:browser:refreshObservation',
+  Observation: 'openclaw:browser:observation',
 } as const;
 
 export type BrowserIpc = typeof BrowserIpc[keyof typeof BrowserIpc];
@@ -68,6 +78,7 @@ export interface BrowserWebFetchConfig {
 export interface BrowserWebAccessConfig {
   browserEnabled: boolean;
   profileMode: BrowserProfileMode;
+  displayMode: BrowserDisplayMode;
   networkMode: BrowserNetworkMode;
   followGlobalProxy: boolean;
   allowedHostnames: string[];
@@ -82,6 +93,68 @@ export interface BrowserWebAccessConfig {
   remoteCdpHandshakeTimeoutMs?: number;
   extraArgs?: string[];
   webFetch: BrowserWebFetchConfig;
+}
+
+export const AgentBrowserObservationStatus = {
+  Loading: 'loading',
+  Ready: 'ready',
+  Empty: 'empty',
+  Error: 'error',
+  Stopped: 'stopped',
+} as const;
+
+export type AgentBrowserObservationStatus =
+  typeof AgentBrowserObservationStatus[keyof typeof AgentBrowserObservationStatus];
+
+export const AgentBrowserToolPhase = {
+  Start: 'start',
+  Update: 'update',
+  Result: 'result',
+} as const;
+
+export type AgentBrowserToolPhase =
+  typeof AgentBrowserToolPhase[keyof typeof AgentBrowserToolPhase];
+
+export interface AgentBrowserTab {
+  targetId: string;
+  suggestedTargetId?: string;
+  tabId?: string;
+  label?: string;
+  title: string;
+  url: string;
+}
+
+export interface AgentBrowserObservation {
+  sessionId: string;
+  profile: string;
+  status: AgentBrowserObservationStatus;
+  tabs: AgentBrowserTab[];
+  targetId?: string;
+  title?: string;
+  url?: string;
+  screenshotDataUrl?: string;
+  updatedAt: number;
+  error?: string;
+}
+
+export interface AgentBrowserToolEvent {
+  sessionId: string;
+  phase: AgentBrowserToolPhase;
+  action?: string;
+  profile?: string;
+  targetId?: string;
+  isError?: boolean;
+}
+
+export interface AgentBrowserObservationRequest {
+  sessionId: string;
+  targetId?: string;
+}
+
+export interface AgentBrowserObservationResponse {
+  success: boolean;
+  observation?: AgentBrowserObservation | null;
+  error?: string;
 }
 
 export interface BrowserDiagnosticResultStep {
@@ -100,6 +173,7 @@ export interface BrowserDiagnosticResult {
 export const defaultBrowserWebAccessConfig: BrowserWebAccessConfig = {
   browserEnabled: true,
   profileMode: BrowserProfileMode.Managed,
+  displayMode: BrowserDisplayMode.Embedded,
   networkMode: BrowserNetworkMode.ProxyCompatible,
   followGlobalProxy: true,
   allowedHostnames: [],
@@ -329,6 +403,11 @@ export const normalizeBrowserWebAccessConfig = (
   const profileMode = Object.values(BrowserProfileMode).includes(value?.profileMode as BrowserProfileMode)
     ? value?.profileMode as BrowserProfileMode
     : defaultBrowserWebAccessConfig.profileMode;
+  const displayMode = Object.values(BrowserDisplayMode).includes(value?.displayMode as BrowserDisplayMode)
+    ? value?.displayMode as BrowserDisplayMode
+    : value?.headless === false
+      ? BrowserDisplayMode.External
+      : defaultBrowserWebAccessConfig.displayMode;
   const networkMode = Object.values(BrowserNetworkMode).includes(value?.networkMode as BrowserNetworkMode)
     ? value?.networkMode as BrowserNetworkMode
     : defaultBrowserWebAccessConfig.networkMode;
@@ -348,6 +427,7 @@ export const normalizeBrowserWebAccessConfig = (
   return {
     browserEnabled: value?.browserEnabled ?? defaultBrowserWebAccessConfig.browserEnabled,
     profileMode,
+    displayMode,
     networkMode,
     followGlobalProxy: value?.followGlobalProxy ?? defaultBrowserWebAccessConfig.followGlobalProxy,
     allowedHostnames: normalizeBrowserHostnameList(value?.allowedHostnames),
@@ -356,7 +436,6 @@ export const normalizeBrowserWebAccessConfig = (
     evaluateEnabled: value?.evaluateEnabled ?? defaultBrowserWebAccessConfig.evaluateEnabled,
     ...(executablePath ? { executablePath } : {}),
     ...(cdpUrl ? { cdpUrl } : {}),
-    ...(value?.headless === true ? { headless: true } : {}),
     ...(value?.attachOnly === true ? { attachOnly: true } : {}),
     ...(remoteCdpTimeoutMs ? { remoteCdpTimeoutMs } : {}),
     ...(remoteCdpHandshakeTimeoutMs ? { remoteCdpHandshakeTimeoutMs } : {}),

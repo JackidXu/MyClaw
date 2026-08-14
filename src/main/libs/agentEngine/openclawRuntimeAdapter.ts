@@ -20,6 +20,10 @@ import {
   type PromptAnalyticsConversationState as PromptAnalyticsConversationStateValue,
 } from '../../../shared/analytics/constants';
 import {
+  type AgentBrowserToolEvent,
+  AgentBrowserToolPhase,
+} from '../../../shared/browserWebAccess/constants';
+import {
   buildBrowserAnnotationPromptSection,
   type CoworkBrowserAnnotationMessageBatch,
 } from '../../../shared/cowork/browserAnnotations';
@@ -479,6 +483,7 @@ type OpenClawRuntimeAdapterOptions = {
     platform: string;
   }) => void;
   onGatewayClientReady?: () => void;
+  onBrowserToolEvent?: (event: AgentBrowserToolEvent) => void;
 };
 
 const SessionModelPatchSource = {
@@ -8505,6 +8510,29 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
 
     if (toolNameRaw.toLowerCase() === 'browser') {
       const isError = resolveToolEventIsError(data);
+      const browserArgs = isRecord(data.args) ? data.args : {};
+      const browserResult = isRecord(data.result) ? data.result : {};
+      const browserResultDetails = isRecord(browserResult.details) ? browserResult.details : {};
+      const readBrowserEventString = (value: unknown): string | undefined => (
+        typeof value === 'string' && value.trim() ? value.trim() : undefined
+      );
+      const browserAction = readBrowserEventString(browserArgs.action);
+      const browserProfile = readBrowserEventString(browserArgs.profile);
+      const browserTargetId = readBrowserEventString(browserResultDetails.targetId)
+        ?? readBrowserEventString(browserResult.targetId)
+        ?? readBrowserEventString(browserArgs.targetId);
+      try {
+        this.options.onBrowserToolEvent?.({
+          sessionId,
+          phase,
+          ...(browserAction ? { action: browserAction } : {}),
+          ...(browserProfile ? { profile: browserProfile } : {}),
+          ...(browserTargetId ? { targetId: browserTargetId } : {}),
+          ...(phase === AgentBrowserToolPhase.Result ? { isError } : {}),
+        });
+      } catch (error) {
+        console.warn('[OpenClawRuntime] Browser observation callback failed.', error);
+      }
       // Log full data keys and values for diagnosis
       const dataKeys = Object.keys(data);
       const resultType = data.result === undefined ? 'undefined'

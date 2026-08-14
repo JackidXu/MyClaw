@@ -54,9 +54,12 @@ import {
   AuthSessionStatus,
 } from '../shared/auth/constants';
 import {
+  type AgentBrowserObservationRequest,
+  type AgentBrowserObservationResponse,
   type BrowserDiagnosticResultStep,
   BrowserDiagnosticStatus,
   BrowserDiagnosticStep,
+  BrowserDisplayMode,
   BrowserIpc,
   BrowserRuntimeProfile,
   type BrowserWebAccessConfig,
@@ -357,6 +360,7 @@ import {
   shouldSyncServerModelConfig,
   syncServerModelConfigIfNeeded,
 } from './libs/openclawAgentModels';
+import { OpenClawBrowserObserver } from './libs/openclawBrowserObserver';
 import {
   buildManagedSessionKey,
   DEFAULT_MANAGED_AGENT_ID,
@@ -1918,6 +1922,7 @@ let store: SqliteStore | null = null;
 let coworkStore: CoworkStore | null = null;
 let openClawRuntimeAdapter: OpenClawRuntimeAdapter | null = null;
 let coworkEngineRouter: CoworkEngineRouter | null = null;
+let openClawBrowserObserver: OpenClawBrowserObserver | null = null;
 let skillManager: SkillManager | null = null;
 let mcpRuntime: McpRuntime | null = null;
 let skinRuntimeController: SkinRuntimeController | null = null;
@@ -1980,6 +1985,26 @@ const getOpenClawEngineManager = (): OpenClawEngineManager => {
     openClawEngineManager = new OpenClawEngineManager();
   }
   return openClawEngineManager;
+};
+
+const getOpenClawBrowserObserver = (): OpenClawBrowserObserver => {
+  if (!openClawBrowserObserver) {
+    openClawBrowserObserver = new OpenClawBrowserObserver({
+      engineManager: getOpenClawEngineManager(),
+      isEmbeddedMode: () => normalizeBrowserWebAccessConfig(
+        getStore().get<{ browserWebAccess?: Partial<BrowserWebAccessConfig> }>('app_config')
+          ?.browserWebAccess,
+      ).displayMode === BrowserDisplayMode.Embedded,
+      emitObservation: observation => {
+        for (const window of BrowserWindow.getAllWindows()) {
+          if (!window.isDestroyed()) {
+            window.webContents.send(BrowserIpc.Observation, observation);
+          }
+        }
+      },
+    });
+  }
+  return openClawBrowserObserver;
 };
 
 const formatAutoLaunchStatusForLog = (status: AutoLaunchStatus): string => {
@@ -3226,6 +3251,9 @@ const getCoworkEngineRouter = () => {
             getCronJobService().notifyGatewayReady();
             handleGatewaySelfRestartSettled();
           },
+          onBrowserToolEvent: event => {
+            getOpenClawBrowserObserver().handleToolEvent(event);
+          },
         },
         new SubagentRunStore(getStore().getDatabase()),
         new SubagentMessageStore(getStore().getDatabase()),
@@ -4428,8 +4456,6 @@ if (!gotTheLock) {
         );
       }
       const browserWebAccessChanged = hasBrowserWebAccessConfigChanged(previousAppConfig, nextAppConfig);
-      const systemProxyChanged = getUseSystemProxyFromConfig(previousAppConfig) !==
-        getUseSystemProxyFromConfig(nextAppConfig);
       refreshEndpointsTestMode(getStore());
       const impactDecision = classifyAppConfigChange(previousAppConfig, value);
       const proxyChanged = impactDecision.reasons.includes(OpenClawConfigImpactReason.AppUseSystemProxy);
@@ -4443,21 +4469,14 @@ if (!gotTheLock) {
       }
 
       const shouldSyncOpenClawConfig = actionDecision.impact !== OpenClawConfigImpact.None || browserWebAccessChanged;
-      let syncResult: Awaited<ReturnType<typeof syncOpenClawConfig>> | null = null;
       if (shouldSyncOpenClawConfig) {
-        syncResult = await syncOpenClawConfig({
+        const syncResult = await syncOpenClawConfig({
           reason: 'app-config-change',
-          restartGatewayIfRunning: actionDecision.impact === OpenClawConfigImpact.Restart,
+          restartGatewayIfRunning:
+            actionDecision.impact === OpenClawConfigImpact.Restart || browserWebAccessChanged,
         });
         if (!syncResult.success) {
           console.error('[OpenClaw] Failed to sync config after app_config update:', syncResult.error);
-        }
-      }
-      if (syncResult?.success && browserWebAccessChanged && !systemProxyChanged && actionDecision.impact !== OpenClawConfigImpact.Restart) {
-        const engineStatus = getOpenClawEngineManager().getStatus();
-        if (engineStatus.phase === 'running') {
-          console.log(`${gwDiagTs()} browser access settings changed, restarting gateway`);
-          void getOpenClawEngineManager().restartGateway('browser-access-settings-change');
         }
       }
     }
@@ -8154,6 +8173,42 @@ if (!gotTheLock) {
 
   const buildBrowserProfileQuery = (profile?: string): string => (
     profile ? `?profile=${encodeURIComponent(profile)}` : ''
+  );
+
+  ipcMain.handle(
+    BrowserIpc.GetObservation,
+    (_event, request?: AgentBrowserObservationRequest): AgentBrowserObservationResponse => {
+      const sessionId = request?.sessionId?.trim();
+      if (!sessionId) {
+        return { success: false, error: 'Browser observation session ID is required.' };
+      }
+      return {
+        success: true,
+        observation: getOpenClawBrowserObserver().getObservation(sessionId),
+      };
+    },
+  );
+
+  ipcMain.handle(
+    BrowserIpc.RefreshObservation,
+    async (_event, request?: AgentBrowserObservationRequest): Promise<AgentBrowserObservationResponse> => {
+      const sessionId = request?.sessionId?.trim();
+      if (!sessionId) {
+        return { success: false, error: 'Browser observation session ID is required.' };
+      }
+      try {
+        const observation = await getOpenClawBrowserObserver().refreshObservation(
+          sessionId,
+          request?.targetId,
+        );
+        return { success: true, observation };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to refresh browser observation.',
+        };
+      }
+    },
   );
 
   ipcMain.handle(BrowserIpc.GetStatus, async (_event, options?: { profile?: BrowserRuntimeProfile }) => {

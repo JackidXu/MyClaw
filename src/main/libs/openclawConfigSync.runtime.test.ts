@@ -2836,6 +2836,7 @@ describe('OpenClawConfigSync runtime config output', () => {
   test('writes browser and web fetch access settings', async () => {
     const { setSystemProxyEnabled } = await import('./systemProxy');
     const {
+      BrowserDisplayMode,
       BrowserNetworkMode,
       BrowserProfileMode,
       BrowserRuntimeProfile,
@@ -2843,6 +2844,7 @@ describe('OpenClawConfigSync runtime config output', () => {
     } = await import('../../shared/browserWebAccess/constants');
     const { OpenClawConfigSync } = await import('./openclawConfigSync');
     setSystemProxyEnabled(true);
+    let browserDisplayMode = BrowserDisplayMode.Embedded;
 
     const sync = new OpenClawConfigSync({
       engineManager: {
@@ -2866,6 +2868,7 @@ describe('OpenClawConfigSync runtime config output', () => {
       getBrowserWebAccessConfig: () => ({
         browserEnabled: true,
         profileMode: BrowserProfileMode.User,
+        displayMode: browserDisplayMode,
         networkMode: BrowserNetworkMode.Strict,
         followGlobalProxy: true,
         allowedHostnames: ['https://Localhost:8443/path'],
@@ -2919,6 +2922,7 @@ describe('OpenClawConfigSync runtime config output', () => {
       enabled: true,
       defaultProfile: BrowserRuntimeProfile.Managed,
       evaluateEnabled: false,
+      headless: true,
       ssrfPolicy: {
         dangerouslyAllowPrivateNetwork: false,
         allowedHostnames: ['localhost'],
@@ -2944,6 +2948,12 @@ describe('OpenClawConfigSync runtime config output', () => {
     });
     expect(config.tools.web.fetch.useEnvProxy).toBeUndefined();
     expect(config.tools.web.fetch.useTrustedEnvProxy).toBeUndefined();
+
+    browserDisplayMode = BrowserDisplayMode.External;
+    const externalResult = sync.sync('browser-web-access-external');
+    expect(externalResult.ok).toBe(true);
+    const externalConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    expect(externalConfig.browser.headless).toBe(false);
   });
 
   test('marks MCP server config changes as restart impact', async () => {

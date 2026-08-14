@@ -2,6 +2,7 @@ import { PlusIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import React, { useEffect, useRef, useState } from 'react';
 
 import {
+  BrowserDisplayMode,
   BrowserNetworkMode,
   BrowserProfileMode,
   type BrowserWebAccessConfig,
@@ -160,6 +161,32 @@ const BrowserWebAccessSettings: React.FC<BrowserWebAccessSettingsProps> = ({
   return (
     <>
       <div className="space-y-8">
+        <SettingRow
+          title={i18nService.t('browserDisplayModeTitle')}
+          description={value.displayMode === BrowserDisplayMode.Embedded
+            ? i18nService.t('browserDisplayModeEmbeddedDescription')
+            : i18nService.t('browserDisplayModeExternalDescription')}
+          control={(
+            <div className="w-[300px]">
+              <ThemedSelect
+                id="browser-display-mode"
+                value={value.displayMode}
+                onChange={(mode) => update({ displayMode: mode as BrowserDisplayMode })}
+                options={[
+                  {
+                    value: BrowserDisplayMode.Embedded,
+                    label: i18nService.t('browserDisplayModeEmbedded'),
+                  },
+                  {
+                    value: BrowserDisplayMode.External,
+                    label: i18nService.t('browserDisplayModeExternal'),
+                  },
+                ]}
+              />
+            </div>
+          )}
+        />
+
         <SettingRow
           title={i18nService.t('browserNetworkSectionTitle')}
           description={networkModeDescription}

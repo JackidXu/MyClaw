@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 
 import {
+  BrowserDisplayMode,
   BrowserNetworkMode,
   BrowserProfileMode,
   normalizeBrowserCdpUrl,
@@ -65,6 +66,7 @@ describe('browser web access constants', () => {
 
     expect(config.browserEnabled).toBe(false);
     expect(config.profileMode).toBe(BrowserProfileMode.User);
+    expect(config.displayMode).toBe(BrowserDisplayMode.Embedded);
     expect(config.networkMode).toBe(BrowserNetworkMode.Strict);
     expect(config.allowedHostnames).toEqual(['https://localhost:8443']);
     expect(config.blockedHostnames).toEqual(['https://tracking.example']);
@@ -76,5 +78,18 @@ describe('browser web access constants', () => {
       timeoutSeconds: 30,
       readability: false,
     });
+  });
+
+  test('defaults to embedded display and migrates an explicit headed legacy config', () => {
+    expect(normalizeBrowserWebAccessConfig(undefined).displayMode).toBe(
+      BrowserDisplayMode.Embedded,
+    );
+    expect(normalizeBrowserWebAccessConfig({ headless: false }).displayMode).toBe(
+      BrowserDisplayMode.External,
+    );
+    expect(normalizeBrowserWebAccessConfig({
+      displayMode: BrowserDisplayMode.External,
+      headless: true,
+    }).displayMode).toBe(BrowserDisplayMode.External);
   });
 });
