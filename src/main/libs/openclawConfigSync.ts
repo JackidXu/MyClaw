@@ -394,12 +394,13 @@ const MANAGED_WEB_SEARCH_POLICY_PROMPT = [
 ].join('\n');
 
 const MANAGED_LARGE_FILE_CREATION_POLICY_PROMPT = [
-  '## Large File & Long Document Writing Policy',
+  '## Large File, Webpage & Existing File Modification Policy',
   '',
-  '- Never attempt to output very long files (e.g. comprehensive HTML reports, extensive markdown articles > 200 lines) in a single `write` tool call. Large outputs exceed LLM single-turn generation token limits and will be truncated.',
-  '- If an output file is truncated or exceeds generation limits:',
-  '  1. Do NOT try to repeatedly rewrite the entire file from scratch using `write` (it will fail and truncate again).',
-  '  2. Use incremental editing tools (e.g. `edit`) to append and complete the missing sections line by line.',
+  '- **Modifying Existing Files / Webpages**: NEVER use `write` to overwrite an existing HTML or code file when making adjustments or modifications. Using `write` to rewrite large files will hit output token limits, truncate the file, and wipe out all remaining modules. ALWAYS use targeted replacement tools (such as `edit`) to modify only the specific section/component being changed, keeping all other existing content intact.',
+  '- **Large File Generation (>200 lines)**: Never attempt to output very long files (e.g. comprehensive HTML reports, extensive markdown articles) in a single `write` tool call. Large outputs exceed single-turn token limits and will be truncated.',
+  '- **Truncation Recovery**: If an output file is truncated or incomplete:',
+  '  1. Do NOT repeatedly rewrite the entire file from scratch with `write` (it will fail and truncate again).',
+  '  2. Use `edit` to incrementally append and complete the missing sections.',
   '  3. Alternatively, write a small local Node.js or Python script that compiles and writes the structured report to disk, then execute it via `exec`.',
 ].join('\n');
 
