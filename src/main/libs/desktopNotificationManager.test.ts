@@ -1,5 +1,5 @@
 import type { BrowserWindow } from 'electron';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import {
   defaultNotificationSettings,
@@ -109,14 +109,28 @@ const createManager = (options?: {
       harness.trayCalls.push({ count, hasClick: !!onClick });
     },
   });
+
+  const originalHandleComplete = manager.handleComplete.bind(manager);
+  manager.handleComplete = (sessionId: string, immediate = true) => {
+    originalHandleComplete(sessionId, immediate);
+    if (!immediate) {
+      vi.runAllTimers();
+    }
+  };
+
   return { manager, harness };
 };
 
 const shownNotifications = () => FakeNotification.instances.filter((n) => n.shown && !n.closed);
 
 beforeEach(() => {
+  vi.useFakeTimers();
   FakeNotification.instances = [];
   FakeNotification.supported = true;
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe('normalizeNotificationSettings', () => {

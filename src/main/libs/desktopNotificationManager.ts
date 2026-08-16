@@ -55,10 +55,35 @@ export class DesktopNotificationManager {
   private resolvedRequestIds = new Set<string>();
   private windowsOverlayIcons = new Map<string, Electron.NativeImage>();
   private activeSessionId: string | null = null;
+  private completionDebounceTimers = new Map<string, NodeJS.Timeout>();
 
   constructor(private readonly options: DesktopNotificationManagerOptions) {}
 
-  handleComplete(sessionId: string): void {
+  cancelPendingCompletion(sessionId: string): void {
+    const timer = this.completionDebounceTimers.get(sessionId);
+    if (timer) {
+      clearTimeout(timer);
+      this.completionDebounceTimers.delete(sessionId);
+    }
+  }
+
+  handleComplete(sessionId: string, immediate = false): void {
+    this.cancelPendingCompletion(sessionId);
+
+    if (immediate) {
+      this.executeHandleComplete(sessionId);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      this.completionDebounceTimers.delete(sessionId);
+      this.executeHandleComplete(sessionId);
+    }, 1500);
+
+    this.completionDebounceTimers.set(sessionId, timer);
+  }
+
+  private executeHandleComplete(sessionId: string): void {
     const settings = normalizeNotificationSettings(this.options.getNotificationSettings());
     const mode = settings.taskCompletionNotificationMode;
     if (mode === TaskCompletionNotificationMode.Off) {
@@ -153,6 +178,7 @@ export class DesktopNotificationManager {
   }
 
   markSessionViewed(sessionId: string): void {
+    this.cancelPendingCompletion(sessionId);
     if (!this.pendingCompletions.delete(sessionId)) return;
     this.closeNotification(this.completionNotificationId(sessionId));
     console.log(
@@ -162,6 +188,7 @@ export class DesktopNotificationManager {
   }
 
   handleSessionDeleted(sessionId: string): void {
+    this.cancelPendingCompletion(sessionId);
     this.closeWaitingNotificationsForSession(sessionId, 'session deleted');
     if (!this.pendingCompletions.delete(sessionId)) return;
     this.closeNotification(this.completionNotificationId(sessionId));
@@ -172,10 +199,15 @@ export class DesktopNotificationManager {
   }
 
   handleSessionStopped(sessionId: string): void {
+    this.cancelPendingCompletion(sessionId);
     this.closeWaitingNotificationsForSession(sessionId, 'session stopped');
   }
 
   clearAllCompletions(reason: string): void {
+    for (const timer of this.completionDebounceTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.completionDebounceTimers.clear();
     if (this.pendingCompletions.size === 0 && !this.hasActiveNotificationOfKind('completion')) return;
     const count = this.pendingCompletions.size;
     this.pendingCompletions.clear();
