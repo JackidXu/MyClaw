@@ -3003,6 +3003,7 @@ const bindCoworkRuntimeForwarder = (): void => {
   const runtime = getCoworkEngineRouter();
 
   runtime.on('message', (sessionId: string, message: unknown, beforeMessageId?: string) => {
+    getDesktopNotificationManager().cancelPendingCompletion(sessionId);
     const safeMessage = sanitizeCoworkMessageForIpc(message);
     const windows = BrowserWindow.getAllWindows();
     const messageType = typeof message === 'object' && message && 'type' in message
