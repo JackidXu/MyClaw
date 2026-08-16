@@ -10,7 +10,7 @@ import { getProviderIcon, ProviderIconId } from '../../providers/uiRegistry';
 import { authService } from '../../services/auth';
 import { i18nService } from '../../services/i18n';
 import { localStore } from '../../services/store';
-import { RootState } from '../../store';
+import { RootState, store } from '../../store';
 import { setMediaModels, setMediaSelection } from '../../store/slices/coworkSlice';
 import type { MediaGenerationMode, MediaModel } from '../../types/mediaGeneration';
 import MagicIcon from '../icons/MagicIcon';
@@ -22,6 +22,31 @@ interface SavedMediaSelection {
 }
 
 const MEDIA_SELECTION_KV_KEY = 'media_selection';
+const EMPTY_MEDIA_MODELS: { image: MediaModel[]; video: MediaModel[] } = {
+  image: [],
+  video: [],
+};
+
+const logMediaModelPickerDiagnostic = (
+  level: 'debug' | 'warn',
+  message: string,
+  error?: unknown,
+): void => {
+  const errorMessage = error === undefined
+    ? ''
+    : `: ${error instanceof Error ? error.message : String(error)}`;
+  const resolvedMessage = `${message}${errorMessage}`.replace(/\s+/g, ' ').trim().slice(0, 500);
+  if (level === 'warn') {
+    console.warn(`[MediaModelPicker] ${resolvedMessage}`);
+  } else {
+    console.debug(`[MediaModelPicker] ${resolvedMessage}`);
+  }
+  try {
+    window.electron?.log?.fromRenderer?.(level, 'MediaModelPicker', resolvedMessage);
+  } catch {
+    // Diagnostics must not interrupt model selection or local persistence.
+  }
+};
 
 type MediaIconKey = ProviderName | ProviderIconId;
 
@@ -63,6 +88,47 @@ const isSameSavedMediaSelection = (
   && left?.video?.modelId === right.video?.modelId
   && left?.video?.modelName === right.video?.modelName
 );
+
+const pendingSavedMediaSelectionLoads = new Map<
+  string,
+  Promise<SavedMediaSelection | null>
+>();
+
+const getMediaSelectionStoreKey = (ownerAccountKey: string): string => (
+  `${MEDIA_SELECTION_KV_KEY}:${ownerAccountKey}`
+);
+
+const loadSavedMediaSelection = (
+  ownerAccountKey: string,
+): Promise<SavedMediaSelection | null> => {
+  const pending = pendingSavedMediaSelectionLoads.get(ownerAccountKey);
+  if (pending) return pending;
+
+  const selectionStoreKey = getMediaSelectionStoreKey(ownerAccountKey);
+  const load = (async () => {
+    const scopedSelection = await localStore.getItem<SavedMediaSelection>(selectionStoreKey);
+    if (scopedSelection !== null) return scopedSelection;
+
+    const legacySelection = await localStore.getItem<SavedMediaSelection>(MEDIA_SELECTION_KV_KEY);
+    if (legacySelection === null) return null;
+
+    const normalizedSelection = normalizeSavedMediaSelection(legacySelection);
+    try {
+      await localStore.setItem(selectionStoreKey, normalizedSelection);
+      await localStore.removeItem(MEDIA_SELECTION_KV_KEY);
+      logMediaModelPickerDiagnostic('debug', 'migrated legacy media selection to the current account');
+    } catch (error) {
+      logMediaModelPickerDiagnostic('warn', 'failed to persist account-scoped media selection', error);
+    }
+    return normalizedSelection;
+  })().finally(() => {
+    if (pendingSavedMediaSelectionLoads.get(ownerAccountKey) === load) {
+      pendingSavedMediaSelectionLoads.delete(ownerAccountKey);
+    }
+  });
+  pendingSavedMediaSelectionLoads.set(ownerAccountKey, load);
+  return load;
+};
 
 const MEDIA_ICON_HINTS: Array<{ pattern: RegExp; iconKey: MediaIconKey }> = [
   { pattern: /gpt[\s-]*image[\s-]*2|canvas[\s-]*20/i, iconKey: ProviderName.OpenAI },
@@ -561,18 +627,46 @@ const MediaModelPicker: React.FC<MediaModelPickerProps> = ({ draftKey, disabled 
   const [hoveredModel, setHoveredModel] = useState<MediaModel | null>(null);
   const [hoverCardStyle, setHoverCardStyle] = useState<React.CSSProperties>({});
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fetchRequestIdRef = useRef(0);
 
+  const ownerAccountKey = useSelector((state: RootState) => state.auth.ownerAccountKey) || 'heyclaw-default';
+  const accountGeneration = useSelector((state: RootState) => state.auth.accountGeneration) || 0;
   const isLoggedIn = true;
   const canUseMediaGeneration = true;
 
-  const mediaModels = useSelector((state: RootState) => state.cowork.mediaModels);
+  const cachedMediaModels = useSelector((state: RootState) => state.cowork.mediaModels);
+  const mediaModelsOwnerAccountKey = useSelector(
+    (state: RootState) => state.cowork.mediaModelsOwnerAccountKey,
+  );
+  const mediaModels = ownerAccountKey === mediaModelsOwnerAccountKey
+    ? cachedMediaModels
+    : EMPTY_MEDIA_MODELS;
+  const mediaModelsRef = useRef(mediaModels);
+  mediaModelsRef.current = mediaModels;
   const selection = useSelector((state: RootState) => state.cowork.mediaSelection[draftKey]);
 
   const selectionRef = useRef(selection);
   selectionRef.current = selection;
+  const isAccountScopeCurrent = useCallback((
+    expectedOwnerAccountKey: string,
+    expectedGeneration: number,
+  ): boolean => {
+    const currentAuthState = store.getState().auth;
+    return (
+      currentAuthState.ownerAccountKey === expectedOwnerAccountKey
+      && currentAuthState.accountGeneration === expectedGeneration
+    );
+  }, []);
 
   const fetchModels = useCallback(async () => {
-    const hasCachedModels = mediaModels.image.length > 0 || mediaModels.video.length > 0;
+    if (!ownerAccountKey) return;
+    const requestOwnerAccountKey = ownerAccountKey;
+    const requestGeneration = accountGeneration;
+    const requestId = ++fetchRequestIdRef.current;
+    const selectionStoreKey = getMediaSelectionStoreKey(requestOwnerAccountKey);
+    const currentMediaModels = mediaModelsRef.current;
+    const hasCachedModels = currentMediaModels.image.length > 0
+      || currentMediaModels.video.length > 0;
     if (!hasCachedModels) {
       setIsLoading(true);
     }
@@ -581,20 +675,33 @@ const MediaModelPicker: React.FC<MediaModelPickerProps> = ({ draftKey, disabled 
         window.electron.media.getModels('image'),
         window.electron.media.getModels('video'),
       ]);
-      if (!imageResult.success) console.warn('[MediaModelPicker] image models fetch failed:', imageResult.error);
-      if (!videoResult.success) console.warn('[MediaModelPicker] video models fetch failed:', videoResult.error);
+      if (
+        fetchRequestIdRef.current !== requestId
+        || !isAccountScopeCurrent(requestOwnerAccountKey, requestGeneration)
+      ) return;
+      if (!imageResult.success) {
+        logMediaModelPickerDiagnostic('warn', 'image models fetch failed', imageResult.error);
+      }
+      if (!videoResult.success) {
+        logMediaModelPickerDiagnostic('warn', 'video models fetch failed', videoResult.error);
+      }
       const imageModels = ((imageResult.models || []) as MediaModel[]).map(normalizeMediaModel);
       const videoModels = ((videoResult.models || []) as MediaModel[]).map(normalizeMediaModel);
       dispatch(setMediaModels({
         image: imageModels,
         video: videoModels,
+        ownerAccountKey: requestOwnerAccountKey,
       }));
       const currentSelection = selectionRef.current;
       if (!currentSelection || currentSelection.mode === 'none') {
-        const rawSaved = await localStore.getItem<SavedMediaSelection>(MEDIA_SELECTION_KV_KEY);
+        const rawSaved = await loadSavedMediaSelection(requestOwnerAccountKey);
+        if (
+          fetchRequestIdRef.current !== requestId
+          || !isAccountScopeCurrent(requestOwnerAccountKey, requestGeneration)
+        ) return;
         const saved = normalizeSavedMediaSelection(rawSaved);
         if (!isSameSavedMediaSelection(rawSaved, saved)) {
-          localStore.setItem(MEDIA_SELECTION_KV_KEY, saved);
+          await localStore.setItem(selectionStoreKey, saved);
         }
         const imageEntry = saved?.image;
         const videoEntry = saved?.video;
@@ -626,11 +733,27 @@ const MediaModelPicker: React.FC<MediaModelPickerProps> = ({ draftKey, disabled 
         }
       }
     } catch (err) {
-      console.error('[MediaModelPicker] Failed to fetch models:', err);
+      logMediaModelPickerDiagnostic('warn', 'failed to fetch models', err);
     } finally {
-      setIsLoading(false);
+      if (
+        fetchRequestIdRef.current === requestId
+        && isAccountScopeCurrent(requestOwnerAccountKey, requestGeneration)
+      ) {
+        setIsLoading(false);
+      }
     }
-  }, [dispatch, draftKey, mediaModels.image.length, mediaModels.video.length]);
+  }, [
+    accountGeneration,
+    dispatch,
+    draftKey,
+    isAccountScopeCurrent,
+    ownerAccountKey,
+  ]);
+
+  useEffect(() => {
+    fetchRequestIdRef.current += 1;
+    setIsLoading(false);
+  }, [accountGeneration, ownerAccountKey]);
 
   useEffect(() => {
     if (isOpen && canUseMediaGeneration) {
@@ -652,48 +775,86 @@ const MediaModelPicker: React.FC<MediaModelPickerProps> = ({ draftKey, disabled 
   }, [isOpen]);
 
   useEffect(() => {
-    if (selection && selection.mode !== 'none') return;
+    if (
+      !ownerAccountKey
+      || !canUseMediaGeneration
+      || (selection && selection.mode !== 'none')
+    ) {
+      return;
+    }
 
     let cancelled = false;
-    (async () => {
-      const rawSaved = await localStore.getItem<SavedMediaSelection>(MEDIA_SELECTION_KV_KEY);
-      const saved = normalizeSavedMediaSelection(rawSaved);
-      if (!isSameSavedMediaSelection(rawSaved, saved)) {
-        localStore.setItem(MEDIA_SELECTION_KV_KEY, saved);
-      }
-      if (cancelled) return;
-      const imageEntry = saved?.image;
-      const videoEntry = saved?.video;
-      if (imageEntry && videoEntry) {
-        dispatch(setMediaSelection({
-          draftKey,
-          selection: {
-            mode: 'auto',
-            modelId: imageEntry.modelId,
-            modelName: imageEntry.modelName,
-            imageModelId: imageEntry.modelId,
-            videoModelId: videoEntry.modelId,
-          },
-        }));
-      } else if (imageEntry) {
-        dispatch(setMediaSelection({
-          draftKey,
-          selection: { mode: 'image', modelId: imageEntry.modelId, modelName: imageEntry.modelName },
-        }));
-      } else if (videoEntry) {
-        dispatch(setMediaSelection({
-          draftKey,
-          selection: { mode: 'video', modelId: videoEntry.modelId, modelName: videoEntry.modelName },
-        }));
-        setActiveTab('video');
+    const restoreOwnerAccountKey = ownerAccountKey;
+    const restoreGeneration = accountGeneration;
+    const selectionStoreKey = getMediaSelectionStoreKey(restoreOwnerAccountKey);
+    void (async () => {
+      try {
+        const rawSaved = await loadSavedMediaSelection(restoreOwnerAccountKey);
+        const saved = normalizeSavedMediaSelection(rawSaved);
+        if (!isSameSavedMediaSelection(rawSaved, saved)) {
+          await localStore.setItem(selectionStoreKey, saved);
+        }
+        if (
+          cancelled
+          || !isAccountScopeCurrent(restoreOwnerAccountKey, restoreGeneration)
+        ) {
+          return;
+        }
+        const imageEntry = saved.image;
+        const videoEntry = saved.video;
+        if (imageEntry && videoEntry) {
+          dispatch(setMediaSelection({
+            draftKey,
+            selection: {
+              mode: 'auto',
+              modelId: imageEntry.modelId,
+              modelName: imageEntry.modelName,
+              imageModelId: imageEntry.modelId,
+              videoModelId: videoEntry.modelId,
+            },
+          }));
+        } else if (imageEntry) {
+          dispatch(setMediaSelection({
+            draftKey,
+            selection: { mode: 'image', modelId: imageEntry.modelId, modelName: imageEntry.modelName },
+          }));
+        } else if (videoEntry) {
+          dispatch(setMediaSelection({
+            draftKey,
+            selection: { mode: 'video', modelId: videoEntry.modelId, modelName: videoEntry.modelName },
+          }));
+          setActiveTab('video');
+        }
+      } catch (error) {
+        logMediaModelPickerDiagnostic('warn', 'failed to restore saved media selection', error);
       }
     })();
     return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draftKey, dispatch]);
+  }, [
+    accountGeneration,
+    canUseMediaGeneration,
+    dispatch,
+    draftKey,
+    isAccountScopeCurrent,
+    ownerAccountKey,
+    selection,
+  ]);
 
   const handleSelect = async (mode: MediaGenerationMode, model?: MediaModel) => {
-    const saved = normalizeSavedMediaSelection(await localStore.getItem<SavedMediaSelection>(MEDIA_SELECTION_KV_KEY));
+    if (!ownerAccountKey) return;
+    const selectionOwnerAccountKey = ownerAccountKey;
+    const selectionGeneration = accountGeneration;
+    const selectionStoreKey = getMediaSelectionStoreKey(selectionOwnerAccountKey);
+    let saved: SavedMediaSelection;
+    try {
+      saved = normalizeSavedMediaSelection(
+        await loadSavedMediaSelection(selectionOwnerAccountKey),
+      );
+    } catch (error) {
+      logMediaModelPickerDiagnostic('warn', 'failed to load saved media selection', error);
+      saved = {};
+    }
+    if (!isAccountScopeCurrent(selectionOwnerAccountKey, selectionGeneration)) return;
     const currentModelId = mode === 'image'
       ? canonicalizeMediaModelId(selection?.imageModelId ?? (selection?.mode === 'image' ? selection?.modelId : undefined))
       : canonicalizeMediaModelId(selection?.videoModelId ?? (selection?.mode === 'video' ? selection?.modelId : undefined));
@@ -704,7 +865,12 @@ const MediaModelPicker: React.FC<MediaModelPickerProps> = ({ draftKey, disabled 
     } else if (model) {
       saved[mode as 'image' | 'video'] = { modelId: model.modelId, modelName: model.displayName };
     }
-    localStore.setItem(MEDIA_SELECTION_KV_KEY, saved);
+    try {
+      await localStore.setItem(selectionStoreKey, saved);
+    } catch (error) {
+      logMediaModelPickerDiagnostic('warn', 'failed to save media selection', error);
+    }
+    if (!isAccountScopeCurrent(selectionOwnerAccountKey, selectionGeneration)) return;
 
     const hasImage = !!saved.image;
     const hasVideo = !!saved.video;
@@ -795,6 +961,7 @@ const MediaModelPicker: React.FC<MediaModelPickerProps> = ({ draftKey, disabled 
 
   useEffect(() => {
     return () => {
+      fetchRequestIdRef.current += 1;
       if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
     };
   }, []);

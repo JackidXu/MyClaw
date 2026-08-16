@@ -1,3 +1,4 @@
+import { BUNDLED_SKILL_DISPLAY_NAMES } from '../components/skills/bundledSkillNames';
 import { LocalizedText, LocalSkillInfo, MarketplaceSkill, MarketTag, Skill } from '../types/skill';
 import { i18nService } from './i18n';
 import { LogReporterAction, reportYdAnalyzer } from './logReporter';
@@ -7,6 +8,34 @@ export function resolveLocalizedText(text: string | LocalizedText): string {
   if (typeof text === 'string') return text;
   const lang = i18nService.getLanguage();
   return text[lang] || text.en || '';
+}
+
+/** Segments that should stay uppercase instead of becoming `Hr` / `Ai`. */
+const SKILL_NAME_ACRONYMS = new Set([
+  'ai', 'api', 'cli', 'csv', 'hr', 'html', 'im', 'json',
+  'pdf', 'ppt', 'qq', 'seo', 'sql', 'ui', 'url',
+]);
+
+/**
+ * Turn an id-style skill name into something readable:
+ * `canvas-design` → `Canvas Design`, `hr-recruitment` → `HR Recruitment`.
+ * Names that already look like a title (contain spaces or non-ASCII
+ * characters) are returned untouched.
+ */
+export function prettifySkillName(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) return trimmed;
+  const hasNonAscii = Array.from(trimmed).some(char => char.charCodeAt(0) > 127);
+  if (hasNonAscii || /\s/.test(trimmed)) return trimmed;
+  return trimmed
+    .split(/[-_.]+/)
+    .filter(Boolean)
+    .map(part => (
+      SKILL_NAME_ACRONYMS.has(part.toLowerCase())
+        ? part.toUpperCase()
+        : part.charAt(0).toUpperCase() + part.slice(1)
+    ))
+    .join(' ');
 }
 
 export function compareVersions(a: string, b: string): number {
@@ -70,9 +99,12 @@ class SkillService {
   private skills: Skill[] = [];
   private initialized = false;
   private localSkillDescriptions: Map<string, string | LocalizedText> = new Map();
-  private localSkillNames: Map<string, string> = new Map();
   private marketplaceSkillDescriptions: Map<string, string | LocalizedText> = new Map();
   private installedKitSkillDescriptions: Map<string, string | LocalizedText> = new Map();
+  private localSkillNames: Map<string, string | LocalizedText> = new Map();
+  private marketplaceSkillNames: Map<string, string | LocalizedText> = new Map();
+  private installedKitSkillNames: Map<string, string | LocalizedText> = new Map();
+  private skillIcons: Map<string, string> = new Map();
   private marketplaceCache: { skills: MarketplaceSkill[]; tags: MarketTag[] } | null = null;
   private marketplaceFetchPromise: Promise<{ skills: MarketplaceSkill[]; tags: MarketTag[] }> | null = null;
 
@@ -382,22 +414,31 @@ class SkillService {
       // 存储本地技能的描述和名称，用于国际化与别名查找
       const localSkills: LocalSkillInfo[] = Array.isArray(value?.localSkill) ? value.localSkill : [];
       this.localSkillDescriptions.clear();
-      this.localSkillNames.clear();
+      this.skillIcons.clear();
       for (const ls of localSkills) {
         this.localSkillDescriptions.set(ls.name, ls.description);
         this.localSkillDescriptions.set(ls.id, ls.description);
-        if (ls.name) {
+        if (ls.displayName != null) {
+          this.localSkillNames.set(ls.name, ls.displayName);
+          this.localSkillNames.set(ls.id, ls.displayName);
+        } else if (ls.name) {
           this.localSkillNames.set(ls.id, ls.name);
         }
+        if (ls.icon) this.skillIcons.set(ls.id, ls.icon);
       }
       const skills: MarketplaceSkill[] = Array.isArray(value?.marketplace) ? value.marketplace : [];
       const tags: MarketTag[] = Array.isArray(value?.marketTags) ? value.marketTags : [];
       // Also store marketplace skill descriptions for i18n lookup (keyed by id)
       this.marketplaceSkillDescriptions.clear();
+      this.marketplaceSkillNames.clear();
       for (const ms of skills) {
         if (typeof ms.description === 'object') {
           this.marketplaceSkillDescriptions.set(ms.id, ms.description);
         }
+        if (ms.displayName != null) {
+          this.marketplaceSkillNames.set(ms.id, ms.displayName);
+        }
+        if (ms.icon) this.skillIcons.set(ms.id, ms.icon);
       }
       this.marketplaceCache = { skills, tags };
       return this.marketplaceCache;
@@ -419,11 +460,44 @@ class SkillService {
           if (skillMetadata.description != null) {
             this.installedKitSkillDescriptions.set(skillId, skillMetadata.description);
           }
+          if (skillMetadata.name != null) {
+            this.installedKitSkillNames.set(skillId, skillMetadata.name);
+          }
         }
       }
     } catch (error) {
       console.error('Failed to load installed kit skill descriptions:', error);
     }
+  }
+
+  /**
+   * Resolve a human-friendly skill title. Order of preference:
+   * server `displayName` (local → marketplace → kit) → bundled name map →
+   * prettified raw name (`canvas-design` → `Canvas Design`).
+   */
+  getLocalizedSkillName(skillOrId: string | { id: string; name: string }, skillName?: string): string {
+    const id = typeof skillOrId === 'string' ? skillOrId : skillOrId.id;
+    const name = typeof skillOrId === 'string' ? (skillName ?? skillOrId) : skillOrId.name;
+    const serverName = this.localSkillNames.get(name)
+      ?? this.localSkillNames.get(id)
+      ?? this.marketplaceSkillNames.get(id)
+      ?? this.installedKitSkillNames.get(id);
+    if (serverName != null) return resolveLocalizedText(serverName);
+
+    if (this.marketplaceCache) {
+      const mp = this.marketplaceCache.skills.find(s => s.id === id);
+      if (mp && mp.name) return mp.name;
+    }
+
+    const bundled = BUNDLED_SKILL_DISPLAY_NAMES[id];
+    if (bundled) return resolveLocalizedText(bundled);
+
+    return prettifySkillName(name);
+  }
+
+  /** Server-provided icon URL, if any. Callers fall back to a generated tile. */
+  getSkillIcon(skillId: string): string | undefined {
+    return this.skillIcons.get(skillId);
   }
 
   getLocalizedSkillDescription(skillId: string, skillName: string, fallback: string): string {
@@ -434,20 +508,6 @@ class SkillService {
     const kitDesc = this.installedKitSkillDescriptions.get(skillId);
     if (kitDesc != null) return resolveLocalizedText(kitDesc);
     return fallback;
-  }
-
-  getLocalizedSkillName(skill: { id: string; name: string }): string {
-    if (this.marketplaceCache) {
-      const mp = this.marketplaceCache.skills.find(s => s.id === skill.id);
-      if (mp && mp.name) {
-        return mp.name;
-      }
-    }
-    const localName = this.localSkillNames.get(skill.id);
-    if (localName) {
-      return localName;
-    }
-    return skill.name;
   }
 
   isOfficialSkill(skill: { id: string; isOfficial: boolean; isBuiltIn: boolean }): boolean {

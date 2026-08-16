@@ -26,6 +26,8 @@ export interface LocalSkillInfo {
   name: string;
   description: string | LocalizedText;
   version: string;
+  displayName?: string | LocalizedText; // Optional: server-provided localized name
+  icon?: string;                        // Optional: server-provided icon URL
 }
 
 export interface MarketplaceSkill {
@@ -40,4 +42,9 @@ export interface MarketplaceSkill {
     url: string;            // Source repo URL
     author?: string;        // Author name
   };
+  // Optional fields the skill store may start sending. Until then the UI
+  // falls back to a prettified name and a generated icon tile.
+  displayName?: string | LocalizedText;
+  icon?: string;
+  downloadCount?: number;
 }

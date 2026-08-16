@@ -1,10 +1,14 @@
 import { McpRegistryEntry } from '../types/mcp';
 
 /**
- * Built-in MCP server registry.
- * These are popular, mainstream MCP servers that users can install with one click.
- * Each entry is a template — the user fills in required config (API keys, paths)
- * before it is saved to the database.
+ * App-managed MCP registry entries.
+ *
+ * Marketplace content comes from the server (`mcpService.fetchMarketplace`,
+ * cached in localStorage between sessions) — it is deliberately NOT mirrored
+ * here, so there is a single source of truth for names, descriptions and the
+ * server list itself. This file only holds entries the server payload cannot
+ * express: flows managed by the app, such as the Qichacha OAuth bundle, which
+ * `mergeMarketplaceRegistry` re-inserts into whatever the server returns.
  */
 export const mcpRegistry: McpRegistryEntry[] = [
   // ── Search ──────────────────────────────────────────────
@@ -54,10 +58,8 @@ export const mcpRegistry: McpRegistryEntry[] = [
     command: 'npx',
     defaultArgs: ['-y', '@upstash/context7-mcp@latest'],
   },
-
-  // ── Productivity ────────────────────────────────────────
   {
-    id: 'google-drive',
+    id: 'google_drive',
     name: 'Google Drive',
     descriptionKey: 'mcpDesc_google_drive',
     category: 'productivity',
@@ -164,7 +166,8 @@ export const mcpRegistry: McpRegistryEntry[] = [
 ];
 
 /**
- * All available categories with their i18n keys.
+ * Category fallbacks with their i18n keys, used until the server list (which
+ * carries its own localized names) has loaded.
  */
 export const mcpCategories = [
   { id: 'all', key: 'mcpCategoryAll' },
