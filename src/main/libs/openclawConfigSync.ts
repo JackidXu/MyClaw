@@ -378,19 +378,29 @@ const providerApiKeyEnvVar = (providerName: string): string => {
 };
 
 const MANAGED_WEB_SEARCH_POLICY_PROMPT = [
-  '## Web Search',
+  '## Web Search & Information Retrieval Policy',
   '',
   'Built-in `web_search` is disabled in this workspace. Do not ask for or rely on the Brave Search API.',
   '',
-  'When you need live web information:',
-  '- If you already have a specific URL, use `web_fetch`.',
-  '- Do not use `web_fetch` to fetch Google/Bing search result pages as a search substitute; use `browser` or an available search skill instead.',
-  '- If you need search discovery, dynamic pages, or interactive browsing, use the built-in `browser` tool.',
-  '- For login-required, JavaScript-heavy, or anti-automation pages, use `browser` instead of `web_fetch`.',
+  'When you need live web information or research:',
+  '- **Keyword Search & Discovery**: NEVER use `web_fetch` on search engine result pages (e.g. `baidu.com/s?wd=...`, `google.com/search`, `bing.com/search`, `sogou.com`). Search engines strictly block HTTP scrapers with CAPTCHAs. Use the `web-search` skill or the built-in `browser` tool instead.',
+  '- **Dynamic, SPA & Anti-Scraping Pages**: For websites requiring JavaScript rendering or strict bot verification (e.g. Xiaohongshu/小红书, WeChat articles/微信公众号, Zhihu, Weibo, major news portals), ALWAYS use `browser` (`target="host"`). Do not attempt `web_fetch`.',
+  '- **Direct Static URLs**: Only use `web_fetch` for known, static, public direct article/API URLs without CAPTCHAs.',
+  '- If a `web_fetch` call fails or gets blocked by a CAPTCHA/WAF, immediately switch to the `browser` tool or `web-search` skill instead of continuously guessing alternative HTTP URLs.',
   '- Only use the HeyClaw `web-search` skill when local command execution is available. Native channel sessions may deny `exec`, so prefer `browser` or `web_fetch` there.',
   '- Exception: the `imap-smtp-email` skill must always use `exec` to run its scripts, even in native channel sessions. Do not skip it because of exec restrictions.',
   '',
   'Do not claim you searched the web unless you actually used `browser`, `web_fetch`, or the HeyClaw `web-search` skill.',
+].join('\n');
+
+const MANAGED_LARGE_FILE_CREATION_POLICY_PROMPT = [
+  '## Large File & Long Document Writing Policy',
+  '',
+  '- Never attempt to output very long files (e.g. comprehensive HTML reports, extensive markdown articles > 200 lines) in a single `write` tool call. Large outputs exceed LLM single-turn generation token limits and will be truncated.',
+  '- If an output file is truncated or exceeds generation limits:',
+  '  1. Do NOT try to repeatedly rewrite the entire file from scratch using `write` (it will fail and truncate again).',
+  '  2. Use incremental editing tools (e.g. `edit`) to append and complete the missing sections line by line.',
+  '  3. Alternatively, write a small local Node.js or Python script that compiles and writes the structured report to disk, then execute it via `exec`.',
 ].join('\n');
 
 const BUNDLED_BROWSER_PLUGIN_ID = 'browser';
@@ -3767,6 +3777,7 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
 
       sections.push(MANAGED_WEB_SEARCH_POLICY_PROMPT);
       sections.push(MANAGED_BROWSER_POLICY_PROMPT);
+      sections.push(MANAGED_LARGE_FILE_CREATION_POLICY_PROMPT);
       sections.push(MANAGED_BINARY_FILE_READ_POLICY_PROMPT);
       sections.push(MANAGED_TEMPORARY_FILE_POLICY_PROMPT);
       sections.push(MANAGED_EXEC_SAFETY_PROMPT);
