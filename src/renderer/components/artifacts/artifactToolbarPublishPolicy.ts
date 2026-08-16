@@ -1,8 +1,6 @@
 import type { LocalWebService } from '@shared/localWebServices/constants';
 
-import { type Artifact, ArtifactTypeValue } from '@/types/artifact';
-
-import { isArtifactFileShareable } from './artifactFileSharePolicy';
+import type { Artifact } from '@/types/artifact';
 
 export const ArtifactToolbarPublishActionKind = {
   Share: 'share',
@@ -27,33 +25,16 @@ export type ArtifactToolbarPublishTarget =
   | ArtifactToolbarDeployTarget;
 
 export function resolveArtifactPreviewToolbarPublishTarget(
-  artifact: Artifact | null | undefined,
-  shareAvailable: boolean,
+  _artifact: Artifact | null | undefined,
+  _shareAvailable: boolean,
 ): ArtifactToolbarShareTarget | null {
-  if (!shareAvailable || !artifact || !isArtifactFileShareable(artifact)) return null;
-  return {
-    kind: ArtifactToolbarPublishActionKind.Share,
-    artifact,
-  };
+  return null;
 }
 
-export function resolveBrowserToolbarPublishTarget(input: {
+export function resolveBrowserToolbarPublishTarget(_input: {
   htmlArtifact?: Artifact | null;
   localService?: LocalWebService | null;
   shareAvailable: boolean;
 }): ArtifactToolbarPublishTarget | null {
-  // Managed HTML previews use an internal loopback preview server. Preserve
-  // the Artifact identity instead of mistaking that server for a deployable app.
-  if (input.htmlArtifact) {
-    if (input.htmlArtifact.type !== ArtifactTypeValue.Html) return null;
-    return resolveArtifactPreviewToolbarPublishTarget(
-      input.htmlArtifact,
-      input.shareAvailable,
-    );
-  }
-  if (!input.localService) return null;
-  return {
-    kind: ArtifactToolbarPublishActionKind.Deploy,
-    localService: input.localService,
-  };
+  return null;
 }
