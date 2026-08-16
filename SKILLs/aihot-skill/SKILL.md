@@ -1,6 +1,7 @@
 ---
 description: "实时抓取全网中文 AI 资讯与热点动态，自动整理生成每日 AI 行业简报与趋势洞察。"
 name: "AI 热点日报"
+version: 1.0.0
 ---
 name: 01-ai-re-dian-ri-bao
 # AI HOT Skill（AI热点日报）

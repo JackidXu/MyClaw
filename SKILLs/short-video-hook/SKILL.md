@@ -1,6 +1,7 @@
 ---
 description: "短视频开头诊断与优化专家。基于谜题框架与黄金3秒法则，帮助创作者打造高留存的爆款短视频开头。"
 name: "爆款短视频开头"
+version: 1.0.0
 agent_created: true
 ---
 name: bao-kuan-duan-shi-pin-kai-tou

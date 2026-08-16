@@ -1,6 +1,7 @@
 ---
 description: "规划高转化与高获客的内容打法矩阵，兼顾搜索引擎 SEO/GEO 检索与社交平台分享裂变。"
 name: "内容策略规划"
+version: 1.0.0
 ---
 name: 02-nei-rong-ce-lue-gui-hua
 # Content Strategy

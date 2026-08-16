@@ -1,6 +1,7 @@
 ---
 description: "面向本地知识库文档的智能检索与问答助手，精准索引 PDF、Excel、Markdown 并输出结构化回答。"
 name: "知识库检索助手"
+version: 1.0.0
 ---
 name: 00-zhi-shi-ku-jian-suo
 # 本地知识库检索 Skill（kb-retriever）

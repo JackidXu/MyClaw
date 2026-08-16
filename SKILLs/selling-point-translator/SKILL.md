@@ -1,5 +1,6 @@
 ---
 name: "买点卖点翻译"
+version: 1.0.0
 description: "引导式将企业内部的卖家卖点翻译为客户听得懂、愿意买的买点理由。"
 agent_created: true
 ---

@@ -1,6 +1,7 @@
 ---
 description: "基于 GEO 10步优化框架，帮助品牌内容在 Perplexity、Kimi 等 AI 搜索引擎中获得高频引用卡位。"
 name: "GEO 全流程优化"
+version: 1.0.0
 ---
 
 # GEO Optimizer

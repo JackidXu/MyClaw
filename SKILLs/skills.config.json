@@ -2,78 +2,217 @@
   "version": 1,
   "description": "Default skill configuration for HeyClaw",
   "defaults": {
-    "content-topic-engine": { "order": 1, "enabled": true },
-    "content-ip-manager": { "order": 2, "enabled": true },
-    "content-ip-operator": { "order": 3, "enabled": true },
-    "content-material-library": { "order": 4, "enabled": true },
-    "content-material-matcher": { "order": 5, "enabled": true },
-    "content-production-planner": { "order": 6, "enabled": true },
-    "content-script-writer": { "order": 7, "enabled": true },
-    "content-quality-guard": { "order": 8, "enabled": true },
-    "content-video-cutter": { "order": 9, "enabled": true },
-    "qu-ai-wei": { "order": 10, "enabled": true },
-
-    "short-form-video": { "order": 21, "enabled": true },
-    "OPC-one": { "order": 22, "enabled": true },
-    "aihot-skill": { "order": 23, "enabled": true },
-    "hot-topic-select": { "order": 24, "enabled": true },
-    "topic-generator": { "order": 25, "enabled": true },
-    "hook-and-headline-writing": { "order": 26, "enabled": true },
-    "short-video-hook": { "order": 27, "enabled": true },
-    "huashu-proofreading": { "order": 28, "enabled": true },
-    "shouzhang-pintie-card": { "order": 29, "enabled": true },
-    "black-xhs-cover": { "order": 30, "enabled": true },
-    "marketing-psychology": { "order": 31, "enabled": true },
-    "content-strategy": { "order": 32, "enabled": true },
-    "social-content-calendar": { "order": 33, "enabled": true },
-    "topic-reviewer": { "order": 34, "enabled": true },
-    "huashu-topic-gen": { "order": 35, "enabled": true },
-    "selling-point-translator": { "order": 36, "enabled": true },
-    "geo-optimizer": { "order": 37, "enabled": true },
-    "rag-skill": { "order": 38, "enabled": true },
-    "huashu-data-pro": { "order": 39, "enabled": true },
-    "ip-strategy-report-v7": { "order": 40, "enabled": true },
-
-    "OPC-one-opc": { "order": 41, "enabled": true },
-    "OPC-one-illustration": { "order": 42, "enabled": true },
-    "OPC-one-hook": { "order": 43, "enabled": true },
-    "OPC-one-motion": { "order": 44, "enabled": true },
-    "OPC-one-wiki": { "order": 45, "enabled": true },
-    "OPC-one-de-ai": { "order": 46, "enabled": true },
-    "OPC-one-xhs-check": { "order": 47, "enabled": true },
-
-    "campaign-analytics": { "order": 101, "enabled": true },
-    "cmo": { "order": 102, "enabled": true },
-    "content-marketing": { "order": 103, "enabled": true },
-    "geo-content-optimizer": { "order": 104, "enabled": true },
-    "marketing-brand-playbook": { "order": 105, "enabled": true },
-    "clip-editor": { "order": 106, "enabled": true },
-    "ffmpeg-video-editor": { "order": 107, "enabled": true },
-    "remotion-video-toolkit": { "order": 108, "enabled": true },
-    "video-clip-assistant": { "order": 109, "enabled": true },
-    "video-editor": { "order": 110, "enabled": true },
-    "article-illustrator": { "order": 111, "enabled": true },
-    "cover-image": { "order": 112, "enabled": true },
-    "diagram": { "order": 113, "enabled": true },
-    "image-gen": { "order": 114, "enabled": true },
-    "infographic": { "order": 115, "enabled": true },
-    "moments-writer": { "order": 116, "enabled": true },
-    "viral-image-replicator": { "order": 117, "enabled": true },
-    "xhs-images": { "order": 118, "enabled": true },
-    "xhs-notes-writer": { "order": 119, "enabled": true },
-
-    "docx": { "order": 10010, "enabled": true },
-    "web-search": { "order": 10020, "enabled": true },
-    "xlsx": { "order": 10030, "enabled": true },
-    "pptx": { "order": 10040, "enabled": true },
-    "pdf": { "order": 10050, "enabled": true },
-    "playwright": { "order": 10080, "enabled": true },
-    "content-planner": { "order": 10150, "enabled": true },
-    "article-writer": { "order": 10160, "enabled": true },
-    "local-tools": { "order": 10180, "enabled": true },
-    "seedance": { "order": 10210, "enabled": true },
-    "seedream": { "order": 10220, "enabled": true },
-    "skill-vetter": { "order": 10270, "enabled": true },
-    "skill-creator": { "order": 10280, "enabled": true }
+    "content-ip-manager": {
+      "order": 1,
+      "enabled": true
+    },
+    "content-marketing-strategy-map": {
+      "order": 2,
+      "enabled": true
+    },
+    "content-ip-rampup": {
+      "order": 3,
+      "enabled": true
+    },
+    "content-moments-planner": {
+      "order": 4,
+      "enabled": true
+    },
+    "content-topic-engine": {
+      "order": 5,
+      "enabled": true
+    },
+    "content-script-writer": {
+      "order": 6,
+      "enabled": true
+    },
+    "qu-ai-wei": {
+      "order": 7,
+      "enabled": true
+    },
+    "content-illustrator": {
+      "order": 8,
+      "enabled": true
+    },
+    "content-quality-guard": {
+      "order": 9,
+      "enabled": true
+    },
+    "content-production-planner": {
+      "order": 10,
+      "enabled": true
+    },
+    "content-material-library": {
+      "order": 11,
+      "enabled": true
+    },
+    "content-material-matcher": {
+      "order": 12,
+      "enabled": true
+    },
+    "content-video-cutter": {
+      "order": 13,
+      "enabled": true
+    },
+    "content-wechat-publisher": {
+      "order": 14,
+      "enabled": true
+    },
+    "short-form-video": {
+      "order": 21,
+      "enabled": true
+    },
+    "aihot-skill": {
+      "order": 22,
+      "enabled": true
+    },
+    "hot-topic-select": {
+      "order": 23,
+      "enabled": true
+    },
+    "topic-generator": {
+      "order": 24,
+      "enabled": true
+    },
+    "hook-and-headline-writing": {
+      "order": 25,
+      "enabled": true
+    },
+    "short-video-hook": {
+      "order": 26,
+      "enabled": true
+    },
+    "huashu-proofreading": {
+      "order": 27,
+      "enabled": true
+    },
+    "shouzhang-pintie-card": {
+      "order": 28,
+      "enabled": true
+    },
+    "black-xhs-cover": {
+      "order": 29,
+      "enabled": true
+    },
+    "marketing-psychology": {
+      "order": 30,
+      "enabled": true
+    },
+    "content-strategy": {
+      "order": 31,
+      "enabled": true
+    },
+    "social-content-calendar": {
+      "order": 32,
+      "enabled": true
+    },
+    "topic-reviewer": {
+      "order": 33,
+      "enabled": true
+    },
+    "huashu-topic-gen": {
+      "order": 34,
+      "enabled": true
+    },
+    "selling-point-translator": {
+      "order": 35,
+      "enabled": true
+    },
+    "geo-optimizer": {
+      "order": 36,
+      "enabled": true
+    },
+    "rag-skill": {
+      "order": 37,
+      "enabled": true
+    },
+    "huashu-data-pro": {
+      "order": 38,
+      "enabled": true
+    },
+    "ip-strategy-report-v7": {
+      "order": 39,
+      "enabled": true
+    },
+    "OPC-one-opc": {
+      "order": 40,
+      "enabled": true
+    },
+    "OPC-one-illustration": {
+      "order": 41,
+      "enabled": true
+    },
+    "OPC-one-hook": {
+      "order": 42,
+      "enabled": true
+    },
+    "OPC-one-motion": {
+      "order": 43,
+      "enabled": true
+    },
+    "OPC-one-wiki": {
+      "order": 44,
+      "enabled": true
+    },
+    "OPC-one-de-ai": {
+      "order": 45,
+      "enabled": true
+    },
+    "OPC-one-xhs-check": {
+      "order": 46,
+      "enabled": true
+    },
+    "remotion-video-toolkit": {
+      "order": 47,
+      "enabled": true
+    },
+    "docx": {
+      "order": 10010,
+      "enabled": true
+    },
+    "web-search": {
+      "order": 10020,
+      "enabled": true
+    },
+    "xlsx": {
+      "order": 10030,
+      "enabled": true
+    },
+    "pptx": {
+      "order": 10040,
+      "enabled": true
+    },
+    "pdf": {
+      "order": 10050,
+      "enabled": true
+    },
+    "playwright": {
+      "order": 10060,
+      "enabled": true
+    },
+    "article-writer": {
+      "order": 10070,
+      "enabled": true
+    },
+    "local-tools": {
+      "order": 10080,
+      "enabled": true
+    },
+    "seedance": {
+      "order": 10090,
+      "enabled": true
+    },
+    "seedream": {
+      "order": 10100,
+      "enabled": true
+    },
+    "skill-vetter": {
+      "order": 10110,
+      "enabled": true
+    },
+    "skill-creator": {
+      "order": 10120,
+      "enabled": true
+    }
   }
 }
