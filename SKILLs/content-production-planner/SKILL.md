@@ -1,8 +1,9 @@
 ---
-name: content-production-planner
-description: |
-  制作策划。把脚本翻译成可执行的拍摄方案——每段旁白对应拍什么画面、哪些素材已经有了、拍摄顺序怎么排最高效、现场该问IP什么问题。
+name: 制作策划
 version: 1.0.0
+description: 制作策划（content-production-planner）—— 把脚本翻译成可执行的拍摄方案：每段旁白对应拍什么画面、哪些素材已有、拍摄顺序怎么排最高效、现场该问IP什么问题。Production planner.
+agent_created: true
+compatibility: workbuddy
 ---
 
 # content-production-planner — 制作策划
@@ -56,7 +57,7 @@ version: 1.0.0
 |------|------|------|
 | **IP档案** | content-ip-manager | 语言风格参考、拍摄偏好（是否出镜/是否面对镜头） |
 | **素材库索引** | content-material-library | 检查已有素材，标注哪些画面可直接用 |
-| **季度规划表** | content-ip-operator | 批量模式——一次规划多条内容的拍摄计划 |
+| **季度规划表** | content-marketing-strategy-map | 批量模式——一次规划多条内容的拍摄计划（来自战略大盘/营销日历） |
 | **视频类型方法论** | references/{type}-methodology.md | 拍摄配置适配（不同类型的机位/景别/输出物组合不同） |
 
 > **如果没有素材库索引**：拍摄清单中所有画面标注为"需拍摄"，不做已有素材匹配。
@@ -369,7 +370,7 @@ version: 1.0.0
 | **content-script-writer** | 读取脚本文件 | 脚本md文件 → 段落结构、画面指引、补录清单、事实标注 |
 | **content-ip-manager** | 读取IP档案 | IP出镜偏好、语言风格、拍摄禁忌 |
 | **content-material-library** | 读取素材库索引 | 已有素材匹配、素材路径 |
-| **content-ip-operator** | 读取季度规划表（批量模式） | 多条内容的拍摄规划、优先级排序 |
+| **content-marketing-strategy-map** | 读取战略大盘/日历的批量规划 | 多条内容的拍摄规划、优先级排序 |
 
 ### 下游（输出）
 

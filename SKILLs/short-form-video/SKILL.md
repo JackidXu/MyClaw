@@ -1,6 +1,7 @@
 ---
 description: "基于一线短视频实操方法论，引导从选题概念到发布的全流程短视频创作，包含快速原型、钩子设计与口播打磨。"
 name: "短视频创作磨刀"
+version: 1.0.0
 ---
 name: 02-duan-shi-pin-chuang-zuo-mo-dao
 # Short-Form Video Production

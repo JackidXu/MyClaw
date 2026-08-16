@@ -1,6 +1,7 @@
 ---
 description: "结合认知心理学与行为经济学心智模型，指导卖点提炼、转化话术与用户决策说服。"
 name: "营销心理学手册"
+version: 1.0.0
 ---
 
 # Marketing Psychology & Mental Models

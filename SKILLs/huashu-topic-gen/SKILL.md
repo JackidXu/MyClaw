@@ -1,6 +1,7 @@
 ---
 description: "快速生成 3-4 个大流量选题方向，包含爆款标题建议、文章大纲与传播优劣势深度拆解。"
 name: "爆款选题生成"
+version: 1.0.0
 ---
 name: 01-huashu-xuan-ti-sheng-cheng
 # 选题生成

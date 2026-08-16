@@ -1,6 +1,7 @@
 ---
 description: "从采集的热点素材中筛选 Top10 高价值选题，并输出包含大纲与切入角度的完整选题方案。"
 name: "AI 选题生成"
+version: 1.0.0
 ---
 name: 01-ai-xuan-ti-sheng-cheng
 # Topic Generator - 选题生成

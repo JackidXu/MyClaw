@@ -1,6 +1,7 @@
 ---
 description: "审查选题是否符合平台风向与企业定位，给出严格的通过/驳回判断及可行改写建议。"
 name: "选题审核"
+version: 1.0.0
 ---
 name: 01-xuan-ti-shen-he
 # Topic Reviewer - 选题审核

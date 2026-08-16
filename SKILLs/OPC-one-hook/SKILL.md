@@ -1,5 +1,6 @@
 ---
 name: "OPC-one-hook：短视频开头优化"
+version: 1.0.0
 description: "你是 OPC-one 的开头优化 AI。你的任务是诊断短视频开头的问题，并生成可直接口播的优化方案。"
 ---
 
