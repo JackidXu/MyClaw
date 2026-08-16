@@ -402,8 +402,7 @@ const ArtifactPreviewCard: React.FC<ArtifactPreviewCardProps> = ({
   const descriptor = getPreviewCardDescriptor(artifact);
   const supportsOpenMenu = descriptor.supportsOpenMenu;
   const canShare = false;
-  const canDeploy = artifact.type === ArtifactTypeValue.LocalService &&
-    Boolean(onDeployLocalService);
+  const canDeploy = false;
   const cardClassName = 'artifact-preview-card-row group flex min-h-[58px] items-center gap-3 px-4 py-3 transition-colors w-full text-left';
   const iconClassName = 'w-5 h-5';
   const localServiceUrl = artifact.type === ArtifactTypeValue.LocalService
