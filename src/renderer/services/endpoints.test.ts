@@ -2,6 +2,12 @@ import { afterEach, expect, test, vi } from 'vitest';
 
 import { configService } from './config';
 import {
+  getEnterpriseBillingUrl,
+  getEnterpriseMemberProfileUrl,
+  getEnterpriseOverviewUrl,
+  getEnterpriseRechargeUrl,
+  getEnterpriseUsageUrl,
+  getPortalCreditsDetailUrl,
   getPortalCreditsResetActivityUrl,
   getPortalInvitationUrl,
   getPortalPricingUrl,
@@ -24,15 +30,20 @@ test('portal account urls use production base when test mode is disabled', () =>
   mockTestMode(false);
 
   expect(getPortalProfileUrl()).toBe('https://portal.heyclaw.com/portal#/profile');
+  expect(getPortalCreditsDetailUrl()).toBe('https://portal.heyclaw.com/portal#/profile/detail');
   expect(getPortalRechargeUrl()).toBe('https://portal.heyclaw.com/portal#/');
   expect(getPortalInvitationUrl()).toBe('https://portal.heyclaw.com/portal#/invitation');
   expect(getPortalCreditsResetActivityUrl()).toBe('https://portal.heyclaw.com/portal#/profile?activity=credits_reset');
+  expect(getPortalCreditsResetActivityUrl('credits_final_reward_2026_07')).toBe(
+    'https://portal.heyclaw.com/portal#/profile?activity=credits_reset&campaignCode=credits_final_reward_2026_07',
+  );
 });
 
 test('portal account urls use test base when test mode is enabled', () => {
   mockTestMode(true);
 
   expect(getPortalProfileUrl()).toBe('https://inner.heyclaw.com/portal#/profile');
+  expect(getPortalCreditsDetailUrl()).toBe('https://inner.heyclaw.com/portal#/profile/detail');
   expect(getPortalRechargeUrl()).toBe('https://inner.heyclaw.com/portal#/');
   expect(getPortalInvitationUrl()).toBe('https://inner.heyclaw.com/portal#/invitation');
   expect(getPortalCreditsResetActivityUrl()).toBe('https://inner.heyclaw.com/portal#/profile?activity=credits_reset');
@@ -43,5 +54,25 @@ test('portal pricing url can include html share keyfrom', () => {
 
   expect(getPortalPricingUrl(PortalPricingKeyfrom.HtmlShare)).toBe(
     'https://portal.heyclaw.com/portal#/pricing?keyfrom=html_share',
+  );
+});
+
+test('enterprise console urls use the selected enterprise context', () => {
+  mockTestMode(false);
+
+  expect(getEnterpriseMemberProfileUrl(1001)).toBe(
+    'https://portal.heyclaw.com/portal#/enterprise/profile/1001',
+  );
+  expect(getEnterpriseOverviewUrl(1001)).toBe(
+    'https://portal.heyclaw.com/portal#/enterprise/console/1001/overview',
+  );
+  expect(getEnterpriseUsageUrl(1001)).toBe(
+    'https://portal.heyclaw.com/portal#/enterprise/console/1001/usage',
+  );
+  expect(getEnterpriseBillingUrl(1001)).toBe(
+    'https://portal.heyclaw.com/portal#/enterprise/console/1001/billing',
+  );
+  expect(getEnterpriseRechargeUrl(1001)).toBe(
+    'https://portal.heyclaw.com/portal#/enterprise/console/1001/recharge',
   );
 });

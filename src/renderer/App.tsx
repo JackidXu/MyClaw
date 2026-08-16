@@ -11,9 +11,15 @@ import {
   isManualDownloadUrl,
 } from '../shared/appUpdate/constants';
 import { ProviderAuthType, ProviderName, ProviderRegistry } from '../shared/providers';
+import { SIDEBAR_TASK_FILTER_ENABLED } from './components/agentSidebar/SidebarTaskFilterButton';
 import { AuthModal } from './components/AuthModal';
 import { CoworkView } from './components/cowork';
-import { CoworkShortcutDirection, CoworkUiEvent } from './components/cowork/constants';
+import {
+  CoworkShortcutDirection,
+  type CoworkTaskSearchRequestEventDetail,
+  CoworkTaskSearchRequestSource,
+  CoworkUiEvent,
+} from './components/cowork/constants';
 import {
   ConversationSearchShortcutTarget,
   resolveConversationSearchShortcutTarget,
@@ -23,17 +29,17 @@ import CoworkQuestionWizard from './components/cowork/CoworkQuestionWizard';
 import EngineFailureOverlay from './components/cowork/EngineFailureOverlay';
 import EngineStartupOverlay from './components/cowork/EngineStartupOverlay';
 import ExpertsView from './components/experts/ExpertsView';
-import SecondBrainView from './components/secondBrain/SecondBrainView';
 import KitsView from './components/kits/KitsView';
 import { ScheduledTasksView } from './components/scheduledTasks';
+import SecondBrainView from './components/secondBrain/SecondBrainView';
 import Settings, { type SettingsOpenOptions } from './components/Settings';
 import Sidebar from './components/Sidebar';
 import { SitesView } from './components/sites';
-import { SkillsView } from './components/skills';
+import { SkillsAndConnectorsView, SkillsConnectorsSection } from './components/skillsAndConnectors';
 import SkinBackdrop, { SkinBackdropVariant } from './components/skin/SkinBackdrop';
 import SkinPresentationScope from './components/skin/SkinPresentationScope';
 import StartupCreditCampaign from './components/StartupCreditCampaign';
-import Toast from './components/Toast';
+import Toast, { type ToastEventDetail } from './components/Toast';
 import AppUpdateBadge from './components/update/AppUpdateBadge';
 import AppUpdateBlockingPanel from './components/update/AppUpdateBlockingPanel';
 import AppUpdateCard from './components/update/AppUpdateCard';
@@ -47,6 +53,7 @@ import AppUpdateModal from './components/update/AppUpdateModal';
 import WindowsAppTitleBar from './components/window/WindowsAppTitleBar';
 import WindowTitleBar from './components/window/WindowTitleBar';
 import { defaultConfig, getProviderDisplayName, ShortcutAction } from './config';
+import { selectIsEnterpriseAccount } from './features/enterpriseAccount/selectors';
 import { SkinProvider } from './providers/SkinProvider';
 import type { ApiConfig } from './services/api';
 import { apiService } from './services/api';
@@ -55,6 +62,11 @@ import { configService } from './services/config';
 import { coworkService } from './services/cowork';
 import { isTestModeEnabled } from './services/endpoints';
 import { i18nService } from './services/i18n';
+import {
+  beginLatestAsyncRequest,
+  invalidateLatestAsyncRequest,
+  isLatestAsyncRequest,
+} from './services/latestAsyncRequest';
 import { LogReporterAction, reportYdAnalyzer } from './services/logReporter';
 import { scheduledTaskService } from './services/scheduledTask';
 import { isTextEditingSafeShortcut, matchesShortcut } from './services/shortcuts';
@@ -72,9 +84,11 @@ import {
   clearDraftSelectedTextSnippets,
   setDraftCollaborationMode,
   setDraftPrompt,
+  setDraftSkillIds,
 } from './store/slices/coworkSlice';
 import { setAvailableModels, setDefaultSelectedModel } from './store/slices/modelSlice';
 import { clearSelection } from './store/slices/quickActionSlice';
+import { setActiveSkillIds } from './store/slices/skillSlice';
 import { CoworkCollaborationMode, type CoworkPermissionResult } from './types/cowork';
 
 const AGENT_TASK_SLOT_SHORTCUT_ACTIONS = [
@@ -118,6 +132,7 @@ const INIT_AUTO_RETRY_DELAY_MS = 8_000;
 const INIT_AUTO_RETRY_MAX = 2;
 const INIT_CONFIG_REPAIR_DELAY_MS = 15_000;
 const INIT_CONFIG_REPAIR_MAX = 4;
+const INIT_REQUIRED_GATE_MAX_ATTEMPTS = 2;
 
 export const InitPassMode = {
   Startup: 'startup',
@@ -147,12 +162,16 @@ const App: React.FC = () => {
   const [settingsOptions, setSettingsOptions] = useState<SettingsOpenOptions & { requestId: number }>({ requestId: 0 });
   const [mainView, setMainView] = useState<'cowork' | 'skills' | 'scheduledTasks' | 'kits' | 'mcp' | 'sites' | 'experts' | 'secondBrain'>('cowork');
   const [skillsActiveTab, setSkillsActiveTab] = useState<'skills' | 'mcp'>('skills');
+  void skillsActiveTab;
+  void setSkillsActiveTab;
   const [isInitialized, setIsInitialized] = useState(false);
   const [isActivated, setIsActivated] = useState<boolean>(true);
   const [initError, setInitError] = useState<string | null>(null);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<ToastEventDetail | null>(null);
   const [, forceLanguageRefresh] = useState(0);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isTaskFilterActive, setIsTaskFilterActive] = useState(false);
+  const [hasUnreadCompletedTasks, setHasUnreadCompletedTasks] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(244);
   const [appUpdateState, setAppUpdateState] = useState<AppUpdateRuntimeState>({
     status: AppUpdateStatus.Idle,
@@ -171,6 +190,7 @@ const App: React.FC = () => {
     ui?: Record<string, 'hide' | 'disable' | 'readonly'>;
     disableUpdate?: boolean;
   } | null>(null);
+  const [enterpriseConfigLoaded, setEnterpriseConfigLoaded] = useState(false);
   const toastTimerRef = useRef<number | null>(null);
   const askAiFocusTimerRef = useRef<number | null>(null);
   const hasInitialized = useRef(false);
@@ -179,6 +199,10 @@ const App: React.FC = () => {
   const initRetryTimerRef = useRef<number | null>(null);
   const initAutoRetryCountRef = useRef(0);
   const initRepairCountRef = useRef(0);
+  const requiredStartupGatesReadyRef = useRef(false);
+  const coreStartupServicesInitializedRef = useRef(false);
+  const enterpriseGateRequestIdRef = useRef(0);
+  const privacyGateRequestIdRef = useRef(0);
   const previousUpdateStatusRef = useRef<AppUpdateRuntimeState['status']>(AppUpdateStatus.Idle);
   const shouldInstallReadyUpdateRef = useRef(false);
   const isUserInitiatedUpdateFlowActiveRef = useRef(false);
@@ -188,6 +212,7 @@ const App: React.FC = () => {
   const pendingPermission = useSelector(selectFirstCurrentSessionPendingPermission);
   const pendingPermissions = useSelector(selectPendingPermissions);
   const authUser = useSelector((state: RootState) => state.auth.user);
+  const isEnterpriseAccount = useSelector(selectIsEnterpriseAccount);
   const isWindows = window.electron.platform === 'win32';
   const [minimizedPermissionIds, setMinimizedPermissionIds] = useState<string[]>([]);
   const isPendingPermissionMinimized = pendingPermission
@@ -352,6 +377,9 @@ const App: React.FC = () => {
     };
 
     const finishShell = (providerModelCount: number, readyLabel: string) => {
+      if (!requiredStartupGatesReadyRef.current) {
+        throw new Error('Required privacy and enterprise startup gates are unresolved.');
+      }
       setIsInitialized(true);
       setInitError(null);
       mark(readyLabel);
@@ -375,6 +403,45 @@ const App: React.FC = () => {
           : INIT_STEP_TIMEOUT_MS_DEFAULT;
       const isRepair = mode === InitPassMode.Repair;
 
+      // Privacy consent and enterprise UI policy are authorization gates, not
+      // optional startup data. Resolve them before any degraded/default-config
+      // path can expose the application shell. Both calls run in parallel and
+      // use fresh IPC invokes on retry to recover from an early renderer/main
+      // handshake stall.
+      if (!requiredStartupGatesReadyRef.current) {
+        const [enterpriseReady, privacyReady] = await Promise.all([
+          runStep('enterprise.getConfig', async () => {
+            const requestId = beginLatestAsyncRequest(enterpriseGateRequestIdRef);
+            const result = await window.electron.enterprise.getConfig();
+            if (!isLatestAsyncRequest(enterpriseGateRequestIdRef, requestId)) return;
+            if (!result.success) {
+              throw new Error(result.error || 'Enterprise UI config is unavailable.');
+            }
+            setEnterpriseConfig(result.config);
+            setEnterpriseConfigLoaded(true);
+          }, {
+            attempts: INIT_REQUIRED_GATE_MAX_ATTEMPTS,
+            firstTimeoutMs: INIT_STEP_RETRY_TIMEOUT_MS,
+          }),
+          runStep('privacy check', async () => {
+            const requestId = beginLatestAsyncRequest(privacyGateRequestIdRef);
+            const agreed = await window.electron.store.get('privacy_agreed');
+            if (!isLatestAsyncRequest(privacyGateRequestIdRef, requestId)) return;
+            setPrivacyAgreed(agreed === true);
+          }, {
+            attempts: INIT_REQUIRED_GATE_MAX_ATTEMPTS,
+            firstTimeoutMs: INIT_STEP_RETRY_TIMEOUT_MS,
+          }),
+        ]);
+        if (!enterpriseReady || !privacyReady) {
+          throw new Error(
+            `Required startup gates unavailable (enterprise=${enterpriseReady}, privacy=${privacyReady}).`,
+          );
+        }
+        requiredStartupGatesReadyRef.current = true;
+        mark('required privacy and enterprise gates done');
+      }
+
       mark('configService.init begin');
       const configReady = await runStep('configService.init', () => configService.init(), {
         attempts: isRepair ? 2 : INIT_CONFIG_MAX_ATTEMPTS,
@@ -392,48 +459,51 @@ const App: React.FC = () => {
           }
           return;
         }
-        // Do not dead-end the app on a local config read: bring the shell up
-        // on defaults and finish the remaining init in a background repair
-        // pass (none of the later steps have run yet in this branch).
+        // Keep the application usable on defaults while a background pass
+        // repairs persisted config. Core services still initialize below so
+        // auth/listeners and scheduled tasks are never skipped.
         markError('configService.init unavailable — starting with default config, background repair scheduled');
-        const fallbackModels = applyConfigToApp(mark);
-        finishShell(fallbackModels.length, 'shell ready (degraded: default config)');
         initRepairCountRef.current = 1;
-        scheduleNextPass(InitPassMode.Repair, INIT_CONFIG_REPAIR_DELAY_MS);
+      } else {
+        mark('configService.init done');
+      }
+
+      if (isRepair) {
+        const repairedModels = applyConfigToApp(mark);
+        const repairedConfig = configService.getConfig();
+        themeService.applyPersistedSelection({
+          mode: repairedConfig.theme,
+          themeId: repairedConfig.themeId,
+        });
+        i18nService.setLanguage(repairedConfig.language, { persist: false });
+        mark(`config repaired and applied (${repairedModels.length} provider models)`);
         return;
       }
-      mark('configService.init done');
-      if (isRepair) {
-        mark('config repaired — completing the remaining startup initialization');
+
+      if (!coreStartupServicesInitializedRef.current) {
+        themeService.initialize();
+        mark('themeService done');
+
+        mark('i18nService.initialize begin');
+        const i18nReady = await runStep('i18nService.initialize', () => i18nService.initialize(), {
+          // Keep one invocation alive after a timeout. Starting a concurrent
+          // locale initialization would let late IPC results race each other.
+          attempts: 1,
+          firstTimeoutMs: initTimeoutMs,
+        });
+        mark(i18nReady ? 'i18nService.initialize done' : 'i18nService.initialize degraded — using persisted language hint');
+
+        // Single attempt: authService.init() re-entry tears down listeners, so a
+        // concurrent retry could stack them; its in-flight run self-completes
+        // once IPC recovers.
+        mark('authService.init begin');
+        const authReady = await runStep('authService.init', () => authService.init(), {
+          attempts: 1,
+          firstTimeoutMs: INIT_STEP_RETRY_TIMEOUT_MS,
+        });
+        mark(authReady ? 'authService.init done' : 'authService.init pending (auth restore completes in background)');
+        coreStartupServicesInitializedRef.current = true;
       }
-
-      // Setter lives inside the wrapped promise so a late IPC reply after a
-      // timeout still applies the enterprise config.
-      const enterpriseReady = await runStep('enterprise.getConfig', async () => {
-        const entConfig = await window.electron.enterprise.getConfig();
-        setEnterpriseConfig(entConfig);
-      }, { attempts: 1, firstTimeoutMs: INIT_STEP_RETRY_TIMEOUT_MS });
-      mark(enterpriseReady ? 'enterprise.getConfig done' : 'enterprise.getConfig pending (late reply will apply it)');
-
-      themeService.initialize();
-      mark('themeService done');
-
-      mark('i18nService.initialize begin');
-      const i18nReady = await runStep('i18nService.initialize', () => i18nService.initialize(), {
-        attempts: 2,
-        firstTimeoutMs: initTimeoutMs,
-      });
-      mark(i18nReady ? 'i18nService.initialize done' : 'i18nService.initialize degraded — using persisted language hint');
-
-      // Single attempt: authService.init() re-entry tears down listeners, so a
-      // concurrent retry could stack them; its in-flight run self-completes
-      // once IPC recovers.
-      mark('authService.init begin');
-      const authReady = await runStep('authService.init', () => authService.init(), {
-        attempts: 1,
-        firstTimeoutMs: INIT_STEP_RETRY_TIMEOUT_MS,
-      });
-      mark(authReady ? 'authService.init done' : 'authService.init pending (auth restore completes in background)');
 
       // 初始化拉取与注册 VIP 状态
       try {
@@ -532,11 +602,20 @@ const App: React.FC = () => {
       setPrivacyAgreed(true);
       mark('privacy check done');
 
-      finishShell(providerModels.length, 'shell ready');
+      finishShell(
+        providerModels.length,
+        configReady ? 'shell ready' : 'shell ready (degraded: default config)',
+      );
 
       void waitWithTimeout(scheduledTaskService.init(), 5000, 'scheduledTaskService.init').catch((error) => {
         console.error('[App] initializeApp: scheduledTaskService.init failed:', error);
       });
+
+      if (!configReady) {
+        // Schedule only after the startup pass releases its in-flight guard;
+        // otherwise a slow core-service init can consume and lose the timer.
+        scheduleNextPass(InitPassMode.Repair, INIT_CONFIG_REPAIR_DELAY_MS);
+      }
 
     } catch (error) {
       const elapsed = Math.round(performance.now() - t0);
@@ -731,9 +810,32 @@ const App: React.FC = () => {
     setMainView('experts');
   }, []);
 
+  const handleSkillsConnectorsSectionChange = useCallback((section: SkillsConnectorsSection) => {
+    if (section === SkillsConnectorsSection.Connectors) {
+      handleShowMcp();
+    } else {
+      handleShowSkills();
+    }
+  }, [handleShowMcp, handleShowSkills]);
+
+
+
   const handleShowSecondBrain = useCallback(() => {
     setMainView('secondBrain');
   }, []);
+
+  const handleSkillUse = useCallback((skillId: string) => {
+    dispatch(setActiveSkillIds([skillId]));
+    coworkService.clearSession({ restoreAgentSkills: true });
+    dispatch(clearSelection());
+    dispatch(setDraftSkillIds({ draftKey: '__home__', skillIds: [skillId] }));
+    setMainView('cowork');
+    window.setTimeout(() => {
+      window.dispatchEvent(new CustomEvent(CoworkUiEvent.FocusInput, {
+        detail: { clear: false },
+      }));
+    }, 0);
+  }, [dispatch]);
 
   const handleToggleSidebar = useCallback(() => {
     const nextCollapsed = !isSidebarCollapsed;
@@ -752,6 +854,40 @@ const App: React.FC = () => {
       isCollapsed: isSidebarCollapsed,
     });
     setIsSidebarCollapsed((prev) => !prev);
+  }, [isSidebarCollapsed, mainView]);
+
+  const handleToggleTaskFilter = useCallback(() => {
+    const nextActive = !isTaskFilterActive;
+    const message = `task activity toggle requested activeView=${mainView} nextActive=${nextActive} hasUnreadCompleted=${hasUnreadCompletedTasks} platform=${window.electron.platform}`;
+    console.debug(`[TaskActivity] ${message}`);
+    try {
+      window.electron?.log?.fromRenderer?.('debug', 'TaskActivity', message);
+    } catch {
+      // Diagnostics must never block the sidebar interaction.
+    }
+    void reportYdAnalyzer({
+      action: LogReporterAction.SidebarAction,
+      source: 'home_sidebar',
+      actionType: 'task_filter_toggle',
+      activeView: mainView,
+      isCollapsed: isSidebarCollapsed,
+      targetSelected: nextActive,
+    });
+    setIsTaskFilterActive(nextActive);
+  }, [hasUnreadCompletedTasks, isSidebarCollapsed, isTaskFilterActive, mainView]);
+
+  const handleOpenTaskSearch = useCallback(() => {
+    void reportYdAnalyzer({
+      action: LogReporterAction.SidebarAction,
+      source: 'home_sidebar',
+      actionType: 'open_search',
+      activeView: mainView,
+      isCollapsed: isSidebarCollapsed,
+    });
+    window.dispatchEvent(new CustomEvent<CoworkTaskSearchRequestEventDetail>(
+      CoworkUiEvent.ShortcutSearch,
+      { detail: { source: CoworkTaskSearchRequestSource.WindowsTitleBar } },
+    ));
   }, [isSidebarCollapsed, mainView]);
 
   const handleNewChat = useCallback(() => {
@@ -800,15 +936,18 @@ const App: React.FC = () => {
     }, 0);
   }, [dispatch]);
 
-  const showToast = useCallback((message: string) => {
-    setToastMessage(message);
+  const showToast = useCallback((toast: string | ToastEventDetail) => {
+    const detail = typeof toast === 'string' ? { message: toast } : toast;
+    if (!detail.message) return;
+    setToastMessage(detail);
     if (toastTimerRef.current) {
       window.clearTimeout(toastTimerRef.current);
     }
+    // Toasts carrying an action button stay longer so the user can reach it.
     toastTimerRef.current = window.setTimeout(() => {
       setToastMessage(null);
       toastTimerRef.current = null;
-    }, 2200);
+    }, detail.actionLabel && detail.onAction ? 6000 : 2200);
   }, []);
 
   const startUserInitiatedUpdateFlow = useCallback((reason: string) => {
@@ -1043,6 +1182,9 @@ const App: React.FC = () => {
   // Continuing from the welcome screen (login or custom model) counts as accepting the agreement.
   const acceptPrivacyAgreement = useCallback(async () => {
     await window.electron.store.set('privacy_agreed', true);
+    // Invalidate an earlier timed-out read before committing the user's newer
+    // consent so its late response cannot put the welcome gate back on screen.
+    invalidateLatestAsyncRequest(privacyGateRequestIdRef);
     setPrivacyAgreed(true);
   }, []);
 
@@ -1180,7 +1322,10 @@ const App: React.FC = () => {
           window.dispatchEvent(new CustomEvent(CoworkUiEvent.ShortcutConversationSearch));
         } else if (shortcutTarget === ConversationSearchShortcutTarget.History) {
           event.preventDefault();
-          window.dispatchEvent(new CustomEvent(CoworkUiEvent.ShortcutSearch));
+          window.dispatchEvent(new CustomEvent<CoworkTaskSearchRequestEventDetail>(
+            CoworkUiEvent.ShortcutSearch,
+            { detail: { source: CoworkTaskSearchRequestSource.KeyboardShortcut } },
+          ));
         }
         return;
       }
@@ -1353,8 +1498,8 @@ const App: React.FC = () => {
   // Listen for toast events from child components
   useEffect(() => {
     const handler = (e: Event) => {
-      const message = (e as CustomEvent<string>).detail;
-      if (message) showToast(message);
+      const detail = (e as CustomEvent<string | ToastEventDetail>).detail;
+      if (detail) showToast(detail);
     };
     window.addEventListener('app:showToast', handler);
     return () => window.removeEventListener('app:showToast', handler);
@@ -1604,8 +1749,17 @@ const App: React.FC = () => {
       isSidebarCollapsed={isSidebarCollapsed}
       sidebarWidth={sidebarWidth}
       onToggleSidebar={canUseWindowsTopBarActions ? handleToggleSidebar : undefined}
+      onSearch={canUseWindowsTopBarActions && !isSidebarCollapsed
+        ? handleOpenTaskSearch
+        : undefined}
       onNewChat={canUseWindowsCollapsedTopBarActions ? handleNewChat : undefined}
       sidebarToggleLabel={isSidebarCollapsed ? i18nService.t('expand') : i18nService.t('collapse')}
+      searchLabel={i18nService.t('search')}
+      showFilterIcon={SIDEBAR_TASK_FILTER_ENABLED && canUseWindowsTopBarActions && !isSidebarCollapsed && mainView === 'cowork'}
+      filterLabel={i18nService.t('sidebarFilter')}
+      isFilterActive={isTaskFilterActive}
+      hasFilterNotice={hasUnreadCompletedTasks}
+      onToggleFilter={handleToggleTaskFilter}
       newChatLabel={i18nService.t('newChat')}
       updateBadge={canUseWindowsCollapsedTopBarActions ? updateBadge : null}
     />
@@ -1633,7 +1787,7 @@ const App: React.FC = () => {
           onSuccess={async () => {
             try {
               const entConfig = await window.electron.enterprise.getConfig();
-              setEnterpriseConfig(entConfig);
+              setEnterpriseConfig(entConfig.config);
             } catch (err) {
               console.error('[App] Failed to fetch enterprise config on login success:', err);
             }
@@ -1655,7 +1809,7 @@ const App: React.FC = () => {
               <ChatBubbleLeftRightIcon className="h-8 w-8 text-white" />
             </div>
             <div className="text-foreground text-xl font-medium text-center">{initError}</div>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center justify-center gap-3">
               <button
                 onClick={handleInitRetry}
                 className="px-6 py-2.5 bg-primary hover:bg-primary-hover text-white rounded-xl transition-colors text-sm font-medium"
@@ -1668,12 +1822,14 @@ const App: React.FC = () => {
               >
                 {i18nService.t('restartApp')}
               </button>
-              <button
-                onClick={() => handleShowSettings()}
-                className="px-6 py-2.5 border border-border text-foreground hover:bg-surface-raised rounded-xl transition-colors text-sm font-medium"
-              >
-                {i18nService.t('openSettings')}
-              </button>
+              {enterpriseConfigLoaded && privacyAgreed === true && (
+                <button
+                  onClick={() => handleShowSettings()}
+                  className="px-6 py-2.5 border border-border text-foreground hover:bg-surface-raised rounded-xl transition-colors text-sm font-medium"
+                >
+                  {i18nService.t('openSettings')}
+                </button>
+              )}
             </div>
           </div>
           {showSettings && (
@@ -1701,7 +1857,9 @@ const App: React.FC = () => {
       <div className="relative h-screen overflow-hidden">
         {toastMessage && (
           <Toast
-            message={toastMessage}
+            message={toastMessage.message}
+            actionLabel={toastMessage.actionLabel}
+            onAction={toastMessage.onAction}
             closeLabel={i18nService.t('close')}
             onClose={() => setToastMessage(null)}
           />
@@ -1724,7 +1882,9 @@ const App: React.FC = () => {
       >
       {toastMessage && (
         <Toast
-          message={toastMessage}
+          message={toastMessage.message}
+          actionLabel={toastMessage.actionLabel}
+          onAction={toastMessage.onAction}
           closeLabel={i18nService.t('close')}
           onClose={() => setToastMessage(null)}
         />
@@ -1732,7 +1892,7 @@ const App: React.FC = () => {
       {/* The welcome screen renders via the early return above, so agreement
           alone gates the campaign here (no separate showWelcome flag). */}
       <StartupCreditCampaign
-        enabled={privacyAgreed === true}
+        enabled={privacyAgreed === true && !isEnterpriseAccount}
       />
       {windowsStandaloneTitleBar}
       <div
@@ -1754,6 +1914,10 @@ const App: React.FC = () => {
           onNewChat={handleNewChat}
           isCollapsed={isSidebarCollapsed}
           onToggleCollapse={handleToggleSidebar}
+          isTaskFilterActive={isTaskFilterActive}
+          hasUnreadCompletedTasks={hasUnreadCompletedTasks}
+          onToggleTaskFilter={handleToggleTaskFilter}
+          onTaskFilterSummaryChange={setHasUnreadCompletedTasks}
           updateBadge={!isSidebarCollapsed ? updateBadge : null}
           onWidthChange={setSidebarWidth}
           updateNotice={!isSidebarCollapsed && !isUpdateInteractionBlocked ? updateCard : null}
@@ -1771,16 +1935,17 @@ const App: React.FC = () => {
               <SkinBackdrop variant={SkinBackdropVariant.Management} />
             )}
             <EngineStartupOverlay />
-            {mainView === 'skills' ? (
-              <SkillsView
+            {mainView === 'skills' || mainView === 'mcp' ? (
+              <SkillsAndConnectorsView
+                activeSection={mainView === 'mcp' ? SkillsConnectorsSection.Connectors : SkillsConnectorsSection.Skills}
+                onSectionChange={handleSkillsConnectorsSectionChange}
                 isSidebarCollapsed={isSidebarCollapsed}
                 onToggleSidebar={handleToggleSidebar}
                 onNewChat={handleNewChat}
                 onCreateSkillByChat={handleCreateSkillByChat}
+                onUseSkill={handleSkillUse}
                 updateBadge={collapsedHeaderUpdateBadge}
-                readOnly={enterpriseConfig?.ui?.skills === 'readonly'}
-                activeTab={skillsActiveTab}
-                onChangeTab={setSkillsActiveTab}
+                skillsReadOnly={enterpriseConfig?.ui?.skills === 'readonly'}
               />
             ) : mainView === 'scheduledTasks' ? (
               <ScheduledTasksView

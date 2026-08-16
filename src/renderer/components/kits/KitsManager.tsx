@@ -1,4 +1,4 @@
-import { ArrowDownTrayIcon, ArrowLeftIcon, ArrowPathIcon,XMarkIcon } from '@heroicons/react/24/outline';
+import { ArrowDownTrayIcon, ArrowLeftIcon, ArrowPathIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useDispatch } from 'react-redux';
 
@@ -7,6 +7,7 @@ import { kitService } from '../../services/kit';
 import { compareVersions, resolveLocalizedText } from '../../services/skill';
 import { setInstalledKits as setInstalledKitsAction, setMarketplaceKits } from '../../store/slices/kitSlice';
 import type { InstalledKit, KitCategory, MarketplaceKit } from '../../types/kit';
+import { MANAGEMENT_BODY_TEXT } from '../common/managementTypography';
 import Modal from '../common/Modal';
 import SearchIcon from '../icons/SearchIcon';
 import { getKitAnalyticsParams, reportKitAction } from './analytics';
@@ -520,97 +521,6 @@ const KitsManager: React.FC<KitsManagerProps> = ({ onTryAsking }) => {
             </div>
           </div>
         </div>
-
-        {/* Try asking */}
-        {!!selectedKit && selectedKit.tryAsking && selectedKit.tryAsking.length > 0 && (
-          <div>
-            <h3 className="text-sm font-medium text-foreground mb-3">
-              {i18nService.t('kitTryAsking')}
-            </h3>
-            <div className="space-y-2">
-              {selectedKit.tryAsking.map((prompt, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => handleTryAskingClick(resolveLocalizedText(prompt), selectedKit.id)}
-                  className="group flex w-full items-center justify-between gap-3 rounded-lg border border-border bg-surface px-3 py-2.5 text-left transition-colors hover:border-primary/50 hover:bg-surface-raised/50"
-                >
-                  <span className="text-sm text-foreground">{resolveLocalizedText(prompt)}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Skills list */}
-        {!!selectedKit && selectedKit.skills && selectedKit.skills.list.length > 0 && (
-          <div>
-            <h3 className="mb-3 flex items-center gap-1.5 text-sm font-medium text-foreground">
-              {i18nService.t('kitSkills')}
-              <span className="rounded-full bg-surface-raised px-1.5 py-0.5 text-[10px] font-medium text-secondary">
-                {selectedKit.skills.list.length}
-              </span>
-            </h3>
-            <div className="flex flex-wrap gap-2">
-              {/* TODO: 不知道哪里冒出来的 KitSkillPill 组件，不过这个页面可能移除，暂时不管它 */}
-              {/* {selectedKit.skills.list.map((skill) => (
-                <KitSkillPill key={skill.id} skill={skill} />
-              ))} */}
-            </div>
-          </div>
-        )}
-
-        {/* Install confirmation dialog */}
-        {installPrompt && (
-          <Modal
-            onClose={() => {
-              if (selectedKit) {
-                reportKitAction('install_prompt_cancel', {
-                  source: 'kits_manager',
-                  ...getKitAnalyticsParams(selectedKit, installedKits[selectedKit.id]),
-                });
-              }
-              setInstallPrompt(null);
-            }}
-            overlayClassName="fixed inset-0 z-[9999] flex items-center justify-center modal-backdrop px-4"
-            className="modal-content w-full max-w-sm rounded-2xl border border-border bg-surface shadow-modal overflow-hidden"
-          >
-            <div className="px-5 py-4">
-              <h2 className="text-base font-semibold text-foreground">
-                {i18nService.t('kitInstallRequired')}
-              </h2>
-              <p className="mt-1.5 text-sm leading-5 text-secondary">
-                {i18nService.t('kitInstallRequiredDesc')}
-              </p>
-            </div>
-            <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-4">
-              <button
-                type="button"
-                onClick={() => {
-                  if (selectedKit) {
-                    reportKitAction('install_prompt_cancel', {
-                      source: 'kits_manager',
-                      ...getKitAnalyticsParams(selectedKit, installedKits[selectedKit.id]),
-                    });
-                  }
-                  setInstallPrompt(null);
-                }}
-                className="px-4 py-2 text-sm font-medium rounded-lg text-secondary hover:bg-surface-raised transition-colors"
-              >
-                {i18nService.t('cancel')}
-              </button>
-              <button
-                type="button"
-                onClick={handleInstallAndTry}
-                className="px-4 py-2 text-sm font-medium rounded-lg bg-primary text-white hover:bg-primary-hover transition-colors"
-              >
-                {i18nService.t('kitInstall')}
-              </button>
-            </div>
-          </Modal>
-        )}
-
-        {uninstallConfirmModal}
       </div>
     );
   };
@@ -618,14 +528,14 @@ const KitsManager: React.FC<KitsManagerProps> = ({ onTryAsking }) => {
   // List view
   return (
     <div className="space-y-4">
-      <p className="text-sm text-secondary">
+      <p className={`${MANAGEMENT_BODY_TEXT} pb-2 text-secondary`}>
         {i18nService.t('kitDescription')}
       </p>
 
       {/* Sticky toolbar: Search + tabs */}
       <div
         data-skin-management-toolbar="true"
-        className="sticky top-0 z-10 space-y-4 bg-background pb-4"
+        className="sticky top-0 z-10 space-y-4 bg-background pb-2"
       >
         {/* Search */}
         <div className="flex items-center gap-3">
@@ -728,7 +638,7 @@ const KitsManager: React.FC<KitsManagerProps> = ({ onTryAsking }) => {
 
       {/* Kit grid */}
       {isLoading ? (
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2" aria-hidden="true">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2" aria-hidden="true">
           {Array.from({ length: 4 }).map((_, idx) => (
             <div key={idx} className="min-h-[116px] animate-pulse rounded-xl border border-border bg-surface p-4">
               <div className="flex gap-3.5">
@@ -842,6 +752,7 @@ const KitsManager: React.FC<KitsManagerProps> = ({ onTryAsking }) => {
           </div>
         </Modal>
       )}
+
 
       {/* 专家详情弹窗 */}
       {selectedKit && (
