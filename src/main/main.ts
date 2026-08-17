@@ -5555,7 +5555,8 @@ if (!gotTheLock) {
     if (skinRuntime.handlesTool(tool)) {
       return skinRuntime.handleToolRequest(request);
     }
-    const action = (args.action as string) || 'generate';
+    const rawAction = typeof args.action === 'string' ? args.action.toLowerCase().trim() : '';
+    const action = rawAction || 'generate';
     console.warn(`[DEBUG-ARGS] tool=${tool} action=${action} image=${JSON.stringify(args.image)} images=${JSON.stringify(args.images)} keys=${Object.keys(args).join(',')}`);
     const serverBaseUrl = getServerApiBaseUrl();
     const sessionId = extractSessionIdFromKey(request.context.sessionKey);
