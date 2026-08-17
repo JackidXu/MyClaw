@@ -652,9 +652,11 @@ const MediaModelPicker: React.FC<MediaModelPickerProps> = ({ draftKey, disabled 
     expectedGeneration: number,
   ): boolean => {
     const currentAuthState = store.getState().auth;
+    const currentOwnerAccountKey = currentAuthState.ownerAccountKey || 'heyclaw-default';
+    const currentGeneration = currentAuthState.accountGeneration || 0;
     return (
-      currentAuthState.ownerAccountKey === expectedOwnerAccountKey
-      && currentAuthState.accountGeneration === expectedGeneration
+      currentOwnerAccountKey === expectedOwnerAccountKey
+      && currentGeneration === expectedGeneration
     );
   }, []);
 

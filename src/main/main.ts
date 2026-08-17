@@ -4766,8 +4766,10 @@ if (!gotTheLock) {
     }
   };
 
-  const getCurrentMediaAccountScope = (): MediaAccountScope | null => {
-    if (!getAuthTokens()) return null;
+  const getCurrentMediaAccountScope = (): MediaAccountScope => {
+    if (!getAuthTokens()) {
+      return { ownerAccountKey: 'heyclaw-default', accountGeneration: authAccountGeneration };
+    }
     try {
       const user = getStore().get<Record<string, unknown>>(LogReporterStoreKey.AuthUser);
       const enterpriseContext = getPersistedEnterpriseAccountContext(getStore());
@@ -4778,18 +4780,16 @@ if (!gotTheLock) {
           || cachedSubscriptionStatus === AuthSubscriptionStatus.Enterprise
         )
       ) {
-        return null;
+        return { ownerAccountKey: 'heyclaw-default', accountGeneration: authAccountGeneration };
       }
       const ownerAccountKey = createAccountOwnerKey({
         user,
         enterpriseId: enterpriseContext?.enterpriseId,
-      });
-      return ownerAccountKey
-        ? { ownerAccountKey, accountGeneration: authAccountGeneration }
-        : null;
+      }) || 'heyclaw-default';
+      return { ownerAccountKey, accountGeneration: authAccountGeneration };
     } catch (error) {
       console.warn('[MediaGeneration] failed to resolve authenticated account owner:', error);
-      return null;
+      return { ownerAccountKey: 'heyclaw-default', accountGeneration: authAccountGeneration };
     }
   };
   resolveCurrentMediaAccountScope = getCurrentMediaAccountScope;
