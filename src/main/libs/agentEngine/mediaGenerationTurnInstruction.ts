@@ -73,7 +73,7 @@ export const buildMediaGenerationTurnInstruction = (
     'The user selected a LobsterAI media generation model for this turn.',
     'IMPORTANT: Do NOT read or use the "seedance" or "seedream" skills for this request.',
     'The LobsterAI media generation tools (heyclaw_image_generate / heyclaw_video_generate) replace those skills when a media model is selected.',
-    'Do not run any skill scripts for image or video generation. Use only the lobsterai_* tools specified below.',
+    'Do not run any skill scripts for image or video generation. Use only the heyclaw_* tools specified below.',
   ];
 
   if (selection.mode === 'image') {

@@ -1422,7 +1422,8 @@ export const getActivityCurrentActionText = (item: ConsolidatedItem): string => 
       ? item.group.toolUse.metadata?.toolName
       : null;
   if (typeof mediaToolName === 'string') {
-    const isVideo = normalizeToolName(mediaToolName) === 'lobsteraivideogenerate';
+    const normalized = normalizeToolName(mediaToolName);
+    const isVideo = normalized === 'heyclawvideogenerate' || normalized === 'lobsteraivideogenerate';
     return i18nService.t(isVideo ? 'mediaGeneratingVideo' : 'mediaGeneratingImage');
   }
   if (item.type === 'tool_group') {
