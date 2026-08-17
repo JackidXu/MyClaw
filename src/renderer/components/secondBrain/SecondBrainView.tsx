@@ -1,5 +1,6 @@
 import { CheckIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 import {
   adoptCognitionItem,
@@ -1064,119 +1065,123 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
     )}
 
       {/* 删除确认 Modal 弹窗 */}
-      {deletingDoc && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
-          <div className="w-full max-w-sm rounded-xl border border-border bg-surface p-5 shadow-lg space-y-4">
-            <div className="space-y-1">
-              <h3 className={`${MANAGEMENT_TITLE_TEXT} font-semibold text-foreground`}>确认删除</h3>
-              <p className={`${MANAGEMENT_BODY_TEXT} text-secondary leading-relaxed`}>
-                确定要删除资料 <span className="font-medium text-foreground">“{deletingDoc.name}”</span> 吗？此操作无法撤销。
-              </p>
+      {deletingDoc &&
+        createPortal(
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
+            <div className="w-full max-w-sm rounded-xl border border-border bg-surface p-5 shadow-lg space-y-4">
+              <div className="space-y-1">
+                <h3 className={`${MANAGEMENT_TITLE_TEXT} font-semibold text-foreground`}>确认删除</h3>
+                <p className={`${MANAGEMENT_BODY_TEXT} text-secondary leading-relaxed`}>
+                  确定要删除资料 <span className="font-medium text-foreground">“{deletingDoc.name}”</span> 吗？此操作无法撤销。
+                </p>
+              </div>
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  disabled={deleting}
+                  onClick={() => setDeletingDoc(null)}
+                  className="rounded-xl border border-border px-3 py-1.5 text-xs font-medium text-secondary hover:bg-surface-raised transition-colors disabled:opacity-50"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  disabled={deleting}
+                  onClick={handleConfirmDelete}
+                  className="rounded-xl bg-destructive px-3 py-1.5 text-xs font-medium text-white hover:bg-destructive/90 transition-colors disabled:opacity-50"
+                >
+                  {deleting ? '删除中…' : '确认删除'}
+                </button>
+              </div>
             </div>
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <button
-                type="button"
-                disabled={deleting}
-                onClick={() => setDeletingDoc(null)}
-                className="rounded-xl border border-border px-3 py-1.5 text-xs font-medium text-secondary hover:bg-surface-raised transition-colors disabled:opacity-50"
-              >
-                取消
-              </button>
-              <button
-                type="button"
-                disabled={deleting}
-                onClick={handleConfirmDelete}
-                className="rounded-xl bg-destructive px-3 py-1.5 text-xs font-medium text-white hover:bg-destructive/90 transition-colors disabled:opacity-50"
-              >
-                {deleting ? '删除中…' : '确认删除'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body,
+        )}
 
       {/* 人设编辑 Modal 弹窗 */}
-      {showPersonaModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
-          <div className="w-full max-w-md rounded-xl border border-border bg-surface p-6 shadow-xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between pb-2 border-b border-border/60">
-              <h3 className={`${MANAGEMENT_TITLE_TEXT} font-semibold text-foreground`}>编辑人设信息</h3>
-              <button
-                type="button"
-                onClick={() => setShowPersonaModal(false)}
-                className="rounded-lg p-1 text-secondary hover:bg-surface-raised transition-colors"
-              >
-                <XMarkIcon className="h-4 w-4" />
-              </button>
+      {showPersonaModal &&
+        createPortal(
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
+            <div className="w-full max-w-md rounded-xl border border-border bg-surface p-6 shadow-xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
+              <div className="flex items-center justify-between pb-2 border-b border-border/60">
+                <h3 className={`${MANAGEMENT_TITLE_TEXT} font-semibold text-foreground`}>编辑人设信息</h3>
+                <button
+                  type="button"
+                  onClick={() => setShowPersonaModal(false)}
+                  className="rounded-lg p-1 text-secondary hover:bg-surface-raised transition-colors"
+                >
+                  <XMarkIcon className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="space-y-3 pt-1">
+                <div>
+                  <label className="block text-xs font-medium text-foreground mb-1">称呼 <span className="text-destructive">*</span></label>
+                  <input
+                    type="text"
+                    value={personaForm.name}
+                    onChange={(e) => setPersonaForm((prev) => ({ ...prev, name: e.target.value }))}
+                    placeholder="例如：王老板"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground placeholder:text-muted outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-foreground mb-1">所属行业</label>
+                  <input
+                    type="text"
+                    value={personaForm.industry}
+                    onChange={(e) => setPersonaForm((prev) => ({ ...prev, industry: e.target.value }))}
+                    placeholder="例如：制造业"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground placeholder:text-muted outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-foreground mb-1">主要业务 <span className="text-destructive">*</span></label>
+                  <input
+                    type="text"
+                    value={personaForm.business}
+                    onChange={(e) => setPersonaForm((prev) => ({ ...prev, business: e.target.value }))}
+                    placeholder="例如：跨境电商，主营东南亚服装零售"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground placeholder:text-muted outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-foreground mb-1">定位描述</label>
+                  <textarea
+                    rows={3}
+                    value={personaForm.positioning}
+                    onChange={(e) => setPersonaForm((prev) => ({ ...prev, positioning: e.target.value }))}
+                    placeholder="你希望对外传递的核心定位，将以此为基础理解你的专业视角进行认知萃取"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground placeholder:text-muted outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary resize-none leading-relaxed"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-border/60">
+                <button
+                  type="button"
+                  disabled={savingPersona}
+                  onClick={() => setShowPersonaModal(false)}
+                  className="rounded-xl border border-border px-3 py-1.5 text-xs font-medium text-secondary hover:bg-surface-raised transition-colors disabled:opacity-50"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  disabled={!personaForm.name.trim() || !personaForm.business.trim() || savingPersona}
+                  onClick={() => handleSavePersona(false)}
+                  className="rounded-xl bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-hover transition-colors disabled:opacity-50 shadow-xs"
+                >
+                  {savingPersona ? '更新中…' : '更新'}
+                </button>
+              </div>
             </div>
-
-            <div className="space-y-3 pt-1">
-              <div>
-                <label className="block text-xs font-medium text-foreground mb-1">称呼 <span className="text-destructive">*</span></label>
-                <input
-                  type="text"
-                  value={personaForm.name}
-                  onChange={(e) => setPersonaForm((prev) => ({ ...prev, name: e.target.value }))}
-                  placeholder="例如：王老板"
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground placeholder:text-muted outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-foreground mb-1">所属行业</label>
-                <input
-                  type="text"
-                  value={personaForm.industry}
-                  onChange={(e) => setPersonaForm((prev) => ({ ...prev, industry: e.target.value }))}
-                  placeholder="例如：制造业"
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground placeholder:text-muted outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-foreground mb-1">主要业务 <span className="text-destructive">*</span></label>
-                <input
-                  type="text"
-                  value={personaForm.business}
-                  onChange={(e) => setPersonaForm((prev) => ({ ...prev, business: e.target.value }))}
-                  placeholder="例如：跨境电商，主营东南亚服装零售"
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground placeholder:text-muted outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-foreground mb-1">定位描述</label>
-                <textarea
-                  rows={3}
-                  value={personaForm.positioning}
-                  onChange={(e) => setPersonaForm((prev) => ({ ...prev, positioning: e.target.value }))}
-                  placeholder="你希望对外传递的核心定位，将以此为基础理解你的专业视角进行认知萃取"
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground placeholder:text-muted outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary resize-none leading-relaxed"
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-border/60">
-              <button
-                type="button"
-                disabled={savingPersona}
-                onClick={() => setShowPersonaModal(false)}
-                className="rounded-xl border border-border px-3 py-1.5 text-xs font-medium text-secondary hover:bg-surface-raised transition-colors disabled:opacity-50"
-              >
-                取消
-              </button>
-              <button
-                type="button"
-                disabled={!personaForm.name.trim() || !personaForm.business.trim() || savingPersona}
-                onClick={() => handleSavePersona(false)}
-                className="rounded-xl bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-hover transition-colors disabled:opacity-50 shadow-xs"
-              >
-                {savingPersona ? '更新中…' : '更新'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 };
