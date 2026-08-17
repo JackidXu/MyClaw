@@ -84,10 +84,68 @@ const cleanStringArg = (value: unknown): unknown => {
     return value;
   }
   let str = value.trim();
-  while ((str.startsWith('"') && str.endsWith('"')) || (str.startsWith("'") && str.endsWith("'"))) {
-    str = str.slice(1, -1).trim();
+  let changed = true;
+  while (changed && str.length > 0) {
+    changed = false;
+    if ((str.startsWith('"') && str.endsWith('"')) || (str.startsWith("'") && str.endsWith("'"))) {
+      str = str.slice(1, -1).trim();
+      changed = true;
+    } else if (str.startsWith('\\"') && str.endsWith('\\"') && str.length >= 4) {
+      str = str.slice(2, -2).trim();
+      changed = true;
+    }
   }
   return str;
+};
+
+const cleanArgValue = (value: unknown): unknown => {
+  if (typeof value === 'string') {
+    return cleanStringArg(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map(cleanArgValue);
+  }
+  if (isRecord(value)) {
+    const res: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value)) {
+      res[k] = cleanArgValue(v);
+    }
+    return res;
+  }
+  return value;
+};
+
+const parseOptionalNumber = (val: unknown): number | undefined => {
+  if (typeof val === 'number') return Number.isFinite(val) ? val : undefined;
+  if (typeof val === 'string') {
+    const cleaned = cleanStringArg(val);
+    if (typeof cleaned === 'string' && cleaned.trim()) {
+      const num = Number(cleaned.trim());
+      if (Number.isFinite(num)) return num;
+    }
+  }
+  return undefined;
+};
+
+const parseOptionalBoolean = (val: unknown): boolean | undefined => {
+  if (typeof val === 'boolean') return val;
+  if (typeof val === 'string') {
+    const cleaned = (cleanStringArg(val) as string).toLowerCase().trim();
+    if (cleaned === 'true') return true;
+    if (cleaned === 'false') return false;
+  }
+  return undefined;
+};
+
+const ensureStringArray = (val: unknown): string[] | undefined => {
+  if (Array.isArray(val)) {
+    return val.map(item => String(cleanStringArg(item))).filter(Boolean);
+  }
+  if (typeof val === 'string') {
+    const cleaned = String(cleanStringArg(val)).trim();
+    return cleaned ? [cleaned] : undefined;
+  }
+  return undefined;
 };
 
 const sanitizeArgsForLog = (args: Record<string, unknown>): Record<string, unknown> => {
@@ -212,56 +270,47 @@ async function executeMediaStatusPolling(options: {
 }
 
 const ImageGenerateSchema = Type.Object({
-  action: Type.Optional(Type.Union([
-    Type.Literal(MediaToolAction.Generate),
-    Type.Literal(MediaToolAction.List),
-    Type.Literal(MediaToolAction.Status),
-  ], { description: 'Action to perform. Default: generate.' })),
+  action: Type.Optional(Type.String({ description: 'Action to perform: "generate", "list", "status". Default: generate.' })),
   prompt: Type.Optional(Type.String({ description: 'Text prompt describing the image to generate.' })),
   model: Type.Optional(Type.String({ description: 'Model ID for generation. Use action=list to see available models.' })),
   image: Type.Optional(Type.String({ description: 'Single reference image absolute file path, URL, or data URL for image-to-image generation. If a media reference mapping is provided, use the mapped path; do not pass @ media tokens.' })),
-  images: Type.Optional(Type.Array(Type.String(), { description: 'Multiple reference image absolute file paths, URLs, or data URLs for multi-image generation. If a media reference mapping is provided, use mapped paths; do not pass @ media tokens.' })),
+  images: Type.Optional(Type.Union([Type.Array(Type.String()), Type.String()], { description: 'Multiple reference image absolute file paths, URLs, or data URLs for multi-image generation. If a media reference mapping is provided, use mapped paths; do not pass @ media tokens.' })),
   size: Type.Optional(Type.String({ description: 'Output size, e.g. "1024x1024".' })),
   aspectRatio: Type.Optional(Type.String({ description: 'Aspect ratio, e.g. "1:1", "16:9", "9:16".' })),
   resolution: Type.Optional(Type.String({ description: 'Resolution: "1K", "2K", "4K".' })),
-  n: Type.Optional(Type.Number({ description: 'Number of images to generate. Crucial: ALWAYS set to 1. If you need multiple images, trigger multiple parallel tool calls (concurrent calls) instead of setting this greater than 1.', minimum: 1, maximum: 10 })),
-  count: Type.Optional(Type.Number({ description: 'Number of images to generate. Crucial: ALWAYS set to 1. If you need multiple images, trigger multiple parallel tool calls (concurrent calls) instead of setting this greater than 1.', minimum: 1, maximum: 10 })),
+  n: Type.Optional(Type.Union([Type.Number(), Type.String()], { description: 'Number of images to generate. Crucial: ALWAYS set to 1. If you need multiple images, trigger multiple parallel tool calls (concurrent calls) instead of setting this greater than 1.' })),
+  count: Type.Optional(Type.Union([Type.Number(), Type.String()], { description: 'Number of images to generate. Crucial: ALWAYS set to 1. If you need multiple images, trigger multiple parallel tool calls (concurrent calls) instead of setting this greater than 1.' })),
   quality: Type.Optional(Type.String({ description: 'Output quality, e.g. "low", "medium", "high", "auto".' })),
   outputFormat: Type.Optional(Type.String({ description: 'Output image format, e.g. "png", "jpeg", "webp".' })),
   output_format: Type.Optional(Type.String({ description: 'Output image format, e.g. "png", "jpeg", "webp". Alias of outputFormat.' })),
-  temperature: Type.Optional(Type.Number({ description: 'Sampling temperature for image models that support it.', minimum: 0, maximum: 2 })),
+  temperature: Type.Optional(Type.Union([Type.Number(), Type.String()], { description: 'Sampling temperature for image models that support it.' })),
   filename: Type.Optional(Type.String({ description: 'Suggested filename for the output.' })),
   taskId: Type.Optional(Type.String({ description: 'Task ID for status queries.' })),
   providerOptions: Type.Optional(Type.Record(Type.String(), Type.Unknown(), { description: 'Model-specific options passed through to the provider.' })),
 });
 
 const VideoGenerateSchema = Type.Object({
-  action: Type.Optional(Type.Union([
-    Type.Literal(MediaToolAction.Generate),
-    Type.Literal(MediaToolAction.List),
-    Type.Literal(MediaToolAction.Status),
-    Type.Literal(MediaToolAction.Cancel),
-  ], { description: 'Action to perform. Default: generate.' })),
+  action: Type.Optional(Type.String({ description: 'Action to perform: "generate", "list", "status", "cancel". Default: generate.' })),
   prompt: Type.Optional(Type.String({ description: 'Text prompt describing the video to generate. Chinese and English supported.' })),
   model: Type.Optional(Type.String({ description: 'Model ID for generation. Use action="list" to see available models and their supported parameters.' })),
   image: Type.Optional(Type.String({ description: 'Single reference image absolute file path, URL, or data URL (e.g. first frame for image-to-video). If a media reference mapping is provided, use the mapped path; do not pass @ media tokens.' })),
-  images: Type.Optional(Type.Array(Type.String(), { description: 'Multiple reference image absolute file paths, URLs, or data URLs. Use with imageRoles to specify each image\'s role. If a media reference mapping is provided, use mapped paths; do not pass @ media tokens.' })),
-  imageRoles: Type.Optional(Type.Array(Type.String(), { description: 'Role for each image: "first_frame", "last_frame", "reference_image". Must match images array length.' })),
+  images: Type.Optional(Type.Union([Type.Array(Type.String()), Type.String()], { description: 'Multiple reference image absolute file paths, URLs, or data URLs. Use with imageRoles to specify each image\'s role. If a media reference mapping is provided, use mapped paths; do not pass @ media tokens.' })),
+  imageRoles: Type.Optional(Type.Union([Type.Array(Type.String()), Type.String()], { description: 'Role for each image: "first_frame", "last_frame", "reference_image". Must match images array length.' })),
   firstFrame: Type.Optional(Type.String({ description: 'First-frame image absolute file path, URL, or data URL for image-to-video models. If a media reference mapping is provided, use the mapped path; do not pass @ media tokens.' })),
   lastFrame: Type.Optional(Type.String({ description: 'Last-frame image absolute file path, URL, or data URL for first/last-frame video models. If a media reference mapping is provided, use the mapped path; do not pass @ media tokens.' })),
-  referenceImages: Type.Optional(Type.Array(Type.String(), { description: 'Reference image absolute file paths, URLs, or data URLs for reference-to-video models. If a media reference mapping is provided, use mapped paths; do not pass @ media tokens.' })),
+  referenceImages: Type.Optional(Type.Union([Type.Array(Type.String()), Type.String()], { description: 'Reference image absolute file paths, URLs, or data URLs for reference-to-video models. If a media reference mapping is provided, use mapped paths; do not pass @ media tokens.' })),
   media: Type.Optional(Type.Array(Type.Record(Type.String(), Type.Unknown()), { description: 'Provider-native media array. Use only when the selected model documentation requires it.' })),
   video: Type.Optional(Type.String({ description: 'Single reference video absolute file path, URL, or data URL (for video-to-video generation). If a media reference mapping is provided, use the mapped path; do not pass @ media tokens.' })),
-  videos: Type.Optional(Type.Array(Type.String(), { description: 'Multiple reference video absolute file paths, URLs, or data URLs. If a media reference mapping is provided, use mapped paths; do not pass @ media tokens.' })),
-  videoRoles: Type.Optional(Type.Array(Type.String(), { description: 'Role for each video: "reference_video".' })),
+  videos: Type.Optional(Type.Union([Type.Array(Type.String()), Type.String()], { description: 'Multiple reference video absolute file paths, URLs, or data URLs. If a media reference mapping is provided, use mapped paths; do not pass @ media tokens.' })),
+  videoRoles: Type.Optional(Type.Union([Type.Array(Type.String()), Type.String()], { description: 'Role for each video: "reference_video".' })),
   aspectRatio: Type.Optional(Type.String({ description: 'Aspect ratio: "16:9", "4:3", "1:1", "3:4", "9:16", "21:9", "adaptive". Valid values depend on model; use action="list" to check.' })),
   resolution: Type.Optional(Type.String({ description: 'Resolution: "480p", "720p", "768P", "1080p". Valid values depend on model.' })),
-  durationSeconds: Type.Optional(Type.Number({ description: 'Video duration in seconds. Valid range depends on model (e.g. Seedance 2.0: 4-15, MiniMax Hailuo: 6 or 10). Use -1 for auto. Use action="list" to check.', minimum: -1, maximum: 60 })),
-  audio: Type.Optional(Type.Boolean({ description: 'Whether to generate synchronized audio (speech, sound effects, background music). Default: true.' })),
-  watermark: Type.Optional(Type.Boolean({ description: 'Whether to include watermark. Default: false.' })),
-  seed: Type.Optional(Type.Number({ description: 'Random seed for reproducibility (-1 for random). Same seed + same params produces similar results.' })),
-  returnLastFrame: Type.Optional(Type.Boolean({ description: 'Return the last frame as PNG. Useful for generating continuous video sequences.' })),
-  cameraFixed: Type.Optional(Type.Boolean({ description: 'Fix camera position (no movement). Not supported by all models.' })),
+  durationSeconds: Type.Optional(Type.Union([Type.Number(), Type.String()], { description: 'Video duration in seconds. Valid range depends on model (e.g. Seedance 2.0: 4-15, MiniMax Hailuo: 6 or 10). Use -1 for auto. Use action="list" to check.' })),
+  audio: Type.Optional(Type.Union([Type.Boolean(), Type.String()], { description: 'Whether to generate synchronized audio (speech, sound effects, background music). Default: true.' })),
+  watermark: Type.Optional(Type.Union([Type.Boolean(), Type.String()], { description: 'Whether to include watermark. Default: false.' })),
+  seed: Type.Optional(Type.Union([Type.Number(), Type.String()], { description: 'Random seed for reproducibility (-1 for random). Same seed + same params produces similar results.' })),
+  returnLastFrame: Type.Optional(Type.Union([Type.Boolean(), Type.String()], { description: 'Return the last frame as PNG. Useful for generating continuous video sequences.' })),
+  cameraFixed: Type.Optional(Type.Union([Type.Boolean(), Type.String()], { description: 'Fix camera position (no movement). Not supported by all models.' })),
   filename: Type.Optional(Type.String({ description: 'Suggested filename for the output.' })),
   taskId: Type.Optional(Type.String({ description: 'Task ID for status/cancel queries.' })),
   providerOptions: Type.Optional(Type.Record(Type.String(), Type.Unknown(), { description: 'Model-specific options passed through to the provider (e.g. prompt_optimizer, fast_pretreatment, priority, draft).' })),
@@ -365,11 +414,19 @@ const plugin = {
           signal?: AbortSignal,
           onUpdate?: (result: MediaStatusUpdate) => void,
         ) {
-          const args = (params ?? {}) as Record<string, unknown>;
-          for (const key of Object.keys(args)) {
-            args[key] = cleanStringArg(args[key]);
+          const rawArgs = (params ?? {}) as Record<string, unknown>;
+          const args: Record<string, unknown> = {};
+          for (const key of Object.keys(rawArgs)) {
+            args[key] = cleanArgValue(rawArgs[key]);
           }
-          const action = typeof args.action === 'string' ? args.action : MediaToolAction.Generate;
+          if (args.n !== undefined) args.n = parseOptionalNumber(args.n);
+          if (args.count !== undefined) args.count = parseOptionalNumber(args.count);
+          if (args.temperature !== undefined) args.temperature = parseOptionalNumber(args.temperature);
+          if (args.images !== undefined) args.images = ensureStringArray(args.images);
+          const rawAction = typeof args.action === 'string' ? args.action.toLowerCase().trim() : '';
+          const action = rawAction || MediaToolAction.Generate;
+          args.action = action;
+
           if (action === MediaToolAction.Status) {
             const taskId = typeof args.taskId === 'string' ? args.taskId : '';
             if (!taskId) {
@@ -443,11 +500,25 @@ const plugin = {
           signal?: AbortSignal,
           onUpdate?: (result: MediaStatusUpdate) => void,
         ) {
-          const args = (params ?? {}) as Record<string, unknown>;
-          for (const key of Object.keys(args)) {
-            args[key] = cleanStringArg(args[key]);
+          const rawArgs = (params ?? {}) as Record<string, unknown>;
+          const args: Record<string, unknown> = {};
+          for (const key of Object.keys(rawArgs)) {
+            args[key] = cleanArgValue(rawArgs[key]);
           }
-          const action = typeof args.action === 'string' ? args.action : MediaToolAction.Generate;
+          if (args.durationSeconds !== undefined) args.durationSeconds = parseOptionalNumber(args.durationSeconds);
+          if (args.seed !== undefined) args.seed = parseOptionalNumber(args.seed);
+          if (args.audio !== undefined) args.audio = parseOptionalBoolean(args.audio);
+          if (args.watermark !== undefined) args.watermark = parseOptionalBoolean(args.watermark);
+          if (args.returnLastFrame !== undefined) args.returnLastFrame = parseOptionalBoolean(args.returnLastFrame);
+          if (args.cameraFixed !== undefined) args.cameraFixed = parseOptionalBoolean(args.cameraFixed);
+          if (args.images !== undefined) args.images = ensureStringArray(args.images);
+          if (args.imageRoles !== undefined) args.imageRoles = ensureStringArray(args.imageRoles);
+          if (args.referenceImages !== undefined) args.referenceImages = ensureStringArray(args.referenceImages);
+          if (args.videos !== undefined) args.videos = ensureStringArray(args.videos);
+          if (args.videoRoles !== undefined) args.videoRoles = ensureStringArray(args.videoRoles);
+          const rawAction = typeof args.action === 'string' ? args.action.toLowerCase().trim() : '';
+          const action = rawAction || MediaToolAction.Generate;
+          args.action = action;
 
           // status action: poll with adaptive intervals until terminal
           if (action === MediaToolAction.Status) {
@@ -518,8 +589,14 @@ const plugin = {
         ].join(' '),
         parameters: SkinManageSchema,
         async execute(id: string, params: unknown) {
-          const args = (params ?? {}) as Record<string, unknown>;
-          const action = typeof args.action === 'string' ? args.action : '';
+          const rawArgs = (params ?? {}) as Record<string, unknown>;
+          const args: Record<string, unknown> = {};
+          for (const key of Object.keys(rawArgs)) {
+            args[key] = cleanArgValue(rawArgs[key]);
+          }
+          const rawAction = typeof args.action === 'string' ? args.action.toLowerCase().trim() : '';
+          const action = rawAction || '';
+          args.action = action;
           try {
             api.logger.info(`[lobster-media-generation] skin tool (${action}) started: toolCallId=${id} args=${JSON.stringify(sanitizeSkinArgsForLog(args))}`);
             const startedAt = Date.now();
@@ -560,19 +637,21 @@ const plugin = {
         parameters: Type.Object({
           image: Type.String({ description: 'The exact absolute local file path (e.g., "/Users/.../photo.jpg") or http(s) URL of the image. Do NOT include any explanations or chat reasoning in this parameter.' }),
           type: Type.String({
-            description: 'Segmentation model type. "clothing" ONLY for isolating a specific clothing item itself; "general" for all portraits, people, characters, products, objects, and general subject extraction.',
-            enum: ['clothing', 'general'],
+            description: 'Segmentation model type: "clothing" ONLY for isolating a specific clothing item itself; "general" for all portraits, people, characters, products, objects, and general subject extraction.',
           }),
-          clothClass: Type.Optional(Type.Array(Type.String(), {
+          clothClass: Type.Optional(Type.Union([Type.Array(Type.String()), Type.String()], {
             description: 'Only used when type is "clothing". Intelligently identify from the image which clothing category to extract: coat (jacket, overcoat, outer layer), tops (shirts, inner tops), pants (trousers, jeans), skirt, shoes, bag, hat. Use "coat" for jackets/outerwear to avoid including inner garments. If unsure or multiple items, omit this field and let the API detect automatically.',
           })),
         }),
         async execute(id: string, params: unknown) {
-          const args = (params ?? {}) as Record<string, unknown>;
-          for (const key of Object.keys(args)) {
-            if (typeof args[key] === 'string') {
-              args[key] = cleanStringArg(args[key]);
-            }
+          const rawArgs = (params ?? {}) as Record<string, unknown>;
+          const args: Record<string, unknown> = {};
+          for (const key of Object.keys(rawArgs)) {
+            args[key] = cleanArgValue(rawArgs[key]);
+          }
+          if (args.clothClass !== undefined) args.clothClass = ensureStringArray(args.clothClass);
+          if (typeof args.type === 'string') {
+            args.type = args.type.toLowerCase().trim();
           }
           try {
             api.logger.info(`[lobster-media-generation] image segment tool callback started: toolCallId=${id} image=${args.image} type=${args.type}`);
