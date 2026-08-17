@@ -18,3 +18,20 @@
 
 ### 2. Git 操作规则
 - **绝对禁止自动 Commit 与 Push**：任何 Bug 修复或功能实现后，只可将修改保留在本地工作区，绝对禁止调用 `git commit` 或 `git push`，必须等待用户在对话中发送明确的指令。
+
+### 3. 管理类/功能独立页面视觉规范 (Management Page Visual Specification)
+编写或重构管理/配置/独立功能页面（如定时任务 ScheduledTasks、技能管理 Skills、MCP、第二大脑 SecondBrain 等）时，**必须严格遵循统一的视觉规范**：
+- **容器与布局**：
+  - 外层容器：`<div data-skin-management-page="true" className="relative z-10 flex-1 flex flex-col bg-background h-full overflow-hidden">`
+  - 顶部 Header：`<div className="draggable flex h-12 items-center justify-between px-4 border-b border-border shrink-0">`
+  - 主标题：引入 `src/renderer/components/common/managementTypography.ts` 中的 `MANAGEMENT_PAGE_TITLE_TEXT`，格式为 `<h1 className={`${MANAGEMENT_PAGE_TITLE_TEXT} font-semibold text-foreground`}>页面标题</h1>`
+  - 内容滚动区：`<div className="flex-1 min-h-0 overflow-y-auto [scrollbar-gutter:stable]"><div className="mx-auto w-full max-w-[1120px] px-8 py-6 space-y-6">`（必须带 `max-w-[1120px]` 居中限制）
+- **文字与排版阶梯**（使用 `managementTypography` 导出变量）：
+  - 页面副标题/说明：`${MANAGEMENT_BODY_TEXT} text-secondary`
+  - 区块标题：`${MANAGEMENT_TITLE_TEXT} font-semibold text-foreground`
+  - 小标签/徽章/统计标签：`${MANAGEMENT_META_TEXT} text-secondary`
+- **卡片规范**：
+  - 背景为 `bg-surface`，边框 `border border-border`，圆角 `rounded-xl`，阴影 `shadow-subtle`，交互态带 `hover:border-primary/50 hover:shadow-card transition`
+- **Tab 栏规范**：
+  - 统一使用底部横线高亮指示条风格（`border-b border-border`，激活项为 `text-foreground font-semibold` 且底部带有 `bg-primary h-0.5 rounded-full` 指示线）。
+
