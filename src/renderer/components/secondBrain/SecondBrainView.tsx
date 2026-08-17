@@ -13,11 +13,14 @@ import {
   fetchCognitionItemList,
   fetchCognitionStats,
   fetchDocumentList,
+  fetchPersonaDetail,
   fetchUploadPresignedUrl,
   LAYER_LABEL,
   MATERIAL_TAB_TYPE,
+  type PersonaData,
   reExtractDocument,
   rejectCognitionItem,
+  updatePersona,
   uploadFileToTos,
 } from '../../services/secondBrainApi';
 import ComposeIcon from '../icons/ComposeIcon';
@@ -99,6 +102,23 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
     setEditingNodeId(null);
   };
 
+
+  /** 人设相关状态 */
+  const [persona, setPersona] = useState<PersonaData | null>(null);
+  const [personaLoading, setPersonaLoading] = useState(true);
+  const [showPersonaModal, setShowPersonaModal] = useState(false);
+  const [savingPersona, setSavingPersona] = useState(false);
+  const [personaForm, setPersonaForm] = useState<{
+    name: string;
+    business: string;
+    industry: string;
+    positioning: string;
+  }>({
+    name: '',
+    business: '',
+    industry: '',
+    positioning: '',
+  });
 
   /** 资料列表相关 */
   const [docs, setDocs] = useState<DocumentItem[]>([]);
@@ -212,8 +232,62 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
     }
   };
 
-  /** 初始拉取统计 */
+  /** 加载人设详情 */
+  const loadPersona = async () => {
+    setPersonaLoading(true);
+    try {
+      const data = await fetchPersonaDetail();
+      setPersona(data);
+      if (data) {
+        setPersonaForm({
+          name: data.name ?? '',
+          business: data.business ?? '',
+          industry: data.industry ?? '',
+          positioning: data.positioning ?? '',
+        });
+      }
+    } catch (err) {
+      console.warn('[SecondBrainView] 获取人设详情失败:', err);
+    } finally {
+      setPersonaLoading(false);
+    }
+  };
+
+  /** 保存/完善人设信息 */
+  const handleSavePersona = async (isGuide = false) => {
+    if (!personaForm.name.trim() || !personaForm.business.trim() || savingPersona) return;
+    setSavingPersona(true);
+    try {
+      await updatePersona({
+        name: personaForm.name.trim(),
+        business: personaForm.business.trim(),
+        industry: personaForm.industry.trim() || undefined,
+        positioning: personaForm.positioning.trim() || undefined,
+      });
+      setPersona({
+        name: personaForm.name.trim(),
+        business: personaForm.business.trim(),
+        industry: personaForm.industry.trim(),
+        positioning: personaForm.positioning.trim(),
+      });
+      setShowPersonaModal(false);
+      if (isGuide) {
+        loadStats();
+        loadItems(1);
+        loadDocs(materialTab, 1);
+      }
+      showToast('success', isGuide ? '人设信息已完善，欢迎使用第二大脑' : '人设信息修改成功');
+    } catch (err: any) {
+      console.warn('[SecondBrainView] 保存人设失败:', err);
+      showToast('error', `保存失败: ${err?.message || '未知错误'}`);
+    } finally {
+      setSavingPersona(false);
+    }
+  };
+
+  /** 挂载时拉取人设和统计 */
   useEffect(() => {
+    loadPersona();
     loadStats();
   }, []);
 
@@ -417,31 +491,127 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
         </div>
       </div>
 
-      {/* 页面内容区（可滚动） */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5 space-y-6">
-        {/* 页面副标题 */}
-        <p className="text-sm text-secondary">
-          持续学习你的经验、思考与决策方式，让 AI 在长期使用中越来越懂你
-        </p>
+      {/* 页面内容区 */}
+      {personaLoading ? (
+        <div className="flex-1 min-h-0 flex items-center justify-center">
+          <span className="text-xs text-secondary/60">加载中…</span>
+        </div>
+      ) : !persona ? (
+        /* 人设引导录入页 */
+        <div className="flex-1 min-h-0 flex flex-col items-center justify-center p-6 overflow-y-auto">
+          <div className="w-full max-w-lg space-y-6 animate-in fade-in zoom-in-95 duration-200">
+            <div className="text-center space-y-1.5">
+              <h1 className="text-xl font-bold text-foreground tracking-tight">打造你的「第二大脑」</h1>
+              <p className="text-xs text-secondary">填写以下信息，让认知萃取更贴合你的真实情况</p>
+            </div>
 
-        {/* 统计卡片区 */}
-        <div className="grid grid-cols-4 gap-3">
-          {statCards.map((stat) => (
-            <div
-              key={stat.label}
-              className="rounded-xl border border-border bg-background px-4 py-3"
-            >
-              <div className="text-xs text-secondary mb-1">{stat.label}</div>
-              <div className={`text-xl font-semibold leading-tight ${statsLoading ? 'text-secondary/40' : 'text-foreground'}`}>
-                {/* 待确认认知：只有 > 0 时才显示橙色高亮 */}
-                <span className={stat.pending ? 'text-amber-500 dark:text-amber-400' : ''}>
-                  {stat.value}
-                </span>
-                <span className="text-sm font-normal text-secondary ml-1">{stat.unit}</span>
+            <div className="rounded-2xl border border-border bg-background p-6 space-y-4 shadow-sm">
+              <div>
+                <label className="block text-xs font-medium text-foreground mb-1.5">称呼 <span className="text-destructive">*</span></label>
+                <input
+                  type="text"
+                  value={personaForm.name}
+                  onChange={(e) => setPersonaForm((prev) => ({ ...prev, name: e.target.value }))}
+                  placeholder="例如：王老板"
+                  className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-xs text-foreground placeholder:text-muted outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-foreground mb-1.5">所属行业</label>
+                <input
+                  type="text"
+                  value={personaForm.industry}
+                  onChange={(e) => setPersonaForm((prev) => ({ ...prev, industry: e.target.value }))}
+                  placeholder="例如：制造业"
+                  className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-xs text-foreground placeholder:text-muted outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-foreground mb-1.5">主要业务 <span className="text-destructive">*</span></label>
+                <input
+                  type="text"
+                  value={personaForm.business}
+                  onChange={(e) => setPersonaForm((prev) => ({ ...prev, business: e.target.value }))}
+                  placeholder="例如：跨境电商，主营东南亚服装零售"
+                  className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-xs text-foreground placeholder:text-muted outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-foreground mb-1.5">定位描述</label>
+                <textarea
+                  rows={3}
+                  value={personaForm.positioning}
+                  onChange={(e) => setPersonaForm((prev) => ({ ...prev, positioning: e.target.value }))}
+                  placeholder="你希望对外传递的核心定位，将以此为基础理解你的专业视角进行认知萃取"
+                  className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-xs text-foreground placeholder:text-muted outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary resize-none leading-relaxed"
+                />
               </div>
             </div>
-          ))}
+
+            <button
+              type="button"
+              disabled={!personaForm.name.trim() || !personaForm.business.trim() || savingPersona}
+              onClick={() => handleSavePersona(true)}
+              className="w-full h-10 rounded-xl bg-primary text-xs font-medium text-white shadow-sm hover:bg-primary/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {savingPersona ? '提交中…' : '开始使用'}
+            </button>
+          </div>
         </div>
+      ) : (
+        /* 常规第二大脑主页 */
+        <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5 space-y-6">
+          {/* 页面副标题 */}
+          <p className="text-sm text-secondary">
+            持续学习你的经验、思考与决策方式，让 AI 在长期使用中越来越懂你
+          </p>
+
+          {/* 统计与人设卡片区 */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            {statCards.map((stat) => (
+              <div
+                key={stat.label}
+                className="rounded-xl border border-border bg-background px-4 py-3"
+              >
+                <div className="text-xs text-secondary mb-1">{stat.label}</div>
+                <div className={`text-xl font-semibold leading-tight ${statsLoading ? 'text-secondary/40' : 'text-foreground'}`}>
+                  {/* 待确认认知：只有 > 0 时才显示橙色高亮 */}
+                  <span className={stat.pending ? 'text-amber-500 dark:text-amber-400' : ''}>
+                    {stat.value}
+                  </span>
+                  <span className="text-sm font-normal text-secondary ml-1">{stat.unit}</span>
+                </div>
+              </div>
+            ))}
+            {/* 人设信息卡片 */}
+            <div
+              onClick={() => {
+                if (persona) {
+                  setPersonaForm({
+                    name: persona.name ?? '',
+                    business: persona.business ?? '',
+                    industry: persona.industry ?? '',
+                    positioning: persona.positioning ?? '',
+                  });
+                }
+                setShowPersonaModal(true);
+              }}
+              className="group cursor-pointer rounded-xl border border-border bg-background px-4 py-3 hover:border-primary/50 transition-colors flex flex-col justify-between"
+            >
+              <div className="text-xs text-secondary mb-1">人设信息</div>
+              <div className="flex items-center gap-2">
+                <span className="text-md font-semibold leading-tight text-foreground">
+                  已完善
+                </span>
+                <span className="text-xs text-secondary group-hover:text-primary transition-colors">
+                  修改
+                </span>
+              </div>
+            </div>
+          </div>
 
         {/* 待确认认知区：有数据时才展示 */}
         {!itemsLoading && items.length > 0 && (
@@ -907,6 +1077,89 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
           </div>
         )}
       </div>
+    )}
+        {/* 人设编辑 Modal 弹窗 */}
+        {showPersonaModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
+            <div className="w-full max-w-md rounded-2xl border border-border bg-background p-6 shadow-xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
+              <div className="flex items-center justify-between pb-1 border-b border-border/60">
+                <h3 className="text-sm font-semibold text-foreground">编辑人设信息</h3>
+                <button
+                  type="button"
+                  onClick={() => setShowPersonaModal(false)}
+                  className="rounded-lg p-1 text-secondary hover:bg-surface-raised transition-colors"
+                >
+                  <XMarkIcon className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="space-y-3 pt-1">
+                <div>
+                  <label className="block text-xs font-medium text-foreground mb-1">称呼 <span className="text-destructive">*</span></label>
+                  <input
+                    type="text"
+                    value={personaForm.name}
+                    onChange={(e) => setPersonaForm((prev) => ({ ...prev, name: e.target.value }))}
+                    placeholder="例如：王老板"
+                    className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-xs text-foreground placeholder:text-muted outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-foreground mb-1">所属行业</label>
+                  <input
+                    type="text"
+                    value={personaForm.industry}
+                    onChange={(e) => setPersonaForm((prev) => ({ ...prev, industry: e.target.value }))}
+                    placeholder="例如：制造业"
+                    className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-xs text-foreground placeholder:text-muted outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-foreground mb-1">主要业务 <span className="text-destructive">*</span></label>
+                  <input
+                    type="text"
+                    value={personaForm.business}
+                    onChange={(e) => setPersonaForm((prev) => ({ ...prev, business: e.target.value }))}
+                    placeholder="例如：跨境电商，主营东南亚服装零售"
+                    className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-xs text-foreground placeholder:text-muted outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-foreground mb-1">定位描述</label>
+                  <textarea
+                    rows={3}
+                    value={personaForm.positioning}
+                    onChange={(e) => setPersonaForm((prev) => ({ ...prev, positioning: e.target.value }))}
+                    placeholder="你希望对外传递的核心定位，将以此为基础理解你的专业视角进行认知萃取"
+                    className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-xs text-foreground placeholder:text-muted outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary resize-none leading-relaxed"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-border/60">
+                <button
+                  type="button"
+                  disabled={savingPersona}
+                  onClick={() => setShowPersonaModal(false)}
+                  className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-secondary hover:bg-surface-raised transition-colors disabled:opacity-50"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  disabled={!personaForm.name.trim() || !personaForm.business.trim() || savingPersona}
+                  onClick={() => handleSavePersona(false)}
+                  className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary/90 transition-colors disabled:opacity-50"
+                >
+                  {savingPersona ? '更新中…' : '更新'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
     </div>
   );
 };
