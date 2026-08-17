@@ -365,6 +365,32 @@ export async function reportChatSession(params: ChatReportParams): Promise<void>
   }
 }
 
+/** 人设数据结构 */
+export interface PersonaData {
+  name: string;
+  business: string;
+  industry?: string;
+  positioning?: string;
+}
+
+/** 更新人设参数 */
+export interface UpdatePersonaParams {
+  name: string;
+  business: string;
+  industry?: string;
+  positioning?: string;
+}
+
+/** 获取人设详情 (GET /persona/detail) */
+export async function fetchPersonaDetail(): Promise<PersonaData | null> {
+  return get<PersonaData | null>('/persona/detail');
+}
+
+/** 更新人设信息 (POST /persona/update) */
+export async function updatePersona(params: UpdatePersonaParams): Promise<void> {
+  await post<unknown>('/persona/update', params);
+}
+
 export const secondBrainApi = {
   fetchCognitionStats,
   fetchCognitionItemList,
@@ -376,8 +402,11 @@ export const secondBrainApi = {
   createDocument,
   downloadDocument,
   deleteDocument,
+  reExtractDocument,
   fetchCognitionInjection,
   reportChatSession,
+  fetchPersonaDetail,
+  updatePersona,
   get,
   post,
 };
