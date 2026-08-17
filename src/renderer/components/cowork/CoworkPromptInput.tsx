@@ -3646,12 +3646,16 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
           )}
         </div>
       </div>
-      {readOnlyContextTrailingText && (
+      {readOnlyContextTrailingText ? (
         <span className="pointer-events-none min-w-0 max-w-full select-none truncate text-center text-[13px] text-muted opacity-85">
           {readOnlyContextTrailingText}
         </span>
+      ) : (
+        <div aria-hidden="true" />
       )}
-      <div aria-hidden="true" />
+      <div className="flex justify-end">
+        {renderSecondBrainToggle()}
+      </div>
     </div>
   ) : null;
 
@@ -3992,7 +3996,6 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
                   {voiceRecordingUiState.showLargeInputControls && largeInputToolActions}
                 </div>
                 <div className={`flex shrink-0 items-center ${largeToolbarControlGapClass}`}>
-                  {renderSecondBrainToggle()}
                   {contextUsageControl}
                   {voiceRecordingUiState.showLargeModelSelector && largeModelSelector}
                   {largeVoiceInputButton}
