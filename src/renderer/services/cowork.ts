@@ -2425,7 +2425,7 @@ class CoworkService {
       }
 
       this.reportedChatTurnsSet.add(dedupeKey);
-      console.log('[SecondBrain] 触发对话上报接口 POST /cognition/chat/report:', {
+      console.log('[SecondBrain] 触发对话上报接口 POST /fmp/chat/report:', {
         chatId: sessionId,
         name: sessionName,
         user: userText.trim(),

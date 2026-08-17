@@ -1,5 +1,5 @@
 /**
- * 认知大脑（第二大脑）接口封装
+ * 第二大脑（第二大脑）接口封装
  *
  * 域名说明：
  *   - 本地开发（npm run electron:dev）：https://dev-zhike.banchengyun.com
@@ -39,36 +39,47 @@ export interface CognitionStats {
   material_count: number;
 }
 
+/** 认知变更原有项 */
+export interface ReplacedCognition {
+  proposition: string;
+  elaboration: string;
+}
+
 /** 待确认认知列表项 */
 export interface CognitionItem {
-  item_id: number;
-  level: number;
-  /** 1=经验案例 2=表达方式 3=行业判断 4=管理方式 5=商业理念 6=决策原则 */
-  category: number;
-  /** 认知完整内容 */
-  content: string;
-  /** 摘要 */
-  summary: string;
-  /** 原有认知摘要（发生认知变化时有值） */
-  replace_summary?: string;
+  node_id: number;
+  uid?: number;
+  status?: number;
+  /** 认知层级：0=思维模型 1=价值观念 2=决策规则 3=工作方式 4=行业知识 5=案例经验 6=表达方式 */
+  layer: number;
+  /** 认知命题（标题） */
+  proposition: string;
+  /** 认知阐述（详情） */
+  elaboration: string;
+  /** 是否有认知变化，非空数组表示有变化 */
+  replaces?: ReplacedCognition[] | null;
+  replaces_node_id?: number;
+  source_id?: number;
   /** 1=文档 2=会话 3=归纳 */
   source_type: number;
   /** 来源名称（文件名 / 对话名 / 归纳描述） */
-  source_name: string;
+  source_name?: string;
   /** 置信度 0-100 */
   confidence: number;
   /** 创建时间（秒级时间戳） */
-  create_time: number;
+  create_time: string | number;
+  update_time?: string | number;
 }
 
-/** category 枚举文字映射 */
-export const CATEGORY_LABEL: Record<number, string> = {
-  1: '经验案例',
-  2: '表达方式',
-  3: '行业判断',
-  4: '管理方式',
-  5: '商业理念',
-  6: '决策原则',
+/** 认知层级 layer 枚举文字映射：0=思维模型 1=价值观念 2=决策规则 3=工作方式 4=行业知识 5=案例经验 6=表达方式 */
+export const LAYER_LABEL: Record<number, string> = {
+  0: '思维模型',
+  1: '价值观念',
+  2: '决策规则',
+  3: '工作方式',
+  4: '行业知识',
+  5: '案例经验',
+  6: '表达方式',
 };
 
 /** source_type 枚举文字映射 */
@@ -95,7 +106,7 @@ export interface DocumentItem {
   /** 0=待萃取 1=萃取中 2=已萃取 3=萃取失败 */
   extract_status: number;
   /** 已萃取认知条数 */
-  cognition_count: number;
+  extract_count: number;
   /** 对话消息数（type=chat 时有值） */
   messages_count?: number;
   create_time: number;
@@ -108,6 +119,15 @@ export interface DocumentListResponse {
   current_page: number | string;
   last_page: number | string;
   data: DocumentItem[];
+}
+
+/** 待确认认知列表响应（分页） */
+export interface CognitionListResponse {
+  total: number | string;
+  per_page: number | string;
+  current_page: number | string;
+  last_page: number | string;
+  data: CognitionItem[];
 }
 
 /** 预签名上传响应 */
@@ -210,28 +230,35 @@ async function post<T>(path: string, payload?: unknown): Promise<T> {
  *  业务接口
  * ---------------------------------------- */
 
-/** 获取认知大脑统计数据 */
+/** 获取第二大脑统计数据 */
 export async function fetchCognitionStats(): Promise<CognitionStats> {
-  return get<CognitionStats>('/cognition/stats');
+  return get<CognitionStats>('/fmp/stats');
 }
 
-/** 获取待确认认知列表 */
-export async function fetchCognitionItemList(): Promise<CognitionItem[]> {
-  return get<CognitionItem[]>('/cognition/itemList');
+/** 获取待确认认知列表(分页) */
+export async function fetchCognitionItemList(params: {
+  page: number;
+  pageSize: number;
+}): Promise<CognitionListResponse> {
+  const query = new URLSearchParams({
+    page: String(params.page),
+    pageSize: String(params.pageSize),
+  });
+  return get<CognitionListResponse>(`/fmp/node/list?${query.toString()}`);
 }
 
-/** 采纳认知（content/summary 可选，传入时以修改后的内容为准） */
+/** 采纳认知（proposition/elaboration 可选，传入时以修改后的内容为准） */
 export async function adoptCognitionItem(params: {
-  itemId: number;
-  content?: string;
-  summary?: string;
+  nodeId: number;
+  proposition?: string;
+  elaboration?: string;
 }): Promise<void> {
-  await post<unknown>('/cognition/itemAdopt', params);
+  await post<unknown>('/fmp/node/adopt', params);
 }
 
 /** 驳回认知 */
-export async function rejectCognitionItem(itemId: number): Promise<void> {
-  await post<unknown>('/cognition/itemReject', { itemId });
+export async function rejectCognitionItem(nodeId: number): Promise<void> {
+  await post<unknown>('/fmp/node/reject', { nodeId });
 }
 
 /** 获取学习资料列表（分页） */
@@ -245,12 +272,12 @@ export async function fetchDocumentList(params: {
     page: String(params.page),
     pageSize: String(params.pageSize),
   });
-  return get<DocumentListResponse>(`/cognition/document/list?${query.toString()}`);
+  return get<DocumentListResponse>(`/fmp/document/list?${query.toString()}`);
 }
 
 /** 获取预签名上传参数 */
 export async function fetchUploadPresignedUrl(): Promise<UploadPresignResponse> {
-  return get<UploadPresignResponse>('/cognition/document/upload');
+  return get<UploadPresignResponse>('/fmp/document/upload');
 }
 
 /** 将文件直接 PUT 上传至 TOS 预签名地址（跨主进程请求绕过 CORS 限制） */
@@ -282,17 +309,22 @@ export async function createDocument(params: {
   tosUrl: string;
   tosKey: string;
 }): Promise<void> {
-  await post<unknown>('/cognition/document/create', params);
+  await post<unknown>('/fmp/document/create', params);
 }
 
 /** 获取资料下载地址 */
 export async function downloadDocument(documentId: number): Promise<{ download_url: string }> {
-  return post<{ download_url: string }>('/cognition/document/download', { documentId });
+  return post<{ download_url: string }>('/fmp/document/download', { documentId });
 }
 
 /** 删除资料 */
 export async function deleteDocument(documentId: number): Promise<void> {
-  await post<unknown>('/cognition/document/delete', { documentId });
+  await post<unknown>('/fmp/document/delete', { documentId });
+}
+
+/** 重新萃取资料 */
+export async function reExtractDocument(documentId: number): Promise<void> {
+  await post<unknown>('/fmp/document/reExtract', { documentId });
 }
 
 export interface CognitionInjectionData {
@@ -300,10 +332,10 @@ export interface CognitionInjectionData {
   version?: number;
 }
 
-/** 获取认知注入 System prompt (GET /cognition/injection) */
+/** 获取认知注入 System prompt (GET /fmp/inject) */
 export async function fetchCognitionInjection(): Promise<string> {
   try {
-    const res = await get<CognitionInjectionData | string>('/cognition/injection');
+    const res = await get<CognitionInjectionData | string>('/fmp/inject');
     if (typeof res === 'string') return res;
     if (typeof res === 'object' && res !== null) {
       return res.prompt ?? '';
@@ -324,10 +356,10 @@ export interface ChatReportParams {
   }>;
 }
 
-/** 对话上报接口 (POST /cognition/chat/report) */
+/** 对话上报接口 (POST /fmp/chat/report) */
 export async function reportChatSession(params: ChatReportParams): Promise<void> {
   try {
-    await post<unknown>('/cognition/chat/report', params);
+    await post<unknown>('/fmp/chat/report', params);
   } catch (err) {
     console.warn('[SecondBrain] reportChatSession error:', err);
   }
