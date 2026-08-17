@@ -1,8 +1,8 @@
+import { CheckIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import React, { useEffect, useRef, useState } from 'react';
 
 import {
   adoptCognitionItem,
-  CATEGORY_LABEL,
   type CognitionItem,
   type CognitionStats,
   createDocument,
@@ -14,7 +14,9 @@ import {
   fetchCognitionStats,
   fetchDocumentList,
   fetchUploadPresignedUrl,
+  LAYER_LABEL,
   MATERIAL_TAB_TYPE,
+  reExtractDocument,
   rejectCognitionItem,
   uploadFileToTos,
 } from '../../services/secondBrainApi';
@@ -33,15 +35,19 @@ const MATERIAL_TABS = ['全部', '文档', '对话'] as const;
 type MaterialTab = typeof MATERIAL_TABS[number];
 
 /** 秒级时间戳转可读日期时间 */
-function formatTimestamp(ts: number): string {
-  const d = new Date(ts * 1000);
+function formatTimestamp(ts: string | number): string {
+  const num = typeof ts === 'string' ? Number(ts) : ts;
+  if (!num || isNaN(num)) return '';
+  const d = new Date(num * 1000);
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
 /** 秒级时间戳转日期（MM-DD HH:mm） */
-function formatDate(ts: number): string {
-  const d = new Date(ts * 1000);
+function formatDate(ts: string | number): string {
+  const num = typeof ts === 'string' ? Number(ts) : ts;
+  if (!num || isNaN(num)) return '';
+  const d = new Date(num * 1000);
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
@@ -58,38 +64,40 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
   const [items, setItems] = useState<CognitionItem[]>([]);
   const [itemsLoading, setItemsLoading] = useState(true);
   const [itemsPage, setItemsPage] = useState(1);
-  /** 正在操作中的 itemId（防止重复点击） */
+  const [itemsLastPage, setItemsLastPage] = useState(1);
+  /** 正在操作中的 nodeId（防止重复点击） */
   const [actioningIds, setActioningIds] = useState<Set<number>>(new Set());
-
-  /** 用户编辑后的认知 summary：key 为 item_id，value 为最新编辑的标题 */
-  const [editedSummaries, setEditedSummaries] = useState<Record<number, string>>({});
-  const [editingItemId, setEditingItemId] = useState<number | null>(null);
-  const [editingText, setEditingText] = useState<string>('');
+  /** 用户编辑后的认知命题：key 为 node_id，value 为最新编辑的命题 */
+  const [editedPropositions, setEditedPropositions] = useState<Record<number, string>>({});
+  /** 用户编辑后的认知阐述/正文：key 为 node_id，value 为最新编辑的正文 */
+  const [editedElaborations, setEditedElaborations] = useState<Record<number, string>>({});
+  const [editingNodeId, setEditingNodeId] = useState<number | null>(null);
+  const [editingPropText, setEditingPropText] = useState<string>('');
+  const [editingElabText, setEditingElabText] = useState<string>('');
 
   const startEditing = (item: CognitionItem) => {
-    const current = editedSummaries[item.item_id] ?? item.summary ?? item.content;
-    setEditingItemId(item.item_id);
-    setEditingText(current);
+    const curProp = editedPropositions[item.node_id] ?? item.proposition;
+    const curElab = editedElaborations[item.node_id] ?? item.elaboration ?? '';
+    setEditingNodeId(item.node_id);
+    setEditingPropText(curProp);
+    setEditingElabText(curElab);
   };
 
-  const saveEditing = (itemId: number) => {
-    setEditedSummaries((prev) => ({
+  const saveEditing = (nodeId: number) => {
+    setEditedPropositions((prev) => ({
       ...prev,
-      [itemId]: editingText,
+      [nodeId]: editingPropText,
     }));
-    setEditingItemId(null);
+    setEditedElaborations((prev) => ({
+      ...prev,
+      [nodeId]: editingElabText,
+    }));
+    setEditingNodeId(null);
   };
 
-  const ITEMS_PER_PAGE = 10;
-  const itemsLastPage = Math.max(1, Math.ceil(items.length / ITEMS_PER_PAGE));
-  const paginatedItems = items.slice((itemsPage - 1) * ITEMS_PER_PAGE, itemsPage * ITEMS_PER_PAGE);
-
-  /** 当条目变少导致当前页超出最后一页时，自动纠错重置 */
-  useEffect(() => {
-    if (itemsPage > itemsLastPage) {
-      setItemsPage(itemsLastPage);
-    }
-  }, [itemsPage, itemsLastPage]);
+  const cancelEditing = () => {
+    setEditingNodeId(null);
+  };
 
 
   /** 资料列表相关 */
@@ -98,12 +106,25 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
   const [docsPage, setDocsPage] = useState(1);
   const [docsLastPage, setDocsLastPage] = useState(1);
 
-  /** 上传/删除/下载状态 */
+  /** 上传/删除/下载/重新萃取/更多菜单状态 */
   const [uploading, setUploading] = useState(false);
   const [deletingDoc, setDeletingDoc] = useState<DocumentItem | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [downloadingId, setDownloadingId] = useState<number | null>(null);
+  const [reExtractingId, setReExtractingId] = useState<number | null>(null);
+  const [moreMenuDocId, setMoreMenuDocId] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  /** 点击外部关闭更多菜单 */
+  useEffect(() => {
+    const handleOutsideClick = () => {
+      setMoreMenuDocId(null);
+    };
+    window.addEventListener('click', handleOutsideClick);
+    return () => {
+      window.removeEventListener('click', handleOutsideClick);
+    };
+  }, []);
 
   /** Toast 提示状态 */
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -137,46 +158,57 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
   };
 
   /** 拉取待确认认知列表 */
-  const loadItems = () => {
+  const loadItems = (page: number) => {
     setItemsLoading(true);
-    fetchCognitionItemList()
-      .then((data) => { setItems(data); })
+    fetchCognitionItemList({ page, pageSize: 10 })
+      .then((res) => {
+        setItems(res.data || []);
+        setItemsLastPage(Number(res.last_page) || 1);
+      })
       .catch((err) => { console.warn('[SecondBrainView] 认知列表接口失败:', err); })
       .finally(() => { setItemsLoading(false); });
   };
 
   /** 采纳 */
   const handleAdopt = async (item: CognitionItem) => {
-    if (actioningIds.has(item.item_id)) return;
-    setActioning(item.item_id, true);
+    if (actioningIds.has(item.node_id)) return;
+    setActioning(item.node_id, true);
     try {
-      const summaryToAdopt = (editingItemId === item.item_id ? editingText : editedSummaries[item.item_id]) ?? item.summary ?? item.content;
-      await adoptCognitionItem({ itemId: item.item_id, content: item.content, summary: summaryToAdopt });
-      loadItems();
+      const propToAdopt = (editingNodeId === item.node_id ? editingPropText : editedPropositions[item.node_id]) ?? item.proposition;
+      const elabToAdopt = (editingNodeId === item.node_id ? editingElabText : editedElaborations[item.node_id]) ?? item.elaboration;
+      await adoptCognitionItem({
+        nodeId: item.node_id,
+        proposition: propToAdopt,
+        elaboration: elabToAdopt,
+      });
+      if (editingNodeId === item.node_id) {
+        setEditingNodeId(null);
+      }
+      loadItems(itemsPage);
       loadStats();
-      showToast('success', '认知已成功采纳并存入认知大脑');
+      showToast('success', '认知已成功采纳并存入第二大脑');
     } catch (err: any) {
       console.warn('[SecondBrainView] 采纳失败:', err);
       showToast('error', `采纳失败: ${err?.message || '未知错误'}`);
     } finally {
-      setActioning(item.item_id, false);
+      setActioning(item.node_id, false);
     }
   };
 
   /** 驳回 */
   const handleReject = async (item: CognitionItem) => {
-    if (actioningIds.has(item.item_id)) return;
-    setActioning(item.item_id, true);
+    if (actioningIds.has(item.node_id)) return;
+    setActioning(item.node_id, true);
     try {
-      await rejectCognitionItem(item.item_id);
-      loadItems();
+      await rejectCognitionItem(item.node_id);
+      loadItems(itemsPage);
       loadStats();
       showToast('success', '认知已驳回');
     } catch (err: any) {
       console.warn('[SecondBrainView] 驳回失败:', err);
       showToast('error', `驳回失败: ${err?.message || '未知错误'}`);
     } finally {
-      setActioning(item.item_id, false);
+      setActioning(item.node_id, false);
     }
   };
 
@@ -185,11 +217,10 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
     loadStats();
   }, []);
 
-  /** 挂载时拉取认知列表 */
+  /** 翻页或挂载时拉取认知列表 */
   useEffect(() => {
-    loadItems();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    loadItems(itemsPage);
+  }, [itemsPage]);
 
   /** 拉取资料列表 */
   const loadDocs = (tab: MaterialTab, page: number) => {
@@ -207,7 +238,6 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
   useEffect(() => {
     setDocsPage(1);
     loadDocs(materialTab, 1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [materialTab]);
 
   /** 翻页时重新拉取 */
@@ -222,30 +252,50 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
     fileInputRef.current?.click();
   };
 
-  /** 文件选择回调：预签名 -> TOS 上传 -> 创建记录 -> 刷新列表 */
+  /** 文件选择回调：批量支持 预签名 -> TOS 上传 -> 创建记录 -> 刷新列表 */
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files ?? []);
+    if (files.length === 0) return;
     e.target.value = '';
 
     setUploading(true);
-    try {
-      const { upload_url, tos_url, key } = await fetchUploadPresignedUrl();
-      await uploadFileToTos(upload_url, file);
-      await createDocument({
-        name: file.name,
-        tosUrl: tos_url,
-        tosKey: key,
-      });
+    let successCount = 0;
+    const failedNames: string[] = [];
+
+    for (const file of files) {
+      try {
+        const { upload_url, tos_url, key } = await fetchUploadPresignedUrl();
+        await uploadFileToTos(upload_url, file);
+        await createDocument({
+          name: file.name,
+          tosUrl: tos_url,
+          tosKey: key,
+        });
+        successCount++;
+      } catch (err: any) {
+        console.warn(`[SecondBrainView] 资料 "${file.name}" 上传失败:`, err);
+        failedNames.push(file.name);
+      }
+    }
+
+    if (successCount > 0) {
       loadDocs(materialTab, 1);
       loadStats();
-      showToast('success', `资料 "${file.name}" 上传成功，系统正自动萃取中`);
-    } catch (err: any) {
-      console.warn('[SecondBrainView] 资料上传失败:', err);
-      showToast('error', `资料 "${file.name}" 上传失败：${err?.message || '网络问题或解析异常'}`);
-    } finally {
-      setUploading(false);
     }
+
+    if (failedNames.length === 0) {
+      if (files.length === 1) {
+        showToast('success', `资料 "${files[0].name}" 上传成功，系统正自动萃取中`);
+      } else {
+        showToast('success', `成功上传 ${successCount} 份资料，系统正自动萃取中`);
+      }
+    } else if (successCount > 0) {
+      showToast('error', `成功上传 ${successCount} 份资料，${failedNames.length} 份上传失败 (${failedNames.join(', ')})`);
+    } else {
+      showToast('error', `资料上传失败：${failedNames.join(', ')}`);
+    }
+
+    setUploading(false);
   };
 
   /** 下载资料 */
@@ -267,6 +317,23 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
       showToast('error', `获取下载地址失败: ${err?.message || '未知错误'}`);
     } finally {
       setDownloadingId(null);
+    }
+  };
+
+  /** 重新萃取资料 */
+  const handleReExtract = async (docId: number) => {
+    if (reExtractingId === docId) return;
+    setReExtractingId(docId);
+    try {
+      await reExtractDocument(docId);
+      loadDocs(materialTab, docsPage);
+      loadStats();
+      showToast('success', '已发起重新萃取，系统正自动处理中');
+    } catch (err: any) {
+      console.warn('[SecondBrainView] 重新萃取失败:', err);
+      showToast('error', `重新萃取失败: ${err?.message || '未知错误'}`);
+    } finally {
+      setReExtractingId(null);
     }
   };
 
@@ -293,15 +360,15 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
   const statCards = stats
     ? [
         { label: '持续学习', value: String(stats.learning_days), unit: '天', pending: false },
+        { label: '学习资料', value: String(stats.material_count), unit: '个', pending: false },
         { label: '已形成认知', value: String(stats.adopted_count), unit: '条', pending: false },
         { label: '待确认认知', value: String(stats.pending_count), unit: '条', pending: stats.pending_count > 0 },
-        { label: '学习资料', value: String(stats.material_count), unit: '个', pending: false },
       ]
     : [
         { label: '持续学习', value: '--', unit: '天', pending: false },
+        { label: '学习资料', value: '--', unit: '个', pending: false },
         { label: '已形成认知', value: '--', unit: '条', pending: false },
         { label: '待确认认知', value: '--', unit: '条', pending: false },
-        { label: '学习资料', value: '--', unit: '个', pending: false },
       ];
 
   return (
@@ -345,7 +412,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
             </div>
           )}
           <span className="non-draggable text-[13.5px] font-semibold select-none text-foreground">
-            认知大脑
+            第二大脑
           </span>
         </div>
       </div>
@@ -382,122 +449,165 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
             <div className="mb-3">
               <h2 className="text-sm font-semibold text-foreground">待确认认知</h2>
               <p className="text-xs text-secondary mt-0.5">
-                从你的资料和对话中发现了新的认知，请确认后加入你的认知大脑
+                从你的资料和对话中发现了新的认知，请确认后加入你的第二大脑
               </p>
             </div>
 
             <div className="space-y-3">
-              {paginatedItems.map((item) => {
-                const hasChange = Boolean(item.replace_summary);
+              {items.map((item) => {
+                const hasChange = Boolean(item.replaces && item.replaces.length > 0);
                 return (
                   <div
-                    key={item.item_id}
+                    key={item.node_id}
                     className="rounded-xl border border-border bg-background p-4 space-y-3"
                   >
                     {/* 顶部：标签 + 操作按钮 */}
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex flex-wrap gap-1.5">
                         <span className="inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-medium bg-primary/10 text-primary">
-                          {CATEGORY_LABEL[item.category] ?? `类型${item.category}`}
+                          {LAYER_LABEL[item.layer] ?? `层级${item.layer}`}
                         </span>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         <button
                           type="button"
-                          disabled={actioningIds.has(item.item_id)}
+                          disabled={actioningIds.has(item.node_id)}
                           onClick={() => handleAdopt(item)}
-                          className="inline-flex items-center rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary/90 transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary/90 transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed shadow-xs"
                         >
-                          {actioningIds.has(item.item_id)
-                            ? '处理中…'
-                            : hasChange
-                            ? '采纳更新'
-                            : '采纳'}
+                          <CheckIcon className="h-3.5 w-3.5" />
+                          <span>
+                            {actioningIds.has(item.node_id)
+                              ? '处理中…'
+                              : hasChange
+                              ? '采纳更新'
+                              : '采纳'}
+                          </span>
                         </button>
                         <button
                           type="button"
-                          disabled={actioningIds.has(item.item_id)}
+                          disabled={actioningIds.has(item.node_id)}
                           onClick={() => handleReject(item)}
-                          className="inline-flex items-center rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-secondary hover:bg-surface-raised transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-secondary hover:bg-surface-raised transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          {actioningIds.has(item.item_id)
-                            ? '处理中…'
-                            : hasChange
-                            ? '保留原有'
-                            : '驳回'}
+                          <XMarkIcon className="h-3.5 w-3.5" />
+                          <span>
+                            {actioningIds.has(item.node_id)
+                              ? '处理中…'
+                              : hasChange
+                              ? '保留原有'
+                              : '驳回'}
+                          </span>
                         </button>
                       </div>
                     </div>
 
-                    {/* 认知标题（点击可编辑，采纳时发送最新编辑内容） */}
-                    {editingItemId === item.item_id ? (
-                      <div className="flex items-start gap-2">
-                        <textarea
-                          autoFocus
-                          rows={2}
-                          value={editingText}
-                          onChange={(e) => setEditingText(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' && !e.shiftKey) {
-                              e.preventDefault();
-                              saveEditing(item.item_id);
-                            }
-                          }}
-                          className="flex-1 rounded-lg border border-primary bg-background px-3 py-1.5 text-sm font-medium text-foreground outline-none shadow-xs focus:ring-2 focus:ring-primary/20 resize-none leading-relaxed"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => saveEditing(item.item_id)}
-                          className="shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary/90 transition-colors"
-                        >
-                          保存
-                        </button>
+                    {/* 认知摘要与正文（编辑态 / 展示态） */}
+                    {editingNodeId === item.node_id ? (
+                      <div className="flex items-start gap-3">
+                        <div className="flex-1 space-y-2">
+                          <div>
+                            <label className="block text-[11px] font-medium text-secondary mb-1">
+                              认知摘要
+                            </label>
+                            <input
+                              type="text"
+                              autoFocus
+                              value={editingPropText}
+                              onChange={(e) => setEditingPropText(e.target.value)}
+                              placeholder="请输入认知摘要"
+                              className="w-full rounded-lg border border-primary bg-background px-3 py-1.5 text-sm font-semibold text-foreground outline-none shadow-xs focus:ring-2 focus:ring-primary/20"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[11px] font-medium text-secondary mb-1">
+                              认知正文
+                            </label>
+                            <textarea
+                              rows={3}
+                              value={editingElabText}
+                              onChange={(e) => setEditingElabText(e.target.value)}
+                              placeholder="请输入认知正文详情"
+                              className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-xs text-foreground outline-none shadow-xs focus:border-primary focus:ring-2 focus:ring-primary/20 resize-none leading-relaxed"
+                            />
+                          </div>
+                        </div>
+                        <div className="flex flex-col gap-1.5 shrink-0 pt-5">
+                          <button
+                            type="button"
+                            onClick={() => saveEditing(item.node_id)}
+                            className="rounded-lg border border-primary bg-transparent px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10 transition-colors whitespace-nowrap"
+                          >
+                            保存
+                          </button>
+                          <button
+                            type="button"
+                            onClick={cancelEditing}
+                            className="rounded-lg border border-border bg-transparent px-3 py-1.5 text-xs font-medium text-secondary hover:bg-surface-raised transition-colors whitespace-nowrap"
+                          >
+                            取消
+                          </button>
+                        </div>
                       </div>
                     ) : (
                       <div
                         onClick={() => startEditing(item)}
-                        className="group relative cursor-pointer flex items-start justify-between gap-2 rounded-lg p-1.5 -m-1.5 transition-colors hover:bg-surface-raised/60 border border-transparent hover:border-border/40"
-                        title="点击编辑标题"
+                        className="group relative cursor-pointer rounded-lg p-2 -m-2 space-y-1.5 transition-colors hover:bg-surface-raised/60 border border-transparent hover:border-border/40"
+                        title="点击编辑认知"
                       >
-                        <p className="text-sm font-medium text-foreground leading-relaxed flex-1">
-                          {editedSummaries[item.item_id] ?? item.summary ?? item.content}
-                        </p>
-                        <span className="opacity-0 group-hover:opacity-100 transition-opacity text-xs text-primary flex items-center gap-1 shrink-0 mt-0.5 font-normal">
-                          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                          </svg>
-                          <span>点击编辑</span>
-                        </span>
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-sm font-semibold text-foreground leading-relaxed flex-1">
+                            {editedPropositions[item.node_id] ?? item.proposition}
+                          </p>
+                          <span className="opacity-0 group-hover:opacity-100 transition-opacity text-xs text-primary flex items-center gap-1 shrink-0 mt-0.5 font-normal">
+                            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                            </svg>
+                            <span>点击编辑</span>
+                          </span>
+                        </div>
+                        {(editedElaborations[item.node_id] ?? item.elaboration) && (
+                          <p className="text-xs text-secondary leading-relaxed">
+                            {editedElaborations[item.node_id] ?? item.elaboration}
+                          </p>
+                        )}
                       </div>
                     )}
 
                     {/* 认知变化提示 */}
-                    {hasChange && (
-                      <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-3.5 py-2.5 space-y-1">
+                    {hasChange && item.replaces && (
+                      <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-3.5 py-2.5 space-y-1.5">
                         <div className="flex items-center gap-1.5 text-xs font-medium text-red-600 dark:text-red-400">
                           <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                           </svg>
                           <span>认知变化</span>
                         </div>
-                        <div className="text-xs text-secondary">
-                          原有认知：{item.replace_summary}
-                        </div>
+                        {item.replaces.map((r, idx) => (
+                          <div key={idx} className="text-xs text-secondary space-y-0.5">
+                            <div>原有命题：{r.proposition}</div>
+                            {r.elaboration && (
+                              <div className="text-secondary/70">原有阐述：{r.elaboration}</div>
+                            )}
+                          </div>
+                        ))}
                       </div>
                     )}
 
                     {/* 底部元数据 */}
                     <div className="flex items-center justify-between text-[11px] text-secondary/60">
                       <div className="flex items-center gap-3">
-                        <span>置信度：{item.confidence}</span>
+                        {Boolean(item.confidence && item.confidence > 0) && (
+                          <span>置信度：{item.confidence}</span>
+                        )}
                         {item.source_type === 1 && (
-                          <span>来至文档：{item.source_name}</span>
+                          <span>来至文档{item.source_name ? `：${item.source_name}` : ''}</span>
                         )}
                         {item.source_type === 2 && (
-                          <span>来至对话：{item.source_name}</span>
+                          <span>来至对话{item.source_name ? `：${item.source_name}` : ''}</span>
                         )}
                         {item.source_type === 3 && (
-                          <span>来至 {item.source_name}</span>
+                          <span>来至{item.source_name ? ` ${item.source_name}` : '归纳'}</span>
                         )}
                       </div>
                       <span>{formatTimestamp(item.create_time)}</span>
@@ -507,7 +617,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
               })}
             </div>
 
-            {/* 前端分页 */}
+            {/* 分页 */}
             {itemsLastPage > 1 && (
               <div className="flex items-center justify-center gap-2 mt-4">
                 <button
@@ -542,47 +652,51 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
             ref={fileInputRef}
             className="hidden"
             accept=".docx,.md,.txt"
+            multiple
             onChange={handleFileChange}
           />
 
-          <div className="flex items-center justify-between mb-3">
+          <div className="mb-3">
             <h2 className="text-sm font-semibold text-foreground">学习资料</h2>
-            {/* 上传资料按钮 + hover tooltip */}
+          </div>
+
+          {/* 第二行：分类 Tab + 上传文档按钮 */}
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <div className="flex items-center gap-1">
+              {MATERIAL_TABS.map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => setMaterialTab(tab)}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                    materialTab === tab
+                      ? 'bg-primary/10 text-primary'
+                      : 'text-secondary hover:bg-surface-raised hover:text-foreground'
+                  }`}
+                >
+                  {tab}
+                </button>
+              ))}
+            </div>
+
+            {/* 上传文档按钮 + hover tooltip */}
             <div className="relative group">
               <button
                 type="button"
                 disabled={uploading}
                 onClick={handleUploadClick}
-                className="inline-flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="inline-flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-xs"
               >
                 <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
-                {uploading ? '上传中…' : '上传资料'}
+                {uploading ? '上传中…' : '上传文档'}
               </button>
               {/* Tooltip */}
               <div className="pointer-events-none absolute right-0 bottom-full mb-2 z-10 whitespace-nowrap rounded-xl bg-black/90 dark:bg-black px-3.5 py-2 text-xs font-medium text-white shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200">
                 支持 .docx / .md / .txt
               </div>
             </div>
-          </div>
-
-          {/* Tab 切换 */}
-          <div className="flex items-center gap-1 mb-3">
-            {MATERIAL_TABS.map((tab) => (
-              <button
-                key={tab}
-                type="button"
-                onClick={() => setMaterialTab(tab)}
-                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-                  materialTab === tab
-                    ? 'bg-primary/10 text-primary'
-                    : 'text-secondary hover:bg-surface-raised hover:text-foreground'
-                }`}
-              >
-                {tab}
-              </button>
-            ))}
           </div>
 
           {/* 加载中 */}
@@ -616,7 +730,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
               {docs.map((doc) => (
                 <div
                   key={`${doc.type}-${doc.id}`}
-                  className="flex items-center gap-3 rounded-xl border border-border bg-background px-4 py-3"
+                  className="group flex items-center gap-3 rounded-xl border border-border bg-background px-4 py-3 hover:border-border/80 transition-colors"
                 >
                   {/* 类型图标 */}
                   <div className="h-9 w-9 shrink-0 rounded-lg border border-border bg-surface-raised flex items-center justify-center">
@@ -645,7 +759,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                         <span className="text-primary font-medium">萃取中</span>
                       )}
                       {doc.extract_status === DOCUMENT_STATUS.Done && (
-                        <span className="text-emerald-600 dark:text-emerald-400 font-medium">已萃取 {doc.cognition_count} 条认知</span>
+                        <span className="text-emerald-600 dark:text-emerald-400 font-medium">已萃取 {doc.extract_count} 条认知</span>
                       )}
                       {doc.extract_status === DOCUMENT_STATUS.Failed && (
                         <span className="text-destructive font-medium">萃取失败</span>
@@ -653,32 +767,83 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                     </div>
                   </div>
 
-                  {/* 操作按钮（仅文档展示下载与删除） */}
-                  {doc.type === 'document' && (
-                    <div className="flex items-center gap-2 shrink-0">
-                      <button
-                        type="button"
-                        disabled={downloadingId === doc.id}
-                        onClick={() => handleDownload(doc.id)}
-                        className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs text-secondary hover:bg-surface-raised transition-colors disabled:opacity-50"
-                      >
-                        <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                        </svg>
-                        {downloadingId === doc.id ? '获取中…' : '下载'}
-                      </button>
+                  {/* 右侧操作栏（Hover 时可见，或展开更多菜单时可见） */}
+                  <div
+                    className={`flex items-center gap-2 shrink-0 transition-opacity ${
+                      moreMenuDocId === doc.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                    }`}
+                  >
+                    {doc.type === 'document' && (
+                      <div className="relative group/re">
+                        <button
+                          type="button"
+                          disabled={reExtractingId === doc.id}
+                          onClick={() => handleReExtract(doc.id)}
+                          className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs font-medium text-foreground hover:bg-surface-raised transition-colors disabled:opacity-50"
+                        >
+                          {reExtractingId === doc.id ? '萃取中…' : '重新萃取'}
+                        </button>
+                        {/* Tooltip */}
+                        <div className="pointer-events-none absolute right-0 bottom-full mb-2 z-20 whitespace-nowrap rounded-xl bg-black/90 dark:bg-black px-3 py-1.5 text-xs font-medium text-white shadow-lg opacity-0 group-hover/re:opacity-100 transition-all duration-200">
+                          将同步删除已萃取的认知
+                        </div>
+                      </div>
+                    )}
+
+                    {doc.type === 'document' ? (
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMoreMenuDocId(moreMenuDocId === doc.id ? null : doc.id);
+                          }}
+                          className={`h-7 w-7 inline-flex items-center justify-center rounded-lg border border-border text-xs text-secondary hover:bg-surface-raised hover:text-foreground transition-colors ${
+                            moreMenuDocId === doc.id ? 'bg-surface-raised text-foreground' : ''
+                          }`}
+                          title="更多操作"
+                        >
+                          ···
+                        </button>
+                        {moreMenuDocId === doc.id && (
+                          <div
+                            onClick={(e) => e.stopPropagation()}
+                            className="absolute right-0 top-full mt-1 z-30 min-w-[88px] rounded-xl border border-border bg-surface p-1 shadow-lg animate-in fade-in"
+                          >
+                            <button
+                              type="button"
+                              disabled={downloadingId === doc.id}
+                              onClick={() => {
+                                setMoreMenuDocId(null);
+                                handleDownload(doc.id);
+                              }}
+                              className="w-full rounded-lg px-2.5 py-1.5 text-left text-xs text-foreground hover:bg-surface-raised transition-colors disabled:opacity-50"
+                            >
+                              {downloadingId === doc.id ? '获取中…' : '下载'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setMoreMenuDocId(null);
+                                setDeletingDoc(doc);
+                              }}
+                              className="w-full rounded-lg px-2.5 py-1.5 text-left text-xs text-destructive hover:bg-destructive/10 transition-colors"
+                            >
+                              删除
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
                       <button
                         type="button"
                         onClick={() => setDeletingDoc(doc)}
-                        className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs text-secondary hover:bg-surface-raised hover:text-destructive transition-colors"
+                        className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs font-medium text-secondary hover:bg-surface-raised hover:text-destructive transition-colors"
                       >
-                        <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
                         删除
                       </button>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
