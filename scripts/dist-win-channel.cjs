@@ -10,14 +10,15 @@ const { parseArgs } = require('util');
 
 const { BuildEnv, CHANNEL_SCOPED_ENV_VARS } = require('./build-env.cjs');
 const { normalizeKeyfrom } = require('./build-keyfrom.cjs');
-const { resolveChannelInstallPolicy } = require('./channel-install-policy.cjs');
 
 const REPO_ROOT = path.join(__dirname, '..');
 
 const USAGE = `Usage:
-  npm run dist:win:channel -- --keyfrom <channel> [--dry-run]
+  npm run dist:win:channel -- --keyfrom <channel> [--silent] [--dry-run]
 
 Builds the regular full installer (npm run dist:win) for the given channel.
+Use --silent when the generated installer should enter NSIS silent mode even
+when the user double-clicks it without passing /S.
 For the web-installer variants use: npm run dist:win:web`;
 
 function fail(message) {
@@ -31,6 +32,7 @@ try {
   ({ values } = parseArgs({
     options: {
       keyfrom: { type: 'string' },
+      silent: { type: 'boolean', default: false },
       'dry-run': { type: 'boolean', default: false },
     },
   }));
@@ -53,14 +55,14 @@ for (const name of CHANNEL_SCOPED_ENV_VARS) {
     delete env[name];
   }
 }
-const installPolicy = resolveChannelInstallPolicy(keyfrom);
+const silentOnDoubleClick = values.silent === true;
 env[BuildEnv.ChannelBuild] = '1';
 env[BuildEnv.Keyfrom] = keyfrom;
-env[BuildEnv.SilentOnDoubleClick] = installPolicy.silentOnDoubleClick ? '1' : '0';
+env[BuildEnv.SilentOnDoubleClick] = silentOnDoubleClick ? '1' : '0';
 
 console.log(
   `[ChannelBuild] keyfrom=${keyfrom} mode=full-installer ` +
-    `silentOnDoubleClick=${installPolicy.silentOnDoubleClick} source=${installPolicy.source}`,
+    `silentOnDoubleClick=${silentOnDoubleClick} source=${silentOnDoubleClick ? 'cli' : 'default'}`,
 );
 
 if (values['dry-run']) {

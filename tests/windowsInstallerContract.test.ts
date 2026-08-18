@@ -61,7 +61,7 @@ describe('Windows installer hardening contracts', () => {
     expect(init).toContain('$%LOBSTERAI_CHANNEL_BUILD%');
     expect(init).toContain('$%LOBSTERAI_SILENT_ON_DOUBLE_CLICK%');
     expect(init).toContain('StrCpy $lobsterSilentSource "argv"');
-    expect(init).toContain('StrCpy $lobsterSilentSource "channel-policy"');
+    expect(init).toContain('StrCpy $lobsterSilentSource "build-flag"');
     expect(init).toContain('${If} ${isUpdated}');
     expect(init).toContain('silent_source=$lobsterSilentSource');
     expect(setSilent).toBeGreaterThan(-1);

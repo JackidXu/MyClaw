@@ -4,11 +4,11 @@
 
 LobsterAI 当前 Windows NSIS 安装包已经支持 `/S` 静默安装，企业或渠道侧可以通过命令行完成无人值守部署。但部分渠道希望用户直接双击安装包时也进入静默安装流程，减少安装向导步骤和人工选择，适配批量分发、预装、网管工具下发等场景。
 
-本功能在现有渠道包构建能力上增加“渠道双击静默”策略：同一套 `dist:win:channel` 构建链路根据明确渠道配置生成不同安装器行为。被标记为双击静默的渠道包在用户直接打开时自动进入 NSIS silent mode；未标记渠道仍保持普通交互式安装向导。已有 `/S` 命令行能力保持不变。
+本功能在现有渠道包构建能力上增加显式“双击静默”打包参数：同一套 `dist:win:channel` 构建链路根据命令行参数生成不同安装器行为。传入 `--silent` 的渠道包在用户直接打开时自动进入 NSIS silent mode；未传入该参数时保持普通交互式安装向导。已有 `/S` 命令行能力保持不变。
 
 ### 1.1 目标
 
-- 允许指定 `keyfrom` 渠道生成“用户双击也静默安装”的 Windows 完整安装包。
+- 允许通过显式打包参数生成“用户双击也静默安装”的 Windows 完整安装包。
 - 继续复用现有 NSIS 安装器、渠道归因、签名、OpenClaw runtime 打包和资源恢复流程。
 - 将双击静默行为固化在构建产物中，不依赖用户机器环境变量或安装时读取 `.keyfrom-build`。
 - 保持普通渠道包的安装向导体验不变。
@@ -26,47 +26,45 @@ LobsterAI 当前 Windows NSIS 安装包已经支持 `/S` 静默安装，企业�
 
 ## 2. 核心流程
 
-1. 开发者维护一份受控的渠道安装策略，声明哪些 `keyfrom` 需要双击静默。
-2. 开发者执行 `npm run dist:win:channel -- --keyfrom <channel>`。
-3. 渠道构建脚本校验并归一化 `keyfrom`，解析该渠道对应的安装器 UI 策略。
-4. Electron Builder 配置将策略写入 NSIS 编译期定义，而不是让安装器运行时从应用资源中推断。
+1. 开发者执行 `npm run dist:win:channel -- --keyfrom <channel>` 生成普通渠道包。
+2. 当该渠道需要双击静默时，开发者显式追加 `--silent`。
+3. 渠道构建脚本校验并归一化 `keyfrom`，解析本次构建的安装器 UI 参数。
+4. Electron Builder 配置将参数写入 NSIS 编译期定义，而不是让安装器运行时从应用资源中推断。
 5. NSIS 安装器启动时先执行初始化逻辑：
    - 如果用户显式传入 `/S`，按现有静默安装处理。
-   - 如果安装器被构建为“双击静默渠道包”，即使没有 `/S` 也调用 `SetSilent silent`。
-   - 其他渠道保持 `interactive`。
+   - 如果安装器被构建为“双击静默包”，即使没有 `/S` 也调用 `SetSilent silent`。
+   - 未传入参数的渠道包保持 `interactive`。
 6. 安装器继续执行现有预检、关闭旧进程、旧版本迁移、资源解压、校验、注册和收尾逻辑。
 7. 安装日志记录本次安装的 `ui_mode` 和触发来源，方便定位渠道包是否按预期进入静默流程。
 
 ## 3. 功能要求
 
-### 3.1 渠道安装策略
+### 3.1 双击静默打包参数
 
-- 新增构建期渠道策略，最小字段为 `silentOnDoubleClick`。
-- 策略只对 Windows NSIS 完整安装包生效；macOS、Linux 和 `nsis-web` 不纳入首版范围。
-- 未配置渠道默认 `silentOnDoubleClick=false`。
-- 策略应由仓库内脚本或配置集中维护，不从开发者 shell 中继承隐式环境变量。
+- 新增 `dist:win:channel` 显式参数 `--silent`。
+- 参数只对 Windows NSIS 完整安装包生效；macOS、Linux 和 `nsis-web` 不纳入首版范围。
+- 未传入参数时默认 `silentOnDoubleClick=false`。
+- 构建脚本必须清理同名环境变量，不从开发者 shell 中继承隐式环境变量。
 - 渠道值继续复用现有规则：小写，允许 `a-z`、`0-9`、`_`、`-`，长度 1 到 64。
 
-建议策略形态：
+命令示例：
 
-```ts
-type ChannelInstallPolicy = {
-  keyfrom: string;
-  silentOnDoubleClick: boolean;
-};
+```bash
+npm run dist:win:channel -- --keyfrom dictbind
+npm run dist:win:channel -- --keyfrom dictbind --silent
 ```
 
-示例：
+示例行为：
 
-| keyfrom | silentOnDoubleClick | 行为 |
-|---------|---------------------|------|
-| `official` | `false` | 双击打开普通安装向导 |
-| `enterprise_a` | `true` | 双击直接静默安装 |
-| `partner_batch` | `true` | 双击直接静默安装 |
+| 命令 | silentOnDoubleClick | 行为 |
+|------|---------------------|------|
+| `--keyfrom dictbind` | `false` | 双击打开普通安装向导 |
+| `--keyfrom dictbind --silent` | `true` | 双击直接静默安装 |
+| `--keyfrom official` | `false` | 双击打开普通安装向导 |
 
 ### 3.2 构建脚本路由
 
-- `scripts/dist-win-channel.cjs` 在设置 `KEYFROM` 后，同时解析该渠道的 `silentOnDoubleClick`。
+- `scripts/dist-win-channel.cjs` 在设置 `KEYFROM` 后，同时解析本次构建的 `silentOnDoubleClick`。
 - 渠道构建脚本需要清理所有安装器策略相关环境变量，避免上一轮构建残留影响下一轮。
 - 当 `silentOnDoubleClick=true` 时，构建日志必须明确输出该渠道为双击静默包。
 - dry-run 模式需要输出将要执行的 keyfrom 和安装器 UI 策略。
@@ -89,7 +87,7 @@ LobsterAI-Setup-x64-${version}-${keyfrom}-silent.exe
 
 - 在 `scripts/nsis-installer.nsh` 的安装器初始化阶段处理双击静默。
 - 判断顺序应保证显式 `/S` 与渠道双击静默最终都进入同一 silent mode。
-- 双击静默渠道包应在写安装日志前完成 `SetSilent silent`，保证 `ui_mode` 记录为 `silent`。
+- 双击静默包应在写安装日志前完成 `SetSilent silent`，保证 `ui_mode` 记录为 `silent`。
 - 原有 `${Silent}` 分支，包括静默 Banner、失败弹窗默认按钮、进程关闭、回滚和卸载路径，必须继续复用。
 - 该行为只影响安装器 UI 展示，不跳过安装前置校验和失败保护。
 
@@ -108,7 +106,7 @@ ${EndIf}
 ### 3.5 日志与可观测性
 
 - `install-timing.log` 中继续记录 `ui_mode`。
-- 新增或扩展字段记录触发来源，例如 `silent_source=argv`、`silent_source=channel_policy` 或 `silent_source=none`。
+- 新增或扩展字段记录触发来源，例如 `silent_source=argv`、`silent_source=build-flag` 或 `silent_source=none`。
 - 构建日志输出以下信息：
   - `keyfrom`
   - `mode=full-installer`
@@ -119,19 +117,18 @@ ${EndIf}
 ### 3.6 兼容性与安全边界
 
 - 已经通过 `/S` 启动的任何渠道包保持现有静默安装行为。
-- 未在策略中开启的渠道，双击必须继续显示交互式安装向导。
+- 未传入 `--silent` 的渠道，双击必须继续显示交互式安装向导。
 - UAC 行为由 Windows 和安装器权限决定，本功能不得尝试规避。
-- 静默渠道包不能要求用户选择安装目录；必须接受 NSIS 默认目录或既有安装目录。
+- 双击静默包不能要求用户选择安装目录；必须接受 NSIS 默认目录或既有安装目录。
 - 如果旧版本迁移、资源解压或校验失败，必须保持现有 rollback 和失败可诊断能力。
-- 更新流程中使用 `--updated` 的可见进度安装不纳入本功能，不因为渠道策略变成完全静默更新。
+- 更新流程中使用 `--updated` 的可见进度安装不纳入本功能，不因为本次打包参数变成完全静默更新。
 
 ## 4. 实现边界
 
 | 层级 | 职责 |
 |------|------|
-| `scripts/channel-install-policy.cjs` | 维护 keyfrom 到安装器 UI 策略的映射、默认值和冲突校验 |
 | `scripts/build-env.cjs` | 增加构建期安装器策略环境变量常量，并纳入渠道构建清理列表 |
-| `scripts/dist-win-channel.cjs` | 解析 keyfrom 策略，注入本次构建环境，输出 dry-run 和构建日志 |
+| `scripts/dist-win-channel.cjs` | 解析 keyfrom 和双击静默参数，注入本次构建环境，输出 dry-run 和构建日志 |
 | `scripts/electron-builder-config.cjs` | 将策略转换为 NSIS 编译期宏和可选 artifact 命名标记 |
 | `scripts/nsis-installer.nsh` | 在安装器初始化阶段调用 `SetSilent silent`，复用现有 silent 分支 |
 | `scripts/dist-win-web.cjs` | 首版明确不支持双击静默策略，避免 web installer 混用 |
@@ -144,24 +141,24 @@ ${EndIf}
 | 场景 | 处理方式 |
 |------|---------|
 | 用户双击普通渠道包 | 显示普通安装向导 |
-| 用户双击双击静默渠道包 | 自动进入 silent mode 并执行默认安装流程 |
+| 用户双击双击静默包 | 自动进入 silent mode 并执行默认安装流程 |
 | 用户对普通渠道包传 `/S` | 按现有命令行静默安装处理 |
-| 用户对双击静默渠道包传 `/S` | 与双击静默等价，不重复执行特殊逻辑 |
-| 用户对双击静默渠道包传 `/D=<path>` | 遵循 NSIS silent install 对安装目录参数的既有规则 |
-| 渠道策略缺失 | 默认交互式安装，不失败 |
+| 用户对双击静默包传 `/S` | 与双击静默等价，不重复执行特殊逻辑 |
+| 用户对双击静默包传 `/D=<path>` | 遵循 NSIS silent install 对安装目录参数的既有规则 |
+| 未传入双击静默参数 | 默认交互式安装，不失败 |
 | 渠道值非法 | 构建脚本按现有规则失败或回退，不能生成未标识策略的异常包 |
 | 旧版本正在运行 | 复用现有进程停止、Banner 和日志逻辑 |
 | 安装资源解压失败 | 复用现有失败处理、日志、回滚和 silent MessageBox 默认选择 |
 | UAC 被取消 | 安装不继续，静默策略不绕过系统确认 |
-| 更新安装器带 `--updated` | 保持现有更新模式，不因渠道策略隐藏必要进度 |
+| 更新安装器带 `--updated` | 保持现有更新模式，不因打包参数隐藏必要进度 |
 
 ## 6. 验收标准
 
-1. `official` 或未配置渠道执行 `npm run dist:win:channel -- --keyfrom official` 后，双击安装包仍展示安装向导。
-2. 配置为 `silentOnDoubleClick=true` 的渠道执行同一构建命令后，双击安装包不展示安装向导，直接进入静默安装流程。
-3. 普通渠道和双击静默渠道在传入 `/S` 时均能完成现有静默安装。
-4. 双击静默渠道包安装完成后，应用启动读取到的 `latestKeyfrom` 仍为该渠道值。
-5. `install-timing.log` 对双击静默渠道记录 `ui_mode=silent`，并能区分是渠道策略触发还是命令行 `/S` 触发。
-6. 双击静默渠道包遇到资源解压失败、旧版本迁移失败或校验失败时，仍保留现有日志、回滚和错误默认处理。
+1. 未传入 `--silent` 时，`npm run dist:win:channel -- --keyfrom dictbind` 双击安装包仍展示安装向导。
+2. 传入 `--silent` 时，`npm run dist:win:channel -- --keyfrom dictbind --silent` 双击安装包不展示安装向导，直接进入静默安装流程。
+3. 普通渠道包和双击静默包在传入 `/S` 时均能完成现有静默安装。
+4. 双击静默包安装完成后，应用启动读取到的 `latestKeyfrom` 仍为该渠道值。
+5. `install-timing.log` 对双击静默包记录 `ui_mode=silent`，并能区分是构建参数触发还是命令行 `/S` 触发。
+6. 双击静默包遇到资源解压失败、旧版本迁移失败或校验失败时，仍保留现有日志、回滚和错误默认处理。
 7. 构建日志能清楚显示 `keyfrom`、`silentOnDoubleClick` 和产物路径，发布人员可以区分普通渠道包和双击静默渠道包。
 8. macOS、Linux、web installer 和应用运行时 UI 不受该功能影响。

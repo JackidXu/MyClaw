@@ -378,7 +378,7 @@ FunctionEnd
     ${Else}
       ${If} ${isUpdated}
       ${Else}
-        StrCpy $lobsterSilentSource "channel-policy"
+        StrCpy $lobsterSilentSource "build-flag"
         SetSilent silent
       ${EndIf}
     ${EndIf}
