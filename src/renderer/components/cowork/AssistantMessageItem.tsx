@@ -1,5 +1,9 @@
+import { PlusIcon } from '@heroicons/react/24/outline';
 import React, { useCallback, useEffect, useState } from 'react';
 
+import {
+  isContextOverflowNotice,
+} from '../../../shared/cowork/constants';
 import {
   type CoworkGoal,
   formatCoworkGoalCompletionDuration,
@@ -7,9 +11,11 @@ import {
 import { i18nService } from '../../services/i18n';
 import type { CoworkMessage, CoworkMessageMetadata } from '../../types/cowork';
 import { formatMessageDateTime } from '../../utils/tokenFormat';
+import ExclamationTriangleIcon from '../icons/ExclamationTriangleIcon';
 import GoalIcon from '../icons/GoalIcon';
 import MessageForkIcon from '../icons/MessageForkIcon';
 import MarkdownContent from '../MarkdownContent';
+import { CoworkUiEvent } from './constants';
 import { reportConversationMessageAction } from './conversationAnalytics';
 import ImagePreviewModal, { type ImagePreviewSource } from './ImagePreviewModal';
 import { MessageCopyButton } from './MessageActionButton';
@@ -144,7 +150,26 @@ const AssistantMessageItem: React.FC<{
       onBlur={handleBlur}
     >
       <div className="text-foreground">
-        {displayContent && (
+        {isContextOverflowNotice(displayContent) ? (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 shadow-subtle dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
+            <div className="flex items-start gap-3">
+              <ExclamationTriangleIcon className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden="true" />
+              <div className="flex-1 space-y-3">
+                <p className="font-medium leading-relaxed">
+                  {i18nService.t('coworkContextOverflowDesktopNotice')}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => window.dispatchEvent(new CustomEvent(CoworkUiEvent.ShortcutNewSession))}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-amber-700 dark:bg-amber-500 dark:text-neutral-900 dark:hover:bg-amber-400"
+                >
+                  <PlusIcon className="h-4 w-4" />
+                  <span>{i18nService.t('newChat')}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : displayContent ? (
           <div>
             <MarkdownContent
               content={displayContent}
@@ -190,7 +215,7 @@ const AssistantMessageItem: React.FC<{
               </div>
             )}
           </div>
-        )}
+        ) : null}
         {proposedPlan.planText && (
           <div className={displayContent ? 'mt-4' : undefined}>
             <ProposedPlanBlock

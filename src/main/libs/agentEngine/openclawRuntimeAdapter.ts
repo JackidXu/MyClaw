@@ -35,6 +35,7 @@ import {
 import {
   CoworkIpcChannel,
   type CoworkSessionsChangedPayload,
+  formatDesktopContextOverflowNotice,
 } from '../../../shared/cowork/constants';
 import {
   buildCoworkErrorDetail,
@@ -9659,11 +9660,12 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       this.flushPendingStoreUpdate(sessionId, turn.assistantMessageId);
       this.clearPendingMessageUpdate(turn.assistantMessageId);
 
-      const { content: persistedSegmentText, reason: persistPickReason } = pickPersistedAssistantSegment(
+      let { content: persistedSegmentText, reason: persistPickReason } = pickPersistedAssistantSegment(
         previousSegmentText,
         finalSegmentText,
         turn.hasSeenAgentAssistantStream,
       );
+      persistedSegmentText = formatDesktopContextOverflowNotice(persistedSegmentText);
       if (persistedSegmentText) {
         const finalMetadata = {
           isStreaming: false,
@@ -9686,7 +9688,8 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
         this.emit('messageUpdate', sessionId, turn.assistantMessageId, persistedSegmentText, finalMetadata);
       }
     } else if (finalSegmentText) {
-      const reusedMessageId = this.reuseFinalAssistantMessage(sessionId, finalSegmentText);
+      const formattedFinalText = formatDesktopContextOverflowNotice(finalSegmentText);
+      const reusedMessageId = this.reuseFinalAssistantMessage(sessionId, formattedFinalText);
       if (reusedMessageId) {
         turn.assistantMessageId = reusedMessageId;
       } else {
@@ -9694,7 +9697,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
           ? (payload.message as Record<string, unknown>).timestamp as number : undefined;
         const assistantMessage = this.store.addMessage(sessionId, {
           type: 'assistant',
-          content: finalSegmentText,
+          content: formattedFinalText,
           metadata: {
             isStreaming: false,
             isFinal: true,
