@@ -87,6 +87,7 @@ export const buildMediaGenerationTurnInstruction = (
   } else if (selection.mode === 'video') {
     lines.push('If the current user request asks to create, generate, render, or make a video, you must call the heyclaw_video_generate tool exactly once with action="generate".');
     lines.push('Use the current user request and relevant prior conversation as the video prompt.');
+    lines.push('When the user provides multiple reference images (e.g. character, product, or first/last frames), pass all mapped image paths in the "images" or "referenceImages" parameter, and explicitly use @1, @2, ... in the prompt to bind corresponding characters and objects.');
     lines.push('Do not answer with only a text prompt when the user asked for a video.');
     const videoModel = selection.videoModelId?.trim() || selection.modelId?.trim();
     if (videoModel) {
@@ -96,6 +97,7 @@ export const buildMediaGenerationTurnInstruction = (
     lines.push('If the current user request asks for image generation, call heyclaw_image_generate with action="generate".');
     lines.push('If the current user request asks for video generation, call heyclaw_video_generate with action="generate".');
     lines.push('Use the current user request and relevant prior conversation as the media prompt.');
+    lines.push('For video generation with multiple reference images (character/product consistency), pass them in "images" and use @1, @2 in the prompt text.');
     if (selection.imageModelId?.trim()) {
       lines.push(`For image generation, you MUST use model "${selection.imageModelId.trim()}". Do NOT use a different model.`);
     }

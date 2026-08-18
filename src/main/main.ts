@@ -6087,10 +6087,56 @@ if (!gotTheLock) {
       let bodyData: Record<string, any>;
 
       if (mediaType === 'video') {
+        // 收集所有有效图片（包括 images, referenceImages, firstFrame, lastFrame, image）
+        const allImageInputs: string[] = [];
+        if (Array.isArray(params.images)) {
+          allImageInputs.push(...(params.images as string[]));
+        } else if (typeof params.image === 'string' && params.image.trim()) {
+          allImageInputs.push(params.image.trim());
+        }
+        if (Array.isArray(params.referenceImages)) {
+          for (const refImg of params.referenceImages as string[]) {
+            if (!allImageInputs.includes(refImg)) {
+              allImageInputs.push(refImg);
+            }
+          }
+        }
+        if (typeof params.firstFrame === 'string' && params.firstFrame.trim() && !allImageInputs.includes(params.firstFrame.trim())) {
+          allImageInputs.unshift(params.firstFrame.trim());
+        }
+        if (typeof params.lastFrame === 'string' && params.lastFrame.trim() && !allImageInputs.includes(params.lastFrame.trim())) {
+          allImageInputs.push(params.lastFrame.trim());
+        }
+
+        const duration = typeof params.durationSeconds === 'number'
+          ? params.durationSeconds
+          : (typeof args.durationSeconds === 'number' ? args.durationSeconds : undefined);
+
+        const ratio = typeof params.aspectRatio === 'string'
+          ? params.aspectRatio
+          : (typeof args.aspectRatio === 'string' ? args.aspectRatio : undefined);
+
+        // 如果是 Seedance 模型或传入了多张参考图片，组装火山方舟 / NewAPI 标准 content 数组
+        let contentPayload: Array<{ type: string; text?: string; image_url?: { url: string } }> | undefined;
+        if (allImageInputs.length > 0) {
+          contentPayload = [
+            { type: 'text', text: prompt },
+            ...allImageInputs.map(url => ({
+              type: 'image_url',
+              image_url: { url },
+            })),
+          ];
+        }
+
         bodyData = {
           model,
           prompt,
           type: happyHorse11Selection?.type ?? inferVideoGenerationType(),
+          ...(contentPayload ? { content: contentPayload } : {}),
+          ...(duration != null ? { duration } : {}),
+          ...(ratio ? { ratio } : {}),
+          ...(params.audio != null ? { generate_audio: Boolean(params.audio) } : {}),
+          ...(params.watermark != null ? { watermark: Boolean(params.watermark) } : {}),
           params,
         };
       } else {
