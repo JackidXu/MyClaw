@@ -7,6 +7,7 @@ import {
   type CognitionItem,
   type CognitionStats,
   createDocument,
+  deleteChat,
   deleteDocument,
   DOCUMENT_STATUS,
   type DocumentItem,
@@ -423,14 +424,19 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
     if (!deletingDoc || deleting) return;
     setDeleting(true);
     const docName = deletingDoc.name;
+    const isChat = deletingDoc.type === 'chat';
     try {
-      await deleteDocument(deletingDoc.id);
+      if (isChat) {
+        await deleteChat(deletingDoc.id);
+      } else {
+        await deleteDocument(deletingDoc.id);
+      }
       setDeletingDoc(null);
       loadDocs(materialTab, docsPage);
       loadStats();
-      showToast('success', `资料 "${docName}" 已成功删除`);
+      showToast('success', `${isChat ? '对话' : '资料'} "${docName}" 已成功删除`);
     } catch (err: any) {
-      console.warn('[SecondBrainView] 删除资料失败:', err);
+      console.warn('[SecondBrainView] 删除失败:', err);
       showToast('error', `删除失败: ${err?.message || '未知错误'}`);
     } finally {
       setDeleting(false);
@@ -1072,7 +1078,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
               <div className="space-y-1">
                 <h3 className={`${MANAGEMENT_TITLE_TEXT} font-semibold text-foreground`}>确认删除</h3>
                 <p className={`${MANAGEMENT_BODY_TEXT} text-secondary leading-relaxed`}>
-                  确定要删除资料 <span className="font-medium text-foreground">“{deletingDoc.name}”</span> 吗？此操作无法撤销。
+                  确定要删除{deletingDoc.type === 'chat' ? '对话' : '资料'} <span className="font-medium text-foreground">“{deletingDoc.name}”</span> 吗？此操作无法撤销。
                 </p>
               </div>
               <div className="flex items-center justify-end gap-2 pt-2">
