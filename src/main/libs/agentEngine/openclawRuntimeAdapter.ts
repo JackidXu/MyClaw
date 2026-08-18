@@ -6280,6 +6280,27 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
         const disconnectedError = new Error(disconnectedMessage);
         const activeSessionIds = Array.from(this.activeTurns.keys());
         activeSessionIds.forEach((sessionId) => {
+          const turn = this.activeTurns.get(sessionId);
+          if (turn && (turn.finalCompletionRunId || turn.finalCompletionTimer)) {
+            // 场景 1：如果该轮次已经接收到了最终的 chat.final，并且正在延迟完成窗口中等待结算
+            // 网关断开（例如配置重载自重启）不应把已经成功输出全部结果的会话置为 error，而是立即正常结算
+            const runId = turn.finalCompletionRunId || turn.runId;
+            void this.completeDeferredChatFinalNow(sessionId, turn, runId);
+            return;
+          }
+          if (
+            turn
+            && _code === WebSocketCloseCode.ServiceRestart
+            && (turn.currentText.trim().length > 0 || turn.committedAssistantText.trim().length > 0)
+          ) {
+            // 场景 2：网关自重启（如配置变更后触发的重启），且本轮已经输出了有效文本
+            this.clearContextMaintenanceState(sessionId, turn, 'service restart after output');
+            this.store.updateSession(sessionId, { status: 'completed' });
+            this.emit('complete', sessionId, turn.runId);
+            this.cleanupSessionTurn(sessionId);
+            this.resolveTurn(sessionId);
+            return;
+          }
           this.store.updateSession(sessionId, { status: 'error' });
           this.emit('error', sessionId, disconnectedError.message);
           this.cleanupSessionTurn(sessionId);
