@@ -1706,6 +1706,22 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     }
     setShowFolderRequiredWarning(false);
 
+    // 拦截桌面端快捷指令 /new, /clear, /reset，直接触发新建任务/会话
+    const normalizedSlashCmd = trimmedValue.toLowerCase();
+    if (
+      (normalizedSlashCmd === '/new' || normalizedSlashCmd === '/clear' || normalizedSlashCmd === '/reset')
+      && attachments.length === 0
+      && browserAnnotationBatches.length === 0
+      && !goalInputActive
+    ) {
+      setValue('');
+      dispatch(setDraftPrompt({ sessionId: draftKey, draft: '' }));
+      setShowAddMenu(false);
+      window.dispatchEvent(new CustomEvent(CoworkUiEvent.ShortcutNewSession));
+      return;
+    }
+
+
     const exitsPlanModeForImplementation = isPlanMode
       && isPlanImplementationApproval(trimmedValue);
     const awaitingPlanConfirmation = planConfirmation?.state === PlanConfirmationState.Awaiting

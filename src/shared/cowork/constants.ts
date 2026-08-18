@@ -123,3 +123,25 @@ export const CoworkContextUsageRefreshMode = {
 } as const;
 export type CoworkContextUsageRefreshMode =
   typeof CoworkContextUsageRefreshMode[keyof typeof CoworkContextUsageRefreshMode];
+
+/** IM 通道上下文超限提示文案 */
+export const IM_CONTEXT_OVERFLOW_MESSAGE = '⚠️ 当前对话上下文已满且自动压缩失败，请发送 /new 开启新对话。';
+
+/** 桌面端上下文超限提示文案 */
+export const DESKTOP_CONTEXT_OVERFLOW_MESSAGE = '⚠️ 当前对话上下文已满，请点击左上角【新建任务】开启新会话。';
+
+/** 判断是否为上下文已满的错误提示文案 */
+export function isContextOverflowNotice(text?: string | null): boolean {
+  if (!text) return false;
+  return text.includes('当前对话上下文已满') || text.includes('/new 开启新对话');
+}
+
+/** 将内核/IM 通用上下文溢出提示转换为桌面端提示 */
+export function formatDesktopContextOverflowNotice(text: string): string {
+  if (!text) return text;
+  if (isContextOverflowNotice(text)) {
+    return DESKTOP_CONTEXT_OVERFLOW_MESSAGE;
+  }
+  return text;
+}
+
