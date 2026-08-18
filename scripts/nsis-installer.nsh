@@ -19,6 +19,7 @@ Var lobsterTrustedPowerShellSource
   Var lobsterInvocationSource
   Var lobsterUpdatedFlag
   Var lobsterUiMode
+  Var lobsterSilentSource
   Var lobsterLauncherFallback
   Var lobsterLegacySkillsStatus
   Var lobsterLegacySkillsRestoreStatus
@@ -358,6 +359,7 @@ FunctionEnd
   StrCpy $lobsterInvocationSource "unknown"
   StrCpy $lobsterUpdatedFlag "absent"
   StrCpy $lobsterUiMode "interactive"
+  StrCpy $lobsterSilentSource "none"
   StrCpy $lobsterLauncherFallback "unknown"
   ${If} ${isUpdated}
     StrCpy $lobsterUpdatedFlag "present"
@@ -368,13 +370,28 @@ FunctionEnd
     StrCpy $lobsterLauncherFallback "none"
   ${EndIf}
   ${If} ${Silent}
+    StrCpy $lobsterSilentSource "argv"
+  ${EndIf}
+  !if "$%LOBSTERAI_CHANNEL_BUILD%" == "1"
+  !if "$%LOBSTERAI_SILENT_ON_DOUBLE_CLICK%" == "1"
+    ${If} ${Silent}
+    ${Else}
+      ${If} ${isUpdated}
+      ${Else}
+        StrCpy $lobsterSilentSource "channel-policy"
+        SetSilent silent
+      ${EndIf}
+    ${EndIf}
+  !endif
+  !endif
+  ${If} ${Silent}
     StrCpy $lobsterUiMode "silent"
   ${EndIf}
   CreateDirectory "$APPDATA\LobsterAI"
   FileOpen $9 "$APPDATA\LobsterAI\install-timing.log" a
   FileSeek $9 0 END
   !insertmacro GetTimestamp $8
-  FileWrite $9 "$8 phase=custom-init-start attempt_id=$lobsterInstallerAttemptId installer_version=${VERSION} invocation_source=$lobsterInvocationSource updated_flag=$lobsterUpdatedFlag ui_mode=$lobsterUiMode launcher_fallback=$lobsterLauncherFallback instdir=$INSTDIR appdata=$APPDATA$\r$\n"
+  FileWrite $9 "$8 phase=custom-init-start attempt_id=$lobsterInstallerAttemptId installer_version=${VERSION} invocation_source=$lobsterInvocationSource updated_flag=$lobsterUpdatedFlag ui_mode=$lobsterUiMode silent_source=$lobsterSilentSource launcher_fallback=$lobsterLauncherFallback instdir=$INSTDIR appdata=$APPDATA$\r$\n"
   FileClose $9
 !macroend
 

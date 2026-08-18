@@ -50,6 +50,24 @@ const classifyFreshTarget = ({
 };
 
 describe('Windows installer hardening contracts', () => {
+  test('can force channel double-click installs into silent mode before init logging', () => {
+    const start = installerInclude.indexOf('!macro customInit');
+    const end = installerInclude.indexOf('!macroend', start);
+    const init = installerInclude.slice(start, end);
+    const setSilent = init.indexOf('SetSilent silent');
+    const initLog = init.indexOf('phase=custom-init-start');
+
+    expect(installerInclude).toContain('Var lobsterSilentSource');
+    expect(init).toContain('$%LOBSTERAI_CHANNEL_BUILD%');
+    expect(init).toContain('$%LOBSTERAI_SILENT_ON_DOUBLE_CLICK%');
+    expect(init).toContain('StrCpy $lobsterSilentSource "argv"');
+    expect(init).toContain('StrCpy $lobsterSilentSource "channel-policy"');
+    expect(init).toContain('${If} ${isUpdated}');
+    expect(init).toContain('silent_source=$lobsterSilentSource');
+    expect(setSilent).toBeGreaterThan(-1);
+    expect(initLog).toBeGreaterThan(setSilent);
+  });
+
   test('releases the installer current-directory lock before the update rename', () => {
     const switchOutPath = installerInclude.indexOf('SetOutPath "$PLUGINSDIR"');
     const rename = installerInclude.indexOf(

@@ -18,6 +18,11 @@ function isWebInstallerEnabled() {
   return value === '1' || value === 'true';
 }
 
+function isTruthyBuildEnv(name) {
+  const value = (process.env[name] || '').trim().toLowerCase();
+  return value === '1' || value === 'true';
+}
+
 // Name of the .nsis.7z app package that electron-builder produces; fixed as
 // <productName>-<version>-x64.nsis.7z.
 function expectedPackageFileName() {
@@ -90,6 +95,8 @@ function mergeExtraResources(platformName) {
 }
 
 const keyfrom = readBuildKeyfrom();
+const isChannelBuild = isTruthyBuildEnv(BuildEnv.ChannelBuild);
+const silentOnDoubleClick = isChannelBuild && isTruthyBuildEnv(BuildEnv.SilentOnDoubleClick);
 
 for (const platformName of ['mac', 'win', 'linux']) {
   mergeExtraResources(platformName);
@@ -114,7 +121,7 @@ config.dmg = {
 
 config.nsis = {
   ...(config.nsis || {}),
-  artifactName: `LobsterAI-Setup-\${arch}-\${version}-${keyfrom}.\${ext}`,
+  artifactName: `LobsterAI-Setup-\${arch}-\${version}-${keyfrom}${silentOnDoubleClick ? '-silent' : ''}.\${ext}`,
 };
 
 if (isWebInstallerEnabled()) {
@@ -133,5 +140,6 @@ if (isWebInstallerEnabled()) {
 }
 
 console.log(`[Keyfrom] configured artifact keyfrom as ${keyfrom}`);
+console.log(`[ChannelBuild] silentOnDoubleClick=${silentOnDoubleClick}`);
 
 module.exports = config;

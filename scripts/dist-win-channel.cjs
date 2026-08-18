@@ -10,6 +10,7 @@ const { parseArgs } = require('util');
 
 const { BuildEnv, CHANNEL_SCOPED_ENV_VARS } = require('./build-env.cjs');
 const { normalizeKeyfrom } = require('./build-keyfrom.cjs');
+const { resolveChannelInstallPolicy } = require('./channel-install-policy.cjs');
 
 const REPO_ROOT = path.join(__dirname, '..');
 
@@ -52,9 +53,15 @@ for (const name of CHANNEL_SCOPED_ENV_VARS) {
     delete env[name];
   }
 }
+const installPolicy = resolveChannelInstallPolicy(keyfrom);
+env[BuildEnv.ChannelBuild] = '1';
 env[BuildEnv.Keyfrom] = keyfrom;
+env[BuildEnv.SilentOnDoubleClick] = installPolicy.silentOnDoubleClick ? '1' : '0';
 
-console.log(`[ChannelBuild] keyfrom=${keyfrom} mode=full-installer`);
+console.log(
+  `[ChannelBuild] keyfrom=${keyfrom} mode=full-installer ` +
+    `silentOnDoubleClick=${installPolicy.silentOnDoubleClick} source=${installPolicy.source}`,
+);
 
 if (values['dry-run']) {
   console.log('[ChannelBuild] dry-run: would execute `npm run dist:win`');
