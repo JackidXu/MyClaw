@@ -4847,7 +4847,7 @@ if (!gotTheLock) {
   resolveCurrentMediaAccountScope = getCurrentMediaAccountScope;
 
   const captureEnterpriseAuthSessionSnapshot = (
-    accountScope = getCurrentMediaAccountScope(),
+    accountScope: MediaAccountScope | null = getCurrentMediaAccountScope(),
   ) => createEnterpriseAuthSessionSnapshot(
     accountScope,
     getPersistedEnterpriseAccountContext(getStore())?.enterpriseId,
