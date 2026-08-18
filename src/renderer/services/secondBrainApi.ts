@@ -322,6 +322,11 @@ export async function deleteDocument(documentId: number): Promise<void> {
   await post<unknown>('/fmp/document/delete', { documentId });
 }
 
+/** 删除对话 */
+export async function deleteChat(chatId: string | number): Promise<void> {
+  await post<unknown>('/fmp/chat/delete', { chatId });
+}
+
 /** 重新萃取资料 */
 export async function reExtractDocument(documentId: number): Promise<void> {
   await post<unknown>('/fmp/document/reExtract', { documentId });
@@ -402,6 +407,7 @@ export const secondBrainApi = {
   createDocument,
   downloadDocument,
   deleteDocument,
+  deleteChat,
   reExtractDocument,
   fetchCognitionInjection,
   reportChatSession,
