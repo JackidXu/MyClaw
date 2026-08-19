@@ -60,7 +60,6 @@ import { apiService } from './services/api';
 import { authService } from './services/auth';
 import { configService } from './services/config';
 import { coworkService } from './services/cowork';
-import { isTestModeEnabled } from './services/endpoints';
 import { i18nService } from './services/i18n';
 import {
   beginLatestAsyncRequest,
@@ -1925,7 +1924,7 @@ const App: React.FC = () => {
           updateNotice={!isSidebarCollapsed && !isUpdateInteractionBlocked ? updateCard : null}
           hideAdBanner={isUpdateCardExpanded}
           hideLogin={enterpriseConfig?.ui?.login === 'hide'}
-          hideSites={!isTestModeEnabled() || enterpriseConfig?.ui?.sites === 'hide'}
+          hideSites={true}
         />
         <div className={`flex-1 min-w-0 transition-[padding] duration-200 ease-out ${isSidebarCollapsed ? 'pl-1.5' : ''}`}>
           <div
