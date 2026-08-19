@@ -27,7 +27,7 @@ function isTruthyBuildEnv(name) {
 // <productName>-<version>-x64.nsis.7z.
 function expectedPackageFileName() {
   const version = require('../package.json').version;
-  return `${config.productName}-${version}-x64.nsis.7z`;
+  return `${config.productName.toLowerCase()}-${version}-x64.nsis.7z`;
 }
 
 // Returns the complete package download URL baked into the web installer.
@@ -134,7 +134,7 @@ if (isWebInstallerEnabled()) {
   };
   config.nsisWeb = {
     appPackageUrl: resolveWebPackageUrl(keyfrom),
-    artifactName: `LobsterAI-WebSetup-\${arch}-\${version}-${keyfrom}.\${ext}`,
+    artifactName: `LobsterAI-WebSetup-\${arch}-\${version}-${keyfrom}${silentOnDoubleClick ? '-silent' : ''}.\${ext}`,
   };
   console.log(`[WebInstaller] nsis-web target enabled, app package url: ${config.nsisWeb.appPackageUrl}`);
 }

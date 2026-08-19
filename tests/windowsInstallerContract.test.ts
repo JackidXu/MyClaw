@@ -22,6 +22,9 @@ const rootInstallerTemplate = repoFile(
 const webPackageTemplate = repoFile(
   'node_modules/app-builder-lib/templates/nsis/include/webPackage.nsh',
 );
+const differentialUpdateInfoBuilder = repoFile(
+  'node_modules/app-builder-lib/out/targets/differentialUpdateInfoBuilder.js',
+);
 const appBuilderPatch = repoFile('patches/app-builder-lib+24.13.3.patch');
 const electronBuilderConfig = JSON.parse(repoFile('electron-builder.json')) as {
   nsis?: { deleteAppDataOnUninstall?: boolean };
@@ -175,6 +178,27 @@ describe('Windows installer hardening contracts', () => {
     const cleanup = installerInclude.indexOf('phase=old-install-cleanup-scheduled');
     expect(commit).toBeGreaterThan(-1);
     expect(cleanup).toBeGreaterThan(commit);
+  });
+
+  test('does not block silent web installs on a download failure prompt', () => {
+    const failureMessage = webPackageTemplate
+      .split(/\r?\n/)
+      .find((line) => line.includes('Messagebox MB_RETRYCANCEL|MB_ICONEXCLAMATION'));
+
+    expect(failureMessage).toContain('/SD IDCANCEL IDRETRY download');
+    expect(appBuilderPatch).toContain('/SD IDCANCEL IDRETRY download');
+  });
+
+  test('reuses an uploaded web payload without appending another block map', () => {
+    expect(differentialUpdateInfoBuilder).toContain(
+      'process.env.LOBSTERAI_REUSE_NSIS_WEB_PACKAGE === "1"',
+    );
+    expect(differentialUpdateInfoBuilder).toContain('footer.readUInt32BE(0)');
+    expect(differentialUpdateInfoBuilder).toContain(
+      '"reusing existing embedded block map"',
+    );
+    expect(differentialUpdateInfoBuilder).toContain('hash_1.hashFile)(file)');
+    expect(appBuilderPatch).toContain('LOBSTERAI_REUSE_NSIS_WEB_PACKAGE');
   });
 
   test('terminates the attempt after rename verification rollback', () => {

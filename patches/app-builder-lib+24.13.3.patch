@@ -258,7 +258,7 @@ index 8ec0be3..253545c 100644
      quit
    ${elseif} $0 != "OK"
 -    Messagebox MB_RETRYCANCEL|MB_ICONEXCLAMATION "Unable to download application package from $packageUrl (status: $0).$\r$\n$\r$\nPlease check your internet connection and retry." IDRETRY download
-+    Messagebox MB_RETRYCANCEL|MB_ICONEXCLAMATION "${U+4E0B}${U+8F7D}${U+5B89}${U+88C5}${U+7EC4}${U+4EF6}${U+5931}${U+8D25}${U+FF08}${U+72B6}${U+6001}${U+FF1A}$0${U+FF09}${U+3002}$\r$\n$\r$\n${U+8BF7}${U+68C0}${U+67E5}${U+7F51}${U+7EDC}${U+8FDE}${U+63A5}${U+540E}${U+70B9}${U+51FB}${U+201C}${U+91CD}${U+8BD5}${U+201D}${U+3002}" IDRETRY download
++    Messagebox MB_RETRYCANCEL|MB_ICONEXCLAMATION "${U+4E0B}${U+8F7D}${U+5B89}${U+88C5}${U+7EC4}${U+4EF6}${U+5931}${U+8D25}${U+FF08}${U+72B6}${U+6001}${U+FF1A}$0${U+FF09}${U+3002}$\r$\n$\r$\n${U+8BF7}${U+68C0}${U+67E5}${U+7F51}${U+7EDC}${U+8FDE}${U+63A5}${U+540E}${U+70B9}${U+51FB}${U+201C}${U+91CD}${U+8BD5}${U+201D}${U+3002}" /SD IDCANCEL IDRETRY download
 +    !ifmacrodef customBeforeInstallerQuit
 +      !insertmacro customBeforeInstallerQuit "web-package-download-failed"
 +    !endif
@@ -422,3 +422,49 @@ index 52a83df..0500e4e 100644
  		StrCpy $isForceMachineInstall "0"
  		StrCpy $isForceCurrentInstall "0"
  		!ifmacrodef customInstallmode
+diff --git a/node_modules/app-builder-lib/out/targets/differentialUpdateInfoBuilder.js b/node_modules/app-builder-lib/out/targets/differentialUpdateInfoBuilder.js
+index 0a88df9..ea03f275 100644
+--- a/node_modules/app-builder-lib/out/targets/differentialUpdateInfoBuilder.js
++++ b/node_modules/app-builder-lib/out/targets/differentialUpdateInfoBuilder.js
+@@ -2,8 +2,10 @@
+ Object.defineProperty(exports, "__esModule", { value: true });
+ exports.createBlockmap = exports.appendBlockmap = exports.configureDifferentialAwareArchiveOptions = exports.createNsisWebDifferentialUpdateInfo = exports.BLOCK_MAP_FILE_SUFFIX = void 0;
+ const builder_util_1 = require("builder-util");
++const fs_1 = require("fs/promises");
+ const path = require("path");
+ const appBuilder_1 = require("../util/appBuilder");
++const hash_1 = require("../util/hash");
+ exports.BLOCK_MAP_FILE_SUFFIX = ".blockmap";
+ function createNsisWebDifferentialUpdateInfo(artifactPath, packageFiles) {
+     if (packageFiles == null) {
+@@ -58,6 +60,30 @@ function configureDifferentialAwareArchiveOptions(archiveOptions) {
+ }
+ exports.configureDifferentialAwareArchiveOptions = configureDifferentialAwareArchiveOptions;
+ async function appendBlockmap(file) {
++    if (process.env.LOBSTERAI_REUSE_NSIS_WEB_PACKAGE === "1") {
++        const fileStat = await (0, fs_1.stat)(file);
++        if (fileStat.size < 4) {
++            throw new Error(`Cannot reuse embedded block map from ${file}: file is too small`);
++        }
++        const footer = Buffer.allocUnsafe(4);
++        const handle = await (0, fs_1.open)(file, "r");
++        try {
++            await handle.read(footer, 0, footer.length, fileStat.size - footer.length);
++        }
++        finally {
++            await handle.close();
++        }
++        const blockMapSize = footer.readUInt32BE(0);
++        if (blockMapSize <= 0 || blockMapSize + footer.length >= fileStat.size) {
++            throw new Error(`Cannot reuse embedded block map from ${file}: invalid footer size ${blockMapSize}`);
++        }
++        builder_util_1.log.info({ file: builder_util_1.log.filePath(file) }, "reusing existing embedded block map");
++        return {
++            size: fileStat.size,
++            blockMapSize,
++            sha512: await (0, hash_1.hashFile)(file),
++        };
++    }
+     builder_util_1.log.info({ file: builder_util_1.log.filePath(file) }, "building embedded block map");
+     return await (0, appBuilder_1.executeAppBuilderAsJson)(["blockmap", "--input", file, "--compression", "deflate"]);
+ }

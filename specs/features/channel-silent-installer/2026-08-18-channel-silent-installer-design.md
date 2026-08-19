@@ -4,11 +4,11 @@
 
 LobsterAI 当前 Windows NSIS 安装包已经支持 `/S` 静默安装，企业或渠道侧可以通过命令行完成无人值守部署。但部分渠道希望用户直接双击安装包时也进入静默安装流程，减少安装向导步骤和人工选择，适配批量分发、预装、网管工具下发等场景。
 
-本功能在现有渠道包构建能力上增加显式“双击静默”打包参数：同一套 `dist:win:channel` 构建链路根据命令行参数生成不同安装器行为。传入 `--silent` 的渠道包在用户直接打开时自动进入 NSIS silent mode；未传入该参数时保持普通交互式安装向导。已有 `/S` 命令行能力保持不变。
+本功能在现有渠道包构建能力上增加显式“双击静默”打包参数：`dist:win:channel` 完整安装包和 `dist:win:web` Web 安装包均根据命令行参数生成不同安装器行为。传入 `--silent` 的渠道包在用户直接打开时自动进入 NSIS silent mode；未传入该参数时保持普通交互式安装向导。已有 `/S` 命令行能力保持不变。
 
 ### 1.1 目标
 
-- 允许通过显式打包参数生成“用户双击也静默安装”的 Windows 完整安装包。
+- 允许通过显式打包参数生成“用户双击也静默安装”的 Windows 完整安装包或 Web 安装包。
 - 继续复用现有 NSIS 安装器、渠道归因、签名、OpenClaw runtime 打包和资源恢复流程。
 - 将双击静默行为固化在构建产物中，不依赖用户机器环境变量或安装时读取 `.keyfrom-build`。
 - 保持普通渠道包的安装向导体验不变。
@@ -41,8 +41,8 @@ LobsterAI 当前 Windows NSIS 安装包已经支持 `/S` 静默安装，企业�
 
 ### 3.1 双击静默打包参数
 
-- 新增 `dist:win:channel` 显式参数 `--silent`。
-- 参数只对 Windows NSIS 完整安装包生效；macOS、Linux 和 `nsis-web` 不纳入首版范围。
+- `dist:win:channel` 和 `dist:win:web` 均支持显式参数 `--silent`。
+- 参数只对 Windows NSIS 完整安装包和 `nsis-web` 生效；macOS、Linux 不读取该参数。
 - 未传入参数时默认 `silentOnDoubleClick=false`。
 - 构建脚本必须清理同名环境变量，不从开发者 shell 中继承隐式环境变量。
 - 渠道值继续复用现有规则：小写，允许 `a-z`、`0-9`、`_`、`-`，长度 1 到 64。
@@ -52,6 +52,8 @@ LobsterAI 当前 Windows NSIS 安装包已经支持 `/S` 静默安装，企业�
 ```bash
 npm run dist:win:channel -- --keyfrom dictbind
 npm run dist:win:channel -- --keyfrom dictbind --silent
+npm run dist:win:web -- --keyfrom dictbind --silent
+npm run dist:win:web -- --keyfrom dictbind --silent --pkg-url <uploaded-url>
 ```
 
 示例行为：
@@ -61,10 +63,12 @@ npm run dist:win:channel -- --keyfrom dictbind --silent
 | `--keyfrom dictbind` | `false` | 双击打开普通安装向导 |
 | `--keyfrom dictbind --silent` | `true` | 双击直接静默安装 |
 | `--keyfrom official` | `false` | 双击打开普通安装向导 |
+| `dist:win:web -- --keyfrom dictbind --silent` | `true` | 两阶段构建均保留静默策略，最终 WebSetup 双击直接静默安装 |
 
 ### 3.2 构建脚本路由
 
 - `scripts/dist-win-channel.cjs` 在设置 `KEYFROM` 后，同时解析本次构建的 `silentOnDoubleClick`。
+- `scripts/dist-win-web.cjs` 使用相同参数，并在 upload-first 流程输出包含 `--silent` 的第二阶段命令，避免最终 stub 丢失静默策略。第二阶段通过 `--prepackaged release/win-unpacked` 复用第一阶段应用目录，并设置版本锁定的 app-builder 补丁开关：读取现有 `.nsis.7z` 尾部的 embedded block map 元数据而不再次追加；构建结束后再校验 payload 的 SHA-256 完全一致，防止 WebSetup 内嵌完整性信息与已上传文件不匹配。
 - 渠道构建脚本需要清理所有安装器策略相关环境变量，避免上一轮构建残留影响下一轮。
 - 当 `silentOnDoubleClick=true` 时，构建日志必须明确输出该渠道为双击静默包。
 - dry-run 模式需要输出将要执行的 keyfrom 和安装器 UI 策略。
@@ -78,6 +82,7 @@ npm run dist:win:channel -- --keyfrom dictbind --silent
 
 ```text
 LobsterAI-Setup-x64-${version}-${keyfrom}-silent.exe
+LobsterAI-WebSetup-x64-${version}-${keyfrom}-silent.exe
 ```
 
 - 如果不改变产物名，至少需要在构建日志和发布记录中明确标注 silent 行为。
@@ -131,7 +136,7 @@ ${EndIf}
 | `scripts/dist-win-channel.cjs` | 解析 keyfrom 和双击静默参数，注入本次构建环境，输出 dry-run 和构建日志 |
 | `scripts/electron-builder-config.cjs` | 将策略转换为 NSIS 编译期宏和可选 artifact 命名标记 |
 | `scripts/nsis-installer.nsh` | 在安装器初始化阶段调用 `SetSilent silent`，复用现有 silent 分支 |
-| `scripts/dist-win-web.cjs` | 首版明确不支持双击静默策略，避免 web installer 混用 |
+| `scripts/dist-win-web.cjs` | 在完整构建和 stub-only 构建中显式注入同一双击静默策略；stub-only 复用预打包目录并强制校验 payload 哈希不变 |
 | `specs/features/keyfrom-channel-attribution/` | 保持渠道归因语义说明，不承载安装器 UI 策略 |
 
 主进程和 Renderer 不需要感知安装器双击静默策略；应用启动后的 `keyfrom` 归因仍通过现有 `.keyfrom-build` 资源读取和 SQLite 持久化完成。
@@ -161,4 +166,6 @@ ${EndIf}
 5. `install-timing.log` 对双击静默包记录 `ui_mode=silent`，并能区分是构建参数触发还是命令行 `/S` 触发。
 6. 双击静默包遇到资源解压失败、旧版本迁移失败或校验失败时，仍保留现有日志、回滚和错误默认处理。
 7. 构建日志能清楚显示 `keyfrom`、`silentOnDoubleClick` 和产物路径，发布人员可以区分普通渠道包和双击静默渠道包。
-8. macOS、Linux、web installer 和应用运行时 UI 不受该功能影响。
+8. 传入 `dist:win:web -- --keyfrom dictbind --silent` 时，最终 WebSetup 产物名包含 `-silent`，双击后下载与安装过程均不展示安装器 UI。
+9. WebSetup 静默下载失败时使用非交互默认选项退出，不因错误弹窗阻塞无人值守流程。
+10. macOS、Linux 和应用运行时 UI 不受该功能影响。

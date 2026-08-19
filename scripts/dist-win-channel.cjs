@@ -19,7 +19,7 @@ const USAGE = `Usage:
 Builds the regular full installer (npm run dist:win) for the given channel.
 Use --silent when the generated installer should enter NSIS silent mode even
 when the user double-clicks it without passing /S.
-For the web-installer variants use: npm run dist:win:web`;
+For the web-installer variants, including --silent builds, use: npm run dist:win:web`;
 
 function fail(message) {
   console.error(`[ChannelBuild] ${message}`);
