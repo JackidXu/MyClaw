@@ -4735,6 +4735,49 @@ if (!gotTheLock) {
   ipcMain.handle('get-device-info', () => getDeviceInfo());
   ipcMain.handle(AppIpcChannel.GetKeyfromAttribution, () => getKeyfromAttribution(getStore()));
 
+  ipcMain.handle(AppIpcChannel.GetDiagnosticInfo, async () => {
+    try {
+      const appVersion = app.getVersion();
+      const platform = process.platform;
+      const arch = process.arch;
+      const locale = app.getLocale();
+      const nodeVersion = process.versions.node;
+      const electronVersion = process.versions.electron;
+
+      let recentLogSnippet = '';
+      try {
+        const logPath = getLogFilePath();
+        if (fs.existsSync(logPath)) {
+          const content = fs.readFileSync(logPath, 'utf8');
+          const lines = content.split('\n');
+          const tailLines = lines.slice(-200);
+          recentLogSnippet = tailLines
+            .map((line) => line.replace(/(Bearer\s+)[A-Za-z0-9._-]+/gi, '$1[REDACTED]').replace(/(token['":\s]+)[A-Za-z0-9._-]+/gi, '$1[REDACTED]'))
+            .join('\n');
+        }
+      } catch (logErr) {
+        console.warn('[DiagnosticInfo] failed to read recent log snippet:', logErr);
+      }
+
+      return {
+        success: true,
+        appVersion,
+        platform,
+        arch,
+        locale,
+        nodeVersion,
+        electronVersion,
+        timestamp: new Date().toISOString(),
+        recentLogSnippet,
+      };
+    } catch (err) {
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
+  });
+
   ipcMain.handle(AppIpcChannel.OpenSystemNotificationSettings, async () => {
     try {
       let url: string | null = null;
@@ -5606,6 +5649,80 @@ if (!gotTheLock) {
     const skinRuntime = getSkinRuntimeController();
     if (skinRuntime.handlesTool(tool)) {
       return skinRuntime.handleToolRequest(request);
+    }
+
+    // -------------------------------------------------------------
+    // 特殊分支：heyclaw_image_segment 图片智能分割
+    // -------------------------------------------------------------
+    if (tool === 'heyclaw_image_segment') {
+      try {
+        const imagePathOrUrl = (args.image as string) || '';
+        const type = (args.type as string) || 'general';
+        if (!imagePathOrUrl) {
+          throw new Error('缺少 image 参数 (本地路径或 URL)');
+        }
+
+        let imageBuffer: Buffer;
+        if (imagePathOrUrl.startsWith('http://') || imagePathOrUrl.startsWith('https://')) {
+          const fetchResp = await fetch(imagePathOrUrl);
+          if (!fetchResp.ok) {
+            throw new Error(`下载原图失败 HTTP ${fetchResp.status}`);
+          }
+          const ab = await fetchResp.arrayBuffer();
+          imageBuffer = Buffer.from(ab);
+        } else {
+          if (!fs.existsSync(imagePathOrUrl)) {
+            throw new Error(`本地图片文件不存在: ${imagePathOrUrl}`);
+          }
+          imageBuffer = fs.readFileSync(imagePathOrUrl);
+        }
+
+        // 构建 query 参数，clothClass 逗号拼接
+        const clothClass = args.clothClass;
+        const clothClassStr = Array.isArray(clothClass)
+          ? clothClass.join(',')
+          : typeof clothClass === 'string' ? clothClass : '';
+        const queryParams = new URLSearchParams({ type });
+        if (clothClassStr) queryParams.set('clothClass', clothClassStr);
+
+        const serverBaseUrl = getServerApiBaseUrl();
+        // 直接将 buffer 以二进制流 POST 到分割接口，由后端调用阿里云视觉智能并写入 OSS
+        const segmentResp = await fetch(`${serverBaseUrl}/api/image/segment?${queryParams}`, {
+          method: 'POST',
+          body: new Uint8Array(imageBuffer),
+          headers: { 'content-type': 'application/octet-stream' },
+        });
+
+        if (!segmentResp.ok) {
+          const text = await segmentResp.text();
+          throw new Error(`图片分割接口响应失败 HTTP ${segmentResp.status}: ${text}`);
+        }
+
+        const segmentResult = (await segmentResp.json()) as any;
+        if (!segmentResult.success) {
+          throw new Error(segmentResult.error || '图片分割失败');
+        }
+
+        const resultUrl = segmentResult.url;
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `图片分割成功。\n分割结果图片：\n![分割结果](${resultUrl})\n\n你可以把这个分割结果图片作为参考图，使用生图工具重新生成符合要求的图片。`,
+            },
+          ],
+          details: {
+            status: 'succeeded',
+            url: resultUrl,
+          },
+        };
+      } catch (err: any) {
+        console.error('[MediaGeneration] heyclaw_image_segment 失败:', err);
+        return {
+          content: [{ type: 'text', text: `图片分割失败: ${err.message}` }],
+          isError: true,
+        };
+      }
     }
     const rawAction = typeof args.action === 'string' ? args.action.toLowerCase().trim() : '';
     const action = rawAction || 'generate';
