@@ -422,7 +422,6 @@ index 52a83df..0500e4e 100644
  		StrCpy $isForceMachineInstall "0"
  		StrCpy $isForceCurrentInstall "0"
  		!ifmacrodef customInstallmode
-
 diff --git a/node_modules/app-builder-lib/out/targets/differentialUpdateInfoBuilder.js b/node_modules/app-builder-lib/out/targets/differentialUpdateInfoBuilder.js
 index 0a88df9..ea03f275 100644
 --- a/node_modules/app-builder-lib/out/targets/differentialUpdateInfoBuilder.js
