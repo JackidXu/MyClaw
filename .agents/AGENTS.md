@@ -1,8 +1,53 @@
-# Project Guidelines & OpenClaw Incremental Bundle Policy
+# Project Guidelines & HeyClaw Architecture
 
-## 核心规则与规范
+## 1. 项目定位与架构概述
 
-### 1. OpenClaw 增量与补丁更新规则（免全量构建轻量方案）
+HeyClaw 基于网易有道龙虾（LobsterAI）二次开发，定位是垂直领域（老板 IP）的 Desktop Claw 产品。
+
+### 1.1 模型与网关体系
+- **模型中转站**：统一使用 **NewAPI**（代码中历史命名的 `oneapi` 变量及配置均指代 NewAPI 中转服务）。
+- **底层模型提供商**：底层大模型接入来自**字节火山方舟**（Volcano Engine / Doubao 等）。
+
+### 1.2 应用数据目录（UserData）
+- **正式环境（Packaged 打包后）**：目录名为 `HeyClaw`
+  - **macOS**: `~/Library/Application Support/HeyClaw`
+  - **Windows**: `%APPDATA%\HeyClaw`（即 `C:\Users\<username>\AppData\Roaming\HeyClaw`）
+  - **Linux**: `~/.config/HeyClaw`
+- **开发/测试环境（Dev / 本地运行）**：目录名为 `HeyClawDev`（防止与打包后的正式版数据冲突）
+  - **macOS**: `~/Library/Application Support/HeyClawDev`
+  - **Windows**: `%APPDATA%\HeyClawDev`（即 `C:\Users\<username>\AppData\Roaming\HeyClawDev`）
+  - **Linux**: `~/.config/HeyClawDev`
+
+### 1.3 日志目录
+- **主进程应用日志（electron-log）**：
+  - **macOS**: `~/Library/Logs/HeyClaw/main-YYYY-MM-DD.log`
+  - **Windows**: `%USERPROFILE%\AppData\Roaming\HeyClaw\logs\main-YYYY-MM-DD.log`
+  - **Linux**: `~/.config/HeyClaw/logs/main-YYYY-MM-DD.log`
+- **OpenClaw 网关日志**：
+  - **macOS**: `~/Library/Application Support/HeyClaw[Dev]/openclaw/logs/gateway-YYYY-MM-DD.log`
+  - **Windows**: `%APPDATA%\HeyClaw[Dev]\openclaw\logs\gateway-YYYY-MM-DD.log`
+
+### 1.4 管理后台与双后端架构
+HeyClaw 采用双后端支撑体系：
+1. **Node.js 管理后台与共用后端（`admin-claw`）**：
+   - **物理位置**：位于当前项目目录的同级目录 `../admin-claw`。
+   - **核心入口**：`server.js`。
+   - **主要职责**：专家（Experts）、技能（Skills）等后台管理与编辑；客户端登录鉴权（Auth/Session 验证）、VIP 计费与权限（Billing/Subscription）等。
+   - **服务地址**：
+     - 开发/测试环境：`http://localhost:8082`
+     - 生产环境：`https://admin.claw.chaohui.ai`
+2. **PHP 后端（业务后端）**：
+   - **维护团队**：由专门的后端开发人员维护。
+   - **主要职责**：充值业务、第二大脑（SecondBrain / 认知提取、学习数据沉淀与人设注入）等。
+   - **服务地址**：
+     - 开发环境：`https://dev-zhike.banchengyun.com`
+     - 生产环境：`https://zhike.banchengyun.com`
+
+---
+
+## 2. 核心规则与规范
+
+### 2.1 OpenClaw 增量与补丁更新规则（免全量构建轻量方案）
 - **禁止全量构建**：严禁擅自运行高 CPU/内存消耗的全量构建脚本（如 `npm run openclaw:runtime:host`）。
 - **轻量秒级打包 (Incremental Fast Bundling)**：
   当对 OpenClaw 引擎或补丁进行修改（如 `scripts/patches/` 或 `../openclaw/src` 相关的修改）后，**必须自动使用轻量级方案**直接刷新更新 `gateway-bundle.mjs`，无需向用户反复询问：
@@ -16,10 +61,11 @@
   ```
 - 此流程无需耗费数分钟重构建整个 runtime，4秒内即可让 Patch 变更在 Electron 开发与运行环境中直接生效。
 
-### 2. Git 操作规则
+### 2.2 Git 操作规则
 - **绝对禁止自动 Commit 与 Push**：任何 Bug 修复或功能实现后，只可将修改保留在本地工作区，绝对禁止调用 `git commit` 或 `git push`，必须等待用户在对话中发送明确的指令。
+- **上游分支（Upstream）**：网易有道上游仓库分支为 `upstream/main`。在需要比对上游改动、同步上游新特性或排查与上游实现差异时，以此分支作为参照与同步基准。
 
-### 3. 管理类/功能独立页面视觉规范 (Management Page Visual Specification)
+### 2.3 管理类/功能独立页面视觉规范 (Management Page Visual Specification)
 编写或重构管理/配置/独立功能页面（如定时任务 ScheduledTasks、技能管理 Skills、MCP、第二大脑 SecondBrain 等）时，**必须严格遵循统一的视觉规范**：
 - **容器与布局**：
   - 外层容器：`<div data-skin-management-page="true" className="relative z-10 flex-1 flex flex-col bg-background h-full overflow-hidden">`
@@ -35,7 +81,37 @@
 - **Tab 栏规范**：
   - 统一使用底部横线高亮指示条风格（`border-b border-border`，激活项为 `text-foreground font-semibold` 且底部带有 `bg-primary h-0.5 rounded-full` 指示线）。
 
-### 4. 媒体与模型服务网关规范 (NewAPI Gateway Specification)
+### 2.4 媒体与模型服务网关规范 (NewAPI Gateway Specification)
 - **中转站架构**：本项目底层媒体（图片/视频生成）、模型调用聚合中转站统一基于 **NewAPI**（代码中历史命名的 `oneapi` 相关变量和配置均指代 NewAPI 中转服务）。
 - **开发与调试认知**：在涉及多模态生成（如 Seedance、Seedream、HappyHorse 等）或模型中转接口的开发、排查、接口改造与协议适配时，直接基于 NewAPI 的接口协议与中转透传规范进行设计与对接，严禁反复向用户询问中转站类型。
+
+### 2.5 客户端鉴权与后端请求规范 (Auth & Request Headers)
+- **客户端 Session 与 UID 存储**：
+  - 会话 Token：`localStorage.getItem('heyclaw_session')`
+  - 用户 ID：`localStorage.getItem('heyclaw_user_id')`
+- **双后端的鉴权传参约定**：
+  - **Node 后端（admin-claw）**：通过 Bearer Token（`Authorization: Bearer <session>`）或请求体携带 `{ session, userId }` 进行认证。
+  - **PHP 业务后端（第二大脑/充值）**：需在 Headers 中携带 `claw_cookie: <session>` 与 `claw_uid: <userId>`。
+
+### 2.6 本地数据存储与迁移规范 (SQLite & Data Persistence)
+- **数据库路径**：位于 `userData/lobsterai.sqlite`。
+- **历史命名字段认知**：如 `cowork_sessions` 表中的 `claude_session_id` 实际等同于 `session_id`，底层已全面切换为 OpenClaw。
+- **平滑迁移原则**：新增字段/表时，遵循现有代码模式使用 `PRAGMA table_info()` 动态检查并补充，严禁破坏性重构或随意丢弃老数据。
+
+### 2.7 进程通信与架构边界 (IPC & Context Isolation)
+- **安全沙箱隔离**：渲染进程严格开启 `contextIsolation`、关闭 `nodeIntegration`。
+- **禁止在 Renderer 乱用 Node 原生模块**：渲染层禁止直接 import `fs`、`path`、`electron-log` 等，必须通过 `src/main/preload.ts` 暴露的 `window.electron.*` 进行桥接。
+- **IPC 通道常量化**：新增或修改 IPC 接口时，必须在 `src/shared/*/constants.ts` 统一声明常量，禁止在组件或主进程中使用散落的魔法字符串（Magic Strings）。
+
+### 2.8 国际化与文案规范 (i18n)
+- **严禁 UI 硬编码**：组件中的可见文案必须走 `t('xxx')`。
+- **双端多语言字典**：
+  - 渲染进程：`src/renderer/services/i18n.ts`（需同步维护 `zh` 与 `en`）。
+  - 主进程（菜单/系统通知）：`src/main/i18n.ts`（需同步维护 `zh` 与 `en`）。
+
+### 2.9 常用开发与质量检查指令 (Daily Development Commands)
+- **日常热更新开发**：`npm run electron:dev`（前端 Vite 跑在 5175 端口 + Electron 启动）。
+- **主进程 TypeScript 类型校验**：`npm run compile:electron`。
+- **精准 Lint 检查（规避老旧历史包袱）**：
+  `npx eslint --ext ts,tsx --report-unused-disable-directives --max-warnings 0 <改动文件路径>`。
 
