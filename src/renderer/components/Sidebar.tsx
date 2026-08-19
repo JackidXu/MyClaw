@@ -1,4 +1,4 @@
-import { ArrowPathIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import { AgentId } from '@shared/agent';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSelector } from 'react-redux';
@@ -34,7 +34,6 @@ import {
 } from './cowork/constants';
 import CoworkSearchModal from './cowork/CoworkSearchModal';
 import BrainIcon from './icons/BrainIcon';
-import Cog6ToothIcon from './icons/Cog6ToothIcon';
 import ComposeIcon from './icons/ComposeIcon';
 import SidebarAutomationIcon from './icons/SidebarAutomationIcon';
 import SidebarKitsIcon from './icons/SidebarKitsIcon';
@@ -43,6 +42,7 @@ import SidebarToggleIcon from './icons/SidebarToggleIcon';
 import TrashIcon from './icons/TrashIcon';
 import { PasswordModal } from './PasswordModal';
 import PayModal from './PayModal';
+import ReportIssueModal from './ReportIssueModal';
 
 interface SidebarProps {
   onShowSettings: () => void;
@@ -225,6 +225,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   const [showConfirmDeactivate, setShowConfirmDeactivate] = useState(false);
   const [isPayModalOpen, setIsPayModalOpen] = useState(false);
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [isReportIssueModalOpen, setIsReportIssueModalOpen] = useState(false);
 
   const userCardContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1059,42 +1060,71 @@ const Sidebar: React.FC<SidebarProps> = ({
           {/* 用户卡片 */}
           <div 
             onClick={() => setShowUserMenu(!showUserMenu)}
-            className="flex items-center justify-between p-2 rounded-xl bg-surface/50 hover:bg-surface-raised transition-all duration-200 shadow-sm border border-border/10 cursor-pointer select-none"
+            className="flex items-center gap-2.5 p-2 rounded-xl bg-surface/50 hover:bg-surface-raised transition-all duration-200 shadow-sm border border-border/10 cursor-pointer select-none"
           >
-            <div className="flex items-center gap-2.5 min-w-0 flex-1">
-              {/* 圆形头像 */}
+            {/* 头像 */}
+            <div 
+              className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-sm select-none shrink-0 overflow-hidden"
+            >
+              {renderAvatar(userAvatar, userNickname)}
+            </div>
+            {/* 昵称 */}
+            <div className="flex-1 min-w-0 leading-tight">
               <div 
-                className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-violet-600 flex items-center justify-center shadow-sm select-none shrink-0 overflow-hidden"
+                className="text-[13px] font-semibold text-foreground/90 truncate"
               >
-                {renderAvatar(userAvatar, userNickname)}
+                {userNickname}
               </div>
-              {/* 昵称与余额 */}
-              <div className="flex-1 min-w-0 leading-tight">
-                <div 
-                  className="text-sm font-semibold text-foreground/90 truncate"
-                >
-                  {userNickname}
+            </div>
+          </div>
+
+          {/* 个人中心弹窗 */}
+          {showUserMenu && (
+            <div className="absolute bottom-[calc(100%+8px)] left-2 right-2 z-50 rounded-2xl border border-border/80 bg-surface shadow-2xl overflow-hidden flex flex-col animate-fade-in text-[13px]">
+              {/* Profile Head: 头像、昵称与算力点数 */}
+              <div className="flex items-center gap-2.5 p-3.5 border-b border-border/50">
+                <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-sm select-none shrink-0 overflow-hidden text-white font-bold text-sm">
+                  {renderAvatar(userAvatar, userNickname)}
                 </div>
-                <div className="text-[11px] text-secondary mt-0.5 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                  <span className="font-medium tracking-wide">{balance !== null ? `${balance} 点` : '-- 点'}</span>
-                  <button 
-                    onClick={() => handleRefreshBalance(true)}
-                    disabled={balanceLoading}
-                    className="hover:text-primary active:scale-95 transition-all p-0.5 rounded text-secondary"
-                    title="刷新余额"
-                  >
-                    {balanceLoading ? (
-                      <svg className="animate-spin h-3.5 w-3.5 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                    ) : (
-                      <ArrowPathIcon className="w-3.5 h-3.5" />
-                    )}
-                  </button>
+                <div className="flex-1 min-w-0">
+                  <div className="font-bold text-foreground truncate text-sm">
+                    {userNickname}
+                  </div>
+                </div>
+                {/* 算力点数徽章（点击刷新） */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleRefreshBalance(true);
+                  }}
+                  disabled={balanceLoading}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-raised border border-border/60 text-foreground font-semibold text-xs hover:border-primary/50 transition-all shrink-0 cursor-pointer active:scale-95"
+                  title="点击刷新算力"
+                >
+                  {balanceLoading ? (
+                    <svg className="animate-spin h-3.5 w-3.5 text-amber-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                  ) : (
+                    <svg className="w-3.5 h-3.5 text-amber-500 fill-amber-500" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                    </svg>
+                  )}
+                  <span>{balance !== null ? balance.toLocaleString() : '--'}</span>
+                </button>
+              </div>
+
+              {/* Profile Body */}
+              <div className="py-1">
+                {/* 第一组：算力充值、我的账单 */}
+                <div className="py-1 border-b border-border/40">
                   <button
+                    type="button"
                     onClick={(e) => {
                       e.stopPropagation();
+                      setShowUserMenu(false);
                       const config = configService.getConfig();
                       const oneapiConfig = config.providers?.['oneapi'];
                       const apiKey = oneapiConfig?.apiKey?.trim();
@@ -1104,97 +1134,126 @@ const Sidebar: React.FC<SidebarProps> = ({
                       }
                       setIsPayModalOpen(true);
                     }}
-                    className="hover:text-primary active:scale-95 transition-all p-0.5 rounded text-secondary"
-                    title="立即充值"
+                    className="w-full flex items-center gap-2.5 px-4 py-2 text-left text-foreground/85 hover:bg-surface-raised hover:text-foreground transition-colors font-medium"
                   >
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    <svg className="w-4 h-4 text-secondary shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
+                      <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
                     </svg>
+                    <span>算力充值</span>
                   </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowUserMenu(false);
+                      setIsBillingModalOpen(true);
+                    }}
+                    className="w-full flex items-center gap-2.5 px-4 py-2 text-left text-foreground/85 hover:bg-surface-raised hover:text-foreground transition-colors font-medium"
+                  >
+                    <svg className="w-4 h-4 text-secondary shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                      <polyline points="14 2 14 8 20 8" />
+                      <line x1="16" y1="13" x2="8" y2="13" />
+                      <line x1="16" y1="17" x2="8" y2="17" />
+                      <polyline points="10 9 9 9 8 9" />
+                    </svg>
+                    <span>我的账单</span>
+                  </button>
+                </div>
 
+                {/* 第二组：编辑资料、修改密码 */}
+                <div className="py-1 border-b border-border/40">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowUserMenu(false);
+                      setEditNickname(userNickname);
+                      setEditAvatar(userAvatar);
+                      setIsEditModalOpen(true);
+                    }}
+                    className="w-full flex items-center gap-2.5 px-4 py-2 text-left text-foreground/85 hover:bg-surface-raised hover:text-foreground transition-colors font-medium"
+                  >
+                    <svg className="w-4 h-4 text-secondary shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                      <circle cx="12" cy="7" r="4" />
+                    </svg>
+                    <span>编辑资料</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowUserMenu(false);
+                      setIsPasswordModalOpen(true);
+                    }}
+                    className="w-full flex items-center gap-2.5 px-4 py-2 text-left text-foreground/85 hover:bg-surface-raised hover:text-foreground transition-colors font-medium"
+                  >
+                    <svg className="w-4 h-4 text-secondary shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M19 11H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2z" />
+                      <circle cx="12" cy="11" r="2" />
+                      <path d="M12 11V7a4 4 0 0 1 4-4h0" />
+                    </svg>
+                    <span>修改密码</span>
+                  </button>
+                </div>
+
+                {/* 第三组：设置、报告问题 */}
+                <div className="py-1">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowUserMenu(false);
+                      onShowSettings();
+                    }}
+                    className="w-full flex items-center gap-2.5 px-4 py-2 text-left text-foreground/85 hover:bg-surface-raised hover:text-foreground transition-colors font-medium"
+                  >
+                    <svg className="w-4 h-4 text-secondary shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="3" />
+                      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06-.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                    </svg>
+                    <span>设置</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowUserMenu(false);
+                      setIsReportIssueModalOpen(true);
+                    }}
+                    className="w-full flex items-center gap-2.5 px-4 py-2 text-left text-foreground/85 hover:bg-surface-raised hover:text-foreground transition-colors font-medium"
+                  >
+                    <svg className="w-4 h-4 text-secondary shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10" />
+                      <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+                      <line x1="12" y1="17" x2="12.01" y2="17" />
+                    </svg>
+                    <span>报告问题</span>
+                  </button>
                 </div>
               </div>
-            </div>
 
-            {/* 设置按钮 */}
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowUserMenu(false);
-                onShowSettings();
-              }}
-              className="h-8 w-8 inline-flex items-center justify-center rounded-lg text-secondary hover:bg-surface hover:text-foreground transition-all shrink-0 ml-1.5"
-              title={i18nService.t('settings')}
-            >
-              <Cog6ToothIcon className="h-4 w-4 shrink-0" />
-            </button>
-          </div>
-
-          {/* 点击后滑出控制菜单 */}
-          {showUserMenu && (
-            <div className="absolute bottom-[calc(100%+6px)] left-3 right-3 z-50 p-2.5 rounded-2xl border border-border/80 bg-surface shadow-xl flex flex-col space-y-1 animate-fade-in">
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowUserMenu(false);
-                  setEditNickname(userNickname);
-                  setEditAvatar(userAvatar);
-                  setIsEditModalOpen(true);
-                }}
-                className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-[13px] text-foreground/80 hover:bg-primary/5 hover:text-primary dark:hover:bg-primary/10 rounded-xl transition-all duration-200 font-medium"
-              >
-                <svg className="w-4 h-4 text-secondary shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                </svg>
-                编辑资料
-              </button>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowUserMenu(false);
-                  setIsPasswordModalOpen(true);
-                }}
-                className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-[13px] text-foreground/80 hover:bg-primary/5 hover:text-primary dark:hover:bg-primary/10 rounded-xl transition-all duration-200 font-medium"
-              >
-                <svg className="w-4 h-4 text-secondary shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                </svg>
-                修改密码
-              </button>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowUserMenu(false);
-                  setIsBillingModalOpen(true);
-                }}
-                className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-[13px] text-foreground/80 hover:bg-primary/5 hover:text-primary dark:hover:bg-primary/10 rounded-xl transition-all duration-200 font-medium"
-              >
-                <svg className="w-4 h-4 text-secondary shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                我的账单
-              </button>
-              
-              <div className="h-[1px] bg-border/40 my-1" />
-
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowUserMenu(false);
-                  setShowConfirmDeactivate(true);
-                }}
-                className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-[13px] text-red-500 hover:bg-red-500/10 rounded-xl transition-all duration-200 font-medium"
-              >
-                <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                </svg>
-                退出登录
-              </button>
+              {/* Profile Foot: 退出登录 */}
+              <div className="p-2.5 bg-surface-raised/60 border-t border-border/40">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowUserMenu(false);
+                    setShowConfirmDeactivate(true);
+                  }}
+                  className="w-full py-2 px-3 flex items-center justify-center gap-2 rounded-xl bg-surface hover:bg-surface-raised text-foreground/90 font-medium border border-border/60 shadow-xs transition-all active:scale-[0.98]"
+                >
+                  <svg className="w-4 h-4 text-secondary shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                    <polyline points="16 17 21 12 16 7" />
+                    <line x1="21" y1="12" x2="9" y2="12" />
+                  </svg>
+                  <span>退出登录</span>
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -1392,6 +1451,11 @@ const Sidebar: React.FC<SidebarProps> = ({
           window.dispatchEvent(new CustomEvent('app:deactivate'));
         }}
       />
+
+      {/* 报告问题模态框 */}
+      {isReportIssueModalOpen && (
+        <ReportIssueModal onClose={() => setIsReportIssueModalOpen(false)} />
+      )}
       </div>
     </aside>
   );
