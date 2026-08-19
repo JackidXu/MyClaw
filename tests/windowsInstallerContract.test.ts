@@ -71,6 +71,25 @@ describe('Windows installer hardening contracts', () => {
     expect(initLog).toBeGreaterThan(setSilent);
   });
 
+  test('hides the silent banner only for double-click-silent dictbind artifacts', () => {
+    const policyEnd = installerInclude.indexOf('Var lobsterCurrentProcessPid');
+    const policy = installerInclude.slice(0, policyEnd);
+    const checkStart = installerInclude.indexOf('!macro customCheckAppRunning');
+    const checkEnd = installerInclude.indexOf('!macroend', checkStart);
+    const check = installerInclude.slice(checkStart, checkEnd);
+    const bannerGuard = check.indexOf('!ifndef LOBSTERAI_HIDE_SILENT_BANNER');
+    const bannerShow = check.indexOf('Banner::show /NOUNLOAD');
+
+    expect(policy).toContain('!if "$%KEYFROM%" == "dictbind"');
+    expect(policy).toContain('!if "$%LOBSTERAI_CHANNEL_BUILD%" == "1"');
+    expect(policy).toContain('!if "$%LOBSTERAI_SILENT_ON_DOUBLE_CLICK%" == "1"');
+    expect(policy).toContain('!define LOBSTERAI_HIDE_SILENT_BANNER');
+    expect(bannerGuard).toBeGreaterThan(-1);
+    expect(bannerShow).toBeGreaterThan(bannerGuard);
+    expect(check.slice(bannerGuard, bannerShow)).not.toContain('!else');
+    expect(installerInclude.match(/Banner::show \/NOUNLOAD/g)).toHaveLength(1);
+  });
+
   test('releases the installer current-directory lock before the update rename', () => {
     const switchOutPath = installerInclude.indexOf('SetOutPath "$PLUGINSDIR"');
     const rename = installerInclude.indexOf(

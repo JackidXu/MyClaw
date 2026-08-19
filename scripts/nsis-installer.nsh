@@ -1,5 +1,17 @@
 !include "FileFunc.nsh"
 
+; The Youdao Dictionary bound package owns the install progress UI. Suppress
+; LobsterAI's plugin-owned silent banner only for the explicitly
+; double-click-silent dictbind artifact. Other channels, ordinary /S installs,
+; interactive installers, update flows, and UAC behavior stay unchanged.
+!if "$%KEYFROM%" == "dictbind"
+  !if "$%LOBSTERAI_CHANNEL_BUILD%" == "1"
+    !if "$%LOBSTERAI_SILENT_ON_DOUBLE_CLICK%" == "1"
+      !define LOBSTERAI_HIDE_SILENT_BANNER
+    !endif
+  !endif
+!endif
+
 Var lobsterCurrentProcessPid
 Var lobsterInstallerAttemptId
 Var lobsterTargetProcessesStopStatus
@@ -708,9 +720,11 @@ FunctionEnd
     ; makensis builds used for local syntax checks reject any non-ASCII byte
     ; (the escapes are fine on the Windows build machine -- the webPackage
     ; patch ships them in production already).
-    ${If} ${Silent}
-      Banner::show /NOUNLOAD "${U+6B63}${U+5728}${U+66F4}${U+65B0} LobsterAI${U+FF0C}${U+8BF7}${U+7A0D}${U+5019}${U+2026}"
-    ${EndIf}
+    !ifndef LOBSTERAI_HIDE_SILENT_BANNER
+      ${If} ${Silent}
+        Banner::show /NOUNLOAD "${U+6B63}${U+5728}${U+66F4}${U+65B0} LobsterAI${U+FF0C}${U+8BF7}${U+7A0D}${U+5019}${U+2026}"
+      ${EndIf}
+    !endif
   !endif
 
   !ifndef BUILD_UNINSTALLER
