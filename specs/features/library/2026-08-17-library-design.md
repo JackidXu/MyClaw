@@ -1,0 +1,2337 @@
+# 资料库功能详细设计文档
+
+> 创建日期：2026-08-17
+> 最近更新：2026-08-19
+> 状态：资料库基础能力及「本地产物 / 云端」双页签 UI 已实现；云端页统一管理分享文件与部署站点，并已完成测试环境列表基础验证；分享文件访问分析已完成详细设计，客户端与 owner 接口待实现
+> 涉及仓库：`LobsterAI`、`lobsterai-server`
+> 产品入口：LobsterAI 左侧栏「我的文件」（内部功能名仍为 Library）
+
+## 0. 实施状态（2026-08-19）
+
+本方案已在两个仓库完成首期实现：
+
+| 范围 | 实施结果 |
+| --- | --- |
+| 本地索引 | 新增 SQLite 资料、会话关系、收藏和显式来源表；按 Artifact 事件增量收录，不在进入页面时扫描 cwd |
+| 会话关系 | 支持一会话多产物、一个产物多会话，查询最新有效会话；删除会话时显式删除关系 |
+| 文件生命周期 | 支持监听、有限重试、空闲分批 `stat`、同目录可靠重命名、缺失墓碑、权限状态、移除、恢复和移到废纸篓 |
+| 历史数据 | 首次进入后按会话分批复用现有 Artifact 识别逻辑回填，游标和策略版本保存在 `kv` |
+| 收藏 | 全部写客户端 SQLite；本地产物使用设备 scope，云端收藏按发布账号 scope 隔离 |
+| UI | 新增侧栏入口、顶部「本地产物 / 云端」双页签、类型下拉/搜索/收藏、网格/列表、单列紧凑列表、分组和沉浸式中央预览弹窗，使用现有管理页宽度、主题 token 和中英文 i18n |
+| 云端管理页 | 分享文件和部署站点进入同一扁平管理列表；站点作为独立类型，统一提供类型、搜索、可访问性和刷新筛选；点击后分别进入分享设置或网站设置，分析均由设置页标题栏进入 |
+| 云端列表 | 服务端新增 `GET /api/library/cloud-items`，聚合普通分享和部署站点，使用三字段游标和 MySQL 5.7 SQL |
+| 分享文件访问分析 | 复用现有 V52 访问统计表与采集链路；owner 只读接口、客户端分析页和跨内容版本汇总待实现，不新增 DDL |
+| lineage | 分享更新接口新增可选 `sessionId/artifactId`，旧客户端缺失参数时保留原值 |
+| 联调合同 | 新增 `docs/server-integration/2026-08-17-library-cloud-items.md` |
+
+已完成的自动校验包括客户端 TypeScript、changed-file ESLint、65 个目标 Vitest、Renderer/Main/Preload 生产构建，以及服务端在 JDK 17 下的 `compileJava` 和 Mapper XML 语法检查。按需求未运行依赖 Redis/外部服务的服务端测试套件。
+
+已完成 Electron 基础手动验收：侧栏入口和本地索引可用；历史回填后可展示本地产物；列表按日期/会话使用单列布局；详情可展示同一文件关联的多个会话；真实 HTML 文件可使用现有预览链路渲染；云端接口不可用时本地产物保持可浏览、可预览，并显示弱打扰的独立错误状态。测试 MySQL 5.7 实库查询、真实分享/部署联调、深色主题回归，以及 Windows 文件打开/显示/废纸篓行为仍属于上线前验收项。
+
+## 1. 概述
+
+### 1.1 背景
+
+LobsterAI 已经能够在会话中识别和预览 HTML、图片、SVG、视频、Markdown、Mermaid、Office/PDF、文本和部分代码文件，也已经具备文件分享、静态站点部署、动态服务部署及站点管理能力。但这些资源目前分散在会话 Artifact 卡片、分享弹窗和独立站点页中，用户缺少一个稳定入口回答以下问题：
+
+1. 龙虾在本机生成过哪些仍可预览的文件？
+2. 一个文件由哪些会话生成或修改，应该返回哪个会话？
+3. 已分享的文件和已部署的站点当前是什么状态？
+4. 会话或本地文件被删除后，资料库应该如何变化？
+5. 本地产物是否会上传或同步到云端？
+
+本功能在客户端增加「资料库」入口，以「本地产物 / 云端」两个页签统一呈现本地文件、分享文件和部署站点。云端页不再按后端来源拆页：分享文件与站点使用同一列表，站点只是资源类型之一。视觉布局综合参考 ChatGPT Library 与 Manus Library 的信息组织方式，但组件密度、颜色、主题、侧栏行为和交互反馈必须遵循 LobsterAI 现有规范。
+
+### 1.2 已确认的产品边界
+
+| 资料类型 | 权威数据源 | 存储位置 | 跨设备同步 | 首期稳定标识 |
+| --- | --- | --- | --- | --- |
+| 本地产物 | 本机文件 + 本地索引 | 文件系统 + 客户端 SQLite | 否 | 本地生成的 `artifactId` |
+| 分享文件 | `html_shares` 中非部署来源记录 | 云端 MySQL/NOS | 是 | `shareId` |
+| 部署站点 | `html_shares` 部署来源 + 最新 `share_deployments` | 云端 MySQL/部署平台 | 是 | 稳定 `shareId` |
+| 收藏 | 客户端本地偏好 | 客户端 SQLite | 否 | `ownerScope + itemKind + itemId` |
+
+必须遵守以下边界：
+
+1. 本地产物的绝对路径、文件内容、缩略图、本地索引和完整会话关系不上传服务端。
+2. 分享和部署继续通过现有发布流程主动上传；进入资料库本身不得触发上传。
+3. 服务端不新增“本地产物镜像表”，也不承担本地文件是否存在的判断。
+4. 收藏是本地逻辑；首期不提供跨设备收藏同步。
+5. 本地资料库不是目录扫描器，不扫描整块磁盘、用户 Home 或每个会话工作目录。
+6. 每次进入资料库直接读取持久化索引，不执行全量重扫。
+
+### 1.3 现状核对
+
+本设计基于当前两个仓库的代码核对，关键现状如下：
+
+| 能力 | 当前状态 | 设计结论 |
+| --- | --- | --- |
+| 会话和消息 | 客户端 SQLite 已有 `cowork_sessions`、`cowork_messages` | 复用，不复制会话主体 |
+| 会话删除 | `CoworkStore.deleteSessionRows()` 显式删除消息和会话 | 资料库关系也必须在同一事务显式删除，不能只依赖外键级联 |
+| Artifact 列表 | `artifactSlice` 只维护会话/Renderer 运行态 | 不能充当持久资料库索引 |
+| Artifact 识别 | `artifactParser.ts`、`artifactDetection.ts` 已能识别可预览文件 | 复用识别结果，避免重新发明文件类型规则 |
+| 文件监听 | 当前 `artifact:watchFile` 只服务已打开的预览面板 | 新增独立、持久的资料库监听服务 |
+| 本地缩略图 | Electron 原生文件缩略图能力和现有预览渲染器 | 可复用，失败时回退类型封面，不直接批量启动外部预览进程 |
+| 文件分享 | `/api/html-shares` 已有创建、更新、查询、停止/恢复 | 复用写接口，新增适合资料库的只读聚合接口 |
+| 分享访问统计 | V52 已有每日访问、IP 去重和维度统计表；公共入口已有采集，当前查询只供后台且趋势绑定当前内容版本 | 新增 owner 只读分析接口；首期只返回访问次数、独立访客和每日趋势，按 `shareId` 汇总分享生命周期内所有内容版本 |
+| 站点管理 | `/api/sites` 已有列表、详情、设置、分析和删除 | 资料库复用站点动作和详情，不重写站点生命周期 |
+| 分享列表 | `GET /api/html-shares/my` 混合普通分享和部署，按创建时间排序 | 不适合直接支撑统一资料库 |
+| 分享归属更新 | 客户端更新 FormData 已携带 `sessionId/artifactId`，服务端 PUT 和 Mapper 未持久化 | 服务端必须补齐“最新会话归属”更新 |
+| 生产数据库 | MySQL 5.7 | 新 SQL 不使用 CTE、窗口函数、`JSON_TABLE` 或函数索引 |
+
+### 1.4 目标
+
+1. 在 LobsterAI 客户端提供统一、稳定、支持主题的资料库入口。
+2. 顶层只区分本地与云端数据边界；两个页签使用一致的类型筛选和搜索布局，云端额外提供可访问性筛选。
+3. 本地产物以“一个物理文件一条记录”呈现，不因多个会话而重复。
+4. 正确表达“一会话多产物、多个会话修改同一产物”的多对多关系。
+5. 列表默认关联最新有效会话，详情展示全部仍存在的关联会话。
+6. 删除会话不删除文件；删除文件不删除会话；两类生命周期彼此独立。
+7. 进入页面快速返回本地数据，并在云端离线或异常时保持本地产物可用。
+8. 云端列表接口统一普通分享与站点的读取语义，现有写操作保持兼容。
+9. 所有数据库、分页和查询设计兼容 MySQL 5.7。
+10. 分享文件提供与网站分析一致的入口和视觉结构，但按文件语义展示访问次数、独立访客和趋势，不展示无意义的热门页面。
+11. 为后续增加音频、更多文档格式、显式目录和跨端能力保留扩展点，但首期不提前实现。
+
+### 1.5 非目标
+
+| 非目标 | 说明 |
+| --- | --- |
+| 自动同步本地产物 | 不上传内容、路径、索引、收藏或完整会话关系 |
+| 全盘文件管理器 | 不扫描 Home、磁盘、项目目录或任意文件夹 |
+| 文件内容全文检索 | 首期只检索名称、扩展名、分享标题和站点 URL |
+| 云端文件版本管理 | 分享更新和站点重新部署沿用现有版本语义 |
+| 会话云同步 | 本地会话删除不会通知服务端清理 `sessionId` |
+| 在线编辑 Artifact | 资料库负责发现、预览和管理，不新增编辑器 |
+| 把本地服务作为本地产物 | `local-service` 是瞬时运行态；导出文件后进入本地产物，部署后进入站点 |
+| 服务端收藏接口 | 收藏仅保存在当前客户端 |
+| 首期持久化云端列表缓存 | 断网时显示本地产物和云端错误态，不把云端元数据复制为长期本地数据源 |
+| 单独发布演示站点 | Web Demo 只用于本机原型验证，不属于正式产品部署范围 |
+
+## 2. 核心概念与模型决策
+
+### 2.1 资料项联合模型
+
+资料库对 UI 暴露三种互斥的资料项：
+
+```text
+LibraryItem
+├── LocalArtifactItem   本地产物
+├── SharedFileItem      分享文件
+└── DeployedSiteItem    部署站点
+```
+
+三类资料项可以使用相同 `title/category/sortTime/isFavorite/latestSession` 基础字段，但必须保留各自的来源字段和动作，不能用一个模糊状态对象抹平生命周期差异。
+
+### 2.2 “一个本地产物”的定义
+
+首期一个本地产物就是一个可预览的本地文件：
+
+- 同一路径被同一或不同会话多次识别，仍是一条资料；
+- 同一内容复制到两个路径，是两条资料；
+- 同一路径被原子覆盖，保留原资料 ID，并更新修改时间和文件信息；
+- 能可靠识别的重命名/移动，保留原资料 ID 并更新路径；
+- 无法可靠关联的移动按“旧文件消失、新文件出现”处理，不能仅凭相同文件名合并；
+- 目录不作为本地产物，HTML 依赖目录只在预览/分享时由现有能力处理；
+- 内联 Artifact 没有实际 `filePath` 时不进入本地产物；用户保存成文件后再进入。
+
+本地资料 ID 使用首次收录时生成的随机 UUID，不使用路径哈希作为主键。路径会变化，路径哈希会在重命名时制造新资料；内容哈希又会错误合并两个有意保留的副本。
+
+### 2.3 本地产物与会话是多对多
+
+关系定义为：
+
+```text
+一个会话 ── 产生/修改/引用 ── 多个本地产物
+一个本地产物 ── 被产生/修改/引用 ── 多个会话
+```
+
+一个会话对同一文件出现多次时，只保留一条会话关系，并更新：
+
+- `relationKind`：`created | modified | referenced`；
+- `lastRelatedAt`：该会话最后一次明确关联该文件的时间；
+- `lastMessageId`：最后一次关联消息；
+- `sessionArtifactId`：该会话中最后一个对应 Artifact ID。
+
+`relationKind` 的强度为 `created > modified > referenced`，更新时不把已知“创建”降级为“引用”。文件监听只更新文件状态，不把外部编辑器产生的修改错误归因到当前打开的会话。
+
+### 2.4 最新有效会话
+
+列表中的会话归属按以下确定性规则计算：
+
+1. 只考虑本地 `cowork_sessions` 中仍存在的关系；
+2. 按 `lastRelatedAt DESC` 选择；
+3. 时间相同时按 `cowork_sessions.updated_at DESC`；
+4. 仍相同时按 `session_id DESC`；
+5. 没有有效关系时归入「未关联会话」。
+
+因此，“返回最新的”指最新发生实际产物关系的有效会话，而不是最近被用户随便打开或继续聊天的会话。
+
+点击本地产物卡片默认直接打开沉浸式预览；点击「查看会话」打开上述最新有效会话，并尽量定位到 `lastMessageId/sessionArtifactId`。预览弹窗的「更多」菜单提供相关会话入口，用户可以明确选择其他会话。
+
+### 2.5 本地资料与云端发布不合并
+
+同一个本地文件可能同时存在：
+
+- 一条 `LocalArtifactItem`；
+- 一条或多条历史上重新创建的 `SharedFileItem`；
+- 若它是项目产物，还可能对应一个 `DeployedSiteItem`。
+
+首期不把它们折叠成一张卡，因为删除、状态、权限和可用性完全不同。`clientSourceKey` 只用于在详情中显示「本地原件/云端版本」关联和提供跳转，不改变三类资料项的独立身份。
+
+### 2.6 数据归属与收藏隔离
+
+本地收藏虽然不上传，但仍需防止同一设备切换账号后互相看到云端收藏：
+
+- 本地产物使用固定 `ownerScope = device`；
+- 云端资料使用发布账号上下文生成的不可逆本地 scope，例如对 `accountMode + enterpriseId + userId` 做 SHA-256；
+- scope 中不得包含 JWT、Cookie、分享码或其他凭证；
+- 登出后不展示云端收藏，重新登录同一账号可恢复；
+- 云端记录确认删除后清理对应收藏。
+
+## 3. 用户场景
+
+### 场景 1：首次进入资料库
+
+**Given** 客户端已有会话和本地 Artifact，但尚未完成资料库历史回填。
+
+**When** 用户第一次进入资料库。
+
+**Then** 页面立即展示已建立索引的数据；历史回填在后台分批进行并增量补充，不阻塞首屏，也不递归扫描任何工作目录。
+
+### 场景 2：一个会话生成多个文件
+
+**Given** 一个会话生成 HTML、PDF 和图片三个文件。
+
+**When** 这些 Artifact 在会话中被确认可预览。
+
+**Then** 本地索引生成三条资料、三条会话关系；资料库按文件分别展示。
+
+### 场景 3：多个会话修改同一文件
+
+**Given** 会话 A 创建 `proposal.docx`，会话 B 后续修改同一路径。
+
+**When** 用户进入资料库。
+
+**Then** 只展示一条 `proposal.docx`；默认归组到 B，详情同时列出 A 和 B。
+
+### 场景 4：删除最新关联会话
+
+**Given** 一个文件依次关联 A、B、C 三个会话，C 最新。
+
+**When** 用户删除本地会话 C。
+
+**Then** 在同一 SQLite 事务中删除 C 的资料关系，文件和资料主体保留；列表自动回退到 B。若 A、B 也被删除，则归入「未关联会话」。
+
+### 场景 5：文件在系统中被删除
+
+**Given** 本地产物仍在资料库索引中。
+
+**When** 用户在 Finder/资源管理器删除该文件。
+
+**Then** 监听服务二次确认文件不存在，将其从默认列表移除并保留短期内部墓碑用于重命名识别；不删除任何会话。
+
+### 场景 6：在资料库中移到废纸篓
+
+**Given** 本地文件可访问。
+
+**When** 用户确认「移到废纸篓」。
+
+**Then** 主进程调用系统可恢复删除能力；成功后移除活动索引、关系和收藏，失败则保留原状态并显示原因。
+
+### 场景 7：云端断开
+
+**Given** 本地产物可用，但网络、鉴权或服务端异常。
+
+**When** 用户进入资料库。
+
+**Then** 本地产物正常加载和预览；分享文件和部署站点区域展示可重试错误，不把整个页面替换成失败页。
+
+### 场景 8：从另一个会话更新分享
+
+**Given** 分享文件最初来自会话 A，后在会话 B 更新内容。
+
+**When** 更新请求完成。
+
+**Then** 服务端把该分享的 `sessionId/artifactId` 更新为 B 的最新值；资料库默认“查看会话”返回 B。
+
+### 场景 9：收藏不同来源资料
+
+**Given** 用户收藏一个本地 PDF、一个分享文件和一个站点。
+
+**When** 用户分别在本地产物页和云端页使用「仅看收藏」，并打开云端资源的更多菜单。
+
+**Then** 本地筛选只过滤本地产物；云端筛选只过滤当前发布账号收藏的分享文件和网站，各行更多菜单同步显示收藏状态。三类收藏都只写本地 SQLite，不发收藏接口，也不提供跨本地/云端的聚合收藏页。
+
+### 场景 10：重启和再次进入
+
+**Given** 资料库已有 1,000 条本地产物。
+
+**When** 用户重启客户端并再次进入资料库。
+
+**Then** 首屏直接读取 SQLite；只优先校验可见项，其余在空闲时间分批校验，不进行 1,000 个文件的同步阻塞扫描。
+
+### 场景 11：管理云端资源
+
+**Given** 当前账号有已打开和已关闭的不同类型分享文件。
+
+**When** 用户进入「云端」并组合切换可访问性、资源类型和关键词。
+
+**Then** 客户端把普通分享和部署站点按统一游标混排为扁平四列管理列表，将原始状态归一为「可访问 / 不可访问」，不按本机会话分组，也不显示访问量、文件大小或更新时间。
+
+### 场景 12：修改分享设置
+
+**Given** 用户点击一条分享文件记录。
+
+**When** 设置页加载完成并修改公开访问/分享码或允许访问状态。
+
+**Then** 客户端复用现有分享详情和写接口；成功后同步更新详情、列表行和状态数量，失败则回滚，不能只改变本地 UI。
+
+### 场景 13：系统关闭的分享
+
+**Given** 一条分享被管理员、审核、活动分享数量限制或系统关闭。
+
+**When** 用户打开分享设置页。
+
+**Then** 页面显示已关闭和对应原因，状态控件不可恢复；列表菜单不提供「重新打开」或「删除分享记录」。
+
+## 4. 功能需求
+
+参考产品只提供信息架构启发，不直接复制视觉：
+
+| 来源 | 采用 | 不采用 |
+| --- | --- | --- |
+| ChatGPT Library | 顶部搜索、来源/类型筛选、网格/列表切换、统一资料入口 | “所有资料都在云端”的默认假设和大面积上传空态 |
+| Manus Library | 按任务/会话理解资料来源、以预览为核心、操作收敛到卡片菜单 | 宽屏仍只占单列、超大预览卡和与 LobsterAI 不一致的品牌样式 |
+| LobsterAI | 现有侧栏、管理页框架、主题 token、Artifact 预览、分享和站点动作 | 新建第二套发布状态机或硬编码单一主题 |
+
+### FR-1：入口与既有站点页迁移
+
+在左侧栏固定功能区增加「资料库」入口，主视图新增 `library`。
+
+资料库的「云端」页在统一列表中展示部署站点，并复用现有 `SitesView` 的详情、权限、访问状态、分析和删除能力。达到功能等价后：
+
+1. 默认只保留「资料库」入口；
+2. 旧 `sites` 内部路由重定向到 `library?source=cloud&category=site`；
+3. 灰度期间可暂时保留旧入口，但不能长期维护两套站点管理 UI；
+4. 企业配置增加 `ui.library = hide | readonly`；只读模式禁止改变收藏以外的资源状态；
+5. 原有 `ui.sites` 在过渡期继续控制站点动作权限，最终迁移到资料库的细粒度权限。
+
+### FR-2：页面信息架构
+
+页面从上到下分为：
+
+1. 顶部管理页标题栏中的来源页签：本地产物、云端；
+2. 本地产物页提供文件类型、搜索、收藏和视图控制；云端页提供类型、搜索、收藏、可访问性和刷新；
+3. 本地产物固定按「日期 → 会话 → 资料」组织；云端使用不按会话分组的统一管理列表，分享文件和部署站点按最近更新时间混排；
+4. 滚动到底部时自动续页；
+5. 本地产物进入沉浸式中央预览；云端条目按资源类型进入分享设置页或网站设置页，分析通过设置页标题栏的独立图标进入。
+
+来源页签下不再常驻显示「统一查看…」产品说明或「本地/云端已连接」状态行，避免重复页签语义并占用首屏。云端异常、未登录等可操作状态仅在相关来源页中以上下文提示展示。
+
+资料库页面不提供「通过会话创建」或「添加本地文件」按钮。产物继续由会话生成链路和现有索引机制进入资料库，资料库本身保持浏览与管理定位。
+
+### FR-3：来源页签与数量
+
+| 页签 | 数据范围 | 未登录行为 |
+| --- | --- | --- |
+| 本地产物 | 当前设备本地索引 | 正常可用 |
+| 云端 | 当前发布账号的普通分享与部署站点 | 显示登录提示 |
+
+默认进入「本地产物」。首期不提供「全部资料」聚合页，避免混合本地与云端分页、错误状态和存储边界。
+
+顶部来源页签不显示数量。分页结果数量、服务端总数和当前缓存条数都不作为页签文案，避免切换筛选或续页时出现数字闪烁及语义误解。服务端 counts 仍可保留用于诊断和后续能力，但不参与首期页签渲染。
+
+### FR-4：分类映射
+
+首期分类遵循当前可预览能力：
+
+**术语约定：** 用户界面统一使用更易理解的「网站」，包括类型筛选「网站」、资源类型「部署网站」和操作「管理网站」。本文的技术模型、接口、枚举和数据库语义仍使用 `site`、`deployed_site` 和「站点」，不因界面文案调整而迁移。
+
+| 分类 | 本地文件/Artifact | 云端来源 |
+| --- | --- | --- |
+| 幻灯片 | `.pptx` | `document_file` 且入口为 `.pptx` |
+| 网页 | `.html`、`.htm` | `html_file` 分享 |
+| 文档 | `.docx`、`.pdf`、`.md`、`.txt`、`.log` | 文档、Markdown 分享 |
+| 表格 | `.xls`、`.xlsx`、`.csv`、`.tsv` | `document_file` 且入口为对应扩展名 |
+| 图片 | `.png`、`.jpg`、`.jpeg`、`.gif`、`.webp`、`.bmp`、`.avif`、`.svg` | 图片、SVG 分享 |
+| 音视频 | `.mp4`、`.webm`、`.mov` | 首期没有可分享音视频记录时为空 |
+| 网站 | 不显示 | 所有 `deployed_site` |
+| 其他 | Mermaid、当前支持预览的代码文件 | Mermaid 分享及未归类可预览文件 |
+
+类型和分类必须通过共享常量/纯函数集中定义。首期不因 UI 存在「音视频」分类就宣称支持尚未实现的音频格式。
+
+本地产物固定显示顺序为：全部、幻灯片、网页、文档、表格、图片、音视频、其他。云端在「其他」之前增加「网站」，顺序为：全部、幻灯片、网页、文档、表格、图片、音视频、网站、其他。网站不能继续归入「网页」，否则用户无法区分文件分享和可部署服务。
+
+两个来源页签均使用相同的单选类型下拉，不在工具栏左侧平铺全部类型。触发按钮显示筛选图标和当前类型，展开菜单使用上述固定顺序并勾选当前项；切换类型后关闭菜单并刷新第一页。云端可隐藏网站能力时，同时从下拉选项中移除「网站」。
+
+### FR-5：搜索、排序和筛选
+
+搜索规则：
+
+- 本地仅匹配显示文件名、扩展名和用户可见的相对/显示路径；
+- 云端匹配标题、URL、入口文件名和资源 ID；
+- 不读取文件内容，不建立全文索引；
+- 本地绝对路径和本地搜索结果不得发往服务端；
+- 本地产物搜索只查询本地 SQLite；云端搜索只把关键词发送给云端列表接口。
+
+首期统一按「最近更新」排序：
+
+| 本地产物 | 分享文件 | 部署站点 |
+| --- | --- | --- |
+| 文件 `mtime`，缺失时回退首次收录时间 | `contentUpdatedAt/updatedAt/createdAt` | 最新部署或站点更新时间 |
+
+名称和创建时间排序需要本地、云端使用相同排序和游标语义，首期不展示空壳选项；后续增加时扩展明确的共享 `LibrarySort` 枚举和服务端白名单，不能由客户端传任意列名。搜索输入 300ms 防抖；旧请求结果不得覆盖新关键词结果。
+
+云端统一使用可访问性筛选：`全部状态 / 可访问 / 不可访问`。归一化规则如下：
+
+- 分享文件 `status = live` 为「可访问」，其他状态为「不可访问」；
+- 部署站点同时满足 `siteStatus = online` 与 `shareStatus = live` 才是「可访问」，部署中、停止访问、需重新部署、被阻止或失败均为「不可访问」；
+- 「已打开 / 已关闭 / 部署中 / 发布失败」等原始状态只在各自详情页展示，不在统一列表制造两套词汇。
+
+不展示「处理失败」或「已过期」筛选。筛选必须参与完整游标结果，不能只过滤当前已加载页面；客户端在服务端尚未提供统一 availability 参数时，可以有界地继续读取服务端页并按上述规则归一化，直到填满一页、来源耗尽或达到安全上限。状态或类型变化时重置游标并重新请求第一页。
+
+### FR-6：收藏
+
+1. 星标点击立即乐观更新，失败时回滚并提示；
+2. 收藏仅写客户端 SQLite；
+3. 本地产物收藏不随登录账号变化；
+4. 云端收藏按发布账号 scope 隔离；
+5. 将本地产物移到废纸篓时清理收藏；
+6. 云端资源被永久删除或服务端确认不存在时清理收藏；
+7. 停止分享、停止访问或部署失败不等于删除，收藏继续保留；
+8. 收藏不影响服务端排序、配额或资源生命周期。
+
+云端工具栏与本地产物一样提供收藏筛选按钮，仅筛选当前发布账号 scope 下保存在本地 SQLite 的云端收藏。分享文件和网站的收藏/取消收藏仍位于「更多」菜单，不改变云端生命周期，也不发送服务端收藏请求。
+
+### FR-7：简约资料项
+
+本地产物的列表和网格卡片只显示做决策所需信息。列表进一步压缩为文件导航，网格保留便于快速识别的摘要：
+
+| 区域 | 常驻信息 |
+| --- | --- |
+| 预览 | 列表使用稳定的类型图标，网格使用缩略图或类型封面 |
+| 主信息 | 列表标题单行；网格标题最多两行 |
+| 次信息 | 列表不展示；网格展示来源 + 类型/状态，最多两项 |
+| 时间 | 列表移到会话组头；网格展示资料最近更新时间 |
+| 操作 | 条目仅保留更多菜单；分享、收藏、相关会话及来源动作均收敛到菜单，不常驻独立按钮 |
+
+文件绝对路径、分享码、完整 URL、所有会话、部署详情、失败原因等不在卡片堆叠元数据；需要操作路径、链接或会话时，通过条目或预览弹窗「更多」菜单中的复制、定位、选择会话或管理动作完成。
+
+为解决宽屏列表单项过长、右侧空白的问题：
+
+- 内容区沿用专家套件和技能页规范，最大宽度 1120px，左右内边距 32px；
+- 资料项区域最小宽度 680px，窗口更窄时由滚动容器承载，避免标题和操作被过度挤压；
+- 列表始终使用单列，避免分组标题和阅读顺序被左右拆分；
+- 列表项使用 52～60px 的无卡片行式布局，以分隔线组织，不展示大缩略图；
+- 列表图标建议 32～36px，标题保持单行；条目行不重复展示来源、可用状态或更新时间，最后修改时间统一在预览标题栏查看；
+- 网格视图按可用宽度展示 2～4 列；
+- 预览弹窗使用独立遮罩层，不改变背后列表或网格布局；
+- 宽屏列表仍保持单列，但使用无边框行式布局降低横向空旷感。
+
+列表工具栏不展示当前已加载条数，避免将分页缓存量误解为资料总数。列表底部也不提供「加载更多」按钮；距离滚动容器底部约 320px 时自动请求下一页，并在请求期间使用轻量加载指示。发生请求错误后停止自动续页，由用户通过错误提示中的「重试」恢复加载。
+
+云端页不复用本地产物的卡片或会话组样式，而使用四列、单行的统一管理列表：
+
+| 列 | 内容 | 明确不显示 |
+| --- | --- | --- |
+| 云端资源 | 文件类型/站点图标 + 名称；站点可在第二行显示域名 | “分享文件/部署站点”来源标签、文件大小、更新时间、创建时间 |
+| 状态 | `可访问` 或 `不可访问`，文字与状态样式同时表达 | 访问量、原始部署/分享状态 |
+| 访问权限 | `公开访问` 或 `分享码` | 分享码明文 |
+| 操作 | 仅一个「更多」按钮 | 常驻星标、打开、复制或状态按钮 |
+
+云端列表不显示访问量、文件大小和最近更新时间。分享/网站设置页只展示完成管理决策所需的分享时间、最后修改时间和原始状态；文件大小仅在本地产物详情等确有文件操作价值的场景出现，不能回填到云端列表或分享设置形成第二套信息密度。列表不提供网格切换，也不按会话或日期插入组头。
+
+### FR-8：本地产物的日期与会话两级分组
+
+本地产物列表不提供分组模式切换，固定使用「日期 → 会话 → 资料」两级分组：
+
+- 一级按资料 `sortTime` 所在的本地自然日分组；今天、昨天使用友好名称，更早记录显示具体日期，跨年日期包含年份；
+- 日期组按组内最新资料倒序，最近日期始终在前；
+- 二级按资料的最新有效会话分组，组头左侧显示会话标题，右侧显示组内最近资料的更新时间；日期已由一级标题表达时，右侧只显示时分；
+- 同一日期内的会话组按各组最新资料倒序，资料在组内也按 `sortTime` 倒序；
+- 有效会话的组头标题本身是「查看会话」入口，不再额外展示操作文案；
+- 同一会话的资料如果分布在不同日期，分别进入对应日期组；同一日期内只生成一个会话组头；
+- 跨页加载到同一「日期 + 会话」时追加到已有组，不生成重复组头；
+- 每个资料只出现在一个日期下的一个会话组；
+- 没有有效会话的本地产物在当日进入「未关联会话」；
+- 本规则不应用于分享文件和部署站点；两类资源在统一云端管理列表中混排。
+
+云端资料仅在「相关会话」菜单中尝试解析本机会话，解析顺序：
+
+1. 服务端返回的最新 `sessionId` 在本地仍存在；
+2. 否则 `clientSourceKey` 精确匹配本地产物时，使用该本地产物的最新有效会话；
+3. 否则不关联会话，也不展示空的「相关会话」入口。
+
+### FR-9：预览与动作
+
+本地产物使用一个沉浸式中央预览弹窗，不再经过「详情弹窗 → 预览弹窗」两层跳转。弹窗建议占可视区域约 `94vw × 92vh`，最大宽度 1440px、最大高度 900px；标题栏左侧只展示文件图标、文件名和最后修改时间，主体区域全部用于实际预览或明确的不可预览状态。分享文件不进入该预览弹窗，点击条目直接进入 FR-11 定义的分享设置页；部署站点进入网站设置页，网站分析通过设置页标题栏进入。
+
+交互约束：
+
+1. 单击条目主体或按 Enter 直接打开预览，不再为双击定义另一套行为；
+2. 列表和网格条目不常驻独立分享或收藏按钮；条目「更多」提供该来源的完整动作集，包括本地产物分享、收藏/取消收藏、相关会话及来源动作，并且只打开菜单、不能打开预览；
+3. 本地产物复用 `ArtifactRenderer` 和现有分享 Controller；云端资料没有安全内嵌能力时展示链接预览态，不直接使用普通 iframe；
+4. 预览标题栏和条目菜单使用同一动作策略和菜单视觉规范；两处「更多」面板统一为 288px 宽，并共用背景、边框、阴影、字号、行间距、悬停态、危险项分隔及会话缩进。预览标题栏固定为紧凑的 48px 高度，只把文件分享、收藏/取消收藏提升为右上角无文字图标按钮，其余系统应用打开、打开/复制链接、文件定位、相关会话、站点管理和危险动作仍进入「更多」浮层；不展示独立的文件详情按钮；本地产物不提供低频且偏开发者用途的“复制路径”；
+5. 预览标题栏图标在鼠标悬停时显示本地化 Tooltip，并保留 `aria-label`；
+6. 「移到废纸篓」移动真实文件并使用危险操作样式；资料库不提供“仅隐藏索引、保留文件”的用户操作；
+7. 不展示占用预览空间的底部按钮区，也不展示常驻详情侧栏；
+8. 右上角、Esc 和点击遮罩关闭预览。打开会话或操作浮层时，第一次 Esc 只关闭浮层；打开分享等二级对话框时不得连带关闭预览；
+9. 关闭预览后焦点返回原资料条目。
+10. 相关会话在条目菜单和预览菜单中都使用原地折叠区展示，并统一显示数量和右箭头；悬停只高亮，不改变菜单结构，点击/Enter/右方向键后在当前行下方展开，箭头转为向下。展开区保留轻微缩进但不显示左侧垂直引导线，会话子项整行都是跳转入口，不再重复显示行尾跳转图标；会话区最多显示 4 行，超出时内部滚动；再次点击、左方向键或第一次 Esc 收起，第二次 Esc 才关闭菜单。列表仅在用户打开某条目的菜单时按需读取完整会话关系，不因渲染资料列表批量查询详情。
+
+| 资料类型 | 主要动作 | 次要动作 |
+| --- | --- | --- |
+| 本地产物 | 预览、分享、收藏/取消收藏 | 系统应用打开、在文件夹中显示、查看会话、移到废纸篓 |
+| 分享文件 | 分享设置、打开链接、复制链接 | 收藏/取消收藏、查看本机可识别的相关会话 |
+| 部署网站 | 管理网站、打开链接、复制链接 | 收藏/取消收藏、查看本机可识别的相关会话 |
+
+动作必须复用既有 Controller、站点客户端和权限/订阅校验。资料库不得另写一套分享、部署、分享码或站点状态机。
+
+### FR-10：状态、主题与可访问性
+
+1. 页面使用现有 Tailwind/Skin 主题 token，不硬编码只适合白色或黑色背景的颜色；
+2. 跟随客户端浅色、深色和系统主题切换，不刷新页面；
+3. 当前页签、收藏、状态不能只用颜色表达；
+4. 图标按钮提供 `aria-label`、Tooltip、键盘焦点和 28px 以上点击热区；
+5. 卡片、搜索、筛选和视图按钮支持键盘导航；
+6. 缩略图提供可读替代文本，装饰图标使用 `aria-hidden`；
+7. 加载使用骨架屏，空态不展示空表格；
+8. 本地可用、云端连接、索引回填等状态使用低干扰提示，不占据卡片主信息；
+9. 所有可见文案同时提供中英文 i18n。
+
+### FR-11：统一云端管理页
+
+#### FR-11.1 产品定位与数据边界
+
+云端页是当前发布账号下分享文件和部署站点的统一管理入口，不是本地产物预览页，也不是按本机会话组织的文件历史。其权威数据来自云端 `html_shares` 及部署元数据：
+
+1. 页面请求 `kind = all`；选择「网站」时转换为 `kind = deployed_site, category = all`，选择其他具体类型时转换为 `kind = shared_file`；
+2. 服务端负责 owner 隔离、类型/关键词过滤、稳定排序和游标，客户端负责将两类原始状态归一为可访问性；
+3. 本地只补充收藏偏好和能够精确识别的会话跳转，不把本机会话当成云端列表成立的前提；
+4. 页签顶部不再重复显示「云端管理」大标题、文件大小说明、连接说明或总条数说明；来源页签本身已经表达页面语义；
+5. 当前 Web Demo 是交互与信息密度基准，不是接口事实来源；Demo 中没有服务端能力的控件必须按本节约束降级或隐藏。
+
+#### FR-11.2 筛选、搜索与列表
+
+云端页从上到下依次为：
+
+1. 资料库来源页签：本地产物、云端；
+2. 单行工具栏：左侧为单选类型下拉「全部、幻灯片、网页、文档、表格、图片、音视频、网站、其他」，按钮展示当前类型；
+3. 同一行右侧依次为搜索框、「仅看收藏」图标按钮、紧凑状态下拉框「全部状态、可访问、不可访问」和刷新按钮；
+4. 云端统一管理列表；
+5. 自动续页哨兵及必要的加载/错误反馈。
+
+列表列定义固定为「云端资源 / 状态 / 访问权限 / 操作」。状态与类型筛选共同作用，搜索匹配文件名、分享标题、站点名称、域名、入口文件名和资源 ID；搜索采用 300ms 防抖。状态、类型、关键词、发布账号 scope 任一变化时：
+
+- 取消或忽略旧请求；
+- 清空当前列表与游标；
+- 从第一页重新请求；
+- 新结果返回前保留工具栏，不把列表误显示为最终空态；
+- 迟到响应必须通过 `requestId/queryKey` 丢弃。
+
+来源、状态和文件类型筛选均不展示数量。列表默认按 `sortTime DESC, itemKind DESC, itemId DESC` 排序，但不显示每行更新时间；滚动续页规则沿用 FR-7，不显示「加载更多」按钮。
+
+#### FR-11.3 状态与访问权限语义
+
+| 统一 UI 文案 | 原始条件 | 行为 |
+| --- | --- | --- |
+| 可访问 | 分享 `live`；或站点 `online` 且分享 `live` | 公共链接按访问权限正常访问 |
+| 不可访问 | 分享非 `live`；或站点未同时满足 `online + live` | 公共链接当前不可访问，记录继续保留在资料库 |
+| 公开访问 | `public` | 不要求分享码 |
+| 分享码 | `code` | 访问时要求分享码；列表绝不返回或展示明文分享码 |
+
+普通分享当前没有过期时间字段，因此页面不展示「已过期」状态、过期时间或过期筛选。`failed` 是创建/处理异常而不是正常可管理状态：分享文件常规列表和状态 facet 只统计 `live/disabled`，不展示「处理失败」筛选；异常记录若因历史数据被详情接口返回，应展示不可操作错误态并允许刷新，不能伪装成「已关闭」。
+
+`disabled` 还需要区分 `disabledSource`：
+
+- `user`：用户主动关闭，可以在分享设置页恢复；
+- `admin/moderation/active_limit/system`：不允许客户端直接恢复，状态开关禁用，并显示经过 i18n 的原因；
+- 未知值：按不可恢复处理，避免越权恢复。
+
+#### FR-11.4 条目点击与更多菜单
+
+单击分享文件行或按 Enter 进入分享设置页；单击站点进入网站设置页，网站分析通过设置页标题栏的独立入口进入。「更多」按钮只打开菜单，不触发行点击。菜单共享打开、复制、收藏和可选相关任务动作，并按类型增加一个主管理动作：
+
+1. 分享文件为 `分享设置`，站点在界面中显示为 `管理网站`；
+2. `打开链接`；
+3. `复制链接`；
+4. `添加收藏 / 取消收藏`（仅写当前客户端）；
+5. `相关任务`，仅本机能够解析出至少一个有效会话时出现；UI 使用“任务”，数据层仍使用 `sessionId`。
+
+文案必须使用「打开链接」「复制链接」，不使用较长的「打开分享链接」「复制分享链接」。菜单明确不包含：
+
+- `重新打开`：状态恢复统一在分享设置页完成，避免列表菜单承担状态机；
+- `删除分享记录`：当前普通用户接口没有永久删除语义，现有 `DELETE /api/html-shares/{shareId}` 实际是关闭分享，不能以删除文案误导用户；
+- `复制路径`、`在文件夹中显示`、`用系统应用打开`：这些是本地文件动作，不适用于云端分享记录。
+
+云端页在工具栏展示「仅看收藏」图标按钮，但不在列表中增加收藏列或单行常驻星标。收藏状态写本地 SQLite 并按发布账号 scope 隔离，不改变云端资源生命周期。
+
+#### FR-11.5 分享设置页
+
+分享设置页复用当前资料库主区域，不打开右侧抽屉或沉浸式文件预览弹窗。页面结构为：
+
+1. 顶部返回入口统一显示「返回」；
+2. 紧凑资源标题栏：文件类型图标、文件名、资源类型、最后修改时间和唯一一处「可访问 / 不可访问」状态；
+3. 右侧图标动作依次为 `打开链接`、`数据分析`、`添加收藏 / 取消收藏`，以及存在本地关系时的 `相关任务`；每个图标提供 Tooltip、`aria-label` 和键盘焦点；
+4. 主体依次为「访问设置」和「基本信息」两个轻量区块，不使用左右不对称卡片布局；
+5. 标题栏不显示复制按钮和空的更多菜单；复制动作只保留在访问地址区域，避免重复入口。
+
+各区域要求：
+
+| 区域 | 字段/动作 | 约束 |
+| --- | --- | --- |
+| 访问地址 | 当前公共 URL、`复制链接` 或 `复制链接和分享码` | URL 单行省略，复制使用完整值；禁止记录到普通日志；分享码模式下一次复制链接和分享码，不提供第二个单独复制按钮 |
+| 访问权限 | 公开访问、分享码访问、停止访问 | 三个单选卡片统一承载权限与状态；公开/分享码复用 access-mode 接口，停止访问复用 status 接口 |
+| 分享码 | 当前有效分享码 | 仅当前或保存后的模式为分享码访问时显示；服务端不能返回旧明文时展示明确不可回读状态，保存新分享码后用响应值更新，不能伪造占位码 |
+| 基本信息 | 资源名称、资源类型、分享时间、最后修改时间 | 不显示文件大小、访问量或重复状态；访问量进入独立分析页 |
+| 相关任务 | 本机有效会话 | 仅作为标题栏动作；无精确匹配时整个动作隐藏 |
+
+设置页打开时先使用列表数据绘制标题和骨架，再调用现有 `GET /api/html-shares/{shareId}` 获取最新详情。选择权限只修改页面草稿，不立即请求服务端；草稿与服务端快照不一致时才在访问设置区底部显示「取消修改 / 保存更改」，无修改时整行隐藏。点击保存后展示一次确认对话框，列出从旧权限到新权限的变化；停止访问需要额外说明“公共链接将暂时不可访问，但内容和地址保留”。确认后按「提交中禁用 → 服务端成功后原位更新详情和列表缓存 → 失败保留草稿并提示」执行，不得整页重载，也不得只更新 Renderer 的演示状态。
+
+写操作成功使用不参与文档流的 Toast 或区块内短暂状态反馈，不能在分享链接上方插入绿色提示条导致页面整体下移。账号 scope 变化、资源不再属于当前账号或返回 404 时退出设置页并刷新云端列表。标题栏和列表菜单的同名动作必须调用同一 action handler，不能复制业务逻辑。
+
+当前 Web Demo 中的「允许下载」开关只表达潜在布局，不属于首期能力。现有服务端没有 `allowDownload` 字段或下载阻断语义，正式客户端首期必须隐藏该行，不能实现为仅本地生效的假开关。后续若立项，需要另行设计数据库字段、读写接口、公共访问页和真实文件下载路径的强制校验，并完成旧记录默认值及 MySQL 5.7 迁移评审。
+
+#### FR-11.6 分享文件访问分析
+
+分享文件增加与网站设置页一致的「数据分析」标题栏图标，但分析内容必须使用文件语义。点击后在同一主区域进入独立分析页，返回时回到该分享文件设置页；分析页不是新的资料库顶层页签，也不嵌入设置区块。
+
+页面结构：
+
+1. 复用设置页资源标题栏和右侧动作，当前分析图标保持选中/可识别状态；
+2. 分析标题显示「文件表现」和当前日期范围；
+3. 右侧日期范围下拉首期提供「过去 7 天 / 过去 30 天」，默认过去 7 天，均包含今天；
+4. 两个摘要指标为「独立访客」和「访问次数」；
+5. 「访问趋势」折线图同时显示两个指标，横轴为自然日；服务端未返回的日期由接口补零；
+6. 不展示网站分析中的「热门页面」：一个分享文件只有一个入口文件，页面排行没有决策价值；首期也不展示来源域名、设备、IP 或地理位置。
+
+指标口径：
+
+| 指标 | 首期定义 |
+| --- | --- |
+| 访问次数 | 当前统计链路记录的有效入口文件请求次数；通过公开或分享码校验后计数，拒绝/失败请求、分享码输入页、静态依赖资源和管理员预览不计数 |
+| 独立访客 | 所选范围内按服务端 HMAC 后的 `ip_hash` 去重得到的估算人数；同一访客跨日期只计一次，因此范围独立访客不能由每日值相加 |
+| 每日独立访客 | 当天按 `ip_hash` 去重的人数，只用于趋势展示 |
+| 数据范围 | 同一 `shareId` 的整个分享生命周期，汇总所有 `source_sha256/content_updated_at` 内容版本；更新文件后历史统计不归零 |
+
+当前入口采集无法可靠区分“浏览/预览”和“下载”，因此首期统一命名为「访问次数」，不使用「下载量」或「页面浏览量」。分享所有者通过普通公共链接访问会按普通访客计数；通过管理端预览能力打开则不计数。独立访客是基于 IP 的隐私友好估算值，Tooltip 需解释同网出口、代理和 IP 变化可能造成偏差。
+
+已停止访问的分享仍可查看停用前历史统计；停止期间没有新有效访问。历史数据仅从服务端统计功能实际启用并开始采集之日起可用，早期日期显示 0 而不是伪造估算。数据保留天数、统计时区和最早可用日期以接口 `meta` 为准，客户端不硬编码承诺。
+
+| 场景 | 页面行为 |
+| --- | --- |
+| 首次加载/切换范围 | 保留标题与范围控件，指标和图表显示局部骨架，不清空设置页缓存 |
+| 所选范围为 0 | 摘要显示 0，图表显示零基线和轻量空态说明，不显示全页错误 |
+| 请求失败 | 分析区显示错误与重试；返回、打开链接、收藏和设置页继续可用 |
+| 范围快速切换 | 使用 `requestId/queryKey` 或 AbortController 忽略迟到响应 |
+| 资源失去 owner 权限/不存在 | 返回云端列表并刷新；不得保留其他账号的分析缓存 |
+
+#### FR-11.7 相关任务
+
+服务端只保存一个最新 `sessionId/artifactId` 指针，不保存云端多对多会话关系。分享文件列表不按会话分组，相关会话只作为本机增强：
+
+1. 优先匹配服务端 `sessionId` 且本地会话仍存在；
+2. 其次使用 `clientSourceKey` 精确关联本地产物，再读取其有效会话；
+3. 无精确证据时不猜测、不按文件名关联；
+4. 会话数据在用户打开菜单或设置页时按需读取，不随列表批量查询；
+5. 子菜单沿用 FR-9 的原地折叠交互，最多显示 4 条并支持键盘操作。
+
+#### FR-11.8 加载、空态与错误
+
+| 场景 | 页面行为 |
+| --- | --- |
+| 首次加载 | 保留筛选工具栏，列表区显示轻量骨架 |
+| 筛选无结果 | 显示「没有符合条件的云端资源」，保留当前筛选便于撤销 |
+| 未登录 | 显示登录提示，不影响本地产物页 |
+| 网络/5xx | 保留工具栏和已成功数据，显示来源级错误与重试 |
+| 状态或权限更新失败 | 回滚控件与缓存，展示服务端归一化错误 |
+| 云端资源被其他端修改 | 手动刷新、重新进入页签或写操作响应后更新；不依赖本地 watcher |
+| 分享记录不再存在 | 从当前列表移除，清理本地对应收藏并返回列表 |
+
+刷新按钮只刷新当前云端查询，不刷新本地产物索引。页签重新进入可先显示同账号、同 queryKey 的内存缓存并在后台重新验证；不持久化云端列表为离线权威数据。
+
+## 5. 删除与生命周期语义
+
+### 5.1 操作矩阵
+
+| 操作 | 本地文件 | 本地索引主体 | 会话关系 | 本地收藏 | 云端记录 |
+| --- | --- | --- | --- | --- | --- |
+| 删除会话 | 不变 | 保留 | 删除该会话关系 | 保留 | 不通知、不修改 |
+| 移到废纸篓 | 系统废纸篓 | 从活动索引移除 | 删除 | 删除 | 不变 |
+| 系统外部删除文件 | 已不存在 | 标记 missing，默认列表移除 | 短期保留后清理 | 删除 | 不变 |
+| 停止分享 | 不变 | 不变 | 不变 | 保留 | 分享状态变为 disabled |
+| 删除站点 | 不变 | 不变 | 不变 | 删除站点收藏 | 复用站点软删除/清理 |
+
+分享文件没有面向普通用户的「永久删除记录」动作。用户关闭或恢复访问必须通过分享设置页复用状态接口；列表菜单不直接改变状态。服务端现有 `DELETE /api/html-shares/{shareId}` 等价于关闭分享，客户端不得把它展示成「删除分享记录」。
+
+### 5.2 会话删除
+
+`CoworkStore.deleteSessionRows()` 必须在删除 `cowork_sessions` 前显式执行：
+
+```sql
+DELETE FROM library_artifact_sessions
+WHERE session_id IN (...);
+```
+
+原因是当前 SQLite 初始化没有建立“所有删除行为都依赖 `PRAGMA foreign_keys = ON`”的统一约定。关系表仍可声明外键作为结构说明，但业务正确性必须由同一事务中的显式删除保证。
+
+删除后不批量更新每个 Artifact 的“最新会话缓存”，因为设计不存该冗余字段；下次查询直接从仍有效关系中重新选择。
+
+### 5.3 文件缺失、重命名和清理
+
+监听收到删除/重命名事件后：
+
+1. 300ms 合并事件；
+2. 再次 `stat`，避免编辑器原子保存造成瞬时缺失；
+3. 能以短期 `fileIdentity` 匹配同目录新路径时更新原记录；
+4. 确认缺失后标记 `availability = missing` 和 `missingSince`；
+5. 默认查询立即排除 missing 项；
+6. 内部保留 7 天墓碑用于迟到事件和移动识别，之后清理关系与索引；
+7. 权限错误标记 `permission_denied`，不能当作文件删除。
+
+用户通过资料库主动移到废纸篓时，系统调用成功后无需等待 7 天，立即清理活动记录。操作失败时不得先删索引。
+
+## 6. 总体架构
+
+### 6.1 分层
+
+```mermaid
+flowchart LR
+    UI["Renderer：LibraryView<br/>筛选、分组、卡片、详情"] --> PRELOAD["Preload：受限 Library API"]
+    PRELOAD --> IPC["Main：Library IPC handlers"]
+    IPC --> LOCAL["LibraryLocalStore<br/>SQLite 查询与收藏"]
+    IPC --> INDEX["LibraryIndexService<br/>收录、监听、校验、回填"]
+    LOCAL --> SQLITE[("lobsterai.sqlite")]
+    INDEX --> FILES["本机文件系统"]
+    IPC --> CLOUD["LibraryCloudClient"]
+    CLOUD --> API["lobsterai-server<br/>/api/library/cloud-items"]
+    API --> MYSQL[("MySQL 5.7<br/>html_shares + share_deployments")]
+```
+
+职责必须保持单向：
+
+| 层 | 职责 | 不负责 |
+| --- | --- | --- |
+| Renderer | 交互状态、来源结果合并、分组、预览和动作入口 | 直接访问文件系统、SQLite 或拼服务端鉴权 |
+| Preload | 暴露最小 IPC 能力和事件订阅 | 暴露任意 SQL、任意文件读写 |
+| Library IPC handlers | 统一校验请求、编排本地/云端、广播变更 | 持有 UI 组件状态 |
+| LocalStore | 事务、查询、关系和收藏 | 文件扫描、网络请求 |
+| IndexService | 规范化路径、`stat`、收录、回填、监听已索引路径父目录和状态修复 | 上传文件、递归扫描未知目录 |
+| CloudClient | 调用资料库云端读接口 | 持久化本地文件路径 |
+| Server | 返回当前账号的分享/站点元数据 | 维护本地 Artifact 或本地收藏 |
+
+### 6.2 进入页面的数据流
+
+进入资料库时执行：
+
+1. Renderer 根据当前来源、分类、关键词、排序生成稳定 `queryKey`；
+2. 当前来源只请求对应的本地或云端完整页面；不为隐藏的来源页签额外请求数量；
+3. 当前来源结果返回后立即渲染；
+4. 对首屏可见本地产物异步执行轻量 `stat`，若状态变化则推送增量事件；
+5. 所有资源统一归一化为 `sortTime`；分享文件与部署站点只在云端页内合并，本地与云端绝不混排；
+6. 后台索引回填或校验继续运行，但不阻塞页面；
+7. 离开页面不销毁索引，文件监听由主进程生命周期管理。
+
+严禁在第 1～3 步递归读取每个会话工作目录。
+
+### 6.3 来源独立分页与自动续页
+
+本地和云端没有共同数据库，资料库也不提供「全部资料」聚合页。每个来源页签独立维护游标：
+
+```ts
+interface LibrarySourceQueryState {
+  cursor?: string;
+  items: LibraryItem[];
+  exhausted: boolean;
+  availability?: LibraryCloudAvailabilityFilter;
+}
+```
+
+1. 各来源均按 `sortTime DESC, itemKind DESC, itemId DESC` 返回；
+2. 首次读取 24 条；
+3. 距离滚动容器底部约 320px 时自动读取当前来源下一页；
+4. 下一页按 `itemKind:itemId` 去重追加，不展示「加载更多」按钮；
+5. 关键词、来源、分类、云端可访问性、排序或账号 scope 变化时重置当前查询游标；
+6. 请求带递增 `requestId`，迟到响应不能覆盖当前查询；
+7. 收藏或可访问性需要客户端过滤时可继续拉页，直到填满、来源耗尽或达到安全上限；
+8. 请求失败后停止自动续页，由显式「重试」恢复，避免观察器形成重试循环。
+
+本地产物分页结果进入日期/会话分组器；分享文件与部署站点分页结果按联合游标直接追加到同一扁平云端管理列表。云端列表不能使用本地会话分组渲染器；站点条目被打开时进入网站设置，分析由设置页显式进入。
+
+### 6.4 离线与鉴权
+
+| 状态 | 本地产物 | 分享/站点 |
+| --- | --- | --- |
+| 未登录 | 正常 | 展示登录提示，不请求 |
+| 无网络 | 正常 | 展示上次请求失败和重试；首期不展示持久缓存 |
+| Token 失效 | 正常 | 走现有鉴权刷新/登录流程 |
+| 云端 5xx | 正常 | 来源级错误，不影响本地筛选和预览 |
+| 本地 SQLite 异常 | 展示资料库本地修复提示 | 云端仍可尝试加载 |
+
+## 7. 本地产物索引构建
+
+### 7.1 核心原则：事件驱动，不在进入页面时全量扫描
+
+资料库是一个持久化物化索引。它由明确的 Artifact 事件增量构建，而不是每次进入页面重新推导。
+
+索引写入来源按优先级为：
+
+1. **会话 Artifact 确认事件**：现有 Artifact 识别完成且包含可访问 `filePath` 时，批量提交候选；
+2. **分享/部署入口**：用户从本地文件发起分享或从项目生成可预览文件时补充记录；
+3. **显式添加文件**：用户通过系统文件选择器选择；
+4. **历史回填**：一次性重放本地历史消息的现有 Artifact 识别逻辑；
+5. **文件监听**：只更新已知资料的路径、修改时间、大小和可用性，不发现未知目录中的任意文件。
+
+所有候选必须在主进程重新校验，不能信任 Renderer 传入的路径、类型或大小。
+
+### 7.2 实时收录
+
+当现有 Artifact 管线产出一个带 `filePath` 的预览项时，Renderer 以批量 IPC 提交：
+
+```ts
+interface LibraryArtifactCandidate {
+  sessionId: string;
+  messageId?: string;
+  sessionArtifactId?: string;
+  filePath: string;
+  detectedType: ArtifactType;
+  relationKind: LibraryRelationKind;
+  relatedAt: number;
+}
+```
+
+主进程依次：
+
+1. 检查会话是否存在；
+2. 解析相对路径：只能以该事件发生时的会话 `cwd` 作为基准；
+3. 执行平台路径规范化和 `realpath/stat`；
+4. 确认是普通文件，不是目录、Socket 或设备；
+5. 通过共享类型策略确认可预览；
+6. 排除应用自身临时预览、缩略图和缓存目录；
+7. 按 `pathKey` upsert 本地产物；
+8. upsert 会话关系；
+9. 事务提交后广播 `library:changed`，不在事务内生成缩略图。
+
+如果文件尚未落盘，可以将候选放入最长 30 秒的有限重试队列，按 250ms、1s、3s、10s 退避；超时后放弃本次收录，不创建永久幽灵记录。
+
+### 7.3 历史回填
+
+首次升级后需要把已有会话产物纳入资料库，但仍不扫描工作目录。
+
+推荐由 Renderer 后台任务复用当前 `artifactParser/artifactDetection`：
+
+1. 按会话更新时间倒序、分批读取本地会话消息；
+2. 使用与会话 UI 相同的 Artifact 识别逻辑；
+3. 只提交带本地文件路径且当前支持预览的候选；
+4. 每处理完一批，把会话/消息游标写入 `kv`；
+5. 使用 `requestIdleCallback` 或等价调度，每批控制执行预算，优先保证聊天交互；
+6. 客户端关闭或崩溃后从游标继续；
+7. 完成后记录识别策略版本，规则升级时可做增量重放。
+
+这样历史回填与当前 UI 的识别口径一致，也不会因主进程另写一套正则而产生大量误收录。若后续需要把回填完全移到主进程，应先把 Artifact 文件候选识别提取为无 DOM、无 Redux 依赖的共享纯函数，再由两端共同调用。
+
+建议元数据键：
+
+```text
+library.index.backfill.v1.cursor
+library.index.backfill.v1.completedAt
+library.index.policyVersion
+library.index.lastReconcileAt
+```
+
+### 7.4 启动和空闲校验
+
+每次启动只对已索引记录做增量校验：
+
+1. 资料库可见首屏记录优先；
+2. 其余按 `lastVerifiedAt` 从旧到新分批；
+3. 建议每批 100 条、文件系统并发不超过 8；
+4. 同一路径 10 分钟内已由监听或预览确认，可跳过；
+5. 客户端忙于流式会话、部署或退出时暂停；
+6. 校验只执行 `stat`，不读取内容哈希；
+7. 所有数值应集中为可调常量，不散落在 UI。
+
+上述数值是初始性能预算，实施时以 Windows、macOS 大目录实测校准。
+
+### 7.5 文件监听
+
+当前预览面板的 `artifact:watchFile` 与面板生命周期绑定，不能直接用作资料库索引监听。
+
+`LibraryIndexService` 内置目录监听与降级校验职责；首期不再拆出独立 `LibraryWatchService`：
+
+- 按父目录建立 `fs.watch`，用引用计数和被跟踪 basename 过滤事件；
+- 同一目录中的多个资料共享一个 watcher；
+- 事件 300ms 防抖，并对同一路径串行执行状态更新；
+- watcher 错误时关闭并记录降级状态，由空闲 `stat` 校验接管；
+- 设置可配置软上限，例如 512 个目录；超过后优先近期/收藏项，其余使用周期校验；
+- 不使用递归 watcher 去发现未知文件；
+- 应用退出时统一释放 watcher 和 timer；
+- 热路径只记录 debug 级聚合信息，不逐事件写 info 日志。
+
+### 7.6 路径身份规则
+
+本地路径需要同时保存：
+
+| 字段 | 用途 |
+| --- | --- |
+| `filePath` | 用户可见、打开文件的实际路径 |
+| `pathKey` | 本地等值查询和唯一约束 |
+| `fileIdentity` | 短期辅助识别移动/重命名 |
+
+`pathKey` 规则：
+
+1. 执行 `path.resolve/normalize`；
+2. 文件存在时尽量使用 `realpath`，避免同一符号链接目标重复；
+3. Windows 统一盘符和分隔符并按文件系统大小写不敏感处理；
+4. macOS/Linux 不应无条件全局小写，避免在大小写敏感卷上合并不同文件；
+5. UNC、长路径和非 ASCII 文件名必须保留；
+6. 不把 `pathKey` 发到日志、埋点或服务端。
+
+`fileIdentity` 可由可靠平台的 `dev + ino + birthtime` 组成，只在短时间、相邻事件中辅助重命名；两个硬链接即使 identity 相同，也按路径保留两条资料，避免全局误合并。
+
+`clientSourceKey` 必须调用现有分享来源键算法或提取后的同一 Main 进程纯函数生成，不能在资料库中另写一套规范化规则：
+
+- 只有当前类型本来就支持分享时才生成；
+- 只用于本机匹配和用户主动分享时的现有发布协议；
+- 进入资料库、搜索或回填不会批量把这些 key 发往服务端；
+- 云端接口返回的是用户已经主动分享/部署时服务端保存的 key；
+- 文件重命名可能改变路径型 key，因此“本地原件/云端版本”关联是辅助能力，不作为资料身份或删除依据。
+
+### 7.7 手动修复与重建
+
+资料库设置提供「修复本地索引」，流程为：
+
+1. 校验全部已索引路径；
+2. 清理超过保留期的 missing 墓碑；
+3. 清理不存在会话的孤儿关系；
+4. 重置并继续历史消息回填；
+5. 重新建立目录 watcher；
+6. 不删除收藏；
+7. 不扫描所有会话 `cwd`。
+
+另提供更强的「重建本地索引」诊断动作，需明确确认：
+
+- 重建 `library_local_artifacts` 和关系；
+- 从历史会话及显式添加记录重新收录；
+- 收藏按可重新匹配的本地资料保留，无法匹配的收藏清理；
+- 不删除任何真实文件或会话。
+
+### 7.8 缩略图与预览
+
+1. 缩略图只对可见卡片懒加载；
+2. Renderer 缓存键使用 `filePath + fileMtimeMs`，主进程在重新 `stat` 后使用规范化路径、真实 mtime、大小和 rendererVersion 复核；
+3. 缓存位于客户端 `userData/library/thumbnails`，不写 SQLite BLOB；
+4. 文件变化后旧缓存自然失效，后台可按 LRU 清理；
+5. macOS 使用 Electron `nativeImage.createThumbnailFromPath()`，同版本请求去重且并发不超过 3；失败时显示类型封面；
+6. HTML、SVG 和文档继续使用现有隔离/清洗预览链路；
+7. 不为生成缩略图把本地文件上传到云端；
+8. 云端站点首期可以使用类型封面，不自动抓取不可信网站截图。
+
+## 8. 本地 SQLite 设计
+
+### 8.1 迁移策略
+
+资料库表由独立 `src/main/library/libraryMigrations.ts` 创建，再由 `SqliteStore.initializeTables()` 调用。这样避免继续扩大已经很大的 `sqliteStore.ts`。
+
+迁移必须：
+
+- 使用 `CREATE TABLE/INDEX IF NOT EXISTS`；
+- 对新增列使用当前仓库既有 `PRAGMA table_info()` 风格；
+- 在单事务中执行；
+- 不假设 SQLite 外键已开启；
+- 不存缩略图和大段 JSON；
+- 为回滚/备份保持与现有 `lobsterai.sqlite` 同一文件。
+
+### 8.2 本地产物表
+
+```sql
+CREATE TABLE IF NOT EXISTS library_local_artifacts (
+  id TEXT PRIMARY KEY,
+  path_key TEXT NOT NULL UNIQUE,
+  file_path TEXT NOT NULL,
+  file_name TEXT NOT NULL,
+  extension TEXT NOT NULL DEFAULT '',
+  artifact_type TEXT NOT NULL,
+  category TEXT NOT NULL,
+  file_identity TEXT,
+  client_source_key TEXT,
+  size_bytes INTEGER,
+  file_mtime_ms INTEGER,
+  sort_time_ms INTEGER NOT NULL,
+  availability TEXT NOT NULL DEFAULT 'available',
+  origin TEXT NOT NULL DEFAULT 'conversation',
+  first_seen_at INTEGER NOT NULL,
+  last_seen_at INTEGER NOT NULL,
+  last_verified_at INTEGER NOT NULL,
+  missing_since INTEGER,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_library_local_updated
+ON library_local_artifacts(availability, sort_time_ms DESC, id DESC);
+
+CREATE INDEX IF NOT EXISTS idx_library_local_category_updated_v2
+ON library_local_artifacts(category, availability, sort_time_ms DESC, id DESC);
+
+CREATE INDEX IF NOT EXISTS idx_library_local_client_source
+ON library_local_artifacts(client_source_key);
+```
+
+字段约束：
+
+- `artifact_type/category/availability/origin` 使用共享 `as const` 常量校验；
+- `sort_time_ms` 在收录时取文件 `mtime`，无法取得时回退 `first_seen_at`，避免列表查询对排序列使用函数；
+- `file_mtime_ms` 保留真实文件时间，用于详情、变化判断和缩略图失效；
+- `availability` 首期为 `available | missing | permission_denied`；
+- `origin` 首期为 `conversation | manual | share | backfill`；
+- `client_source_key` 只保存不可逆来源键，不保存账号凭证。
+
+### 8.3 会话关系表
+
+```sql
+CREATE TABLE IF NOT EXISTS library_artifact_sessions (
+  artifact_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  relation_kind TEXT NOT NULL,
+  first_related_at INTEGER NOT NULL,
+  last_related_at INTEGER NOT NULL,
+  last_message_id TEXT,
+  session_artifact_id TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (artifact_id, session_id),
+  FOREIGN KEY (artifact_id)
+    REFERENCES library_local_artifacts(id) ON DELETE CASCADE,
+  FOREIGN KEY (session_id)
+    REFERENCES cowork_sessions(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_library_rel_session
+ON library_artifact_sessions(session_id, last_related_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_library_rel_artifact_latest
+ON library_artifact_sessions(artifact_id, last_related_at DESC, session_id DESC);
+```
+
+外键用于表达模型并兼容未来统一开启外键，但以下路径仍需显式清理：
+
+- 会话删除前删除关系；
+- 本地产物永久清理前删除关系；
+- 启动修复时删除会话或产物已不存在的孤儿关系。
+
+### 8.4 收藏表
+
+```sql
+CREATE TABLE IF NOT EXISTS library_favorites (
+  owner_scope TEXT NOT NULL,
+  item_kind TEXT NOT NULL,
+  item_id TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (owner_scope, item_kind, item_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_library_favorites_scope_updated
+ON library_favorites(owner_scope, updated_at DESC);
+```
+
+不为收藏建立服务端表。收藏的 `item_id`：
+
+- 本地产物为本地 `artifactId`；
+- 分享文件为 `shareId`；
+- 部署站点为 `shareId`，由 `item_kind` 与分享区分。
+
+### 8.5 显式添加记录
+
+为了在索引重建时恢复用户主动添加的文件，增加轻量表：
+
+```sql
+CREATE TABLE IF NOT EXISTS library_manual_sources (
+  path_key TEXT PRIMARY KEY,
+  file_path TEXT NOT NULL,
+  added_at INTEGER NOT NULL
+);
+```
+
+首期建议使用该表而不是把路径数组塞入单个 JSON；它只记录用户显式选择的文件，不代表扫描根目录。
+
+### 8.6 最新会话查询
+
+关系表是唯一事实来源，不在 `library_local_artifacts` 冗余 `latest_session_id`。单项逻辑等价于：
+
+```sql
+SELECT
+  r.session_id,
+  r.last_related_at,
+  r.last_message_id,
+  r.session_artifact_id,
+  s.title,
+  s.updated_at
+FROM library_artifact_sessions r
+JOIN cowork_sessions s ON s.id = r.session_id
+WHERE r.artifact_id = ?
+ORDER BY
+  r.last_related_at DESC,
+  s.updated_at DESC,
+  r.session_id DESC
+LIMIT 1;
+```
+
+列表实现必须批量查询或使用带索引的相关子查询，禁止对每张卡发一条 SQLite 请求。目标页大小建议 24～48。
+
+### 8.7 本地分页游标
+
+默认最近更新游标包含：
+
+```json
+{
+  "sortTime": 1786928400000,
+  "itemId": "local-artifact-uuid"
+}
+```
+
+查询使用显式谓词：
+
+```sql
+WHERE (
+  sort_time_ms < ?
+  OR (
+    sort_time_ms = ?
+    AND id < ?
+  )
+)
+ORDER BY sort_time_ms DESC, id DESC
+LIMIT ?;
+```
+
+游标是分页状态，不是安全凭证；解析失败返回参数错误并从第一页重新加载。
+
+## 9. 客户端契约设计
+
+### 9.1 共享常量
+
+新增 `src/shared/library/constants.ts`，集中定义并派生类型：
+
+```ts
+export const LibraryItemKind = {
+  LocalArtifact: 'local_artifact',
+  SharedFile: 'shared_file',
+  DeployedSite: 'deployed_site',
+} as const;
+
+export const LibrarySourceFilter = {
+  Local: 'local',
+  Cloud: 'cloud',
+} as const;
+
+export const LibraryCategory = {
+  All: 'all',
+  Web: 'web',
+  Slides: 'slides',
+  Document: 'document',
+  Spreadsheet: 'spreadsheet',
+  Image: 'image',
+  Media: 'media',
+  Site: 'site',
+  Other: 'other',
+} as const;
+
+export const LibraryCloudAvailabilityFilter = {
+  All: 'all',
+  Available: 'available',
+  Unavailable: 'unavailable',
+} as const;
+
+// 仅保留给服务端普通分享 API 的兼容参数，不作为云端页 UI 筛选。
+export const LibrarySharedStatusFilter = {
+  All: 'all',
+  Live: 'live',
+  Disabled: 'disabled',
+} as const;
+
+export const LibraryRelationKind = {
+  Created: 'created',
+  Modified: 'modified',
+  Referenced: 'referenced',
+} as const;
+```
+
+IPC channel、状态、排序和可用性也必须集中定义，不能在 Main、Preload、Renderer 三处重复裸字符串。
+
+### 9.2 UI 联合类型
+
+```ts
+interface LibraryItemBase {
+  itemKind: LibraryItemKind;
+  itemId: string;
+  title: string;
+  category: LibraryCategory;
+  sortTime: number;
+  createdAt: number;
+  isFavorite: boolean;
+  latestSession?: LibrarySessionRef;
+}
+
+interface LocalArtifactItem extends LibraryItemBase {
+  itemKind: 'local_artifact';
+  filePath: string;
+  artifactType: ArtifactType;
+  extension: string;
+  sizeBytes?: number;
+  availability: LibraryAvailability;
+  relatedSessionCount: number;
+}
+
+interface SharedFileItem extends LibraryItemBase {
+  itemKind: 'shared_file';
+  shareId: string;
+  url: string;
+  sourceType: HtmlShareSourceType;
+  accessMode: HtmlShareAccessMode;
+  status: HtmlShareStatus;
+  disabledSource?: HtmlShareDisabledSource;
+  entryFile?: string;
+  totalBytes?: number;
+  clientSourceKey?: string;
+}
+
+interface DeployedSiteItem extends LibraryItemBase {
+  itemKind: 'deployed_site';
+  shareId: string;
+  url: string;
+  siteKind: SiteKind;
+  siteStatus: SiteStatus;
+  accessMode: HtmlShareAccessMode;
+  deploymentId?: string;
+  deploymentStatus?: string;
+}
+```
+
+绝对 `filePath` 只存在于本地 IPC 返回，不得被拼入云端 DTO 或埋点。
+
+云端列表可访问性单独建模，不能覆盖本地产物可用性、分享原始状态或站点原始状态：
+
+```ts
+interface LibraryCloudListOptions {
+  kind?: LibraryCloudKind;
+  category?: LibraryCategory;
+  availability?: LibraryCloudAvailabilityFilter;
+  sharedStatus?: LibrarySharedStatusFilter;
+  keyword?: string;
+  cursor?: string;
+  pageSize?: number;
+}
+
+interface LibrarySharedStatusCounts {
+  all: number;
+  live: number;
+  disabled: number;
+}
+
+interface HtmlShareAnalytics {
+  summary: {
+    accesses: number;
+    uniqueVisitors: number;
+  };
+  trend: Array<{
+    date: string;
+    accesses: number;
+    uniqueVisitors: number;
+  }>;
+  meta: {
+    from: string;
+    to: string;
+    granularity: 'day';
+    timeZone: string;
+    dataScope: 'share_lifetime';
+    visitorMetric: 'ip_hash_estimate';
+    retentionDays: number;
+    dataAvailableFrom: string | null;
+  };
+}
+```
+
+`availability` 是 Renderer → Main 的统一云端筛选语义。`sharedStatus` 与 `LibrarySharedStatusCounts` 仅用于兼容当前普通分享服务端合同和诊断，不在云端页渲染「已打开 / 已关闭」筛选或数量。
+
+分享分析属于 HtmlShare 领域而不是 Library 联合列表模型。`HtmlShareIpc` 增加集中定义的 `GetAnalytics`，日期粒度、数据范围和响应字段使用共享类型；不要把 `SiteAnalytics` 直接复用为分享类型，因为网站的 `pageViews/topPages` 与文件的 `accesses` 语义不同。
+
+### 9.3 IPC
+
+建议的最小 IPC：
+
+| Channel | 方向 | 用途 |
+| --- | --- | --- |
+| `library:listLocal` | Renderer → Main | 查询本地产物 |
+| `library:listCloud` | Renderer → Main | 通过鉴权客户端查询分享/站点 |
+| `library:getLocalDetail` | Renderer → Main | 获取文件、全部会话和本地关联 |
+| `library:recordCandidates` | Renderer → Main | 批量收录会话候选 |
+| `library:addLocalFiles` | Renderer → Main | 系统选择器显式添加 |
+| `library:setFavorite` | Renderer → Main | 修改本地收藏 |
+| `library:trashLocal` | Renderer → Main | 确认后移到系统废纸篓 |
+| `library:repairIndex` | Renderer → Main | 启动后台修复 |
+| `library:getIndexStatus` | Renderer → Main | 回填/校验进度 |
+| `library:changed` | Main → Renderer | 增量刷新通知 |
+| `htmlShare:getAnalytics` | Renderer → Main | 查询当前 owner 的分享文件访问分析 |
+
+输入校验：
+
+- 列表 `pageSize` 限制 1～100；
+- 关键词截断到 100 个 Unicode 字符；
+- 本地动作必须先按 ID 从数据库重新解析路径，不能让 Renderer 传任意路径删除；
+- `trashLocal` 只接受本地资料 ID；
+- `recordCandidates` 单批限制数量和总字符串长度；
+- Renderer 发来的 `artifactType/relationKind` 必须重新校验；
+- 所有 handler 返回可判别的 `success/data/code/error`，不把 Error 对象透传。
+
+### 9.4 Renderer 状态
+
+首期由 `LibraryView` 及其云端子组件维护页面级状态：
+
+- 当前来源、分类、云端可访问性、关键词、排序和本地产物视图；
+- 每个 `queryKey` 的来源游标、已加载项、loading/error；
+- 当前预览目标、标题栏浮层和异步 request ID；
+- 当前分享设置目标、设置/分析子页、详情请求、分析 queryKey、写操作提交态和服务端回滚快照；
+- 本地增量变更后的局部替换；
+- 账号 scope 变化时清除云端页面状态。
+
+不为首期资料库新增 Redux slice，也不把缩略图 Data URL、完整文件内容或所有历史消息放入 Redux。若后续需要跨路由缓存，再以 `queryKey + ownerScope` 为边界提取独立 store，不能把本地与云端混成一个缓存。
+
+分析页按 `ownerScope + shareId + from + to` 缓存在组件生命周期内；离开云端来源或账号 scope 变化时清空。详情错误与分析错误相互隔离，分析请求失败不能清空已经加载的设置数据。现有网站趋势图可提取为无业务字段的 `AccessAnalyticsChart`，由调用方传入指标标签与序列；不允许为了复用视觉而把分享响应伪装成 `SiteAnalytics`。
+
+## 10. 服务端详细设计
+
+### 10.1 服务端只管理云端资料
+
+服务端不接收或保存：
+
+- 本地 Artifact ID 主表；
+- 本地绝对/相对文件路径；
+- 本地文件存在状态；
+- 本地 Artifact 与多个会话的完整关系；
+- 本地收藏；
+- 本地缩略图。
+
+服务端变更收敛为：
+
+1. 新增一个只读云端资料聚合接口；
+2. 补齐分享内容更新和站点重新部署时的最新 `sessionId/artifactId` 持久化；
+3. 保留普通分享原始状态筛选和状态 facet 作为服务端兼容能力；统一可访问性由客户端对分享和站点状态归一化，并通过有界跨页读取保证当前版本的筛选完整性；
+4. 分享设置详情与写操作继续复用现有分享接口；
+5. 必要时在经过 MySQL 5.7 `EXPLAIN` 和压测后增加普通联合索引。
+
+### 10.2 为什么不直接拼两个旧列表
+
+`GET /api/html-shares/my` 当前存在以下限制：
+
+- 混合普通分享和部署来源；
+- 只支持 page/pageSize；
+- 按 `created_at DESC`，不能表达最近更新；
+- 列表 DTO 不含 `sessionId/artifactId/clientSourceKey/updatedAt/contentUpdatedAt`；
+- 不支持资料库分类和关键词；
+- 和 `/api/sites` 的状态、时间、分页规则不同。
+
+客户端分别请求旧接口再长期拼接，会把底层表和来源类型判断复制到 Electron，并造成排序/分页不稳定。因此新增只读门面：
+
+```http
+GET /api/library/cloud-items
+```
+
+现有 `/api/html-shares/my` 和 `/api/sites` 保持兼容，不删除、不改变旧响应。
+
+### 10.3 请求参数
+
+| 参数 | 类型 | 默认 | 约束 |
+| --- | --- | --- | --- |
+| `kind` | string | `all` | `all/shared_file/deployed_site` |
+| `category` | string | `all` | 与客户端 LibraryCategory 一致 |
+| `sharedStatus` | string | `all` | 兼容参数：`all/live/disabled`；仅 `kind=shared_file` 时允许非 `all`，统一云端 UI 不直接使用 |
+| `keyword` | string | 空 | 最长 100 字符，前后去空格 |
+| `cursor` | string | 空 | Base64URL JSON，不含敏感信息 |
+| `pageSize` | int | 24 | 1～100 |
+
+首期只支持最近更新倒序。后续增加名称或创建时间排序时，接口增加明确 `sort` 枚举并为每种排序定义独立游标；不得接受任意 SQL 列名。
+
+关键词必须参数化，并对 `LIKE` 中的 `%`、`_` 和转义字符做显式处理，防止用户输入意外扩大匹配范围。参数化负责防注入，转义负责产品语义。`sharedStatus` 不是任意数据库状态透传；服务端使用固定白名单，并在 `kind` 不匹配时拒绝隐藏的脏筛选条件。
+
+### 10.4 响应
+
+以下示例是现有 `ApiResponse.success(...)` 包装中的 `data` 部分，接口继续使用服务端统一响应外壳：
+
+```json
+{
+  "list": [
+    {
+      "itemKind": "shared_file",
+      "itemId": "shr_xxx",
+      "title": "资料库产品方案",
+      "url": "https://example/s/shr_xxx",
+      "category": "document",
+      "sourceType": "document_file",
+      "entryFile": "资料库产品方案.docx",
+      "accessMode": "public",
+      "status": "live",
+      "disabledSource": null,
+      "moderationStatus": "approved",
+      "totalFiles": 1,
+      "totalBytes": 128000,
+      "sessionId": "local-session-id",
+      "artifactId": "session-artifact-id",
+      "clientSourceKey": "sha256-source-key",
+      "createdAt": "2026-08-17T10:00:00",
+      "updatedAt": "2026-08-17T10:10:00",
+      "contentUpdatedAt": "2026-08-17T10:10:00",
+      "sortTime": 1786932600000
+    },
+    {
+      "itemKind": "deployed_site",
+      "itemId": "shr_site_xxx",
+      "title": "有道龙虾产品官网",
+      "url": "https://example/s/shr_site_xxx",
+      "category": "site",
+      "siteKind": "static_site",
+      "siteStatus": "online",
+      "shareStatus": "live",
+      "accessMode": "public",
+      "deploymentId": "dep_xxx",
+      "deploymentStatus": "live",
+      "sessionId": "local-session-id",
+      "artifactId": "session-artifact-id",
+      "clientSourceKey": "sha256-project-key",
+      "createdAt": "2026-08-16T09:00:00",
+      "updatedAt": "2026-08-17T09:30:00",
+      "sortTime": 1786930200000
+    }
+  ],
+  "nextCursor": "base64url...",
+  "hasMore": true,
+  "counts": {
+    "sharedFile": 3,
+    "deployedSite": 2
+  },
+  "sharedStatusCounts": {
+    "all": 3,
+    "live": 2,
+    "disabled": 1
+  }
+}
+```
+
+约束：
+
+- `createdAt/updatedAt/contentUpdatedAt` 保持现有 API 的 `LocalDateTime` 序列化，避免破坏既有详情类型；
+- `sortTime` 由服务端按显式 `Asia/Shanghai` 业务时区转换为 Unix epoch milliseconds，不能依赖 JVM 默认时区；客户端可直接与本地毫秒时间合并，不重复猜测时区；
+- 不返回分享码、文件存储 URL、构建日志、环境变量或管理凭证；
+- `sessionId/artifactId` 只是最新来源指针，不代表服务端保存完整关系；
+- `counts` 使用与当前 keyword/category 相同的过滤，但忽略 kind 和 sharedStatus；首期 UI 不显示来源数量，该字段仅保留给诊断和兼容消费者；
+- `sharedStatusCounts` 只统计普通分享，应用当前 keyword/category，但忽略当前 sharedStatus；统一云端 UI 不显示该 facet，仅保留给兼容消费者；
+- 分享文件常规列表和 `sharedStatusCounts.all` 只包含 `live/disabled`，不包含 `failed/deleted`；
+- `disabledSource` 可以随分享文件列表返回，也可以在设置页详情请求中获取；任何可恢复判断都必须以服务端最新详情为准。
+
+### 10.5 云端分类规则
+
+普通分享使用显式白名单：
+
+```text
+html_file
+image_file
+svg_file
+document_file
+markdown_file
+mermaid_file
+```
+
+部署站点只包含 `node_service_deployment` 和 `static_service_deployment`。使用白名单可以防止以后增加新的内部 `source_type` 时未经产品确认自动出现在资料库。
+
+分类使用确定性 CASE：
+
+| 条件 | category |
+| --- | --- |
+| 部署来源、`html_file` | `web` |
+| `image_file/svg_file` | `image` |
+| `markdown_file` | `document` |
+| `mermaid_file` | `other` |
+| `document_file` + pptx | `slides` |
+| `document_file` + xls/xlsx/csv/tsv | `spreadsheet` |
+| 其他 `document_file` | `document` |
+| 未识别 | `other` |
+
+扩展名判断对 `entry_file` 使用 `LOWER(...)`，但不要为此创建函数索引；先以 owner/source 过滤缩小范围。
+
+### 10.6 MySQL 5.7 查询形态
+
+聚合查询使用派生表和 `UNION ALL`，不使用 MySQL 8 CTE 或窗口函数。逻辑示意：
+
+```sql
+SELECT cloud_item.*
+FROM (
+  SELECT
+    'shared_file' AS item_kind,
+    s.share_id AS item_id,
+    s.title,
+    s.public_url AS url,
+    s.source_type,
+    s.entry_file,
+    CASE
+      WHEN s.source_type = 'html_file' THEN 'web'
+      WHEN s.source_type IN ('image_file', 'svg_file') THEN 'image'
+      WHEN s.source_type = 'markdown_file' THEN 'document'
+      WHEN s.source_type = 'mermaid_file' THEN 'other'
+      WHEN LOWER(s.entry_file) LIKE '%.pptx' THEN 'slides'
+      WHEN LOWER(s.entry_file) LIKE '%.xls'
+        OR LOWER(s.entry_file) LIKE '%.xlsx'
+        OR LOWER(s.entry_file) LIKE '%.csv'
+        OR LOWER(s.entry_file) LIKE '%.tsv' THEN 'spreadsheet'
+      ELSE 'document'
+    END AS category,
+    s.access_mode,
+    s.status,
+    s.moderation_status,
+    s.total_files,
+    s.total_bytes,
+    s.session_id,
+    s.artifact_id,
+    s.client_source_key,
+    s.created_at,
+    s.updated_at,
+    s.content_updated_at,
+    COALESCE(s.content_updated_at, s.updated_at, s.created_at) AS sort_time,
+    NULL AS deployment_id,
+    NULL AS deployment_status
+  FROM html_shares s
+  WHERE <owner predicate>
+    AND s.source_type IN (
+      'html_file',
+      'image_file',
+      'svg_file',
+      'document_file',
+      'markdown_file',
+      'mermaid_file'
+    )
+    AND s.status IN ('live', 'disabled')
+
+  UNION ALL
+
+  SELECT
+    'deployed_site' AS item_kind,
+    s.share_id AS item_id,
+    s.title,
+    s.public_url AS url,
+    s.source_type,
+    s.entry_file,
+    'web' AS category,
+    s.access_mode,
+    s.status,
+    s.moderation_status,
+    s.total_files,
+    s.total_bytes,
+    s.session_id,
+    s.artifact_id,
+    s.client_source_key,
+    s.created_at,
+    s.updated_at,
+    s.content_updated_at,
+    COALESCE(d.updated_at, s.updated_at, s.created_at) AS sort_time,
+    d.deployment_id,
+    d.status AS deployment_status
+  FROM html_shares s
+  LEFT JOIN share_deployments d ON d.id = (
+    SELECT d2.id
+    FROM share_deployments d2
+    WHERE d2.share_id = s.share_id COLLATE utf8mb4_general_ci
+    ORDER BY d2.active DESC, d2.created_at DESC, d2.id DESC
+    LIMIT 1
+  )
+  WHERE <owner predicate>
+    AND s.source_type IN (
+      'node_service_deployment',
+      'static_service_deployment'
+    )
+    AND s.status <> 'deleted'
+) cloud_item
+WHERE <keyword/category/sharedStatus/cursor predicate>
+ORDER BY
+  cloud_item.sort_time DESC,
+  cloud_item.item_kind DESC,
+  cloud_item.item_id DESC
+LIMIT <pageSize + 1>;
+```
+
+为保持示意 SQL 可读，上面未展开 `site_kind/site_status/disabled_source` 的完整 CASE。正式实现必须把当前 `SiteMapper.xml` 的站点状态表达式提取为可复用 MyBatis SQL fragment，或用同一共享映射函数生成，不能在资料库中维护一套语义略有差异的状态判断。
+
+站点最新部署查询沿用当前 `SiteMapper.xml` 的相关子查询和 collation 处理，避免在 MySQL 5.7 中引入窗口函数，也避免破坏 `share_deployments.share_id` 索引使用。
+
+`sharedStatus` 在外层派生表查询中仅对 `item_kind = 'shared_file'` 生效；接口已经限制非 `shared_file` 查询不得携带非 `all` 状态，因此 SQL 不需要构造含糊的「站点不受过滤」分支。状态 facet 使用同一普通分享来源与 owner/category/keyword 条件，通过 MySQL 5.7 支持的条件聚合一次返回：
+
+```sql
+SELECT
+  COUNT(*) AS all_count,
+  SUM(CASE WHEN item.status = 'live' THEN 1 ELSE 0 END) AS live_count,
+  SUM(CASE WHEN item.status = 'disabled' THEN 1 ELSE 0 END) AS disabled_count
+FROM (<shared_file branch>) item
+WHERE <keyword/category predicate>;
+```
+
+状态筛选和 facet 均不需要新增表或 MySQL 8 能力。不能在客户端对已加载 24 条记录做过滤后把结果当成云端全部数据。
+
+### 10.7 云端游标
+
+游标内容：
+
+```json
+{
+  "sortTime": 1786932600000,
+  "itemKind": "shared_file",
+  "itemId": "shr_xxx"
+}
+```
+
+对应谓词：
+
+```sql
+cloud_item.sort_time < :sortTimeDateTime
+OR (
+  cloud_item.sort_time = :sortTimeDateTime
+  AND cloud_item.item_kind < :itemKind
+)
+OR (
+  cloud_item.sort_time = :sortTimeDateTime
+  AND cloud_item.item_kind = :itemKind
+  AND cloud_item.item_id < :itemId
+)
+```
+
+规则：
+
+- Base64URL 只用于传输，服务端必须校验字段和长度；
+- 服务端把 cursor 的 epoch milliseconds 按显式 `Asia/Shanghai` 还原为 `LocalDateTime` 后参与 MySQL 比较；
+- 游标不是鉴权依据，owner 条件每次重新从登录上下文解析；
+- 查询 `pageSize + 1` 条判断 `hasMore`；
+- 同一秒大量更新时由 kind + ID 保证稳定顺序；
+- 资源在翻页期间被更新可能回到前页，客户端按 `itemKind:itemId` 去重。
+
+### 10.8 账号边界
+
+接口复用 `PublishingAccountContextResolver`：
+
+- 个人：`user_id = ? AND account_mode = 'personal' AND tob_enterprise_id IS NULL`；
+- 企业：同时匹配 `user_id/account_mode/tob_enterprise_id`；
+- 任何 `shareId` 详情或动作继续验证当前 owner；
+- 不接受客户端自行传 `userId/enterpriseId`；
+- 账号模式切换后客户端重置云端游标和结果。
+
+### 10.9 修复最新会话归属
+
+当前客户端 `htmlShareClient.ts` 在更新 FormData 中已经发送 `sessionId/artifactId`，但服务端链路未完整接收/写入：
+
+1. `HtmlShareController.update()` 增加可选 `sessionId/artifactId`；
+2. `HtmlShareService.updateShare()` 增加参数并做最长 128 字符规范化；
+3. 非空新值覆盖旧值；参数缺失或空白时保留旧值，避免旧客户端把归属清空；
+4. 构造 `HtmlShare updated` 时写入最终值；
+5. `HtmlShareMapper.updateShareContent` 增加：
+
+```sql
+session_id = #{sessionId},
+artifact_id = #{artifactId},
+```
+
+6. 部署复用同一 `shareId` 的更新路径也必须经过可持久化这两个字段的 Mapper；
+7. 只有站点永久删除等明确清理动作才把 lineage 置空；
+8. 增加单元/Mapper 测试，覆盖“首次 A、更新 B、列表返回 B”。
+
+服务端只保存最新指针，不新增云端多对多关系。完整关系仍在本地，因为本地会话可以删除且不会同步到服务端。
+
+### 10.10 现有写接口复用
+
+| 动作 | 复用接口/能力 |
+| --- | --- |
+| 读取分享设置详情 | `GET /api/html-shares/{shareId}` |
+| 创建/更新分享 | `POST/PUT /api/html-shares` |
+| 修改分享访问方式 | `PUT /api/html-shares/{shareId}/access-mode` |
+| 停止/恢复分享 | `PATCH /api/html-shares/{shareId}/status` |
+| 站点详情/分析 | `GET /api/sites/{shareId}` 及 analytics |
+| 站点重命名 | `PATCH /api/sites/{shareId}` |
+| 站点访问方式/状态 | 现有 Site API |
+| 删除站点 | `DELETE /api/sites/{shareId}` |
+| 重新部署 | 现有 share-deployment 流程 |
+
+资料库云端列表是只读门面，不复制任何写状态机。
+
+客户端不得调用 `DELETE /api/html-shares/{shareId}` 后展示「记录已删除」；该接口当前执行的是 disable。分享文件首期也不提交 `allowDownload`，因为服务端尚无该字段和公共下载路径强制校验。
+
+### 10.11 分享文件访问分析接口
+
+新增面向分享所有者的只读接口；现有 `AdminHtmlShareController` 访问统计接口继续服务后台审核，客户端不得调用或复用其包含 IP、User-Agent、Referer 的管理响应。
+
+```http
+GET /api/html-shares/{shareId}/analytics?from=2026-08-13&to=2026-08-19
+Authorization: Bearer <token>
+```
+
+参数规则：
+
+| 参数 | 必填 | 规则 |
+| --- | --- | --- |
+| `shareId` | 是 | 当前发布账号拥有的普通分享 ID；部署来源继续使用 Site analytics |
+| `from` | 否 | `yyyy-MM-dd`；与 `to` 同时省略时默认过去 7 个自然日（含今天） |
+| `to` | 否 | `yyyy-MM-dd`；只传单侧、`from > to`、`to` 晚于统计时区的今天或跨度超过 31 天均返回 `INVALID_PARAMETER` |
+
+服务端通过 `PublishingAccountContextResolver` 解析个人/企业发布账号并校验 owner，不接受客户端传 `userId/accountMode/enterpriseId`。普通分享来源白名单与云端列表一致，状态为 `disabled` 时仍允许所有者读取历史数据；当前 owner 的站点来源返回 `INVALID_PARAMETER` 并提示客户端走 `/api/sites/{shareId}/analytics`。资源不存在、已删除、切换账号或不属于当前 owner 时沿用现有 owner 详情接口的不可见语义，避免泄露资源是否存在。
+
+响应合同：
+
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "summary": {
+      "accesses": 128,
+      "uniqueVisitors": 46
+    },
+    "trend": [
+      {
+        "date": "2026-08-13",
+        "accesses": 20,
+        "uniqueVisitors": 8
+      }
+    ],
+    "meta": {
+      "from": "2026-08-13",
+      "to": "2026-08-19",
+      "granularity": "day",
+      "timeZone": "Asia/Shanghai",
+      "dataScope": "share_lifetime",
+      "visitorMetric": "ip_hash_estimate",
+      "retentionDays": 180,
+      "dataAvailableFrom": "2026-06-01"
+    }
+  }
+}
+```
+
+`trend` 必须按日期升序返回请求范围内的每一天，缺失日期补 0。`summary.accesses` 等于范围内每日有效访问总和；`summary.uniqueVisitors` 必须在整个范围内对 `ip_hash` 去重，不能把每日独立访客相加。`retentionDays/timeZone` 从服务端实际配置读取，`dataAvailableFrom` 为该分享当前仍保留统计的最早日期；没有任何统计时可为 `null`。
+
+复用现有 V52 表，不新增 DDL：
+
+- `html_share_access_stats`：按 `share_id + 内容版本 + stat_date` 保存有效访问总数；
+- `html_share_ip_access_stats`：按 `share_id + 内容版本 + stat_date + ip_hash` 保存访客访问；
+- `html_share_access_dimension_stats`：首期 owner 响应不使用，避免暴露来源与设备明细。
+
+现有 `getAccessTrend()` 只查询当前 `source_sha256/content_updated_at`，不能直接用于资料库分析，否则文件更新后历史趋势会消失。新增 owner 专用 Mapper 查询，按稳定 `shareId` 汇总全部内容版本。MySQL 5.7 兼容查询形态为：
+
+```sql
+-- 每日访问次数（跨内容版本）
+SELECT stat_date,
+       SUM(total_access_count) AS accesses
+FROM html_share_access_stats
+WHERE share_id = #{shareId}
+  AND stat_date BETWEEN #{from} AND #{to}
+GROUP BY stat_date
+ORDER BY stat_date ASC;
+
+-- 每日独立访客（跨内容版本去重）
+SELECT stat_date,
+       COUNT(DISTINCT ip_hash) AS unique_visitors
+FROM html_share_ip_access_stats
+WHERE share_id = #{shareId}
+  AND stat_date BETWEEN #{from} AND #{to}
+GROUP BY stat_date
+ORDER BY stat_date ASC;
+
+-- 整个范围独立访客；不能改成 SUM(每日 unique_visitors)
+SELECT COUNT(DISTINCT ip_hash) AS unique_visitors
+FROM html_share_ip_access_stats
+WHERE share_id = #{shareId}
+  AND stat_date BETWEEN #{from} AND #{to};
+```
+
+范围访问总数可由每日结果在 Service 层使用 `long` 累加，或使用同条件 `SUM(total_access_count)`；响应前钳制/验证到非负安全整数。Service 负责生成日期序列并补零，不依赖 MySQL 8 的递归 CTE。现有 `idx_html_share_access_share_date (share_id, stat_date)` 和 `idx_html_share_ip_access_top (share_id, stat_date, access_count)` 可支撑首期 7/30 天范围过滤，但 `COUNT(DISTINCT ip_hash)` 仍需在 MySQL 5.7 测试库执行 `EXPLAIN` 和量级压测；只有证明确有瓶颈时才单独评审覆盖索引或预聚合，不能随本功能直接加未经验证的生产索引。
+
+隐私约束：owner 接口只返回聚合计数，不返回 `ip_hash/ip_masked/last_user_agent/last_referer` 或维度明细；普通日志不记录分享 URL、分享码或访客标识。统计链路、清理任务和后台审核继续使用原表，不因新增 owner 接口改变。
+
+### 10.12 数据库变更与索引
+
+首期不新增资料库服务端主表。现有字段已经足以返回云端资料：
+
+- `html_shares.session_id/artifact_id/source_type/client_source_key`；
+- `html_shares.created_at/updated_at/content_updated_at`；
+- `share_deployments` 的状态和更新时间。
+
+当前 Web Demo 冻结范围内，状态筛选、状态 facet、访问权限编辑、状态编辑、详情页以及精简菜单都不需要数据库 DDL。它们只使用现有 `html_shares.status/access_mode/disabled_source/created_at/updated_at/total_bytes`。Demo 中的「允许下载」不进入首期，因而本方案仍维持“无新增数据库字段”的结论。
+
+如果未来正式增加下载权限，必须另开数据库迁移方案，例如评审 `allow_download TINYINT(1) NOT NULL DEFAULT 1` 的兼容默认值、写接口并发更新和公共下载端强制校验；在这些条件完成前，不能只为匹配 Demo 视觉提前加列。
+
+先在与生产量级相近的数据上执行 `EXPLAIN`。如果 owner 下记录量和排序延迟需要优化，再通过独立迁移评估：
+
+```sql
+ALTER TABLE html_shares
+  ADD KEY idx_html_shares_owner_source_updated (
+    user_id,
+    account_mode,
+    tob_enterprise_id,
+    source_type,
+    updated_at,
+    share_id
+  );
+```
+
+注意：
+
+1. 该索引只是候选，不能未经 `EXPLAIN` 直接上线；
+2. `COALESCE` 排序不能完全利用普通索引，旧数据量大时可先回填 `updated_at = created_at` 并让新写入始终非空，再评估是否统一按 `updated_at` 排序；
+3. 不使用 MySQL 8 函数索引；
+4. 不使用窗口函数、CTE、`JSON_TABLE`；
+5. DDL 通过现有发布/DBA 流程执行并检查 `information_schema`，不能假设仅放入 `sql/Vxx__*.sql` 就会自动生效；
+6. 本文档不记录任何数据库账号、密码或测试环境连接串。
+
+### 10.13 兼容与灰度
+
+上线顺序建议：
+
+1. 服务端先上线新云端列表、分享 owner analytics 只读接口和 lineage 修复；
+2. 用旧客户端验证原分享/站点接口不受影响；
+3. 分享分析图标受客户端功能开关控制，确认 owner analytics 已在目标环境上线后再开放；
+4. analytics 返回 404/`FEATURE_UNAVAILABLE` 时只隐藏当前账号 scope 的分析入口并保留设置页，绝不回退调用 Admin 接口；
+5. 客户端资料库功能灰度；
+6. 云端列表接口 404/能力未开放时，客户端可临时回退 `/api/html-shares/my + /api/sites`，但需标记为降级模式，禁用不可靠的全局最近更新和会话跳转；
+7. 新接口稳定后移除长期双实现，不让回退成为永久架构；
+8. 最后将独立站点入口重定向到资料库。
+
+### 10.14 错误语义
+
+新列表接口不需要新增资源级错误码：
+
+| 场景 | 处理 |
+| --- | --- |
+| `kind/category/sharedStatus/pageSize/keyword` 非法或 kind/status 组合不合法 | 复用 `INVALID_PARAMETER` |
+| cursor 不能解析或字段越界 | `INVALID_PARAMETER`，客户端清游标后可重试第一页 |
+| 未登录/Token 失效 | 复用现有鉴权响应 |
+| 企业/个人功能未开放 | 复用发布能力不可用错误，如现有 `FEATURE_UNAVAILABLE` |
+| 服务端内部查询失败 | 复用统一内部错误，不返回 SQL |
+
+分享分析接口额外把非法日期、只传单侧日期、未来日期和超过 31 天的范围归一为 `INVALID_PARAMETER`；统计未启用或尚无数据时成功返回全 0 趋势及真实 `meta`，不把“没有数据”当成服务错误。
+
+来源级失败由客户端展示在云端区域；不能把云端失败转成整个 Library IPC 调用的本地失败。
+
+## 11. 关键数据流
+
+### 11.1 新会话生成文件
+
+```text
+OpenClaw/Cowork 消息
+  -> 现有 Artifact 识别
+  -> Renderer 批量提交 candidate
+  -> Main 规范化路径 + stat
+  -> SQLite 事务 upsert 文件与会话关系
+  -> 广播 library:changed
+  -> 当前资料库局部插入/更新
+```
+
+同一批 20 个文件使用一次事务和一次变更广播，避免频繁刷新。
+
+### 11.2 多会话修改同一文件
+
+1. 会话 B 候选解析到与会话 A 相同 `pathKey`；
+2. 更新原 `library_local_artifacts` 文件信息；
+3. 新增/更新 `(artifact_id, session_B)` 关系；
+4. A 关系保留；
+5. 最新会话查询返回 B；
+6. UI 把卡片从 A 组移动到 B 组，但卡片 `itemId` 不变。
+
+### 11.3 删除会话
+
+1. 用户确认删除；
+2. Cowork SQLite 事务先清理 `library_artifact_sessions`；
+3. 再清理 capsule、message、session；
+4. 事务提交；
+5. 广播会话和资料库变更；
+6. UI 对受影响资料重新计算分组；
+7. 不触碰真实文件、资料主体、云端 `sessionId`。
+
+### 11.4 文件外部变化
+
+1. 父目录 watcher 收到事件；
+2. 防抖并重新 `stat`；
+3. 内容修改：更新大小、mtime、verifiedAt，缩略图 key 改变；
+4. 重命名：可靠匹配则更新 pathKey/filePath；
+5. 删除：标记 missing，移出默认结果并清理收藏；
+6. 不自动新增某个会话关系。
+
+### 11.5 创建或更新分享
+
+1. 用户从本地产物详情调用现有分享 Controller；
+2. Controller 继续做订阅、压缩、上传、权限和状态处理；
+3. 请求携带当前有效 `sessionId/sessionArtifactId/clientSourceKey`；
+4. 服务端创建或更新 `html_shares`；
+5. 成功后刷新云端资料源；
+6. 本地原件仍是一条独立资料，内容不会因刷新资料库而再次上传。
+
+### 11.6 重新部署站点
+
+1. 用户从资料库站点动作进入现有部署流程；
+2. 项目解析、配额、构建、上传和部署全部复用；
+3. 复用稳定 `shareId` 时更新最新 `sessionId/artifactId`；
+4. 云端资料接口按最新部署更新时间把站点移动到列表前部；
+5. 站点详情仍由 `/api/sites/{shareId}` 获取完整状态。
+
+### 11.7 管理云端资源
+
+1. 用户进入「云端」，客户端以 `kind=all`、当前 `category/keyword/availability` 请求 Main；
+2. Main 把界面中的「网站」类型转换为 `kind=deployed_site`，把其他具体类型转换为 `kind=shared_file`，并从聚合接口读取稳定游标页；
+3. Main 将普通分享和部署站点归一为「可访问 / 不可访问」；服务端尚无统一 availability 参数时，有界读取后续页直到填满一页、来源耗尽或达到安全上限；
+4. Renderer 直接渲染统一四列扁平列表，不执行会话分组；
+5. 用户点击分享条目后先用列表快照进入设置页并请求分享详情；点击站点条目进入网站设置页，分析作为标题栏独立动作；
+6. 分享设置修改访问权限或状态时调用既有写接口，成功后刷新当前云端查询，失败时回滚；
+7. 打开/复制链接统一使用服务端生成的当前公共 URL；
+8. 相关会话只在本地按需解析，不改变云端记录和排序。
+
+### 11.8 查看分享文件访问分析
+
+```text
+分享设置页点击「数据分析」
+  -> Renderer 生成 ownerScope + shareId + from + to queryKey
+  -> htmlShare:getAnalytics IPC
+  -> Main 校验 shareId 和 yyyy-MM-dd 范围
+  -> HtmlShareClient 携带当前发布账号鉴权请求 owner analytics
+  -> 服务端校验 owner 与普通分享来源
+  -> 按 shareId 聚合 V52 每日表和 IP 去重表的所有内容版本
+  -> Service 补齐日期并返回 summary/trend/meta
+  -> Renderer 更新局部指标和折线图
+```
+
+切换日期范围只重查分析数据，不重新请求云端列表或分享设置详情。迟到响应按 queryKey 丢弃；分析失败留在分析页局部处理，返回后设置草稿仍保留。分享停止不删除统计；切换个人/企业发布账号时立即清除分析缓存并回到云端列表。
+
+## 12. 安全、隐私和性能
+
+### 12.1 隐私
+
+禁止上报或写入普通日志：
+
+- 本地完整文件路径；
+- 文件名或会话标题原文；
+- 本地搜索关键词；
+- 缩略图或文件内容；
+- 收藏的具体 item ID；
+- 分享码、访问凭证、环境变量。
+- 分享访客的 `ip_hash/ip_masked`、User-Agent、Referer 或可反推个人的访问明细。
+
+允许的聚合埋点维度：
+
+- 入口来源；
+- itemKind/category；
+- 视图类型和排序；
+- 动作名称与成功/失败原因码；
+- 本地/云端加载耗时区间；
+- 索引数量区间和回填阶段；
+- 是否离线，不含资源标识。
+
+### 12.2 文件操作安全
+
+1. 所有文件读取、打开、显示和删除在主进程执行；
+2. Renderer 只能提交本地资料 ID，主进程从 SQLite 解析真实路径；
+3. 删除使用 Electron `shell.trashItem` 或等价系统废纸篓，不直接永久删除；
+4. 删除前再次确认记录未被替换为目录/符号链接攻击目标；
+5. 路径必须经过规范化并限制为当前记录；
+6. HTML/SVG 继续走沙箱和清洗；
+7. 云端 URL 只通过现有安全外链能力打开；
+8. IPC 返回错误需归一化，不泄露内部堆栈。
+
+### 12.3 性能目标
+
+| 指标 | 目标 |
+| --- | --- |
+| 1,000 条本地产物 SQLite 首屏查询 | P95 < 150ms |
+| 页面进入到本地首屏可见 | P95 < 300ms，不含应用冷启动 |
+| 云端列表接口 | P95 < 500ms（服务端处理，不含弱网） |
+| 分享分析 7/30 天查询 | P95 < 500ms（owner 单资源、服务端处理，不含弱网） |
+| 搜索输入主线程阻塞 | 单次 < 16ms |
+| watcher 单批重复事件 | 合并为一次索引写 |
+| 历史回填 | 不产生 > 50ms 的连续 Renderer 长任务 |
+| 缩略图 | 可见项懒加载，失败不阻塞卡片 |
+
+性能目标在至少以下数据集验证：
+
+- 0、100、1,000、10,000 条本地索引；
+- 500 个不同父目录；
+- 1 个会话生成 100 个文件；
+- 1 个文件关联 100 个会话；
+- 云端 10,000 条分享/站点记录；
+- 单个分享 30 天内 100 万条 IP 日聚合记录的 `COUNT(DISTINCT)` 查询计划与延迟；
+- Windows 和 macOS。
+
+### 12.4 日志与可观测性
+
+日志使用英文模块标签：
+
+```text
+[LibraryIndex]
+[LibraryWatch]
+[LibraryCloud]
+```
+
+只记录：
+
+- 索引初始化/迁移结果；
+- 回填开始、检查点和完成摘要；
+- watcher 降级数量；
+- 云端请求状态码和耗时；
+- 分享分析范围天数、是否有数据和聚合耗时，不记录 shareId、URL 或访客标识；
+- 事务失败及 Error 对象。
+
+不在每个文件事件、每张卡片、每次 `stat` 打 info 日志。
+
+## 13. 涉及文件与模块边界
+
+### 13.1 客户端新增
+
+| 文件/目录 | 责任 |
+| --- | --- |
+| `src/shared/library/constants.ts` | 判别值、IPC、状态、分类、排序 |
+| `src/shared/library/types.ts` | IPC 输入输出和 LibraryItem 联合类型 |
+| `src/main/library/libraryMigrations.ts` | SQLite 建表/增量迁移 |
+| `src/main/library/libraryLocalStore.ts` | 本地查询、关系、收藏和事务 |
+| `src/main/library/libraryIndexService.ts` | 候选收录、校验、回填状态 |
+| `src/main/library/libraryCloudClient.ts` | 云端列表接口、分享/站点归一化和有界客户端筛选 |
+| `src/main/library/libraryIpc.ts` | IPC 注册与输入校验 |
+| `src/renderer/components/library/LibraryView.tsx` | 页面容器、来源查询状态、本地产物工具栏与自动续页 |
+| `src/renderer/components/library/LibrarySharedFilesView.tsx` | 云端类型/可访问性筛选、分享与站点联合列表、分享设置/分析子路由、自动续页和空态（文件名保留为渐进迁移兼容） |
+| `src/renderer/components/library/LibraryPreviewModal.tsx` | 本地产物沉浸式预览与统一动作菜单 |
+| `src/renderer/components/library/HtmlShareAnalyticsView.tsx` | 分享文件摘要指标、日期范围、趋势、空态和错误重试；不承载 owner 校验或原始 IP 数据 |
+| `src/renderer/components/analytics/AccessAnalyticsChart.tsx`（可选提取） | 分享与网站共用的纯展示折线图，指标名称和序列由调用方传入 |
+| `src/shared/library/cloudAvailability.ts` | 分享/站点到「可访问 / 不可访问」的共享纯函数 |
+| `src/renderer/components/library/*` | 本地产物卡片、日期/会话分组、动作策略、空态和缩略图缓存 |
+
+### 13.2 客户端修改
+
+| 文件 | 修改 |
+| --- | --- |
+| `src/main/sqliteStore.ts` | 只接入资料库迁移模块，不内嵌全部业务 SQL |
+| `src/main/coworkStore.ts` | 会话删除事务显式清理资料关系 |
+| `src/main/main.ts` | 创建服务、注册 IPC、生命周期关闭 |
+| `src/main/preload.ts` | 暴露最小 Library bridge |
+| `src/renderer/types/electron.d.ts` | Library bridge 类型 |
+| `src/renderer/App.tsx` | 新增 `library` 主视图和旧 sites 跳转 |
+| `src/renderer/components/Sidebar.tsx` | 新入口、active 和埋点 |
+| `src/renderer/services/artifactDetection.ts` 或上层调用点 | 批量提交已确认文件候选 |
+| `src/renderer/components/artifacts/*` | 复用分享、预览、部署动作，不复制状态机 |
+| `src/renderer/components/library/libraryItemActionPolicy.ts` | 为分享文件固定设置/链接/会话动作，移除状态切换和伪删除动作 |
+| `src/renderer/services/i18n.ts` | 中英文资料库文案 |
+| `src/renderer/components/sites/SitesView.tsx` | 接收 `shareId` 深链并复用既有站点详情、分析和设置 |
+| `src/shared/htmlShare/constants.ts` | 新增集中定义的 analytics IPC、范围和响应类型，不复用 `SiteAnalytics` 业务类型 |
+| `src/main/libs/htmlShare/htmlShareClient.ts` | 调用 owner analytics，只传白名单日期参数并归一化响应 |
+| `src/main/main.ts`、`src/main/preload.ts`、`src/renderer/types/electron.d.ts` | 注册并暴露最小 `htmlShare:getAnalytics` bridge；Main 校验 shareId/日期范围 |
+| 网站分析图表现有组件 | 仅在视觉复用收益明确时提取 `AccessAnalyticsChart`，保持网站 `pageViews/topPages` 与文件 `accesses` 的领域类型独立 |
+
+`App.tsx`、`main.ts`、`sqliteStore.ts` 和当前 `LibraryView.tsx` 都是大型文件。云端管理增量不得继续堆入 `LibraryView.tsx`：联合列表与分享设置保留独立组件，容器只保留来源路由、查询协调和共享错误边界；不顺手拆分本地产物索引或做大范围格式化。
+
+### 13.3 服务端新增/修改
+
+建议新增：
+
+| 文件/模块 | 责任 |
+| --- | --- |
+| `LibraryController.java` | `GET /api/library/cloud-items` |
+| `LibraryService.java` | 参数规范化、账号上下文、响应组装 |
+| `LibraryMapper.java/xml` | MySQL 5.7 聚合列表与 counts |
+| `LibraryCloudItem.java` | 云端联合 DTO |
+| `LibraryCloudListResponse.java` | list/cursor/counts |
+
+需要修改：
+
+| 文件 | 修改 |
+| --- | --- |
+| `HtmlShareController.java` | PUT 接收可选 `sessionId/artifactId` |
+| `HtmlShareService.java` | 更新 lineage 并保留旧客户端语义 |
+| `HtmlShareMapper.xml` | `updateShareContent` 写 `session_id/artifact_id` |
+| `HtmlShareController.java` | 增加 owner `GET /api/html-shares/{shareId}/analytics`，复用发布账号上下文与 owner 不可见语义 |
+| `HtmlShareAccessStatsService.java` | 新增分享生命周期聚合与日期补零方法；保留现有后台当前版本统计方法 |
+| `HtmlShareAccessStatsMapper.java/xml` | 增加跨内容版本的每日访问、每日独立访客和范围独立访客查询 |
+| `HtmlShareOwnerAnalyticsResponse.java`（建议新增） | 只包含 `summary/trend/meta`，不复用或暴露后台 IP/维度 DTO |
+| `LibraryController.java` | 增加 `sharedStatus` 白名单参数 |
+| `LibraryService.java` | 校验 kind/status 组合并组装 `sharedStatusCounts` |
+| `LibraryMapper.java/xml` | 普通分享只查询 live/disabled，增加服务端状态过滤和 MySQL 5.7 条件聚合 facet |
+| `LibraryCloudListResponse.java` | 增加分享状态 counts DTO |
+| `SiteListItem`/映射（可选） | 若资料库直接复用站点 DTO，则补 lineage/key；推荐独立 Library DTO |
+| `sql/Vxx__*.sql`（条件） | 分享管理首期不新增 DDL；仅在 EXPLAIN 确认后另行增加索引 |
+
+正式实施分享文件管理页和访问分析时，还需同步更新现有 `docs/server-integration/2026-08-17-library-cloud-items.md`，冻结 `sharedStatus/sharedStatusCounts`、owner analytics、错误码、灰度顺序和兼容策略；该联调文档必须明确区分已实现合同与待上线接口。本 Spec 是产品与技术目标设计，不替代实施时冻结的 API 合同。
+
+## 14. 实施阶段
+
+### 阶段 1：共享模型与本地索引
+
+1. 定义 Library 常量、类型和 IPC；
+2. 创建 SQLite 表和 store；
+3. 接入实时 Artifact 候选；
+4. 实现会话删除关系清理；
+5. 实现可见项校验和 watcher；
+6. 实现收藏和文件动作；
+7. 暂时只开放「本地产物」来源进行内部验证。
+
+### 阶段 2：资料库 UI
+
+1. 左侧入口和主视图；
+2. 顶部「本地产物 / 云端」双页签、分类、搜索和排序；
+3. 有界内容区、单列紧凑列表与网格；
+4. 日期/会话两级分组和沉浸式中央预览弹窗；
+5. 深浅主题、响应式、i18n 和可访问性；
+6. 历史回填进度与本地修复入口。
+
+### 阶段 3：云端聚合
+
+1. 服务端 lineage 修复；
+2. 新云端只读接口；
+3. 云端接口继续兼容 `sharedStatus` 和分享状态 facet；客户端增加分享/站点统一可访问性归一化；
+4. 客户端 CloudClient 和来源独立分页；
+5. 实现分享文件与部署站点统一扁平列表、类型/可访问性筛选和分享设置页；
+6. 复用分享访问权限、状态、打开/复制链接动作；
+7. 站点作为云端类型进入统一列表，点击后进入网站设置；现有设置/分析能力按统一云端详情样式复用；
+8. 服务端新增分享 owner analytics，按 `shareId` 汇总全部内容版本并冻结统计口径；
+9. 客户端增加独立「文件表现」分析页，复用图表视觉而不复用网站业务类型；
+10. 账号 scope 收藏；
+11. 离线、降级和错误态。
+
+### 阶段 4：迁移和灰度
+
+1. 服务端先上线；
+2. 内部账号和测试环境验证 MySQL 5.7；
+3. 客户端功能开关灰度；
+4. 对比旧 SitesView 行为；
+5. 入口重定向；
+6. 观察索引性能、误收录和 watcher 降级；
+7. 达到指标后全量。
+
+## 15. 验证与测试计划
+
+### 15.1 客户端单元测试
+
+至少覆盖：
+
+- 路径规范化：Windows 盘符/UNC、Unicode、大小写敏感路径、符号链接；
+- 类型和分类映射；
+- 同路径去重、同内容不同路径不去重；
+- 关系强度和 `lastRelatedAt` 更新；
+- 最新有效会话排序和 tie-break；
+- 删除最新会话后回退；
+- 没有会话时未关联分组；
+- 收藏 owner scope 隔离；
+- 本地游标边界和去重；
+- 来源游标、追加去重和迟到响应；
+- 云端可访问性归一化、类型到 `kind/category` 的映射、queryKey 隔离和游标重置；
+- 分享菜单动作策略不出现「重新打开」「删除分享记录」和本地文件动作；
+- 分享设置写操作成功同步列表缓存、失败回滚；
+- 分享分析日期参数规范化、queryKey 隔离、迟到响应丢弃和账号 scope 清理；
+- 分享分析类型保持 `accesses`，不误映射为网站 `pageViews`；
+- watcher 防抖、原子保存、missing、permission denied；
+- 缩略图 key 随 mtime 变化；
+- IPC 拒绝任意路径删除和超大批次。
+
+### 15.2 SQLite 迁移测试
+
+1. 全新数据库创建；
+2. 从没有资料库表的旧数据库升级；
+3. 重复初始化幂等；
+4. 中断后重新初始化；
+5. 会话单删/批量删/删除 Agent 下会话时关系一致；
+6. 备份与恢复包含资料库表；
+7. 10,000 条记录查询计划使用预期索引。
+
+### 15.3 Renderer 测试
+
+- 来源和分类切换；
+- 云端使用分享文件与部署站点混排的扁平四列表格，不生成日期或会话组头；
+- 可访问性、资源类型、关键词组合筛选及迟到响应丢弃；
+- 云端行只显示资源、统一状态、访问权限和更多操作；站点可补充域名，不显示访问量、文件大小或更新时间；
+- 点击分享行进入分享设置，更多按钮不触发行跳转；
+- 分享设置页加载详情、修改访问权限/状态、锁定 disabledSource、错误回滚；
+- 分享设置标题栏显示独立分析入口；设置页与分析页互相返回时不丢失未提交草稿；
+- 分享分析默认 7 天、可切换 30 天，摘要/趋势/零数据/局部错误正确，且不渲染热门页面或访客明细；
+- 停止访问的分享仍可进入分析并查看历史数据；
+- 首期不渲染「允许下载」，列表和设置菜单均不渲染永久删除语义；
+- 列表视图始终单列，网格视图按宽度响应式分列；
+- 网格/列表偏好；
+- 卡片简约字段不溢出；
+- 分组跨页追加；
+- 云端失败时本地仍显示；
+- 未登录状态；
+- 预览动作复用既有 Controller；
+- 单击条目打开预览，「更多」打开菜单且不触发预览；
+- 预览弹窗支持右上角、Esc 和遮罩关闭，浮层优先响应 Esc；
+- 浅色、深色、系统主题；
+- 键盘、焦点、Tooltip 和 ARIA；
+- 中英文长文案。
+
+### 15.4 服务端测试
+
+- 个人/企业 owner 隔离；
+- 普通分享与站点分类互斥；
+- 关键词、category、kind、sharedStatus 及非法 kind/status 组合；客户端另测 availability 的两类资源归一化和有界跨页读取；
+- 三字段游标稳定分页和同秒 tie；
+- 更新过程中去重；
+- 来源 counts、sharedStatusCounts 与过滤一致，且 facet 忽略当前状态；
+- 普通分享列表只返回 live/disabled，不把 failed/deleted 计入状态总数；
+- 站点最新 deployment 选择；
+- mixed collation 查询；
+- PUT 分享 lineage：缺失保留、非空更新；
+- 站点重新部署更新 lineage；
+- 旧接口响应不变；
+- 未授权和越权资源不可见；
+- pageSize/keyword/cursor 参数边界。
+- owner analytics 的个人/企业账号隔离、普通分享来源白名单和站点来源拒绝；
+- analytics 默认 7 天、最大 31 天、未来/反向/单侧日期参数拒绝，趋势缺失日期补 0；
+- 同一 `shareId` 多个内容版本的访问次数正确相加；范围独立访客按 `ip_hash` 全范围去重，不等于每日独立访客之和；
+- disabled 分享可读历史，未采集数据返回全 0，owner 响应不包含 IP、UA、Referer 或维度字段；
+- 现有公共入口测试继续保证分享码输入页、依赖资源、拒绝请求和管理员预览不计数；
+- MySQL 5.7 Mapper XML 可解析，7/30 天聚合 SQL 的 `EXPLAIN` 使用 share/date 索引且延迟满足目标。
+
+服务端部分测试依赖 Redis 或外部发布服务时，可以只运行不依赖外部服务的单元/Mapper 测试；本设计阶段不执行服务端测试。
+
+### 15.5 手动 Electron 验证
+
+1. 运行开发客户端，生成多个类型的文件；
+2. 用两个会话修改同一文件；
+3. 删除最新会话并观察分组回退；
+4. 外部重命名、原子保存和删除文件；
+5. 将文件移到废纸篓并验证索引、关系和收藏清理；
+6. 断网进入资料库；
+7. 创建/更新分享并验证最新会话；
+8. 在云端页组合切换可访问性/类型/关键词，并滚动跨页验证分享文件与站点不漏不重；
+9. 进入分享设置修改公开访问/分享码及打开/关闭状态，验证列表同步；
+10. 打开分享分析，验证 7/30 天、零数据、趋势、返回设置和停止分享后的历史数据；
+11. 更新同一分享的文件内容，验证历史访问不会因内容版本变化归零；
+12. 验证管理员、审核、配额和系统关闭的分享不能被客户端恢复；
+13. 部署/重新部署站点并验证状态；
+14. 重启客户端确认不全量扫描；
+15. macOS 和 Windows 各验证一次文件打开、显示和废纸篓。
+
+## 16. 边界情况
+
+| 场景 | 处理 |
+| --- | --- |
+| 相对路径对应的会话已删除 | 候选丢弃，不猜测 cwd |
+| 文件在候选到达前尚未写完 | 有限退避重试，成功后收录 |
+| 文件过大 | 只 stat 和类型封面；预览沿用既有大小限制 |
+| 同名文件位于不同目录 | 两条资料 |
+| 文件复制后内容相同 | 两条资料 |
+| 符号链接指向同一目标 | 存在时 realpath 去重，展示用户打开路径 |
+| 硬链接 | 按路径分别展示 |
+| 文件被外部程序反复原子覆盖 | pathKey 保持，mtime/缩略图更新 |
+| watcher 达到系统上限 | 降级为空闲 stat，不丢索引 |
+| 文件无读取权限 | 保留卡片并标记不可访问，不当作删除 |
+| 文件位于可移除磁盘 | 断开时 missing；保留期内重连可恢复 |
+| 会话标题被修改 | 关系不变，查询时取最新会话标题 |
+| 会话全部删除 | 本地产物进入未关联；云端项进入云端资料 |
+| 服务端仍保存已删本地 sessionId | 客户端校验失败后不显示错误会话 |
+| 分享已停止 | 继续展示「已关闭」；仅用户主动关闭时可在分享设置页恢复，列表菜单不提供恢复动作 |
+| 分享被管理员/审核/配额/系统关闭 | 设置页禁用状态开关并展示原因，不允许绕过服务端恢复 |
+| 历史 failed 分享记录 | 不进入常规分享列表或状态 facet；详情意外返回时显示不可操作错误态 |
+| 分享没有过期字段 | 不展示「已过期」状态、时间或筛选 |
+| 分享设置打开后记录被删除或换账号 | 退出设置页、清理缓存并刷新当前账号列表 |
+| 分享更新了内容版本 | 设置页保持同一 `shareId`；分析按分享生命周期汇总旧版和新版，不出现历史归零 |
+| 分享分析范围早于统计上线时间 | 返回真实 `dataAvailableFrom`，未采集日期补 0，不做回算 |
+| 分享分析当前无访问 | 摘要显示 0、趋势显示零基线，不误报接口失败 |
+| 分享分析请求失败 | 仅分析区提示和重试，设置详情、收藏、打开链接和本地产物继续可用 |
+| 同一访客跨多天/多内容版本访问 | 范围独立访客按 `ip_hash` 去重一次；每日趋势分别去重 |
+| Demo 展示「允许下载」 | 正式首期隐藏；没有服务端强制校验前不提交或保存该值 |
+| 站点被永久删除 | 云端刷新后移除并清理本地收藏 |
+| 云端记录和本地原件同源 | 独立卡片，详情通过 source key 互链 |
+| 新客户端连接旧服务端 | 进入降级模式，不伪造最新归属 |
+| 历史回填中规则升级 | 使用 policyVersion 增量重放 |
+| 用户切换个人/企业账号 | 清空云端 query，按新 scope 查询收藏 |
+| 搜索时云端超时 | 保留本地搜索结果，单独提示云端超时 |
+| 本地 SQLite 恢复备份 | watcher 根据恢复后的索引重新建立 |
+
+## 17. 验收标准
+
+### 17.1 数据边界
+
+- [ ] 进入、搜索、收藏和预览本地产物均不会发起文件上传。
+- [ ] 服务端没有本地 Artifact 主表、本地路径字段或本地收藏接口。
+- [ ] 分享和站点只在用户主动发布时上传。
+- [ ] 日志和埋点不包含本地路径、文件名、会话标题或搜索词。
+
+### 17.2 本地索引
+
+- [ ] 每次进入资料库不递归扫描磁盘或会话 cwd。
+- [ ] 同一路径在多个会话中只展示一条本地产物。
+- [ ] 一个会话可以关联多个产物，一个产物可以关联多个会话。
+- [ ] 默认返回 `lastRelatedAt` 最新且仍存在的会话。
+- [ ] 详情展示全部有效会话。
+- [ ] 删除会话只删除关系，不删除文件和本地产物主体。
+- [ ] 删除最新会话后能回退到下一有效会话。
+- [ ] 文件修改、重命名、删除和权限异常能按设计更新。
+- [ ] 首次历史回填可暂停、恢复，不阻塞首屏。
+- [ ] 手动修复不扫描未知目录、不删除真实文件。
+
+### 17.3 收藏
+
+- [ ] 收藏仅写本地 SQLite。
+- [ ] 本地产物收藏与登录无关。
+- [ ] 不同个人/企业账号的云端收藏相互隔离。
+- [ ] 删除资源后收藏正确清理，停止状态不误删收藏。
+
+### 17.4 UI
+
+- [ ] 资料库入口遵循 LobsterAI 侧栏样式。
+- [ ] 顶部只显示「本地产物 / 云端」，分享文件和部署站点不再拆成来源页签。
+- [ ] 本地产物使用日期/会话分组列表或网格；云端使用分享文件与部署站点混排的扁平管理列表。
+- [ ] 本地产物支持分类、搜索、收藏、排序和网格/列表；云端支持类型、可访问性、搜索、本地收藏筛选和刷新。
+- [ ] 宽屏紧凑列表使用单列，不出现超长单项和大面积右侧空白。
+- [ ] 本地产物列表项只常驻图标、标题和更多操作，时间显示在会话组头；云端行只常驻资源、统一状态、访问权限和更多操作。
+- [ ] 单击本地产物直接打开沉浸式预览；单击分享文件进入分享设置，单击站点进入网站设置；「更多」只打开操作菜单。
+- [ ] 本地产物条目菜单与预览使用同一动作集；条目菜单包含分享、收藏和相关会话，预览仅将分享和收藏提升为右上角图标。
+- [ ] 本地产物预览标题栏只显示图标、文件名、最后修改时间、分享和收藏；相关会话及低频动作进入「更多」浮层，不占用主体预览区域。
+- [ ] 云端列表只显示资源、统一可访问状态、访问权限和更多操作，不显示访问量、文件大小、创建时间或最近更新时间。
+- [ ] 分享文件菜单使用「分享设置 / 打开链接 / 复制链接 / 可选相关会话」，不出现「重新打开」「删除分享记录」或本地路径动作。
+- [ ] 分享设置页仅在一处显示资源状态；可查看链接、权限、分享时间、最后修改时间及可选相关任务，不显示文件大小、访问量或无服务端能力支撑的「允许下载」。
+- [ ] 分享设置标题栏提供「数据分析」图标；分析页显示独立访客、访问次数和 7/30 天趋势，不显示热门页面或访客明细。
+- [ ] 分享设置无修改时隐藏保存操作；修改后经确认保存，成功反馈不引发布局跳动或整页刷新。
+- [ ] 支持浅色、深色和系统主题。
+- [ ] 本地可用而云端失败时页面仍可操作。
+- [ ] 中英文、键盘、焦点和 ARIA 验证通过。
+
+### 17.5 云端
+
+- [ ] 新接口只返回当前发布账号的普通分享和站点。
+- [ ] 普通分享与部署站点分类互斥且 counts 正确。
+- [ ] 云端状态统一显示为「可访问 / 不可访问」；当前客户端有界跨页筛选，不渲染 `sharedStatusCounts` 或任何已加载数量。
+- [ ] 常规分享列表与状态 facet 只包含 live/disabled；没有 failed 或 expired 筛选。
+- [ ] 分页在相同更新时间下稳定、不漏项，客户端可去重。
+- [ ] 分享设置复用现有详情、访问权限和状态接口，关闭/恢复语义与 disabledSource 一致。
+- [ ] 普通用户界面不宣称能够永久删除分享记录；数据库无新增下载权限字段。
+- [ ] 分享 owner analytics 只允许当前个人/企业发布账号读取普通分享；站点继续使用 Site analytics。
+- [ ] 分享分析按稳定 `shareId` 汇总全部内容版本，访问次数与范围独立访客口径正确，缺失日期补 0。
+- [ ] disabled 分享可读停用前历史；owner 响应不包含 IP、User-Agent、Referer 或来源维度明细。
+- [ ] 分享分析 SQL 在 MySQL 5.7 通过 `EXPLAIN` 和 7/30 天量级验证，不依赖 CTE、窗口函数或 MySQL 8 能力。
+- [ ] 分享更新和站点重新部署能持久化最新 `sessionId/artifactId`。
+- [ ] 现有分享、站点和旧列表接口保持兼容。
+- [ ] SQL 在 MySQL 5.7 执行，不使用 MySQL 8 专属能力。
+- [ ] 索引变更只在 EXPLAIN/压测证明必要后上线。
+
+### 17.6 质量门槛
+
+- [ ] 所有新增/修改 TypeScript 文件通过 changed-file ESLint。
+- [ ] 本地 store、关系、合并和 IPC 有 Vitest 覆盖。
+- [ ] 主进程/Preload 改动通过 `npm run compile:electron`。
+- [ ] Renderer 改动通过 `npm run build` 和手动 Electron 验证。
+- [ ] 服务端不依赖外部服务的单元测试通过。
+- [ ] 提交前检查无无关格式化、生成文件和中英文遗漏。
+
+## 18. 最终设计结论
+
+1. 资料库是一个客户端统一入口，不是一个把所有资料都复制到服务端的新存储系统。
+2. 本地产物的权威实体是本机文件；SQLite 只保存可重建索引、关系和本地偏好。
+3. 本地产物与会话是多对多；列表返回最新有效关系，详情返回全部关系。
+4. 会话删除、文件删除、分享停止和站点删除是四套独立生命周期，不能级联混用。
+5. 页面进入只读索引；实时事件、持久 watcher、空闲校验和一次性历史回填共同维持索引。
+6. 分享和站点由云端权威管理；客户端列表只做只读聚合，详情与写操作复用既有状态机。
+7. 收藏是按设备/账号 scope 隔离的本地逻辑，不同步。
+8. 服务端不建资料库主表，只增加云端只读门面并修复最新会话归属。
+9. MySQL 查询使用派生表、`UNION ALL`、相关子查询和显式游标谓词，兼容 5.7。
+10. UI 采用 LobsterAI 主题和管理页布局：1120px 有界内容区、本地产物单列分组、云端四列扁平管理列表、详情承载高级信息。
+11. 云端默认不按会话分组；分享和站点混排，状态统一为「可访问 / 不可访问」，列表不展示访问量、文件大小或更新时间。
+12. 分享条目进入分享设置，站点条目进入网站设置；两类分析均由设置页标题栏进入，云端列表菜单不直接切换状态，也不提供不存在的永久删除语义。
+13. 当前数据库足以支持统一云端管理页首期方案；「允许下载」在服务端提供字段和强制校验前不进入正式客户端。
+14. 分享文件分析复用 V52 访问统计表和采集链路，通过新的 owner 只读接口返回聚合数据；按 `shareId` 汇总整个分享生命周期，不新增 DDL，也不向普通用户暴露访客明细。

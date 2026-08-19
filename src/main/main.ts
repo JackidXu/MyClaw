@@ -126,6 +126,7 @@ import {
   type HtmlShareConfigurableStatus,
   HtmlShareIpc,
   HtmlShareSourceType,
+  type HtmlShareSourceType as HtmlShareSourceTypeValue,
   HtmlShareStatus,
   type HtmlShareStatus as HtmlShareStatusValue,
 } from '../shared/htmlShare/constants';
@@ -135,6 +136,8 @@ import type {
   ResolvedKitCapabilities,
 } from '../shared/kit/constants';
 import { KitStoreKey } from '../shared/kit/constants';
+import { LibraryIpc } from '../shared/library/constants';
+import type { LibraryChangedPayload } from '../shared/library/types';
 import {
   type ListLocalWebServicesOptions,
   type LocalWebService,
@@ -241,6 +244,9 @@ import {
 import { registerSessionDiagnosticsHandlers } from './ipcHandlers/sessionDiagnostics';
 import { registerSiteIpcHandlers } from './ipcHandlers/site';
 import { registerSkillHandlers } from './ipcHandlers/skills';
+import { LibraryIndexService } from './library/libraryIndexService';
+import { registerLibraryIpcHandlers } from './library/libraryIpc';
+import { LibraryLocalStore } from './library/libraryLocalStore';
 import {
   type CoworkAgentEngine,
   CoworkEngineRouter,
@@ -344,7 +350,13 @@ import {
   uploadHtmlShare,
 } from './libs/htmlShare/htmlShareClient';
 import { packageHtmlFile } from './libs/htmlShare/htmlSharePackager';
+import {
+  buildArtifactFileClientSourceKey,
+  buildArtifactIdentityClientSourceKey,
+  buildHtmlShareClientSourceKey,
+} from './libs/htmlShare/htmlShareSourceKey';
 import { getKeyfromAttribution, initializeKeyfromAttribution } from './libs/keyfromAttribution';
+import { LibraryThumbnailService } from './libs/libraryThumbnailService';
 import { exportLogsZip } from './libs/logExport';
 import { MainLogReporter } from './libs/mainLogReporter';
 import { inferImageMimeTypeFromDataUrl, type PersistedGeneratedImageAsset, persistGeneratedImageAssets, type PersistGeneratedImageAssetsResult, persistGeneratedVideoAssets, type RemoteGeneratedMediaAsset } from './libs/mediaAssetPersistence';
@@ -616,6 +628,11 @@ interface HtmlShareGetByArtifactFileInput {
   filePath?: string;
 }
 
+interface HtmlShareGetBySourceInput {
+  sourceType: HtmlShareSourceTypeValue;
+  clientSourceKey: string;
+}
+
 interface HtmlShareUpdateStatusInput {
   shareId: string;
   status: HtmlShareConfigurableStatus;
@@ -817,6 +834,25 @@ function sanitizeGetByArtifactFileInput(input: unknown): HtmlShareGetByArtifactF
     throw new Error('Artifact share lookup source is required.');
   }
   return options;
+}
+
+function sanitizeGetHtmlShareBySourceInput(input: unknown): HtmlShareGetBySourceInput {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    throw new Error('Invalid HTML share source lookup request.');
+  }
+  const source = input as Record<string, unknown>;
+  const sourceType = sanitizeHtmlShareString(source.sourceType, 'sourceType', 32);
+  if (!Object.values(HtmlShareSourceType).includes(sourceType as HtmlShareSourceTypeValue)) {
+    throw new Error('Invalid HTML share source type.');
+  }
+  return {
+    sourceType: sourceType as HtmlShareSourceTypeValue,
+    clientSourceKey: sanitizeHtmlShareString(
+      source.clientSourceKey,
+      'clientSourceKey',
+      128,
+    ),
+  };
 }
 
 function sanitizeUpdateHtmlShareStatusInput(input: unknown): HtmlShareUpdateStatusInput {
@@ -1240,41 +1276,18 @@ function sanitizeShellGetBrowserAppsInput(input: unknown): ShellGetBrowserAppsIn
   };
 }
 
-function normalizeHtmlShareSourceFilePath(filePath: string): string {
-  let normalized = filePath.trim();
-  if (/^file:\/\//i.test(normalized)) {
-    normalized = safeDecodeURIComponent(normalized.replace(/^file:\/\//i, ''));
-  }
-  if (/^\/[A-Za-z]:/.test(normalized)) {
-    normalized = normalized.slice(1);
-  }
-  normalized = path.resolve(normalized).replace(/\\/g, '/');
-  return normalized.toLowerCase();
-}
-
-function buildHtmlShareClientSourceKey(filePath: string): string {
-  const normalizedPath = normalizeHtmlShareSourceFilePath(filePath);
-  return crypto
-    .createHash('sha256')
-    .update(`${HtmlShareSourceType.HtmlFile}:${normalizedPath}`)
-    .digest('hex');
-}
-
 function buildArtifactShareClientSourceKey(options: HtmlShareGetByArtifactFileInput): string {
   if (options.filePath) {
-    const normalizedPath = normalizeHtmlShareSourceFilePath(options.filePath);
-    return crypto
-      .createHash('sha256')
-      .update(`${options.sourceType}:file:${normalizedPath}`)
-      .digest('hex');
+    return buildArtifactFileClientSourceKey(options.sourceType, options.filePath);
   }
   if (!options.sessionId || !options.artifactId) {
     throw new Error('Artifact share source key is missing.');
   }
-  return crypto
-    .createHash('sha256')
-    .update(`${options.sourceType}:artifact:${options.sessionId}:${options.artifactId}`)
-    .digest('hex');
+  return buildArtifactIdentityClientSourceKey(
+    options.sourceType,
+    options.sessionId,
+    options.artifactId,
+  );
 }
 
 const cleanHtmlTitle = (value: string): string =>
@@ -1935,6 +1948,7 @@ let memoryMigrationDone = false;
 let preventSleepBlockerId: number | null = null;
 let appUpdateCoordinator: AppUpdateCoordinator | null = null;
 let mainLogReporter: MainLogReporter | null = null;
+let libraryIndexService: LibraryIndexService | null = null;
 
 function setPreventSleepBlockerEnabled(enabled: boolean): void {
   if (enabled) {
@@ -7342,6 +7356,25 @@ if (!gotTheLock) {
     }
   });
 
+  ipcMain.handle(HtmlShareIpc.GetBySource, async (_event, input: unknown) => {
+    try {
+      const options = sanitizeGetHtmlShareBySourceInput(input);
+      return await getHtmlShareBySource(
+        getServerApiBaseUrl(),
+        getHtmlSharePublicBaseUrl(),
+        fetchWithAuth,
+        options.sourceType,
+        options.clientSourceKey,
+      );
+    } catch (error) {
+      console.error('[HtmlShare] failed to look up share from source:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to load share',
+      };
+    }
+  });
+
   ipcMain.handle(HtmlShareIpc.UpdateFromArtifactFile, async (_event, input: unknown) => {
     let archivePath: string | undefined;
     try {
@@ -9074,6 +9107,7 @@ if (!gotTheLock) {
       getCoworkEngineRouter().stopSession(sessionId);
       const coworkStoreInstance = getCoworkStore();
       coworkStoreInstance.deleteSession(sessionId);
+      libraryIndexService?.notifyChange({ reason: 'session_deleted' });
       mediaSelectionBySession.delete(sessionId);
       mediaTurnAccountScopeBySession.delete(sessionId);
       skinRuntimeController?.handleSessionDeleted(sessionId);
@@ -9116,6 +9150,7 @@ if (!gotTheLock) {
       });
       const coworkStoreInstance = getCoworkStore();
       coworkStoreInstance.deleteSessions(sessionIds);
+      libraryIndexService?.notifyChange({ reason: 'session_deleted' });
       const router = getCoworkEngineRouter();
       for (const sessionId of sessionIds) {
         skinRuntimeController?.handleSessionDeleted(sessionId);
@@ -11831,8 +11866,18 @@ if (!gotTheLock) {
     },
   );
 
+  const libraryThumbnailService = new LibraryThumbnailService({
+    createThumbnail: async (filePath, size) => {
+      const image = await nativeImage.createThumbnailFromPath(filePath, size);
+      if (image.isEmpty()) throw new Error('Thumbnail is empty');
+      return image.toPNG();
+    },
+    getCacheDirectory: () => path.join(app.getPath('userData'), 'library', 'thumbnails'),
+    maxConcurrency: 3,
+  });
+
   ipcMain.handle(
-    'dialog:generateThumbnail',
+    DialogIpc.GenerateThumbnail,
     async (
       _event,
       filePath?: string,
@@ -11841,35 +11886,11 @@ if (!gotTheLock) {
         if (typeof filePath !== 'string' || !filePath.trim()) {
           return { success: false, error: 'Missing file path' };
         }
-        const resolvedPath = path.resolve(filePath.trim());
-        const stat = await fs.promises.stat(resolvedPath);
-        if (!stat.isFile()) {
-          return { success: false, error: 'Not a file' };
-        }
         if (process.platform !== 'darwin') {
           return { success: false, error: 'Thumbnail generation only supported on macOS' };
         }
-        const { execFile } = await import('child_process');
-        const { promisify } = await import('util');
-        const execFileAsync = promisify(execFile);
-        const tmpDir = path.join(app.getPath('temp'), 'lobsterai-thumbnails');
-        await fs.promises.mkdir(tmpDir, { recursive: true });
-        const baseName = path.basename(resolvedPath);
-        const outputFile = path.join(tmpDir, `${baseName}.png`);
-        try {
-          await fs.promises.unlink(outputFile);
-        } catch {
-          /* ignore */
-        }
-        await execFileAsync('qlmanage', ['-t', '-s', '1200', '-o', tmpDir, resolvedPath]);
-        const thumbBuffer = await fs.promises.readFile(outputFile);
-        const base64 = thumbBuffer.toString('base64');
-        try {
-          await fs.promises.unlink(outputFile);
-        } catch {
-          /* ignore */
-        }
-        return { success: true, dataUrl: `data:image/png;base64,${base64}` };
+        const dataUrl = await libraryThumbnailService.generate(filePath);
+        return { success: true, dataUrl };
       } catch (error) {
         return {
           success: false,
@@ -13186,6 +13207,7 @@ if (!gotTheLock) {
     }
 
     sqliteBackupManager?.stopPeriodicBackupLoop();
+    libraryIndexService?.stop();
 
     // Close the SQLite database to flush the WAL and release the file lock.
     try {
@@ -13283,6 +13305,29 @@ if (!gotTheLock) {
     store = await initStore();
     profiler.measure('initStore');
     console.log('[Main] initApp: store initialized');
+    const libraryLocalStore = new LibraryLocalStore(store.getDatabase());
+    const emitLibraryChanged = (payload: LibraryChangedPayload): void => {
+      for (const window of BrowserWindow.getAllWindows()) {
+        if (!window.isDestroyed()) window.webContents.send(LibraryIpc.Changed, payload);
+      }
+    };
+    libraryIndexService = new LibraryIndexService({
+      store: libraryLocalStore,
+      userDataPath: app.getPath('userData'),
+      onChanged: emitLibraryChanged,
+      getMetadata: key => store?.get(key),
+      setMetadata: (key, value) => store?.set(key, value),
+    });
+    registerLibraryIpcHandlers({
+      localStore: libraryLocalStore,
+      indexService: libraryIndexService,
+      getServerApiBaseUrl,
+      fetchWithAuth: (url, options) => {
+        const { scopedFetch } = capturePublishingRequest();
+        return scopedFetch(url, options);
+      },
+    });
+    libraryIndexService.start();
     initializeKeyfromAttribution(store);
     refreshEndpointsTestMode(store);
     sqliteBackupManager = new SqliteBackupManager(app.getPath('userData'));

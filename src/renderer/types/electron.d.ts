@@ -73,6 +73,21 @@ import type {
   ResolvedKitCapabilities,
 } from '../../shared/kit/constants';
 import type {
+  LibraryAddLocalFilesData,
+  LibraryArtifactCandidate,
+  LibraryBackfillState,
+  LibraryChangedPayload,
+  LibraryCloudListData,
+  LibraryCloudListOptions,
+  LibraryFavoriteInput,
+  LibraryIndexStatus,
+  LibraryLocalDetailData,
+  LibraryLocalListData,
+  LibraryLocalListOptions,
+  LibraryRecordCandidatesData,
+  LibraryResult,
+} from '../../shared/library/types';
+import type {
   ListLocalWebServicesOptions,
   LocalWebService,
 } from '../../shared/localWebServices/constants';
@@ -1297,6 +1312,10 @@ interface IElectronAPI {
       artifactId?: string;
       filePath?: string;
     }) => Promise<{ success: boolean; share?: HtmlShareResult | null; error?: string; code?: number }>;
+    getBySource: (options: {
+      sourceType: HtmlShareSourceType;
+      clientSourceKey: string;
+    }) => Promise<{ success: boolean; share?: HtmlShareResult | null; error?: string; code?: number }>;
     updateStatus: (options: {
       shareId: string;
       status: HtmlShareConfigurableStatus;
@@ -1346,6 +1365,34 @@ interface IElectronAPI {
       input: SiteQuotaReservationInput,
     ) => Promise<SiteResult<SiteQuotaReservation>>;
     releaseQuotaReservation: (reservationId: string) => Promise<SiteResult<null>>;
+  };
+  library: {
+    listLocal: (
+      options?: LibraryLocalListOptions,
+    ) => Promise<LibraryResult<LibraryLocalListData>>;
+    listCloud: (
+      options?: LibraryCloudListOptions,
+    ) => Promise<LibraryResult<LibraryCloudListData>>;
+    getLocalDetail: (itemId: string) => Promise<LibraryResult<LibraryLocalDetailData>>;
+    recordCandidates: (
+      candidates: LibraryArtifactCandidate[],
+    ) => Promise<LibraryResult<LibraryRecordCandidatesData>>;
+    addLocalFiles: (
+      filePaths: string[],
+    ) => Promise<LibraryResult<LibraryAddLocalFilesData>>;
+    setFavorite: (
+      input: LibraryFavoriteInput,
+    ) => Promise<LibraryResult<{ favorite: boolean }>>;
+    trashLocal: (itemId: string) => Promise<LibraryResult<{ itemId: string }>>;
+    openLocal: (itemId: string) => Promise<LibraryResult<null>>;
+    revealLocal: (itemId: string) => Promise<LibraryResult<null>>;
+    repairIndex: () => Promise<LibraryResult<LibraryIndexStatus>>;
+    getIndexStatus: () => Promise<LibraryResult<LibraryIndexStatus>>;
+    getBackfillState: () => Promise<LibraryResult<LibraryBackfillState>>;
+    setBackfillState: (
+      state: LibraryBackfillState,
+    ) => Promise<LibraryResult<LibraryBackfillState>>;
+    onChanged: (callback: (payload: LibraryChangedPayload) => void) => () => void;
   };
   asr: {
     createRealtimeSession: (options: AsrRealtimeSessionRequest) => Promise<AsrRealtimeSessionResult>;

@@ -98,6 +98,7 @@ interface PreparedArtifactFileShare {
 }
 
 interface ArtifactFileShareControllerValue {
+  isOverlayOpen: boolean;
   openShare: (
     artifact: Artifact,
     context: ArtifactFileShareOpenContext,
@@ -981,8 +982,11 @@ export function ArtifactFileShareProvider({ sessionId, children }: ArtifactFileS
   }, [closeSubscriptionPrompt]);
 
   const contextValue = useMemo<ArtifactFileShareControllerValue>(
-    () => ({ openShare }),
-    [openShare],
+    () => ({
+      isOverlayOpen: isDialogOpen || Boolean(subscriptionPrompt),
+      openShare,
+    }),
+    [isDialogOpen, openShare, subscriptionPrompt],
   );
 
   const share = dialog?.share;

@@ -5,6 +5,7 @@ export const HtmlShareIpc = {
   CreateFromArtifactFile: 'htmlShare:createFromArtifactFile',
   UpdateFromArtifactFile: 'htmlShare:updateFromArtifactFile',
   GetByArtifactFile: 'htmlShare:getByArtifactFile',
+  GetBySource: 'htmlShare:getBySource',
   UpdateStatus: 'htmlShare:updateStatus',
   UpdateAccessMode: 'htmlShare:updateAccessMode',
   Disable: 'htmlShare:disable',

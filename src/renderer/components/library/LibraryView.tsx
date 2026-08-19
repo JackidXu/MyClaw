@@ -1,0 +1,1197 @@
+import {
+  ArrowPathIcon,
+  ArrowTopRightOnSquareIcon,
+  ChatBubbleLeftRightIcon,
+  ClipboardDocumentIcon,
+  DocumentIcon,
+  FolderIcon,
+  GlobeAltIcon,
+  ListBulletIcon,
+  MagnifyingGlassIcon,
+  Squares2X2Icon,
+  StarIcon,
+  TrashIcon,
+} from '@heroicons/react/24/outline';
+import { StarIcon as StarSolidIcon } from '@heroicons/react/24/solid';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSelector } from 'react-redux';
+
+import {
+  LibraryCategory,
+  LibraryCloudAvailabilityFilter,
+  LibraryCloudKind,
+  LibraryItemKind,
+  LibrarySourceFilter,
+  LibraryViewMode,
+} from '../../../shared/library/constants';
+import type {
+  LibraryCloudItem,
+  LibraryCloudListData,
+  LibraryItem,
+  LibraryLocalDetailData,
+  LibraryLocalListData,
+  LibrarySessionRef,
+  LocalArtifactItem,
+} from '../../../shared/library/types';
+import { loadDetectedFileArtifact } from '../../services/artifactDetection';
+import { copyTextToClipboard } from '../../services/clipboard';
+import { i18nService } from '../../services/i18n';
+import { startLibraryBackfill } from '../../services/libraryBackfill';
+import type { RootState } from '../../store';
+import {
+  ArtifactPreviewActionSource,
+  ArtifactPublishEntryPoint,
+} from '../artifacts/artifactAnalytics';
+import {
+  ArtifactFileShareProvider,
+  useOptionalArtifactFileShare,
+} from '../artifacts/ArtifactFileShareController';
+import { isArtifactFileShareable } from '../artifacts/artifactFileSharePolicy';
+import CardOverflowMenu, { type CardOverflowMenuItem } from '../common/CardOverflowMenu';
+import { MANAGEMENT_PAGE_TITLE_TEXT } from '../common/managementTypography';
+import FileTypeIcon from '../icons/fileTypes/FileTypeIcon';
+import ShareUploadIcon from '../icons/ShareUploadIcon';
+import SidebarToggleIcon from '../icons/SidebarToggleIcon';
+import Tooltip, { TooltipAlign, TooltipPosition } from '../ui/Tooltip';
+import { LIBRARY_ACTION_MENU_WIDTH_PX } from './libraryActionMenuPresentation';
+import {
+  canShareLibraryArtifact,
+  createLibraryArtifactCandidate,
+} from './libraryArtifactCandidate';
+import LibraryCategoryDropdown from './LibraryCategoryDropdown';
+import {
+  formatLibraryDateGroupTitle,
+  groupLibraryItemsByDateAndSession,
+} from './libraryDateGrouping';
+import {
+  getLibraryCardActionIds,
+  LibraryItemAction,
+  type LibraryItemAction as LibraryItemActionValue,
+} from './libraryItemActionPolicy';
+import {
+  formatLibraryTime,
+  getLibraryDisplayFileName,
+  getLibraryItemStatus,
+  getLibrarySourceLabel,
+} from './libraryItemPresentation';
+import {
+  hideLibraryCloudItems,
+  hideLibraryLocalItems,
+} from './libraryListState';
+import LibraryPreviewModal from './LibraryPreviewModal';
+import LibraryCloudView from './LibrarySharedFilesView';
+import {
+  createLibraryThumbnailCacheKey,
+  getCachedLibraryThumbnail,
+  loadLibraryThumbnail,
+} from './libraryThumbnailCache';
+
+interface LibraryViewProps {
+  isAuthenticated: boolean;
+  isSidebarCollapsed: boolean;
+  onToggleSidebar: () => void;
+  onOpenSession: (session: LibrarySessionRef) => void;
+  onShowLogin: () => void;
+  sitesHidden?: boolean;
+  sitesReadOnly?: boolean;
+  updateBadge?: React.ReactNode;
+}
+
+interface LibrarySessionGroup {
+  key: string;
+  title: string;
+  sortTime: number;
+  session?: LibrarySessionRef;
+  items: LibraryItem[];
+}
+
+interface LibraryDateGroup {
+  key: string;
+  title: string;
+  sessionGroups: LibrarySessionGroup[];
+}
+
+const CardDetailLoadStatus = {
+  Loading: 'loading',
+  Ready: 'ready',
+  Error: 'error',
+} as const;
+
+type CardDetailLoadState =
+  | { status: typeof CardDetailLoadStatus.Loading }
+  | { status: typeof CardDetailLoadStatus.Ready; data: LibraryLocalDetailData }
+  | { status: typeof CardDetailLoadStatus.Error };
+
+const LIBRARY_GRID_CLASSNAME = 'grid justify-start gap-3';
+const LIBRARY_GRID_STYLE: React.CSSProperties = {
+  gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 240px), 264px))',
+};
+
+const EMPTY_LOCAL: LibraryLocalListData = {
+  list: [],
+  hasMore: false,
+  counts: { total: 0, available: 0, missing: 0 },
+};
+
+const EMPTY_CLOUD: LibraryCloudListData = {
+  list: [],
+  hasMore: false,
+  counts: { sharedFile: 0, deployedSite: 0 },
+  sharedStatusCounts: { all: 0, live: 0, disabled: 0 },
+};
+
+const appendUniqueItems = <T extends LibraryItem>(current: T[], next: T[]): T[] => {
+  const items = new Map(current.map(item => [`${item.itemKind}:${item.itemId}`, item]));
+  for (const item of next) items.set(`${item.itemKind}:${item.itemId}`, item);
+  return [...items.values()];
+};
+
+const CATEGORY_FILTERS = [
+  LibraryCategory.All,
+  LibraryCategory.Slides,
+  LibraryCategory.Web,
+  LibraryCategory.Document,
+  LibraryCategory.Spreadsheet,
+  LibraryCategory.Image,
+  LibraryCategory.Media,
+  LibraryCategory.Other,
+] as const;
+
+const SOURCE_FILTERS = [
+  LibrarySourceFilter.Local,
+  LibrarySourceFilter.Cloud,
+] as const;
+
+const getLibrarySessionKey = (item: LibraryItem): string => {
+  if (item.latestSession) return `session:${item.latestSession.sessionId}`;
+  return item.itemKind === LibraryItemKind.LocalArtifact ? 'unlinked' : 'cloud';
+};
+
+const formatLibrarySessionTime = (value: number): string => new Intl.DateTimeFormat(
+  i18nService.getLanguage() === 'zh' ? 'zh-CN' : 'en-US',
+  { hour: '2-digit', minute: '2-digit' },
+).format(new Date(value));
+
+const LibraryThumbnail: React.FC<{ item: LibraryItem }> = ({ item }) => {
+  const localItem = item.itemKind === LibraryItemKind.LocalArtifact
+    && item.availability === 'available' ? item : undefined;
+  const cacheKey = localItem
+    ? createLibraryThumbnailCacheKey(localItem.filePath, localItem.fileMtimeMs)
+    : undefined;
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [isNearViewport, setIsNearViewport] = useState(false);
+  const [dataUrl, setDataUrl] = useState<string | undefined>(() => (
+    cacheKey ? getCachedLibraryThumbnail(cacheKey) : undefined
+  ));
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return undefined;
+    if (typeof IntersectionObserver === 'undefined') {
+      setIsNearViewport(true);
+      return undefined;
+    }
+
+    const observer = new IntersectionObserver(entries => {
+      if (!entries.some(entry => entry.isIntersecting)) return;
+      setIsNearViewport(true);
+      observer.disconnect();
+    }, { rootMargin: '240px' });
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [cacheKey]);
+
+  useEffect(() => {
+    let active = true;
+    const cached = cacheKey ? getCachedLibraryThumbnail(cacheKey) : undefined;
+    setDataUrl(cached);
+    if (!localItem || !cacheKey || !isNearViewport || cached) {
+      return () => { active = false; };
+    }
+
+    void loadLibraryThumbnail(cacheKey, async () => {
+      const result = await window.electron.dialog.generateThumbnail(localItem.filePath);
+      return result.success ? result.dataUrl : undefined;
+    }).then(value => {
+      if (active && value) setDataUrl(value);
+    });
+    return () => { active = false; };
+  }, [cacheKey, isNearViewport, localItem]);
+
+  const Icon = item.itemKind === LibraryItemKind.DeployedSite
+    ? GlobeAltIcon
+    : item.category === LibraryCategory.Web
+      ? GlobeAltIcon
+      : DocumentIcon;
+  return (
+    <div ref={containerRef} className="h-full w-full">
+      {dataUrl ? (
+        <img src={dataUrl} alt={item.title} className="h-full w-full object-cover" />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center bg-surface-raised text-secondary">
+          <Icon className="h-6 w-6" aria-hidden="true" />
+        </div>
+      )}
+    </div>
+  );
+};
+
+const SourceTab: React.FC<{
+  source: LibrarySourceFilter;
+  active: boolean;
+  onClick: () => void;
+}> = ({ source, active, onClick }) => (
+  <button
+    type="button"
+    role="tab"
+    aria-selected={active}
+    onClick={onClick}
+    className={`non-draggable inline-flex h-8 items-center gap-1.5 rounded-lg px-3 ${MANAGEMENT_PAGE_TITLE_TEXT} font-semibold transition-colors ${
+      active ? 'bg-surface-raised text-foreground' : 'text-secondary hover:text-foreground'
+    }`}
+  >
+    {i18nService.t(`librarySource_${source}`)}
+  </button>
+);
+
+const LibraryListItemIcon: React.FC<{ item: LibraryItem }> = ({ item }) => {
+  const isWeb = item.itemKind === LibraryItemKind.DeployedSite
+    || item.category === LibraryCategory.Web;
+  return (
+    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface-raised">
+      {isWeb ? (
+        <GlobeAltIcon className="h-[18px] w-[18px] text-primary" aria-hidden="true" />
+      ) : (
+        <FileTypeIcon fileName={getLibraryDisplayFileName(item)} className="h-[18px] w-[18px]" />
+      )}
+    </div>
+  );
+};
+
+const LibraryItemCard: React.FC<{
+  item: LibraryItem;
+  viewMode: LibraryViewMode;
+  onOpen: () => void;
+  onMenuOpen?: () => void;
+  menuItems: CardOverflowMenuItem[];
+}> = ({ item, viewMode, onOpen, onMenuOpen, menuItems }) => {
+  const list = viewMode === LibraryViewMode.List;
+  if (list) {
+    return (
+      <article
+        role="button"
+        tabIndex={0}
+        onClick={onOpen}
+        onKeyDown={event => {
+          if (event.key === 'Enter' && event.currentTarget === event.target) onOpen();
+        }}
+        className="group flex min-h-14 items-center gap-3 px-2 py-2 transition-colors hover:bg-surface-raised/60 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary/30"
+      >
+        <LibraryListItemIcon item={item} />
+        <h3 className="min-w-0 flex-1 truncate text-sm font-medium leading-5 text-foreground">
+          {item.title}
+        </h3>
+        <div className="ml-auto flex shrink-0 items-center">
+          <CardOverflowMenu
+            items={menuItems}
+            menuWidthPx={LIBRARY_ACTION_MENU_WIDTH_PX}
+            onOpen={onMenuOpen}
+            className="!h-8 !w-8 text-tertiary hover:bg-surface hover:text-foreground"
+          />
+        </div>
+      </article>
+    );
+  }
+
+  return (
+    <article
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={event => {
+        if (event.key === 'Enter' && event.currentTarget === event.target) onOpen();
+      }}
+      className="group relative overflow-hidden rounded-xl border border-border bg-surface p-2.5 transition-colors hover:border-primary/35 hover:bg-surface-raised focus:outline-none focus:ring-2 focus:ring-primary/30"
+    >
+      <div className="aspect-video w-full shrink-0 overflow-hidden rounded-lg border border-border">
+        <LibraryThumbnail item={item} />
+      </div>
+      <div className="min-w-0 pt-2 pr-10">
+        <h3 className="line-clamp-2 text-sm font-medium leading-5 text-foreground">
+          {item.title}
+        </h3>
+        <div className="mt-1 flex min-w-0 items-center gap-1.5 text-[11px] text-secondary">
+          <span className="truncate">{getLibrarySourceLabel(item)}</span>
+          <span aria-hidden="true">·</span>
+          <span className="truncate">{getLibraryItemStatus(item)}</span>
+        </div>
+        <div className="mt-1 text-[10px] text-tertiary">{formatLibraryTime(item.sortTime)}</div>
+      </div>
+      <div className="absolute right-2 top-2">
+        <CardOverflowMenu
+          items={menuItems}
+          menuWidthPx={LIBRARY_ACTION_MENU_WIDTH_PX}
+          onOpen={onMenuOpen}
+          className="!h-8 !w-8 bg-background/85 text-secondary hover:bg-background hover:text-foreground"
+        />
+      </div>
+    </article>
+  );
+};
+
+const LibraryViewContent: React.FC<LibraryViewProps> = ({
+  isAuthenticated,
+  isSidebarCollapsed,
+  onToggleSidebar,
+  onOpenSession,
+  onShowLogin,
+  sitesHidden = false,
+  sitesReadOnly = false,
+  updateBadge,
+}) => {
+  const artifactFileShare = useOptionalArtifactFileShare();
+  const ownerAccountKey = useSelector((state: RootState) => state.auth.ownerAccountKey);
+  const favoriteOwnerScope = ownerAccountKey ?? undefined;
+  const [source, setSource] = useState<LibrarySourceFilter>(LibrarySourceFilter.Local);
+  const [category, setCategory] = useState<LibraryCategory>(LibraryCategory.All);
+  const [keywordInput, setKeywordInput] = useState('');
+  const [keyword, setKeyword] = useState('');
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const [cloudAvailability, setCloudAvailability] = useState<LibraryCloudAvailabilityFilter>(
+    LibraryCloudAvailabilityFilter.All,
+  );
+  const [viewMode, setViewMode] = useState<LibraryViewMode>(LibraryViewMode.List);
+  const [localData, setLocalData] = useState<LibraryLocalListData>(EMPTY_LOCAL);
+  const [cloudData, setCloudData] = useState<LibraryCloudListData>(EMPTY_CLOUD);
+  const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState<string>();
+  const [cloudError, setCloudError] = useState<string>();
+  const [activeItem, setActiveItem] = useState<LibraryItem>();
+  const [localDetail, setLocalDetail] = useState<LibraryLocalDetailData | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [cardDetailStates, setCardDetailStates] = useState<Record<string, CardDetailLoadState>>({});
+  const requestIdRef = useRef(0);
+  const cardDetailRequestIdsRef = useRef(new Set<string>());
+  const scrollContainerRef = useRef<HTMLElement>(null);
+  const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setKeyword(keywordInput.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [keywordInput]);
+
+  const wantsLocal = source === LibrarySourceFilter.Local;
+  const wantsCloud = source === LibrarySourceFilter.Cloud;
+
+  const handleSourceChange = (nextSource: LibrarySourceFilter): void => {
+    if (nextSource === source) return;
+    setActiveItem(undefined);
+    setCategory(LibraryCategory.All);
+    setKeywordInput('');
+    setKeyword('');
+    setSource(nextSource);
+    scrollContainerRef.current?.scrollTo({ top: 0 });
+  };
+
+  useEffect(() => {
+    if (sitesHidden && category === LibraryCategory.Site) {
+      setCategory(LibraryCategory.All);
+    }
+  }, [category, sitesHidden]);
+
+  const loadData = useCallback(async (append = false) => {
+    const requestId = ++requestIdRef.current;
+    if (append) setLoadingMore(true);
+    else setLoading(true);
+    if (!append) {
+      setError(undefined);
+      setCloudError(undefined);
+      if (!wantsLocal) {
+        setLocalData(current => hideLibraryLocalItems(current));
+      }
+      if (!wantsCloud) {
+        setCloudData(current => hideLibraryCloudItems(current));
+      }
+    }
+    const loadLocalPage = wantsLocal && (!append || localData.hasMore);
+    const loadCloudPage = wantsCloud && (!append || cloudData.hasMore);
+    const localPromise = loadLocalPage
+      ? window.electron.library.listLocal({
+          category,
+          keyword,
+          favoritesOnly,
+          pageSize: 24,
+          ...(append && localData.nextCursor ? { cursor: localData.nextCursor } : {}),
+        })
+      : Promise.resolve(null);
+    const cloudKind = sitesHidden
+      ? LibraryCloudKind.SharedFile
+      : LibraryCloudKind.All;
+    const cloudPromise = loadCloudPage && isAuthenticated && favoriteOwnerScope
+      ? window.electron.library.listCloud({
+          kind: cloudKind,
+          category,
+          keyword,
+          favoritesOnly,
+          favoriteOwnerScope,
+          availability: cloudAvailability,
+          pageSize: 24,
+          ...(append && cloudData.nextCursor ? { cursor: cloudData.nextCursor } : {}),
+        })
+      : Promise.resolve(null);
+    const applyLocalResult = async () => {
+      try {
+        const localResult = await localPromise;
+        if (requestId !== requestIdRef.current) return;
+        if (localResult?.success) {
+          setLocalData(current => {
+            if (append) {
+              return {
+                ...localResult.data,
+                list: appendUniqueItems(current.list, localResult.data.list),
+              };
+            }
+            return wantsLocal
+              ? localResult.data
+              : hideLibraryLocalItems(localResult.data);
+          });
+        } else if (localResult) {
+          setError(localResult.error);
+        } else if (!append) {
+          setLocalData(current => hideLibraryLocalItems(current));
+        }
+      } catch (loadError) {
+        if (requestId === requestIdRef.current) {
+          setError(loadError instanceof Error ? loadError.message : i18nService.t('unknownError'));
+        }
+      } finally {
+        if (!append && wantsLocal && loadLocalPage && requestId === requestIdRef.current) {
+          setLoading(false);
+        }
+      }
+    };
+    const applyCloudResult = async () => {
+      try {
+        const cloudResult = await cloudPromise;
+        if (requestId !== requestIdRef.current) return;
+        if (cloudResult?.success) {
+          setCloudData(current => {
+            if (append) {
+              return {
+                ...cloudResult.data,
+                list: appendUniqueItems(current.list, cloudResult.data.list),
+              };
+            }
+            return wantsCloud
+              ? cloudResult.data
+              : hideLibraryCloudItems(cloudResult.data);
+          });
+        } else if (cloudResult) {
+          setCloudError(cloudResult.error);
+        } else if (!append) {
+          setCloudData(current => hideLibraryCloudItems(current));
+        }
+      } catch (loadError) {
+        if (requestId === requestIdRef.current) {
+          setCloudError(
+            loadError instanceof Error ? loadError.message : i18nService.t('unknownError'),
+          );
+        }
+      }
+    };
+    await Promise.all([applyLocalResult(), applyCloudResult()]);
+    if (requestId !== requestIdRef.current) return;
+    setLoading(false);
+    setLoadingMore(false);
+  }, [
+    category,
+    cloudData.hasMore,
+    cloudData.nextCursor,
+    favoriteOwnerScope,
+    favoritesOnly,
+    isAuthenticated,
+    keyword,
+    localData.hasMore,
+    localData.nextCursor,
+    cloudAvailability,
+    sitesHidden,
+    wantsCloud,
+    wantsLocal,
+  ]);
+
+  useEffect(() => {
+    void loadData(false);
+  // Cursor changes are outputs of this request and must not trigger a new first page.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    category,
+    favoriteOwnerScope,
+    favoritesOnly,
+    isAuthenticated,
+    keyword,
+    cloudAvailability,
+    source,
+  ]);
+
+  useEffect(() => {
+    void startLibraryBackfill();
+    return window.electron.library.onChanged(() => {
+      void loadData(false);
+    });
+  }, [loadData]);
+
+  useEffect(() => {
+    let active = true;
+    setLocalDetail(null);
+    if (activeItem?.itemKind !== LibraryItemKind.LocalArtifact) return () => { active = false; };
+    setDetailLoading(true);
+    void window.electron.library.getLocalDetail(activeItem.itemId).then(result => {
+      if (active && result.success) setLocalDetail(result.data);
+      if (active) setDetailLoading(false);
+    });
+    return () => { active = false; };
+  }, [activeItem]);
+
+  const items = useMemo(() => {
+    const merged: LibraryItem[] = [...localData.list, ...cloudData.list];
+    return merged.sort((left, right) => (
+      right.sortTime - left.sortTime
+      || right.itemKind.localeCompare(left.itemKind)
+      || right.itemId.localeCompare(left.itemId)
+    ));
+  }, [cloudData.list, localData.list]);
+
+  const dateGroups = useMemo<LibraryDateGroup[]>(() => {
+    const now = Date.now();
+    const locale = i18nService.getLanguage() === 'zh' ? 'zh-CN' : 'en-US';
+    return groupLibraryItemsByDateAndSession(
+      items,
+      item => item.sortTime,
+      getLibrarySessionKey,
+    ).map(dateBucket => {
+      const sessionGroups = dateBucket.sessionBuckets.map(sessionBucket => {
+        const firstItem = sessionBucket.items[0];
+        const session = firstItem.latestSession;
+        const fallbackTitle = firstItem.itemKind === LibraryItemKind.LocalArtifact
+          ? i18nService.t('libraryUnlinkedSession')
+          : i18nService.t('libraryCloudGroup');
+        return {
+          key: `${dateBucket.dateKey}:${sessionBucket.sessionKey}`,
+          title: session?.title ?? fallbackTitle,
+          sortTime: sessionBucket.representativeTime,
+          ...(session ? { session } : {}),
+          items: sessionBucket.items,
+        };
+      });
+      return {
+        key: dateBucket.dateKey,
+        title: formatLibraryDateGroupTitle(dateBucket.representativeTime, {
+          locale,
+          todayLabel: i18nService.t('libraryTime_today'),
+          yesterdayLabel: i18nService.t('libraryTime_yesterday'),
+          now,
+        }),
+        sessionGroups,
+      };
+    });
+  }, [items]);
+
+  const updateFavorite = async (item: LibraryItem): Promise<void> => {
+    const next = !item.isFavorite;
+    const updateItem = (value: LibraryItem): LibraryItem => value.itemId === item.itemId
+      && value.itemKind === item.itemKind ? { ...value, isFavorite: next } : value;
+    setLocalData(current => ({ ...current, list: current.list.map(updateItem) as LocalArtifactItem[] }));
+    setCloudData(current => ({ ...current, list: current.list.map(updateItem).filter(
+      (value): value is typeof current.list[number] => value.itemKind !== LibraryItemKind.LocalArtifact,
+    ) }));
+    setActiveItem(current => current?.itemId === item.itemId
+      && current.itemKind === item.itemKind ? { ...current, isFavorite: next } : current);
+    const result = await window.electron.library.setFavorite({
+      ownerScope: favoriteOwnerScope ?? '',
+      itemKind: item.itemKind,
+      itemId: item.itemId,
+      favorite: next,
+    });
+    if (!result.success) {
+      setError(result.error);
+      void loadData(false);
+    }
+  };
+
+  const updateCloudItem = useCallback((updatedItem: LibraryCloudItem): void => {
+    setCloudData(current => ({
+      ...current,
+      list: current.list.map(item => (
+        item.itemKind === updatedItem.itemKind
+          && item.shareId === updatedItem.shareId
+          ? updatedItem
+          : item
+      )),
+    }));
+  }, []);
+
+  const deleteCloudItem = useCallback((deletedItem: LibraryCloudItem): void => {
+    setCloudData(current => ({
+      ...current,
+      list: current.list.filter(item => !(
+        item.itemKind === deletedItem.itemKind && item.shareId === deletedItem.shareId
+      )),
+      counts: deletedItem.itemKind === LibraryItemKind.DeployedSite
+        ? { ...current.counts, deployedSite: Math.max(0, current.counts.deployedSite - 1) }
+        : { ...current.counts, sharedFile: Math.max(0, current.counts.sharedFile - 1) },
+    }));
+  }, []);
+
+  const openItem = (item: LibraryItem): void => {
+    setActiveItem(item);
+  };
+
+  const openLocalWithApp = (item: LocalArtifactItem): void => {
+    void window.electron.library.openLocal(item.itemId).then(result => {
+      if (!result.success) setError(result.error);
+    });
+  };
+
+  const handleTrash = async (item: LocalArtifactItem): Promise<void> => {
+    if (!window.confirm(i18nService.t('libraryTrashConfirm'))) return;
+    const result = await window.electron.library.trashLocal(item.itemId);
+    if (!result.success) setError(result.error);
+    else setActiveItem(undefined);
+  };
+
+  const revealLocal = (item: LocalArtifactItem): void => {
+    void window.electron.library.revealLocal(item.itemId).then(result => {
+      if (!result.success) setError(result.error);
+    });
+  };
+
+  const copyValue = (value: string): void => {
+    void copyTextToClipboard(value).then(copied => {
+      if (!copied) setError(i18nService.t('copyFailed'));
+    });
+  };
+
+  const openCloudLink = (item: Exclude<LibraryItem, LocalArtifactItem>): void => {
+    void window.electron.shell.openExternal(item.url).then(result => {
+      if (!result.success) setError(result.error ?? i18nService.t('unknownError'));
+    });
+  };
+
+  const loadCardDetail = (item: LocalArtifactItem): void => {
+    const knownSessionCount = item.latestSession ? 1 : 0;
+    if (
+      item.relatedSessionCount <= knownSessionCount
+      || cardDetailStates[item.itemId]
+      || cardDetailRequestIdsRef.current.has(item.itemId)
+    ) {
+      return;
+    }
+    cardDetailRequestIdsRef.current.add(item.itemId);
+    setCardDetailStates(current => ({
+      ...current,
+      [item.itemId]: { status: CardDetailLoadStatus.Loading },
+    }));
+    void window.electron.library.getLocalDetail(item.itemId).then(result => {
+      if (result.success) {
+        setCardDetailStates(current => ({
+          ...current,
+          [item.itemId]: { status: CardDetailLoadStatus.Ready, data: result.data },
+        }));
+      } else {
+        setCardDetailStates(current => ({
+          ...current,
+          [item.itemId]: { status: CardDetailLoadStatus.Error },
+        }));
+      }
+    }).catch(() => {
+      setCardDetailStates(current => ({
+        ...current,
+        [item.itemId]: { status: CardDetailLoadStatus.Error },
+      }));
+    }).finally(() => {
+      cardDetailRequestIdsRef.current.delete(item.itemId);
+    });
+  };
+
+  const shareLocalItem = async (item: LocalArtifactItem): Promise<void> => {
+    if (
+      !canShareLibraryArtifact(item)
+      || !artifactFileShare
+    ) {
+      setError(i18nService.t('artifactShareSourceUnavailable'));
+      return;
+    }
+    try {
+      const artifact = await loadDetectedFileArtifact(createLibraryArtifactCandidate(item));
+      if (!artifact || !isArtifactFileShareable(artifact)) {
+        setError(i18nService.t('artifactShareSourceUnavailable'));
+        return;
+      }
+      await artifactFileShare.openShare(artifact, {
+        source: ArtifactPreviewActionSource.LibraryList,
+        entryPoint: ArtifactPublishEntryPoint.LibraryMenu,
+      });
+    } catch (shareError) {
+      const message = shareError instanceof Error
+        ? shareError.message
+        : i18nService.t('htmlShareFailed');
+      setError(message);
+    }
+  };
+
+  const getRelatedSessionMenuItems = (item: LibraryItem): CardOverflowMenuItem[] => {
+    const detailState = item.itemKind === LibraryItemKind.LocalArtifact
+      ? cardDetailStates[item.itemId]
+      : undefined;
+    const sessions = detailState?.status === CardDetailLoadStatus.Ready
+      ? detailState.data.sessions
+      : item.latestSession
+        ? [item.latestSession]
+        : [];
+    const uniqueSessions = [...new Map(
+      sessions.map(session => [session.sessionId, session]),
+    ).values()];
+    const menuItems: CardOverflowMenuItem[] = uniqueSessions.map(session => ({
+      key: `session:${session.sessionId}`,
+      label: session.title,
+      onSelect: () => onOpenSession(session),
+    }));
+    const expectedCount = item.itemKind === LibraryItemKind.LocalArtifact
+      ? item.relatedSessionCount
+      : uniqueSessions.length;
+    if (
+      item.itemKind === LibraryItemKind.LocalArtifact
+      && detailState?.status !== CardDetailLoadStatus.Ready
+      && detailState?.status !== CardDetailLoadStatus.Error
+      && expectedCount > uniqueSessions.length
+    ) {
+      menuItems.push({
+        key: 'sessions-loading',
+        label: i18nService.t('loading'),
+        disabled: true,
+      });
+    } else if (
+      detailState?.status === CardDetailLoadStatus.Ready
+      && menuItems.length === 0
+    ) {
+      menuItems.push({
+        key: 'sessions-empty',
+        label: i18nService.t('libraryUnlinkedSession'),
+        disabled: true,
+      });
+    } else if (
+      detailState?.status === CardDetailLoadStatus.Error
+      && menuItems.length === 0
+    ) {
+      menuItems.push({
+        key: 'sessions-unavailable',
+        label: i18nService.t('libraryRelatedSessionsUnavailable'),
+        disabled: true,
+      });
+    }
+    return menuItems;
+  };
+
+  const getCardActionLabel = (
+    item: LibraryItem,
+    action: LibraryItemActionValue,
+  ): string => {
+    if (action === LibraryItemAction.ToggleFavorite) {
+      return item.isFavorite
+        ? i18nService.t('libraryRemoveFavorite')
+        : i18nService.t('libraryAddFavorite');
+    }
+    if (action === LibraryItemAction.ShareLocal) return i18nService.t('htmlShare');
+    if (action === LibraryItemAction.OpenWithApp) return i18nService.t('libraryOpenWithApp');
+    if (action === LibraryItemAction.RevealLocal) return i18nService.t('libraryRevealFile');
+    if (action === LibraryItemAction.TrashLocal) return i18nService.t('libraryMoveToTrash');
+    if (action === LibraryItemAction.CopyLink) return i18nService.t('libraryCopyLink');
+    if (action === LibraryItemAction.ManageSite) return i18nService.t('libraryManageSite');
+    if (action === LibraryItemAction.RelatedSessions) {
+      return i18nService.t('libraryRelatedSessions');
+    }
+    return i18nService.t('libraryOpenLink');
+  };
+
+  const getCardActionIcon = (
+    item: LibraryItem,
+    action: LibraryItemActionValue,
+  ): React.ReactNode => {
+    if (action === LibraryItemAction.ToggleFavorite) {
+      return item.isFavorite
+        ? <StarSolidIcon className="h-4 w-4 text-amber-500" />
+        : <StarIcon className="h-4 w-4" />;
+    }
+    if (action === LibraryItemAction.ShareLocal) return <ShareUploadIcon className="h-4 w-4" />;
+    if (action === LibraryItemAction.RelatedSessions) {
+      return <ChatBubbleLeftRightIcon className="h-4 w-4" />;
+    }
+    if (action === LibraryItemAction.RevealLocal) return <FolderIcon className="h-4 w-4" />;
+    if (action === LibraryItemAction.CopyLink) {
+      return <ClipboardDocumentIcon className="h-4 w-4" />;
+    }
+    if (action === LibraryItemAction.TrashLocal) return <TrashIcon className="h-4 w-4" />;
+    if (action === LibraryItemAction.ManageSite) return <GlobeAltIcon className="h-4 w-4" />;
+    return <ArrowTopRightOnSquareIcon className="h-4 w-4" />;
+  };
+
+  const buildCardMenuItems = (item: LibraryItem): CardOverflowMenuItem[] => (
+    getLibraryCardActionIds(item).map(action => ({
+      key: action,
+      label: getCardActionLabel(item, action),
+      icon: getCardActionIcon(item, action),
+      disabled: action === LibraryItemAction.ShareLocal
+        && item.itemKind === LibraryItemKind.LocalArtifact
+        && !canShareLibraryArtifact(item),
+      destructive: action === LibraryItemAction.TrashLocal,
+      separatorBefore: action === LibraryItemAction.TrashLocal,
+      ...(action === LibraryItemAction.RelatedSessions
+        ? {
+            children: getRelatedSessionMenuItems(item),
+            trailing: (
+              <span className="text-tertiary">
+                {item.itemKind === LibraryItemKind.LocalArtifact
+                  ? item.relatedSessionCount
+                  : item.latestSession ? 1 : 0}
+              </span>
+            ),
+          }
+        : {}),
+      onSelect: () => {
+        if (action === LibraryItemAction.ToggleFavorite) {
+          void updateFavorite(item);
+          return;
+        }
+        if (item.itemKind === LibraryItemKind.LocalArtifact) {
+          if (action === LibraryItemAction.ShareLocal) void shareLocalItem(item);
+          else if (action === LibraryItemAction.OpenWithApp) openLocalWithApp(item);
+          else if (action === LibraryItemAction.RevealLocal) revealLocal(item);
+          else if (action === LibraryItemAction.TrashLocal) void handleTrash(item);
+          return;
+        }
+        if (action === LibraryItemAction.OpenLink) openCloudLink(item);
+        else if (action === LibraryItemAction.CopyLink) copyValue(item.url);
+      },
+    }))
+  );
+
+  const hasMore = (wantsLocal && localData.hasMore) || (wantsCloud && cloudData.hasMore);
+
+  useEffect(() => {
+    const root = scrollContainerRef.current;
+    const sentinel = loadMoreSentinelRef.current;
+    if (
+      !root
+      || !sentinel
+      || loading
+      || loadingMore
+      || !hasMore
+      || error
+      || cloudError
+      || typeof IntersectionObserver === 'undefined'
+    ) {
+      return undefined;
+    }
+
+    let requested = false;
+    const observer = new IntersectionObserver(entries => {
+      if (requested || !entries.some(entry => entry.isIntersecting)) return;
+      requested = true;
+      observer.disconnect();
+      void loadData(true);
+    }, {
+      root,
+      rootMargin: '0px 0px 320px 0px',
+    });
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [cloudError, error, hasMore, loadData, loading, loadingMore]);
+
+  const isMac = window.electron.platform === 'darwin';
+  const isWindows = window.electron.platform === 'win32';
+
+  return (
+    <div
+      data-skin-management-page="true"
+      className="relative z-10 flex h-full min-h-0 flex-col bg-background text-foreground"
+    >
+      <div className="draggable flex h-12 shrink-0 items-center border-b border-border px-4">
+        {isSidebarCollapsed && !isWindows && (
+          <div className={`non-draggable mr-2 flex items-center gap-1 ${isMac ? 'pl-[68px]' : ''}`}>
+            <button type="button" onClick={onToggleSidebar} aria-label={i18nService.t('expand')} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-secondary hover:bg-surface-raised">
+              <SidebarToggleIcon className="h-4 w-4" isCollapsed />
+            </button>
+            {updateBadge}
+          </div>
+        )}
+        <div
+          role="tablist"
+          aria-label={i18nService.t('libraryTitle')}
+          className="non-draggable flex items-center gap-1"
+        >
+          {SOURCE_FILTERS.map(value => (
+            <SourceTab
+              key={value}
+              source={value}
+              active={source === value}
+              onClick={() => handleSourceChange(value)}
+            />
+          ))}
+        </div>
+      </div>
+
+      <main
+        ref={scrollContainerRef}
+        className="min-h-0 flex-1 overflow-auto [scrollbar-gutter:stable]"
+      >
+          {wantsCloud ? (
+            <LibraryCloudView
+              data={cloudData}
+              loading={loading}
+              loadingMore={loadingMore}
+              error={cloudError}
+              isAuthenticated={isAuthenticated}
+              category={category}
+              status={cloudAvailability}
+              favoritesOnly={favoritesOnly}
+              keywordInput={keywordInput}
+              loadMoreSentinelRef={loadMoreSentinelRef}
+              onCategoryChange={setCategory}
+              onStatusChange={nextStatus => {
+                setCloudAvailability(nextStatus);
+                scrollContainerRef.current?.scrollTo({ top: 0 });
+              }}
+              onToggleFavoritesOnly={() => setFavoritesOnly(value => !value)}
+              onKeywordInputChange={setKeywordInput}
+              onRefresh={() => void loadData(false)}
+              onDetailOpen={() => scrollContainerRef.current?.scrollTo({ top: 0 })}
+              onShowLogin={onShowLogin}
+              onOpenSession={onOpenSession}
+              onItemUpdated={updateCloudItem}
+              onItemDeleted={deleteCloudItem}
+              onToggleFavorite={item => void updateFavorite(item)}
+              hideSites={sitesHidden}
+              sitesReadOnly={sitesReadOnly}
+            />
+          ) : (
+        <div className="mx-auto w-full max-w-[1120px] px-4 py-6 sm:px-8">
+          <div
+            data-skin-management-toolbar="true"
+            className="sticky top-0 z-10 flex flex-wrap items-center gap-3 border-b border-border bg-background pb-3 pt-1"
+          >
+            <LibraryCategoryDropdown
+              value={category}
+              options={CATEGORY_FILTERS}
+              onChange={setCategory}
+            />
+            <div className="ml-auto flex min-w-0 flex-[1_1_240px] items-center justify-end gap-2">
+              <label className="relative min-w-[96px] max-w-56 flex-1">
+                <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-tertiary" />
+                <input
+                  value={keywordInput}
+                  onChange={event => setKeywordInput(event.target.value)}
+                  placeholder={i18nService.t('librarySearchPlaceholder')}
+                  className="h-9 w-full rounded-xl border border-border bg-surface pl-9 pr-3 text-sm text-foreground outline-none placeholder:text-tertiary focus:ring-2 focus:ring-primary/30"
+                />
+              </label>
+              <Tooltip
+                content={i18nService.t('libraryFavorites')}
+                position={TooltipPosition.Bottom}
+                delay={250}
+              >
+                <button type="button" onClick={() => setFavoritesOnly(value => !value)} aria-pressed={favoritesOnly} aria-label={i18nService.t('libraryFavorites')} className={`inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border ${favoritesOnly ? 'bg-amber-500/10 text-amber-500' : 'text-secondary hover:bg-surface-raised'}`}>
+                  {favoritesOnly ? <StarSolidIcon className="h-4 w-4" /> : <StarIcon className="h-4 w-4" />}
+                </button>
+              </Tooltip>
+              <div className="inline-flex rounded-lg border border-border bg-surface p-0.5">
+                <Tooltip
+                  content={i18nService.t('libraryGridView')}
+                  position={TooltipPosition.Bottom}
+                  delay={250}
+                >
+                  <button type="button" onClick={() => setViewMode(LibraryViewMode.Grid)} aria-label={i18nService.t('libraryGridView')} className={`inline-flex h-8 w-8 items-center justify-center rounded-md ${viewMode === LibraryViewMode.Grid ? 'bg-surface-raised text-foreground' : 'text-secondary'}`}><Squares2X2Icon className="h-4 w-4" /></button>
+                </Tooltip>
+                <Tooltip
+                  content={i18nService.t('libraryListView')}
+                  position={TooltipPosition.Bottom}
+                  align={TooltipAlign.End}
+                  delay={250}
+                >
+                  <button type="button" onClick={() => setViewMode(LibraryViewMode.List)} aria-label={i18nService.t('libraryListView')} className={`inline-flex h-8 w-8 items-center justify-center rounded-md ${viewMode === LibraryViewMode.List ? 'bg-surface-raised text-foreground' : 'text-secondary'}`}><ListBulletIcon className="h-4 w-4" /></button>
+                </Tooltip>
+              </div>
+            </div>
+          </div>
+
+          {(error || cloudError) && (
+            <div className="mt-4 flex items-center justify-between rounded-lg border border-amber-500/25 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+              <span>{error || i18nService.t('libraryCloudUnavailable')}</span>
+              <button type="button" onClick={() => void loadData(false)} className="ml-3 inline-flex items-center gap-1"><ArrowPathIcon className="h-3.5 w-3.5" />{i18nService.t('retry')}</button>
+            </div>
+          )}
+
+          {!isAuthenticated && wantsCloud && (
+            <div className="mt-4 flex items-center justify-between rounded-xl border border-border bg-surface px-4 py-3 text-xs">
+              <span className="text-secondary">{i18nService.t('libraryLoginForCloud')}</span>
+              <button type="button" onClick={onShowLogin} className="font-medium text-primary">{i18nService.t('login')}</button>
+            </div>
+          )}
+
+          <div>
+            {loading ? (
+              <div className={viewMode === LibraryViewMode.List
+                ? 'mt-6 divide-y divide-border border-y border-border'
+                : `mt-6 ${LIBRARY_GRID_CLASSNAME}`}
+              style={viewMode === LibraryViewMode.Grid ? LIBRARY_GRID_STYLE : undefined}>
+                {Array.from({ length: 6 }, (_, index) => (
+                  <div key={index} className={viewMode === LibraryViewMode.List
+                    ? 'h-14 animate-pulse bg-surface-raised/40'
+                    : 'animate-pulse rounded-xl border border-border bg-surface p-2.5'}>
+                    {viewMode === LibraryViewMode.Grid && (
+                      <>
+                        <div className="aspect-video rounded-lg bg-surface-raised" />
+                        <div className="mt-2 h-4 w-3/4 rounded bg-surface-raised" />
+                        <div className="mt-2 h-3 w-1/2 rounded bg-surface-raised" />
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : dateGroups.length === 0 ? (
+              <div className="mt-12 rounded-2xl border border-dashed border-border py-16 text-center">
+                <DocumentIcon className="mx-auto h-8 w-8 text-tertiary" />
+                <h2 className="mt-3 text-sm font-medium text-foreground">{i18nService.t('libraryEmptyTitle')}</h2>
+                <p className="mt-1 text-xs text-secondary">{i18nService.t('libraryEmptyDescription')}</p>
+              </div>
+            ) : (
+              <div className="mt-6 space-y-10">
+                {dateGroups.map(dateGroup => (
+                  <section key={dateGroup.key}>
+                    <div className="mb-5 flex items-center gap-3">
+                      <h2 className="shrink-0 text-sm font-semibold text-foreground">
+                        {dateGroup.title}
+                      </h2>
+                      <div className="h-px flex-1 bg-border" />
+                    </div>
+                    <div className="space-y-7">
+                      {dateGroup.sessionGroups.map(group => (
+                        <section key={group.key}>
+                          <div className="mb-2.5 flex items-center justify-between gap-6">
+                            {group.session ? (
+                              <button
+                                type="button"
+                                onClick={() => onOpenSession(group.session!)}
+                                className="min-w-0 truncate text-left text-sm font-semibold text-foreground hover:text-primary"
+                              >
+                                {group.title}
+                              </button>
+                            ) : (
+                              <h3 className="min-w-0 truncate text-sm font-semibold text-foreground">
+                                {group.title}
+                              </h3>
+                            )}
+                            <time
+                              dateTime={new Date(group.sortTime).toISOString()}
+                              className="shrink-0 text-xs text-secondary"
+                            >
+                              {formatLibrarySessionTime(group.sortTime)}
+                            </time>
+                          </div>
+                          <div
+                            className={viewMode === LibraryViewMode.List
+                              ? 'divide-y divide-border border-y border-border'
+                              : LIBRARY_GRID_CLASSNAME}
+                            style={viewMode === LibraryViewMode.Grid
+                              ? LIBRARY_GRID_STYLE
+                              : undefined}
+                          >
+                            {group.items.map(item => (
+                              <LibraryItemCard
+                                key={`${item.itemKind}:${item.itemId}`}
+                                item={item}
+                                viewMode={viewMode}
+                                onOpen={() => openItem(item)}
+                                onMenuOpen={item.itemKind === LibraryItemKind.LocalArtifact
+                                  ? () => loadCardDetail(item)
+                                  : undefined}
+                                menuItems={buildCardMenuItems(item)}
+                              />
+                            ))}
+                          </div>
+                        </section>
+                      ))}
+                    </div>
+                  </section>
+                ))}
+              </div>
+            )}
+            {!loading && hasMore && (
+              <div
+                ref={loadMoreSentinelRef}
+                className="flex h-14 items-center justify-center"
+                aria-live="polite"
+              >
+                {loadingMore && (
+                  <>
+                    <ArrowPathIcon className="h-4 w-4 animate-spin text-tertiary" aria-hidden="true" />
+                    <span className="sr-only">{i18nService.t('loading')}</span>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+          )}
+      </main>
+
+      {wantsLocal && activeItem && (
+        <LibraryPreviewModal
+              item={activeItem}
+              detail={localDetail}
+              detailLoading={detailLoading}
+              onClose={() => setActiveItem(undefined)}
+              onToggleFavorite={() => void updateFavorite(activeItem)}
+              onOpenWithApp={() => {
+                if (activeItem.itemKind === LibraryItemKind.LocalArtifact) {
+                  openLocalWithApp(activeItem);
+                }
+              }}
+              onReveal={() => {
+                if (activeItem.itemKind === LibraryItemKind.LocalArtifact) {
+                  revealLocal(activeItem);
+                }
+              }}
+              onOpenLink={() => {
+                if (activeItem.itemKind !== LibraryItemKind.LocalArtifact) {
+                  openCloudLink(activeItem);
+                }
+              }}
+              onCopyLink={() => {
+                if (activeItem.itemKind !== LibraryItemKind.LocalArtifact) {
+                  copyValue(activeItem.url);
+                }
+              }}
+              onOpenSession={session => {
+                setActiveItem(undefined);
+                onOpenSession(session);
+              }}
+              onTrash={() => {
+                if (activeItem.itemKind === LibraryItemKind.LocalArtifact) {
+                  void handleTrash(activeItem);
+                }
+              }}
+          onShowSites={() => undefined}
+        />
+      )}
+    </div>
+  );
+};
+
+const LibraryView: React.FC<LibraryViewProps> = props => (
+  <ArtifactFileShareProvider sessionId="library">
+    <LibraryViewContent {...props} />
+  </ArtifactFileShareProvider>
+);
+
+export default LibraryView;
