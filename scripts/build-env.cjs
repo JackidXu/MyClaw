@@ -7,6 +7,7 @@ const BuildEnv = {
   ChannelBuild: 'LOBSTERAI_CHANNEL_BUILD',
   Keyfrom: 'KEYFROM',
   SilentOnDoubleClick: 'LOBSTERAI_SILENT_ON_DOUBLE_CLICK',
+  ReuseWebPackage: 'LOBSTERAI_REUSE_NSIS_WEB_PACKAGE',
   WebInstaller: 'LOBSTERAI_WEB_INSTALLER',
   WebPkgUrl: 'LOBSTERAI_WEB_PKG_URL',
   WebPkgBaseUrl: 'LOBSTERAI_WEB_PKG_BASE_URL',
