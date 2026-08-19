@@ -1426,6 +1426,18 @@ interface IElectronAPI {
     }>;
     relaunch: () => Promise<void>;
     openSystemNotificationSettings: () => Promise<{ success: boolean; error?: string }>;
+    getDiagnosticInfo: () => Promise<{
+      success: boolean;
+      appVersion?: string;
+      platform?: string;
+      arch?: string;
+      locale?: string;
+      nodeVersion?: string;
+      electronVersion?: string;
+      timestamp?: string;
+      recentLogSnippet?: string;
+      error?: string;
+    }>;
   };
   appUpdate: {
     getState: () => Promise<AppUpdateRuntimeState>;
