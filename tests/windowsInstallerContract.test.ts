@@ -208,6 +208,201 @@ describe('Windows installer hardening contracts', () => {
     expect(appBuilderPatch).toContain('/SD IDCANCEL IDRETRY download');
   });
 
+  test('hardens the web download against hangs and fake success', () => {
+    // Every inetc transfer carries explicit WinINet timeouts; without them a
+    // half-open connection blocks the transfer thread forever and the
+    // installer sits at 0% CPU with no way to finish.
+    const inetcCalls = webPackageTemplate
+      .split(/\r?\n/)
+      .filter((line) => line.includes('inetc::get'));
+    expect(inetcCalls).toHaveLength(2);
+    for (const call of inetcCalls) {
+      expect(call).toContain('/CONNECTTIMEOUT 30 /RECEIVETIMEOUT 60');
+    }
+
+    // Silent installs must never reach the retry dialog: the failure branch
+    // retries a bounded number of times under ${Silent} and keeps the dialog
+    // in the non-silent branch only.
+    const failureBranch = webPackageTemplate.slice(
+      webPackageTemplate.indexOf('${elseif} $0 != "OK"'),
+      webPackageTemplate.indexOf('ShowWindow $R9 5'),
+    );
+    const silentGuard = failureBranch.indexOf('${if} ${Silent}');
+    const boundedRetry = failureBranch.indexOf('$webDownloadAttempt < 3');
+    const interactiveBranch = failureBranch.indexOf('${else}');
+    const retryDialog = failureBranch.indexOf('Messagebox MB_RETRYCANCEL');
+    expect(silentGuard).toBeGreaterThan(-1);
+    expect(boundedRetry).toBeGreaterThan(silentGuard);
+    expect(interactiveBranch).toBeGreaterThan(boundedRetry);
+    expect(retryDialog).toBeGreaterThan(interactiveBranch);
+
+    // A failed download exits with code 4 (set after the dialog, before the
+    // quit hook) so the invoking channel can tell failure from the default
+    // Quit code 0; a user cancel exits with the NSIS convention 1.
+    const failureExitCode = failureBranch.indexOf('SetErrorLevel 4');
+    const failureQuitHook = failureBranch.indexOf(
+      '!insertmacro customBeforeInstallerQuit "web-package-download-failed"',
+    );
+    expect(failureExitCode).toBeGreaterThan(retryDialog);
+    expect(failureQuitHook).toBeGreaterThan(failureExitCode);
+    const cancelledBranches = webPackageTemplate
+      .split('${if} $0 == "Cancelled"')
+      .slice(1);
+    expect(cancelledBranches).toHaveLength(2);
+    for (const branch of cancelledBranches) {
+      expect(branch.indexOf('SetErrorLevel 1')).toBeGreaterThan(-1);
+    }
+
+    expect(appBuilderPatch).toContain('/CONNECTTIMEOUT 30 /RECEIVETIMEOUT 60');
+    expect(appBuilderPatch).toContain('$webDownloadAttempt < 3');
+  });
+
+  test('acquires the web payload before anything destructive runs', () => {
+    // Download-first ordering: the payload must be resolved (and verified)
+    // before CHECK_APP_RUNNING stops processes and before the old version is
+    // uninstalled — a failed download then leaves the previous install
+    // intact instead of stranding the user with no app.
+    const acquireCall = installSection.indexOf('!insertmacro acquireWebPackage');
+    const checkAppRunning = installSection.indexOf('!insertmacro CHECK_APP_RUNNING');
+    const uninstallOld = installSection.indexOf('customUninstallOldVersion');
+    expect(acquireCall).toBeGreaterThan(-1);
+    expect(checkAppRunning).toBeGreaterThan(acquireCall);
+    expect(uninstallOld).toBeGreaterThan(acquireCall);
+
+    // The acquire call exists only for web builds.
+    const guardIdx = installSection.lastIndexOf('!ifdef APP_PACKAGE_URL', acquireCall);
+    expect(guardIdx).toBeGreaterThan(-1);
+    expect(installSection.indexOf('!endif', guardIdx)).toBeGreaterThan(acquireCall);
+
+    // installApplicationFiles no longer downloads anything: the only
+    // downloadApplicationFiles call site lives inside acquireWebPackage.
+    const installFilesStart = installerTemplate.indexOf('!macro installApplicationFiles');
+    const installFilesEnd = installerTemplate.indexOf('!macroend', installFilesStart);
+    const installFilesBody = installerTemplate.slice(installFilesStart, installFilesEnd);
+    expect(installFilesBody).not.toContain('downloadApplicationFiles');
+    expect(installFilesBody).not.toContain('StdUtils.GetParameter');
+    const acquireMacroStart = webPackageTemplate.indexOf('!macro acquireWebPackage');
+    const acquireMacroEnd = webPackageTemplate.indexOf('!macroend', acquireMacroStart);
+    const acquireBody = webPackageTemplate.slice(acquireMacroStart, acquireMacroEnd);
+    expect(acquireBody).toContain('!insertmacro downloadApplicationFiles');
+
+    expect(appBuilderPatch).toContain('!insertmacro acquireWebPackage');
+  });
+
+  test('reuses cached payloads and verifies downloads before extraction', () => {
+    const acquireMacroStart = webPackageTemplate.indexOf('!macro acquireWebPackage');
+    const acquireMacroEnd = webPackageTemplate.indexOf('!macroend', acquireMacroStart);
+    const acquireBody = webPackageTemplate.slice(acquireMacroStart, acquireMacroEnd);
+
+    // Resolution order: sibling package (next to the installer), then the
+    // cached payload from a previous install, then the network download.
+    const siblingCheck = acquireBody.indexOf('${StdUtils.HashFile} $3 "SHA2-512" "$packageFile"');
+    const cacheCheck = acquireBody.indexOf(
+      '${StdUtils.HashFile} $3 "SHA2-512" "$LOCALAPPDATA\\${APP_PACKAGE_STORE_FILE}"',
+    );
+    const download = acquireBody.indexOf('!insertmacro downloadApplicationFiles');
+    expect(siblingCheck).toBeGreaterThan(-1);
+    expect(cacheCheck).toBeGreaterThan(siblingCheck);
+    expect(download).toBeGreaterThan(cacheCheck);
+
+    // The cache probe only runs with a known expected hash — the hash is the
+    // version gate, since the store file name is version-less.
+    const cacheGuard = acquireBody.indexOf('${if} $webPackageExpectedHash != ""');
+    expect(cacheGuard).toBeGreaterThan(-1);
+    expect(cacheGuard).toBeLessThan(cacheCheck);
+
+    // A stale sibling package must not block silent installs on a dialog.
+    const siblingMismatchDialog = acquireBody
+      .split(/\r?\n/)
+      .find((line) => line.includes('found locally, but checksum'));
+    expect(siblingMismatchDialog).toContain('/SD IDOK');
+
+    // Downloaded payloads are hash-verified; a mismatch is fed back into the
+    // bounded retry dispatch as a failed attempt and never reaches extraction.
+    const downloadMacroStart = webPackageTemplate.indexOf('!macro downloadApplicationFiles');
+    const downloadMacroEnd = webPackageTemplate.indexOf('!macroend', downloadMacroStart);
+    const downloadBody = webPackageTemplate.slice(downloadMacroStart, downloadMacroEnd);
+    const noProxyCall = downloadBody.indexOf('inetc::get /NOPROXY');
+    const verify = downloadBody.indexOf('${StdUtils.HashFile} $3 "SHA2-512" "$PLUGINSDIR\\package.7z"');
+    const mismatchStatus = downloadBody.indexOf('StrCpy $0 "Checksum Mismatch"');
+    const failureDispatch = downloadBody.indexOf('${elseif} $0 != "OK"');
+    expect(verify).toBeGreaterThan(noProxyCall);
+    expect(mismatchStatus).toBeGreaterThan(verify);
+    expect(failureDispatch).toBeGreaterThan(mismatchStatus);
+    expect(downloadBody.slice(verify, mismatchStatus)).toContain('Delete "$PLUGINSDIR\\package.7z"');
+
+    // A cache hit must not be moved onto itself — the moveFile copy+delete
+    // fallback would destroy the cached payload.
+    const installFilesStart = installerTemplate.indexOf('!macro installApplicationFiles');
+    const installFilesEnd = installerTemplate.indexOf('!macroend', installFilesStart);
+    const installFilesBody = installerTemplate.slice(installFilesStart, installFilesEnd);
+    const moveGuard = installFilesBody.indexOf(
+      '${if} $packageFile != "$LOCALAPPDATA\\${APP_PACKAGE_STORE_FILE}"',
+    );
+    const moveCall = installFilesBody.indexOf('!insertmacro moveFile "$packageFile"');
+    expect(moveGuard).toBeGreaterThan(-1);
+    expect(moveCall).toBeGreaterThan(moveGuard);
+    expect(installFilesBody).toContain(
+      '!insertmacro customInstallerCacheCopyEnd "package" "reused"',
+    );
+
+    // Acquisition and verification are visible in install-timing.log.
+    expect(installerInclude).toContain('!macro customWebPackageAcquireStart');
+    expect(installerInclude).toContain('!macro customWebPackageAcquireEnd SOURCE');
+    expect(installerInclude).toContain('!macro customWebPackageVerifyStart');
+    expect(installerInclude).toContain('!macro customWebPackageVerifyEnd RESULT');
+    expect(installerInclude).toContain('phase=web-package-acquire-start');
+    expect(installerInclude).toContain('phase=web-package-acquire-complete');
+    expect(installerInclude).toContain('phase=web-package-verify-complete');
+    for (const source of ['"explicit"', '"sibling"', '"cache"', '"download"']) {
+      expect(acquireBody).toContain(`!insertmacro customWebPackageAcquireEnd ${source}`);
+    }
+
+    expect(appBuilderPatch).toContain('Checksum Mismatch');
+    expect(appBuilderPatch).toContain('"package" "reused"');
+  });
+
+  test('logs web download boundaries and every installer quit', () => {
+    // Both inetc transfers are bracketed by timing hooks, so a timing log
+    // whose last line is web-package-download-start means the process died
+    // inside the transfer. Before these hooks that window had no logging.
+    const proxyStart = webPackageTemplate.indexOf(
+      '!insertmacro customWebPackageDownloadStart "proxy"',
+    );
+    const proxyEnd = webPackageTemplate.indexOf(
+      '!insertmacro customWebPackageDownloadEnd "proxy" "$0"',
+    );
+    const noproxyStart = webPackageTemplate.indexOf(
+      '!insertmacro customWebPackageDownloadStart "noproxy"',
+    );
+    const noproxyEnd = webPackageTemplate.indexOf(
+      '!insertmacro customWebPackageDownloadEnd "noproxy" "$0"',
+    );
+    expect(proxyStart).toBeGreaterThan(-1);
+    expect(proxyEnd).toBeGreaterThan(proxyStart);
+    expect(noproxyStart).toBeGreaterThan(proxyEnd);
+    expect(noproxyEnd).toBeGreaterThan(noproxyStart);
+
+    expect(installerInclude).toContain('!macro customWebPackageDownloadStart MODE');
+    expect(installerInclude).toContain('!macro customWebPackageDownloadEnd MODE STATUS');
+    expect(installerInclude).toContain('phase=web-package-download-start');
+    expect(installerInclude).toContain('phase=web-package-download-exit');
+
+    // customBeforeInstallerQuit writes its own line before the rollback: the
+    // rollback returns without logging when no fast-path rename happened,
+    // which previously let a silent web-download failure quit without a trace.
+    const quitMacroStart = installerInclude.indexOf(
+      '!macro customBeforeInstallerQuit REASON',
+    );
+    const quitMacroEnd = installerInclude.indexOf('!macroend', quitMacroStart);
+    const quitMacro = installerInclude.slice(quitMacroStart, quitMacroEnd);
+    const quitLog = quitMacro.indexOf('!insertmacro LobsterLogInstallerQuit "${REASON}"');
+    const quitRollback = quitMacro.indexOf('customRollbackOldInstall');
+    expect(quitLog).toBeGreaterThan(-1);
+    expect(quitRollback).toBeGreaterThan(quitLog);
+    expect(installerInclude).toContain('phase=installer-quit');
+  });
+
   test('reuses an uploaded web payload without appending another block map', () => {
     expect(differentialUpdateInfoBuilder).toContain(
       'process.env.LOBSTERAI_REUSE_NSIS_WEB_PACKAGE === "1"',

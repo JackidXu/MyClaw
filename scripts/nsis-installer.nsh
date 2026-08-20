@@ -67,6 +67,10 @@ Var lobsterTrustedPowerShellSource
   Var lobsterNewInstallValidationReason
   !ifndef APP_PACKAGE_URL
     Var lobsterPackageMaterializeStartTick
+  !else
+    Var lobsterWebDownloadStartTick
+    Var lobsterWebAcquireStartTick
+    Var lobsterWebVerifyStartTick
   !endif
   Var lobsterPackageExtractStartTick
   Var lobsterPackageCopyStartTick
@@ -689,7 +693,26 @@ FunctionEnd
     Call lobsterRollbackOldInstall
   !macroend
 
+  ; Every patched template exit site must leave a trace. The rollback below
+  ; returns without writing anything when no fast-path rename happened
+  ; (rename_status is neither success nor prevalidated), which previously let
+  ; e.g. a silent web-download failure quit with no log line at all -- the
+  ; install-timing.log just stopped mid-flow.
+  !macro LobsterLogInstallerQuit REASON
+    Push $8
+    Push $9
+    !insertmacro EnsureInstallerAttemptId
+    FileOpen $9 "$APPDATA\LobsterAI\install-timing.log" a
+    FileSeek $9 0 END
+    !insertmacro GetTimestamp $8
+    FileWrite $9 "$8 phase=installer-quit attempt_id=$lobsterInstallerAttemptId reason=${REASON} ui_mode=$lobsterUiMode rename_status=$lobsterOldInstallRenameStatus$\r$\n"
+    FileClose $9
+    Pop $9
+    Pop $8
+  !macroend
+
   !macro customBeforeInstallerQuit REASON
+    !insertmacro LobsterLogInstallerQuit "${REASON}"
     !insertmacro customRollbackOldInstall "${REASON}"
   !macroend
 
@@ -1365,6 +1388,125 @@ FunctionEnd
   ; The remaining hooks are invoked from the version-pinned app-builder-lib
   ; template patch. They use only built-in timing/file operations so the
   ; diagnostics do not add more security-scanned child processes.
+
+  ; Web-installer (nsis-web) payload acquisition boundaries. Acquisition runs
+  ; at the top of the install section, before anything destructive; source
+  ; records how the payload was obtained (explicit/sibling/cache/download).
+  ; attempt_id already exists here: customInit ensures it during .onInit.
+  !macro customWebPackageAcquireStart
+    Push $0
+    Push $8
+    Push $9
+    !insertmacro EnsureInstallerAttemptId
+    System::Call 'kernel32::GetTickCount()i .r0'
+    StrCpy $lobsterWebAcquireStartTick $0
+    FileOpen $9 "$APPDATA\LobsterAI\install-timing.log" a
+    FileSeek $9 0 END
+    !insertmacro GetTimestamp $8
+    FileWrite $9 "$8 phase=web-package-acquire-start attempt_id=$lobsterInstallerAttemptId$\r$\n"
+    FileClose $9
+    Pop $9
+    Pop $8
+    Pop $0
+  !macroend
+
+  !macro customWebPackageAcquireEnd SOURCE
+    Push $0
+    Push $1
+    Push $8
+    Push $9
+    System::Call 'kernel32::GetTickCount()i .r0'
+    IntOp $1 $0 - $lobsterWebAcquireStartTick
+    FileOpen $9 "$APPDATA\LobsterAI\install-timing.log" a
+    FileSeek $9 0 END
+    !insertmacro GetTimestamp $8
+    FileWrite $9 "$8 phase=web-package-acquire-complete attempt_id=$lobsterInstallerAttemptId source=${SOURCE} elapsed_ms=$1 file=$packageFile$\r$\n"
+    FileClose $9
+    Pop $9
+    Pop $8
+    Pop $1
+    Pop $0
+  !macroend
+
+  ; Post-download integrity check (SHA2-512 against the build-time hash).
+  !macro customWebPackageVerifyStart
+    Push $0
+    Push $8
+    Push $9
+    System::Call 'kernel32::GetTickCount()i .r0'
+    StrCpy $lobsterWebVerifyStartTick $0
+    FileOpen $9 "$APPDATA\LobsterAI\install-timing.log" a
+    FileSeek $9 0 END
+    !insertmacro GetTimestamp $8
+    FileWrite $9 "$8 phase=web-package-verify-start attempt_id=$lobsterInstallerAttemptId attempt=$webDownloadAttempt$\r$\n"
+    FileClose $9
+    Pop $9
+    Pop $8
+    Pop $0
+  !macroend
+
+  !macro customWebPackageVerifyEnd RESULT
+    Push $0
+    Push $1
+    Push $8
+    Push $9
+    System::Call 'kernel32::GetTickCount()i .r0'
+    IntOp $1 $0 - $lobsterWebVerifyStartTick
+    FileOpen $9 "$APPDATA\LobsterAI\install-timing.log" a
+    FileSeek $9 0 END
+    !insertmacro GetTimestamp $8
+    FileWrite $9 "$8 phase=web-package-verify-complete attempt_id=$lobsterInstallerAttemptId attempt=$webDownloadAttempt result=${RESULT} elapsed_ms=$1$\r$\n"
+    FileClose $9
+    Pop $9
+    Pop $8
+    Pop $1
+    Pop $0
+  !macroend
+
+  ; Web-installer (nsis-web) download boundaries. The download is the only
+  ; phase that talks to the network; a run whose last line is
+  ; web-package-download-start died inside the transfer. Before these hooks
+  ; that window had no logging at all.
+  !macro customWebPackageDownloadStart MODE
+    Push $0
+    Push $8
+    Push $9
+    System::Call 'kernel32::GetTickCount()i .r0'
+    StrCpy $lobsterWebDownloadStartTick $0
+    FileOpen $9 "$APPDATA\LobsterAI\install-timing.log" a
+    FileSeek $9 0 END
+    !insertmacro GetTimestamp $8
+    FileWrite $9 "$8 phase=web-package-download-start attempt_id=$lobsterInstallerAttemptId attempt=$webDownloadAttempt mode=${MODE} arch=$packageArch url=$packageUrl dest=$PLUGINSDIR\package.7z$\r$\n"
+    FileClose $9
+    Pop $9
+    Pop $8
+    Pop $0
+  !macroend
+
+  !macro customWebPackageDownloadEnd MODE STATUS
+    Push $0
+    Push $1
+    Push $2
+    Push $8
+    Push $9
+    ; STATUS expands to a register at the call site; capture it before the
+    ; GetTickCount call overwrites $0. Kept as the last field because inetc
+    ; status strings may contain spaces ("SendRequest Error").
+    StrCpy $2 "${STATUS}"
+    System::Call 'kernel32::GetTickCount()i .r0'
+    IntOp $1 $0 - $lobsterWebDownloadStartTick
+    FileOpen $9 "$APPDATA\LobsterAI\install-timing.log" a
+    FileSeek $9 0 END
+    !insertmacro GetTimestamp $8
+    FileWrite $9 "$8 phase=web-package-download-exit attempt_id=$lobsterInstallerAttemptId attempt=$webDownloadAttempt mode=${MODE} elapsed_ms=$1 status=$2$\r$\n"
+    FileClose $9
+    Pop $9
+    Pop $8
+    Pop $2
+    Pop $1
+    Pop $0
+  !macroend
+
   !macro customAppPackageMaterializeStart
     Push $0
     Push $8
