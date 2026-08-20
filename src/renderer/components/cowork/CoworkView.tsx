@@ -197,6 +197,9 @@ const CoworkView: React.FC<CoworkViewProps> = ({
   const homeDraftCollaborationMode = useSelector((state: RootState) => (
     state.cowork.draftCollaborationModes.__home__ || CoworkCollaborationMode.Default
   ));
+  const homeDraftSecondBrainEnabled = useSelector((state: RootState) => (
+    state.cowork.draftSecondBrainEnabled.__home__ ?? true
+  ));
   const mediaSelection = useSelector((state: RootState) => {
     const key = currentSession?.id || '__home__';
     return state.cowork.mediaSelection[key];
@@ -437,6 +440,7 @@ const CoworkView: React.FC<CoworkViewProps> = ({
         activeSkillIds: effectiveRuntimeSkillIds,
         activeKitIds: displayKitIds.length > 0 ? displayKitIds : undefined,
         agentId: currentAgentId,
+        secondBrainEnabled: homeDraftSecondBrainEnabled,
         ...(optimisticGoal !== undefined ? { goal: optimisticGoal } : {}),
         messages: [
           {
@@ -508,6 +512,7 @@ const CoworkView: React.FC<CoworkViewProps> = ({
         agentId: currentAgentId,
         modelOverride: sessionModelOverride,
         thinkingLevel: currentAgentThinkingLevel,
+        secondBrainEnabled: homeDraftSecondBrainEnabled,
         imageAttachments,
         mediaSelection: mediaSelection && mediaSelection.mode !== 'none' ? mediaSelection : undefined,
         mediaReferences,

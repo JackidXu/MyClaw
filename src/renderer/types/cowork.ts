@@ -159,6 +159,7 @@ export interface CoworkSession {
   activeSkillIds: string[];
   activeKitIds?: string[];
   agentId: string;
+  secondBrainEnabled: boolean;
   messages: CoworkMessage[];
   /** Offset of the first loaded message in the full message history. 0 means loaded from the beginning. */
   messagesOffset: number;
@@ -368,6 +369,7 @@ export interface CoworkStartOptions {
   agentId?: string;
   modelOverride?: string;
   thinkingLevel?: ModelThinkingLevel;
+  secondBrainEnabled?: boolean;
   imageAttachments?: CoworkImageAttachment[];
   mediaSelection?: { mode: string; modelId?: string; modelName?: string; imageModelId?: string; videoModelId?: string };
   mediaReferences?: import('./mediaGeneration').MediaAttachmentRef[];
