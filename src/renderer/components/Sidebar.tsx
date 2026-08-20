@@ -13,7 +13,6 @@ import { RootState } from '../store';
 import {
   selectCoworkSessions,
   selectCurrentSessionId,
-  selectIsStreaming,
 } from '../store/selectors/coworkSelectors';
 import type { CoworkSessionSummary } from '../types/cowork';
 import { getAgentDisplayNameById } from '../utils/agentDisplay';
@@ -379,12 +378,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     }
   }, [balanceLoading]);
 
-  const handleRefreshBalanceRef = useRef(handleRefreshBalance);
-  useEffect(() => {
-    handleRefreshBalanceRef.current = handleRefreshBalance;
-  }, [handleRefreshBalance]);
-
-  // 从 localStorage 加载配置并做静默刷新
+  // 从 localStorage 加载配置
   useEffect(() => {
     const apiKey = localStorage.getItem('heyclaw_api_key');
     const session = localStorage.getItem('heyclaw_session');
@@ -427,25 +421,8 @@ const Sidebar: React.FC<SidebarProps> = ({
     if (savedBalance) {
       setBalance(Number(savedBalance));
     }
-    
-    if (apiKey) {
-      const timer = setTimeout(() => {
-        void handleRefreshBalanceRef.current(false);
-      }, 1000);
-      return () => clearTimeout(timer);
-    }
   }, []);
 
-  // 监听对话流状态，成功响应后（streaming 结束）自动静默刷新余额
-  const isStreaming = useSelector(selectIsStreaming);
-  const prevIsStreamingRef = useRef(isStreaming);
-
-  useEffect(() => {
-    if (prevIsStreamingRef.current && !isStreaming) {
-      void handleRefreshBalanceRef.current(false);
-    }
-    prevIsStreamingRef.current = isStreaming;
-  }, [isStreaming]);
   const [batchAgentId, setBatchAgentId] = useState<string | null>(null);
   const [batchSelectableItems, setBatchSelectableItems] = useState<AgentSidebarBatchItem[]>([]);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
@@ -1075,7 +1052,13 @@ const Sidebar: React.FC<SidebarProps> = ({
         >
           {/* 用户卡片 */}
           <div 
-            onClick={() => setShowUserMenu(!showUserMenu)}
+            onClick={() => {
+              const willOpen = !showUserMenu;
+              setShowUserMenu(willOpen);
+              if (willOpen) {
+                void handleRefreshBalance(false);
+              }
+            }}
             className="flex items-center gap-2.5 p-2 rounded-xl bg-surface/50 hover:bg-surface-raised transition-all duration-200 shadow-sm border border-border/10 cursor-pointer select-none"
           >
             {/* 头像 */}
@@ -1107,29 +1090,22 @@ const Sidebar: React.FC<SidebarProps> = ({
                     {userNickname}
                   </div>
                 </div>
-                {/* 算力点数徽章（点击刷新） */}
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleRefreshBalance(true);
-                  }}
-                  disabled={balanceLoading}
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-raised border border-border/60 text-foreground font-semibold text-xs hover:border-primary/50 transition-all shrink-0 cursor-pointer active:scale-95"
-                  title="点击刷新算力"
+                {/* 算力点数展示徽章 */}
+                <div 
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-raised border border-border/60 text-foreground font-semibold text-xs shrink-0 select-none"
                 >
                   {balanceLoading ? (
-                    <svg className="animate-spin h-3.5 w-3.5 text-amber-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <svg className="animate-spin h-3.5 w-3.5 text-amber-500 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
                   ) : (
-                    <svg className="w-3.5 h-3.5 text-amber-500 fill-amber-500" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                    <svg className="w-3.5 h-3.5 text-amber-500 fill-amber-500 shrink-0" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
                       <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
                     </svg>
                   )}
                   <span>{balance !== null ? balance.toLocaleString() : '--'}</span>
-                </button>
+                </div>
               </div>
 
               {/* Profile Body */}
@@ -1455,7 +1431,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
       {/* 充值 Modal */}
       {isPayModalOpen && (
-        <PayModal onClose={() => setIsPayModalOpen(false)} onSuccess={() => handleRefreshBalance(false)} />
+        <PayModal onClose={() => setIsPayModalOpen(false)} />
       )}
 
       {/* 修改密码模态框 */}
