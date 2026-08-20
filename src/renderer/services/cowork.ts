@@ -84,6 +84,7 @@ import type {
   OpenClawSessionPolicyConfig,
 } from '../types/cowork';
 import { CoworkSessionStatusValue } from '../types/cowork';
+import { agentService } from './agent';
 import { CoworkQueuedFollowUpCoordinator } from './coworkQueuedFollowUpCoordinator';
 import {
   getPreservedMessageWindow,
@@ -960,6 +961,7 @@ class CoworkService {
     const result = await cowork.startSession(options);
     if (result.success && result.session) {
       store.dispatch(addSession(result.session));
+      void agentService.bumpAgentToTop(result.session.agentId || 'main');
       if (result.session.status !== 'running') {
         store.dispatch(setStreaming(false));
       }
@@ -1525,6 +1527,7 @@ class CoworkService {
       const result = await cowork.forkSession(options);
       if (result.success && result.session) {
         store.dispatch(addSession(result.session));
+        void agentService.bumpAgentToTop(result.session.agentId || 'main');
         this.setCurrentSessionStreaming(result.session.id, false, 'fork_session_created');
         console.log(`[CoworkFork] renderer received forked session ${result.session.id} successfully`);
         window.dispatchEvent(new CustomEvent('app:showToast', {

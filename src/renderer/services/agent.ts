@@ -205,6 +205,30 @@ class AgentService {
     }
   }
 
+  async bumpAgentToTop(agentId: string): Promise<boolean> {
+    const normalizedId = agentId.trim() || 'main';
+    const agents = store.getState().agent.agents;
+    const targetAgent = agents.find((a) => a.id === normalizedId);
+    if (!targetAgent) return false;
+
+    const pinnedAgents = agents.filter((a) => a.pinned);
+    const unpinnedAgents = agents.filter((a) => !a.pinned);
+
+    let nextPinned: typeof agents;
+    let nextUnpinned: typeof agents;
+
+    if (targetAgent.pinned) {
+      nextPinned = [targetAgent, ...pinnedAgents.filter((a) => a.id !== normalizedId)];
+      nextUnpinned = unpinnedAgents;
+    } else {
+      nextPinned = pinnedAgents;
+      nextUnpinned = [targetAgent, ...unpinnedAgents.filter((a) => a.id !== normalizedId)];
+    }
+
+    const finalIds = [...nextPinned, ...nextUnpinned].map((a) => a.id);
+    return this.reorderAgents(finalIds);
+  }
+
   async cleanupLegacyIdentityBlock(id: string): Promise<AgentLegacyIdentityCleanupResult> {
     try {
       const api = window.electron?.agents?.cleanupLegacyIdentityBlock;
