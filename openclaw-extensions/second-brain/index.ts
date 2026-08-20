@@ -2,10 +2,17 @@ import { Type } from '@sinclair/typebox';
 // @ts-expect-error plugin-sdk exists natively inside the openclaw gateway sandbox
 import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
 
+type DynamicToolConfig = {
+  name?: string;
+  description?: string;
+  parameters?: Record<string, unknown>;
+};
+
 type PluginConfig = {
   callbackUrl: string;
   secret: string;
   requestTimeoutMs: number;
+  tool?: DynamicToolConfig;
 };
 
 type RetrieveRequest = {
@@ -28,10 +35,16 @@ const isRecord = (value: unknown): value is Record<string, unknown> => {
 
 const parsePluginConfig = (value: unknown): PluginConfig => {
   const raw = isRecord(value) ? value : {};
+  const rawTool = isRecord(raw.tool) ? raw.tool : undefined;
   return {
     callbackUrl: typeof raw.callbackUrl === 'string' ? raw.callbackUrl.trim() : '',
     secret: typeof raw.secret === 'string' ? raw.secret.trim() : '',
     requestTimeoutMs: typeof raw.requestTimeoutMs === 'number' ? raw.requestTimeoutMs : DEFAULT_TIMEOUT_MS,
+    tool: rawTool ? {
+      name: typeof rawTool.name === 'string' ? rawTool.name : undefined,
+      description: typeof rawTool.description === 'string' ? rawTool.description : undefined,
+      parameters: isRecord(rawTool.parameters) ? rawTool.parameters : undefined,
+    } : undefined,
   };
 };
 
@@ -104,23 +117,19 @@ const plugin = {
     api.registerTool((ctx: any) => {
       const sessionKey = ctx.sessionKey ?? '';
 
+      // 优先使用接口动态下发的工具描述与参数定义
+      const toolName = config.tool?.name || 'retrieve_fmp';
+      const toolDesc = config.tool?.description || '从专家的第二大脑专属认知库中检索相关认知。';
+      const toolParams = config.tool?.parameters || Type.Object({
+        query: Type.String({ description: '检索词' }),
+        topK: Type.Optional(Type.Number({ description: '数量' })),
+      });
+
       return {
-        name: 'retrieve_fmp',
+        name: toolName,
         label: 'Second Brain Retrieval',
-        description: [
-          '从当前专家的第二大脑专属认知库中检索认知信息（包括思维模型、价值观念、决策规则、工作方式、行业知识、案例经验、表达方式等）。',
-          '当用户的问题需要结合该专家的深度行业认知、过往实战案例、决策红线、管理风格或特定金句风格时，调用此工具进行检索。',
-        ].join(' '),
-        parameters: Type.Object({
-          query: Type.String({
-            description: '检索关键词或查询问题，例如“如何做市场冷启动决策”、“选人用人标准”、“对于某行业未来发展的判断”等。',
-          }),
-          topK: Type.Optional(
-            Type.Number({
-              description: '期望召回的最相关认知条目数量（默认返回 5 条最相关内容）。',
-            }),
-          ),
-        }),
+        description: toolDesc,
+        parameters: toolParams,
         async execute(id: string, params: unknown) {
           const rawArgs = (params ?? {}) as Record<string, unknown>;
           const query = typeof rawArgs.query === 'string' ? rawArgs.query.trim() : '';
@@ -128,7 +137,7 @@ const plugin = {
 
           if (!query) {
             return {
-              content: [{ type: 'text', text: 'retrieve_fmp 需要非空的 query 检索词。' }],
+              content: [{ type: 'text', text: `${toolName} 需要非空的 query 检索词。` }],
               isError: true,
             };
           }

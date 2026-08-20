@@ -43,6 +43,7 @@ import type { DiscordInstanceConfig, IMSettings, TelegramInstanceConfig } from '
 import type { DingTalkInstanceConfig, EmailMultiInstanceConfig, FeishuInstanceConfig, NeteaseBeeChanConfig, NimInstanceConfig, PopoInstanceConfig, QQInstanceConfig, WecomInstanceConfig, WeixinOpenClawConfig } from '../im/types';
 import { OpenClawSessionKeepAlive } from '../openclawSessionPolicy/constants';
 import { buildOpenClawSessionConfig } from '../openclawSessionPolicy/store';
+import { getSecondBrainToolDefinition } from '../secondBrain/secondBrainBridge';
 import {
   getAllServerModelMetadata,
   listProviderSourceEntries,
@@ -2741,15 +2742,18 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
     if (hasSecondBrainPlugin && secondBrainCallbackUrl && managedConfig.plugins) {
       const plugins = managedConfig.plugins as Record<string, unknown>;
       const entries = plugins.entries as Record<string, Record<string, unknown>>;
+      const dynamicTool = getSecondBrainToolDefinition();
       entries['second-brain'] = {
         enabled: true,
         config: {
           callbackUrl: secondBrainCallbackUrl,
           secret: '${LOBSTER_MCP_BRIDGE_SECRET}',
           requestTimeoutMs: 60000,
+          ...(dynamicTool ? { tool: dynamicTool.function } : {}),
         },
       };
     }
+
 
 
     // Sync Dreaming config into memory-core plugin
