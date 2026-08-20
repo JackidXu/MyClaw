@@ -1,0 +1,193 @@
+import { app } from 'electron';
+import * as http from 'http';
+import * as https from 'https';
+import * as nodeUrl from 'url';
+
+export interface FmpAuthHeaders {
+  claw_cookie: string;
+  claw_uid: string;
+}
+
+export interface FmpRetrieveNodeItem {
+  type?: string;
+  id?: number;
+  layer?: number;
+  text?: string;
+  score?: number;
+  raw_score?: number;
+}
+
+export interface FmpRetrievePayload {
+  status?: boolean;
+  count?: number;
+  top_score?: number;
+  relevant?: boolean;
+  threshold?: number;
+  items?: FmpRetrieveNodeItem[];
+  document?: string;
+}
+
+interface ApiResponse<T> {
+  status?: string;
+  code?: number;
+  data?: T;
+  message?: string;
+}
+
+const LAYER_NAME_MAP: Record<number, string> = {
+  0: '思维模型',
+  1: '价值观念',
+  2: '决策规则',
+  3: '工作方式',
+  4: '行业知识',
+  5: '案例经验',
+  6: '表达方式',
+};
+
+// 存储全局或 session 维度的认证头
+let latestAuthHeaders: FmpAuthHeaders = { claw_cookie: '', claw_uid: '' };
+const authHeadersBySessionKey = new Map<string, FmpAuthHeaders>();
+
+export function updateSecondBrainAuthHeaders(sessionKey: string | null, headers: FmpAuthHeaders): void {
+  if (headers.claw_cookie || headers.claw_uid) {
+    latestAuthHeaders = { ...headers };
+    if (sessionKey) {
+      authHeadersBySessionKey.set(sessionKey, { ...headers });
+    }
+  }
+}
+
+export function getSecondBrainAuthHeaders(sessionKey?: string): FmpAuthHeaders {
+  if (sessionKey) {
+    if (authHeadersBySessionKey.has(sessionKey)) {
+      return authHeadersBySessionKey.get(sessionKey)!;
+    }
+    // 支持按 sessionId 包含匹配（因为 sessionKey 形式如 agent:main:lobsterai:<sessionId>）
+    for (const [key, headers] of authHeadersBySessionKey.entries()) {
+      if (sessionKey.includes(key) || key.includes(sessionKey)) {
+        return headers;
+      }
+    }
+  }
+  return latestAuthHeaders;
+}
+
+
+function getRetrieveBaseUrl(): string {
+  return app.isPackaged
+    ? 'https://zhike.banchengyun.com'
+    : 'https://dev-zhike.banchengyun.com';
+}
+
+/** 动态格式化检索结果回填大模型 */
+export function formatRetrieveResultToDocument(data: FmpRetrievePayload): string {
+  // 1. 如果后端直接提供了格式化好的 document，优先使用
+  if (typeof data.document === 'string' && data.document.trim()) {
+    return data.document.trim();
+  }
+
+  // 2. 如果问题不相关或未检索到内容
+  if (data.relevant === false || !data.items || data.items.length === 0) {
+    return '（本次问题与第二大脑认知库关联度较低，未检索到强匹配的专属认知内容）';
+  }
+
+  // 3. 动态按 items 和 layer 组织结构化 Markdown 文本
+  const sections: string[] = ['### 第二大脑知识库检索结果：'];
+
+  for (const item of data.items) {
+    const layerName = typeof item.layer === 'number' && LAYER_NAME_MAP[item.layer]
+      ? LAYER_NAME_MAP[item.layer]
+      : '通用认知';
+    const text = item.text?.trim() ?? '';
+    if (!text) continue;
+
+    sections.push(`- **【${layerName}】** ${text}`);
+  }
+
+  return sections.join('\n\n');
+}
+
+/** 执行 /fmp/retrieve 接口调用 */
+export async function executeSecondBrainRetrieve(options: {
+  query: string;
+  topK?: number;
+  sessionKey?: string;
+}): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
+  const { query, topK, sessionKey } = options;
+  const auth = getSecondBrainAuthHeaders(sessionKey);
+
+  const baseUrl = getRetrieveBaseUrl();
+  const apiPath = '/api/chaohuixie/claw/fmp/retrieve';
+  const body = JSON.stringify({ query, ...(typeof topK === 'number' ? { topK } : {}) });
+  const parsedUrl = nodeUrl.parse(baseUrl);
+  const isHttps = parsedUrl.protocol === 'https:';
+  const hostname = parsedUrl.hostname ?? '';
+  const port = parsedUrl.port
+    ? parseInt(parsedUrl.port, 10)
+    : (isHttps ? 443 : 80);
+
+  return new Promise((resolve) => {
+    const reqOptions: http.RequestOptions = {
+      hostname,
+      port,
+      path: apiPath,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body),
+        'claw_cookie': auth.claw_cookie,
+        'claw_uid': auth.claw_uid,
+      },
+    };
+
+    const requester = isHttps ? https : http;
+    const req = requester.request(reqOptions, (res) => {
+      const chunks: Buffer[] = [];
+      res.on('data', (chunk: Buffer) => chunks.push(chunk));
+      res.on('end', () => {
+        try {
+          const raw = Buffer.concat(chunks).toString('utf-8');
+          const parsed = JSON.parse(raw) as ApiResponse<FmpRetrievePayload>;
+
+          if (parsed.status !== 'success' || parsed.code !== 1) {
+            console.warn('[SecondBrainBridge] retrieve API business failure:', parsed.message || raw);
+            resolve({
+              content: [{ type: 'text', text: `第二大脑检索返回异常: ${parsed.message || '业务错误'}` }],
+              isError: true,
+            });
+            return;
+          }
+
+          const formattedText = formatRetrieveResultToDocument(parsed.data ?? {});
+          resolve({
+            content: [{ type: 'text', text: formattedText }],
+          });
+        } catch (parseErr) {
+          console.error('[SecondBrainBridge] failed to parse retrieve API response:', parseErr);
+          resolve({
+            content: [{ type: 'text', text: `解析第二大脑检索响应失败: ${parseErr instanceof Error ? parseErr.message : String(parseErr)}` }],
+            isError: true,
+          });
+        }
+      });
+      res.on('error', (err) => {
+        console.error('[SecondBrainBridge] HTTP response error:', err);
+        resolve({
+          content: [{ type: 'text', text: `第二大脑检索网络异常: ${err.message}` }],
+          isError: true,
+        });
+      });
+    });
+
+    req.on('error', (err) => {
+      console.error('[SecondBrainBridge] HTTP request error:', err);
+      resolve({
+        content: [{ type: 'text', text: `第二大脑检索请求失败: ${err.message}` }],
+        isError: true,
+      });
+    });
+
+    req.write(body);
+    req.end();
+  });
+}

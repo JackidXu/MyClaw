@@ -24,6 +24,7 @@ import { buildCoworkCapabilitySelection } from '../../services/coworkCapabilityS
 import { expertService } from '../../services/expertService';
 import { i18nService } from '../../services/i18n';
 import { quickActionService } from '../../services/quickAction';
+import type { FmpTool } from '../../services/secondBrainApi';
 import { RootState } from '../../store';
 import {
   selectCoworkConfig,
@@ -344,7 +345,9 @@ const CoworkView: React.FC<CoworkViewProps> = ({
     selectedTextSnippets?: CoworkSelectedTextSnippet[],
     browserAnnotations?: CoworkBrowserAnnotationMessageBatch[],
     collaborationMode: CoworkCollaborationModeType = CoworkCollaborationMode.Default,
+    fmpTools?: FmpTool[],
   ): Promise<boolean | void> => {
+
     console.log('[CoworkView] handleStartSession: imageAttachments diagnosis', {
       hasImageAttachments: !!imageAttachments,
       count: imageAttachments?.length ?? 0,
@@ -518,7 +521,15 @@ const CoworkView: React.FC<CoworkViewProps> = ({
         mediaReferences,
         selectedTextSnippets,
         browserAnnotations,
+        fmpTools: fmpTools && fmpTools.length > 0 ? fmpTools : undefined,
+        fmpAuthHeaders: fmpTools && fmpTools.length > 0
+          ? {
+            claw_cookie: localStorage.getItem('heyclaw_session') ?? '',
+            claw_uid: localStorage.getItem('heyclaw_user_id') ?? '',
+          }
+          : undefined,
       });
+
 
       if (!startedSession && startError) {
         // Show the error as a system message in the temp session
@@ -590,7 +601,9 @@ const CoworkView: React.FC<CoworkViewProps> = ({
     selectedTextSnippets?: CoworkSelectedTextSnippet[],
     browserAnnotations?: CoworkBrowserAnnotationMessageBatch[],
     collaborationMode: CoworkCollaborationModeType = CoworkCollaborationMode.Default,
+    _fmpTools?: FmpTool[], // 继续会话不重新注入工具
   ) => {
+
     if (!currentSession) return false;
     // Prevent duplicate submissions
     if (isContinuingRef.current) return false;
@@ -644,7 +657,12 @@ const CoworkView: React.FC<CoworkViewProps> = ({
         mediaReferences,
         selectedTextSnippets,
         browserAnnotations,
+        fmpAuthHeaders: {
+          claw_cookie: localStorage.getItem('heyclaw_session') ?? '',
+          claw_uid: localStorage.getItem('heyclaw_user_id') ?? '',
+        },
       });
+
       if (sent && (sessionSkillIds.length > 0 || sessionKitIds.length > 0)) {
         dispatch(clearActiveSkills());
         dispatch(clearActiveKits());
