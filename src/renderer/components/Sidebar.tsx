@@ -191,10 +191,14 @@ const Sidebar: React.FC<SidebarProps> = ({
   const [isBatchMode, setIsBatchMode] = useState(false);
   const [pendingCognitionCount, setPendingCognitionCount] = useState<number>(0);
 
-  /** 轮询待确认认知数，用于侧边栏徽章显示 */
+  /** 加载待确认认知数，用于侧边栏徽章显示（初始化请求一次，后续通过事件精准更新） */
   useEffect(() => {
     let cancelled = false;
     const loadPendingCount = () => {
+      const session = localStorage.getItem('heyclaw_session');
+      const userId = localStorage.getItem('heyclaw_user_id');
+      if (!session || !userId) return;
+
       fetchCognitionStats()
         .then((data) => {
           if (!cancelled && data) {
@@ -205,12 +209,24 @@ const Sidebar: React.FC<SidebarProps> = ({
     };
 
     loadPendingCount();
-    const interval = setInterval(loadPendingCount, 8000);
+
+    const handleStatsUpdated = (event: Event) => {
+      const customEvent = event as CustomEvent<{ pending_count?: number } | number>;
+      if (typeof customEvent.detail === 'number') {
+        setPendingCognitionCount(customEvent.detail);
+      } else if (customEvent.detail && typeof customEvent.detail.pending_count === 'number') {
+        setPendingCognitionCount(customEvent.detail.pending_count);
+      } else {
+        loadPendingCount();
+      }
+    };
+
+    window.addEventListener('app:secondBrain:statsUpdated', handleStatsUpdated);
     return () => {
       cancelled = true;
-      clearInterval(interval);
+      window.removeEventListener('app:secondBrain:statsUpdated', handleStatsUpdated);
     };
-  }, [activeView]);
+  }, []);
 
   // 用户卡片状态与逻辑
   const [showUserMenu, setShowUserMenu] = useState(false);

@@ -180,7 +180,14 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
   const loadStats = () => {
     setStatsLoading(true);
     fetchCognitionStats()
-      .then((data) => setStats(data))
+      .then((data) => {
+        setStats(data);
+        if (data && typeof data.pending_count === 'number') {
+          window.dispatchEvent(
+            new CustomEvent('app:secondBrain:statsUpdated', { detail: data.pending_count })
+          );
+        }
+      })
       .catch((err) => console.warn('[SecondBrainView] 统计接口失败:', err))
       .finally(() => setStatsLoading(false));
   };
