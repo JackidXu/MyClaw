@@ -7902,7 +7902,7 @@ if (!gotTheLock) {
         return { success: false, error: `HTTP ${resp.status}` };
       }
 
-      const data = await resp.json() as { data: Array<{ id: string }> };
+      const data = await resp.json() as { data: Array<{ id: string; owned_by?: string }> };
       if (!data || !Array.isArray(data.data)) {
         return { success: false, error: 'Invalid response format' };
       }
@@ -7912,6 +7912,15 @@ if (!gotTheLock) {
       const videoModels: any[] = [];
 
       for (const m of data.data) {
+        if (!m || typeof m.id !== 'string') {
+          continue;
+        }
+
+        // 过滤自定义模型（owned_by === 'custom'）
+        if (m.owned_by === 'custom') {
+          continue;
+        }
+
         const modelId = m.id;
 
         // 判断是否是生图模型
