@@ -1504,6 +1504,9 @@ const translations: Record<LanguageType, Record<string, string>> = {
     coworkCurrentAgent: '当前专家',
     coworkSelectAgent: '选择 Agent',
     coworkQuickActionCollapse: '收起',
+    coworkQuickActionAll: '全部',
+    coworkGuessYouNeed: '🔥 猜你需要',
+    coworkRefreshRecommendations: '换一换 ↻',
 
     // Multi-Agent 管理
     createAgent: '创建 Agent',
@@ -5011,6 +5014,9 @@ const translations: Record<LanguageType, Record<string, string>> = {
     coworkGreetingLateNight: 'Up late?',
     coworkHomeTagline: "I'm HeyClaw, your all-in-one office agent",
     coworkQuickActionCollapse: 'Collapse',
+    coworkQuickActionAll: 'All',
+    coworkGuessYouNeed: '🔥 Recommended for you',
+    coworkRefreshRecommendations: 'Refresh ↻',
     coworkCurrentAgent: 'Current Agent',
     coworkSelectAgent: 'Select Agent',
     defaultAgentDisplayName: 'Main Agent',
