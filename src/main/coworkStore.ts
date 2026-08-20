@@ -919,6 +919,12 @@ export class CoworkStore {
         now,
       );
 
+    try {
+      this.bumpAgentToTop(agentId);
+    } catch (err) {
+      console.warn('[CoworkStore] Failed to bump agent to top on createSession:', err);
+    }
+
     return {
       id,
       title,
@@ -3387,6 +3393,30 @@ export class CoworkStore {
     });
     reorder(finalIds);
     return this.listAgents();
+  }
+
+  bumpAgentToTop(agentId: string): Agent[] {
+    const normalizedId = agentId.trim() || AgentId.Main;
+    const existingAgents = this.listAgents();
+    const targetAgent = existingAgents.find(agent => agent.id === normalizedId);
+    if (!targetAgent) return existingAgents;
+
+    const pinnedAgents = existingAgents.filter(agent => agent.pinned);
+    const unpinnedAgents = existingAgents.filter(agent => !agent.pinned);
+
+    let nextPinned: Agent[];
+    let nextUnpinned: Agent[];
+
+    if (targetAgent.pinned) {
+      nextPinned = [targetAgent, ...pinnedAgents.filter(agent => agent.id !== normalizedId)];
+      nextUnpinned = unpinnedAgents;
+    } else {
+      nextPinned = pinnedAgents;
+      nextUnpinned = [targetAgent, ...unpinnedAgents.filter(agent => agent.id !== normalizedId)];
+    }
+
+    const finalIds = [...nextPinned, ...nextUnpinned].map(agent => agent.id);
+    return this.reorderAgents(finalIds);
   }
 
   deleteAgent(id: string): boolean {
