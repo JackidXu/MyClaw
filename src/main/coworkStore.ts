@@ -526,6 +526,7 @@ export interface CoworkSession {
   executionMode: CoworkExecutionMode;
   activeSkillIds: string[];
   agentId: string;
+  secondBrainEnabled: boolean;
   messages: CoworkMessage[];
   /** Offset of the first loaded message in the full message history. */
   messagesOffset: number;
@@ -775,6 +776,7 @@ interface CoworkSessionSearchOptions {
 export interface CreateCoworkSessionOptions {
   scheduledTaskId?: string | null;
   thinkingLevel?: ModelThinkingLevel | '';
+  secondBrainEnabled?: boolean;
 }
 
 export class CoworkStore {
@@ -892,12 +894,13 @@ export class CoworkStore {
     const now = Date.now();
     const scheduledTaskId = options.scheduledTaskId?.trim() || null;
     const thinkingLevel = options.thinkingLevel ?? '';
+    const secondBrainEnabledInt = options.secondBrainEnabled !== false ? 1 : 0;
 
     this.db
       .prepare(
         `
-      INSERT INTO cowork_sessions (id, title, claude_session_id, scheduled_task_id, status, cwd, system_prompt, model_override, thinking_level, execution_mode, active_skill_ids, agent_id, pinned, created_at, updated_at)
-      VALUES (?, ?, NULL, ?, 'idle', ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+      INSERT INTO cowork_sessions (id, title, claude_session_id, scheduled_task_id, status, cwd, system_prompt, model_override, thinking_level, execution_mode, active_skill_ids, agent_id, second_brain_enabled, pinned, created_at, updated_at)
+      VALUES (?, ?, NULL, ?, 'idle', ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
     `,
       )
       .run(
@@ -911,6 +914,7 @@ export class CoworkStore {
         executionMode,
         JSON.stringify(activeSkillIds),
         agentId,
+        secondBrainEnabledInt,
         now,
         now,
       );
@@ -930,6 +934,7 @@ export class CoworkStore {
       executionMode,
       activeSkillIds,
       agentId,
+      secondBrainEnabled: secondBrainEnabledInt === 1,
       messages: [],
       messagesOffset: 0,
       totalMessages: 0,
@@ -962,13 +967,14 @@ export class CoworkStore {
       active_skill_ids?: string | null;
       agent_id?: string | null;
       goal_json?: string | null;
+      second_brain_enabled?: number | null;
       created_at: number;
       updated_at: number;
     }
 
     const row = this.getOne<SessionRow>(
       `
-      SELECT id, title, claude_session_id, scheduled_task_id, status, pinned, pin_order, cwd, system_prompt, model_override, thinking_level, execution_mode, active_skill_ids, agent_id, goal_json, created_at, updated_at
+      SELECT id, title, claude_session_id, scheduled_task_id, status, pinned, pin_order, cwd, system_prompt, model_override, thinking_level, execution_mode, active_skill_ids, agent_id, goal_json, second_brain_enabled, created_at, updated_at
       FROM cowork_sessions
       WHERE id = ?
     `,
@@ -1009,6 +1015,7 @@ export class CoworkStore {
       executionMode: (row.execution_mode as CoworkExecutionMode) || 'local',
       activeSkillIds,
       agentId: row.agent_id || 'main',
+      secondBrainEnabled: row.second_brain_enabled !== 0,
       messages,
       messagesOffset: messageOffset,
       totalMessages,
@@ -1410,7 +1417,7 @@ export class CoworkStore {
     updates: Partial<
       Pick<
         CoworkSession,
-        'title' | 'claudeSessionId' | 'status' | 'cwd' | 'systemPrompt' | 'modelOverride' | 'thinkingLevel' | 'executionMode' | 'goal'
+        'title' | 'claudeSessionId' | 'status' | 'cwd' | 'systemPrompt' | 'modelOverride' | 'thinkingLevel' | 'executionMode' | 'goal' | 'secondBrainEnabled'
       >
     >,
     options: { touchUpdatedAt?: boolean } = {},
@@ -1469,6 +1476,10 @@ export class CoworkStore {
     if (updates.goal !== undefined) {
       setClauses.push('goal_json = ?');
       values.push(this.serializeGoal(updates.goal));
+    }
+    if (updates.secondBrainEnabled !== undefined) {
+      setClauses.push('second_brain_enabled = ?');
+      values.push(updates.secondBrainEnabled ? 1 : 0);
     }
 
     if (setClauses.length === 0) return;

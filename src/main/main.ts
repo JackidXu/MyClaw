@@ -9007,7 +9007,10 @@ if (!gotTheLock) {
           runtimeSkillIds || [],
           options.agentId || 'main',
           options.modelOverride || '',
-          { thinkingLevel: thinkingLevel || '' },
+          {
+            thinkingLevel: thinkingLevel || '',
+            secondBrainEnabled: (options as { secondBrainEnabled?: boolean }).secondBrainEnabled,
+          },
         );
 
         if (options.modelOverride) {

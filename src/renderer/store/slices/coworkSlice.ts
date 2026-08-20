@@ -83,6 +83,8 @@ interface CoworkState {
   draftSkillIds: Record<string, string[]>;
   /** Keyed by draftKey, stores the active collaboration mode for the draft/session. */
   draftCollaborationModes: Record<string, CoworkCollaborationModeType>;
+  /** Keyed by draftKey, stores the second brain enabled preference for the draft/session. */
+  draftSecondBrainEnabled: Record<string, boolean>;
   /** Keyed by sessionId, stores the latest proposed plan confirmation UI state. */
   planConfirmations: Record<string, PlanConfirmationStatus>;
   /** Keyed by sessionId, stores ephemeral BTW side-chat windows and messages. */
@@ -132,6 +134,7 @@ const initialState: CoworkState = {
   draftKitIds: {},
   draftSkillIds: {},
   draftCollaborationModes: {},
+  draftSecondBrainEnabled: {},
   planConfirmations: {},
   btwThreadsBySessionId: {},
   steerDrafts: {},
@@ -1479,6 +1482,14 @@ const coworkSlice = createSlice({
       }
     },
 
+    setDraftSecondBrainEnabled(state, action: PayloadAction<{ draftKey: string; enabled: boolean }>) {
+      const { draftKey, enabled } = action.payload;
+      state.draftSecondBrainEnabled[draftKey] = enabled;
+      if (state.currentSession && state.currentSession.id === draftKey) {
+        state.currentSession.secondBrainEnabled = enabled;
+      }
+    },
+
     setMediaModels(state, action: PayloadAction<{
       image: MediaModel[];
       video: MediaModel[];
@@ -1581,6 +1592,7 @@ export const {
   setDraftKitIds,
   setDraftSkillIds,
   setDraftCollaborationMode,
+  setDraftSecondBrainEnabled,
   clearMediaAccountState,
   setMediaModels,
   setMediaSelection,

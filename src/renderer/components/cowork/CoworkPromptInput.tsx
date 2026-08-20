@@ -86,6 +86,7 @@ import {
   setDraftCollaborationMode,
   setDraftKitIds,
   setDraftPrompt,
+  setDraftSecondBrainEnabled,
   setDraftSelectedTextSnippets,
   setDraftSkillIds,
   setPlanConfirmationHandled,
@@ -551,8 +552,15 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     // While the input holds quick-action template text, pin the textarea to
     // maxHeight so switching templates doesn't bounce the layout around it.
     const [isTemplateHeightLocked, setIsTemplateHeightLocked] = useState(false);
-    // 新对话始终默认开启，Session 有消息后从 per-session 存储恢复
-    const [secondBrainEnabled, setSecondBrainEnabled] = useState<boolean>(true);
+    const currentSessionSecondBrainEnabled = useSelector((state: RootState) => (
+      sessionId && state.cowork.currentSession?.id === sessionId
+        ? state.cowork.currentSession.secondBrainEnabled
+        : undefined
+    ));
+    const draftSecondBrainEnabled = useSelector((state: RootState) => (
+      state.cowork.draftSecondBrainEnabled[draftKey]
+    ));
+    const secondBrainEnabled = currentSessionSecondBrainEnabled ?? draftSecondBrainEnabled ?? true;
 
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const draftKeyRef = useRef(draftKey);
@@ -832,33 +840,6 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
   const ensureFreshAsrQuota = useCallback(() => {
     dispatch(ensureAsrQuotaFreshForDay(getLocalAsrQuotaDayKey()));
   }, [dispatch]);
-
-  // 记录/恢复各 Session 的第二大脑开关状态
-  // - 有消息的 Session 切换时，从 per-session 存储恢复正确的状态
-  // - Session 首次出现消息时（刚创建），把当前开关值写入 per-session 存储
-  useEffect(() => {
-    if (!sessionId || !sessionHasMessages) {
-      // 新对话或主页：始终默认开启
-      setSecondBrainEnabled(true);
-      return;
-    }
-    // 已有消息的 Session：使用 per-session 存储
-    try {
-      const raw = localStorage.getItem('heyclaw_second_brain_sessions');
-      const map: Record<string, boolean> = raw ? JSON.parse(raw) : {};
-      if (sessionId in map) {
-        // 已记录过，恢复该 Session 的状态
-        setSecondBrainEnabled(map[sessionId]);
-      } else {
-        // 首次见到该 Session 有消息（刚创建），记录当前开关值
-        map[sessionId] = secondBrainEnabled;
-        localStorage.setItem('heyclaw_second_brain_sessions', JSON.stringify(map));
-      }
-    } catch {
-      // ignore JSON parse error
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, sessionHasMessages]);
 
   useEffect(() => {
     if (!isLoggedIn) {
@@ -3187,7 +3168,11 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
           onClick={(e) => {
             e.stopPropagation();
             if (sessionHasMessages) return;
-            setSecondBrainEnabled(prev => !prev);
+            const nextValue = !secondBrainEnabled;
+            dispatch(setDraftSecondBrainEnabled({ draftKey, enabled: nextValue }));
+            if (sessionId) {
+              void coworkService.updateSession(sessionId, { secondBrainEnabled: nextValue });
+            }
           }}
           className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
             sessionHasMessages
