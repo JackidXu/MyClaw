@@ -34,7 +34,7 @@ import {
 } from '../../store/selectors/coworkSelectors';
 import { addMessage, setCurrentSession, setDraftCollaborationMode, setDraftKitIds, setDraftSkillIds, setStreaming, updateSessionGoal, updateSessionStatus } from '../../store/slices/coworkSlice';
 import { clearActiveKits } from '../../store/slices/kitSlice';
-import { clearSelection, selectAction, setActions } from '../../store/slices/quickActionSlice';
+import { clearSelection, selectAction, selectPrompt, setActions } from '../../store/slices/quickActionSlice';
 import { clearActiveSkills, setActiveSkillIds } from '../../store/slices/skillSlice';
 import {
   CoworkCollaborationMode,
@@ -54,7 +54,7 @@ import { DailyCheckInHeaderEntry } from '../DailyCheckInActivity';
 import ComposeIcon from '../icons/ComposeIcon';
 import SidebarToggleIcon from '../icons/SidebarToggleIcon';
 import { ModelAccessPromptKind, ModelAccessPromptModal } from '../ModelSelector';
-import { PromptPanel, QuickActionBar } from '../quick-actions';
+import { QuickActionBar } from '../quick-actions';
 import type { SettingsOpenOptions } from '../Settings';
 import HomeSkinEmblem from '../skin/HomeSkinEmblem';
 import SkinAmbientEffects from '../skin/SkinAmbientEffects';
@@ -168,6 +168,7 @@ const CoworkView: React.FC<CoworkViewProps> = ({
   const marketplaceKits = useSelector((state: RootState) => state.kit.marketplaceKits);
   const quickActions = useSelector((state: RootState) => state.quickAction.actions);
   const selectedActionId = useSelector((state: RootState) => state.quickAction.selectedActionId);
+  const selectedPromptId = useSelector((state: RootState) => state.quickAction.selectedPromptId);
   const currentAgentId = useSelector((state: RootState) => state.agent.currentAgentId);
   const startupCreditEntry = useStartupCreditCampaignEntry();
   const agents = useSelector((state: RootState) => state.agent.agents);
@@ -761,23 +762,28 @@ const CoworkView: React.FC<CoworkViewProps> = ({
   }, [activeSkillIds]);
 
   // Handle prompt selection from QuickAction
-  const handleQuickActionPromptSelect = (prompt: string, promptId?: string) => {
-    if (selectedAction) {
-      const selectedPrompt = selectedAction.prompts.find(item => item.id === promptId);
-      const targetSkill = skills.find(skill => skill.id === selectedAction.skillMapping);
-      console.debug(`[CoworkView] reporting prompt template analytics: template_prompt_click ${selectedAction.id}/${promptId ?? 'unknown'}`);
+  const handleQuickActionPromptSelect = (prompt: string, promptId?: string, actionId?: string) => {
+    const targetAction = (actionId ? quickActions.find(a => a.id === actionId) : undefined) || selectedAction;
+    if (targetAction) {
+      dispatch(selectAction(targetAction.id));
+      if (promptId) {
+        dispatch(selectPrompt(promptId));
+      }
+      const selectedPrompt = targetAction.prompts.find(item => item.id === promptId);
+      const targetSkill = skills.find(skill => skill.id === targetAction.skillMapping);
+      console.debug(`[CoworkView] reporting prompt template analytics: template_prompt_click ${targetAction.id}/${promptId ?? 'unknown'}`);
       reportPromptTemplateAction({
         templateActionType: 'template_prompt_click',
-        templateId: selectedAction.id,
-        templateName: selectedAction.label,
-        templateIndex: quickActions.findIndex(item => item.id === selectedAction.id),
-        mappedSkillId: selectedAction.skillMapping,
+        templateId: targetAction.id,
+        templateName: targetAction.label,
+        templateIndex: quickActions.findIndex(item => item.id === targetAction.id),
+        mappedSkillId: targetAction.skillMapping,
         mappedSkillName: targetSkill?.name,
         promptId,
         promptName: selectedPrompt?.label,
-        promptIndex: selectedAction.prompts.findIndex(item => item.id === promptId),
+        promptIndex: targetAction.prompts.findIndex(item => item.id === promptId),
         promptLength: prompt.length,
-        hasAutoEnabledSkill: activeSkillIds.includes(selectedAction.skillMapping),
+        hasAutoEnabledSkill: activeSkillIds.includes(targetAction.skillMapping),
         params: {
           modelId: currentAgentSelectedModel?.id,
           modelName: currentAgentSelectedModel?.name,
@@ -786,6 +792,9 @@ const CoworkView: React.FC<CoworkViewProps> = ({
           isPlanMode: homeDraftCollaborationMode === CoworkCollaborationMode.Plan,
         },
       });
+      if (targetSkill && !activeSkillIds.includes(targetSkill.id)) {
+        dispatch(setActiveSkillIds([targetSkill.id]));
+      }
     }
     // Fill the prompt into input
     promptInputRef.current?.setValue(prompt, 'template');
@@ -1021,10 +1030,25 @@ const CoworkView: React.FC<CoworkViewProps> = ({
                 )}
               </div>
 
+              {/* Quick Actions / Recommendations (位于标语和输入框之间) */}
+              <div
+                className="relative z-20 mt-6 w-full max-w-3xl animate-fade-in-up"
+                style={{ animationDelay: '150ms', animationFillMode: 'both' }}
+              >
+                <QuickActionBar
+                  actions={quickActions}
+                  selectedActionId={selectedActionId}
+                  selectedPromptId={selectedPromptId}
+                  onActionSelect={handleActionSelect}
+                  onPromptSelect={handleQuickActionPromptSelect}
+                  onClearSelection={handleQuickActionDeselect}
+                />
+              </div>
+
               {/* Prompt Input Area - Large version with folder selector */}
               <div
-                className="relative z-30 mt-9 w-full max-w-3xl animate-fade-in-up"
-                style={{ animationDelay: '180ms', animationFillMode: 'both' }}
+                className="relative z-30 mt-6 w-full max-w-3xl animate-fade-in-up"
+                style={{ animationDelay: '200ms', animationFillMode: 'both' }}
               >
                 <CoworkPromptInput
                   ref={promptInputRef}
@@ -1052,25 +1076,8 @@ const CoworkView: React.FC<CoworkViewProps> = ({
                 />
               </div>
 
-              {/* Quick Actions */}
-              <div
-                className="relative z-0 mt-8 flex w-full max-w-3xl flex-col items-center animate-fade-in-up"
-                style={{ animationDelay: '260ms', animationFillMode: 'both' }}
-              >
-                <QuickActionBar
-                  actions={quickActions}
-                  selectedActionId={selectedActionId}
-                  onActionSelect={handleActionSelect}
-                />
-                {selectedAction && (
-                  <div className="mt-4 w-full">
-                    <PromptPanel
-                      action={selectedAction}
-                      onPromptSelect={handleQuickActionPromptSelect}
-                      onClose={handleQuickActionDeselect}
-                    />
-                  </div>
-                )}
+              {/* Floating Campaign Entry */}
+              <div className="relative z-0 mt-4 flex w-full max-w-3xl flex-col items-center">
                 <CreditsResetCampaignFloat />
               </div>
 
