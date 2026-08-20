@@ -67,6 +67,7 @@ import {
   isLatestAsyncRequest,
 } from './services/latestAsyncRequest';
 import { LogReporterAction, reportYdAnalyzer } from './services/logReporter';
+import { fetchAndFilterOneApiChatModels } from './services/oneapiModels';
 import { scheduledTaskService } from './services/scheduledTask';
 import { isTextEditingSafeShortcut, matchesShortcut } from './services/shortcuts';
 import { themeService } from './services/theme';
@@ -528,38 +529,13 @@ const App: React.FC = () => {
       if (activated && oneapiKey) {
         try {
           mark('oneapi auth validation start');
-          const cleanBaseUrl = oneapiBaseUrl.replace(/\/+$/, '');
-          const testUrl = `${cleanBaseUrl}/models`;
-          const checkResp = (await window.electron.api.fetch({
-            url: testUrl,
-            method: 'GET',
-            headers: {
-              Authorization: `Bearer ${oneapiKey}`,
-            },
-          })) as { ok: boolean; status: number; data: any };
+          const modelRes = await fetchAndFilterOneApiChatModels(oneapiBaseUrl, oneapiKey);
 
-          if (checkResp.ok && checkResp.data && Array.isArray(checkResp.data.data)) {
+          if (modelRes.success) {
             activated = true;
+            const chatModels = modelRes.chatModels;
+            const defaultChatModel = modelRes.defaultChatModel;
 
-            // 同步过滤出的对话大模型
-            const chatModels: any[] = [];
-            for (const m of checkResp.data.data) {
-              const modelId = m.id;
-              const isImage = /dall-e|stable-diffusion|\bsdxl\b|midjourney|\bmj-v\d+|controlnet|\bflux\b|seedream/i.test(modelId);
-              const hasVideoKeyword = /cogvideo|seedance|sora|kling|\bluma\b|runway|video-gen/i.test(modelId);
-              const isVideoUnderstanding = /chat|understand|vision|vl|multimodal/i.test(modelId);
-              const isVideo = hasVideoKeyword && !isVideoUnderstanding;
-
-              if (!isImage && !isVideo) {
-                chatModels.push({
-                  id: modelId,
-                  name: modelId,
-                  supportsImage: true,
-                });
-              }
-            }
-
-            const defaultChatModel = chatModels[0]?.id;
             if (chatModels.length > 0) {
               const updatedProviders = {
                 ...config.providers,

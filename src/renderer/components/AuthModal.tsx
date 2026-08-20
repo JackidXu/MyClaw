@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 
 import { configService } from '../services/config';
+import { fetchAndFilterOneApiChatModels } from '../services/oneapiModels';
 import { vipService } from '../services/vipService';
 
 interface AuthModalProps {
@@ -104,33 +105,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
       let defaultChatModel = '';
 
       try {
-        const cleanBaseUrl = oneapiBaseUrl.replace(/\/+$/, '');
-        const testUrl = `${cleanBaseUrl}/models`;
-        const checkResp = await window.electron.api.fetch({
-          url: testUrl,
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${formattedKey}`,
-          },
-        }) as any;
-
-        if (checkResp.ok && checkResp.data && Array.isArray(checkResp.data.data)) {
-          for (const m of checkResp.data.data) {
-            const modelId = m.id;
-            const isImage = /dall-e|stable-diffusion|\bsdxl\b|midjourney|\bmj-v\d+|controlnet|\bflux\b|seedream/i.test(modelId);
-            const hasVideoKeyword = /cogvideo|seedance|sora|kling|\bluma\b|runway|video-gen/i.test(modelId);
-            const isVideoUnderstanding = /chat|understand|vision|vl|multimodal/i.test(modelId);
-            const isVideo = hasVideoKeyword && !isVideoUnderstanding;
-
-            if (!isImage && !isVideo) {
-              chatModels.push({
-                id: modelId,
-                name: modelId,
-                supportsImage: true,
-              });
-            }
-          }
-          defaultChatModel = chatModels[0]?.id || '';
+        const modelRes = await fetchAndFilterOneApiChatModels(oneapiBaseUrl, formattedKey);
+        if (modelRes.success) {
+          chatModels = modelRes.chatModels;
+          defaultChatModel = modelRes.defaultChatModel;
         }
       } catch (modelErr) {
         console.error('[AuthModal] Failed to fetch and sync models on login success:', modelErr);
