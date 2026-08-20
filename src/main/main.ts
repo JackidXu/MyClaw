@@ -490,7 +490,7 @@ import {
 } from './openclawSessionPolicy/store';
 import { registerVoiceInputPermissionHandler } from './permissions/voiceInputPermission';
 import { isHiddenUserPluginId } from './plugins/pluginManager';
-import { updateSecondBrainAuthHeaders } from './secondBrain/secondBrainBridge';
+import { updateSecondBrainAuthHeaders, updateSecondBrainToolDefinitions } from './secondBrain/secondBrainBridge';
 import { SkillManager } from './skills/skillManager';
 import { getSkillServiceManager } from './skills/skillServices';
 import {
@@ -9023,6 +9023,11 @@ if (!gotTheLock) {
         if (options.fmpAuthHeaders) {
           updateSecondBrainAuthHeaders(session.id, options.fmpAuthHeaders);
         }
+
+        if (options.fmpTools) {
+          updateSecondBrainToolDefinitions(options.fmpTools);
+        }
+
 
 
         if (options.modelOverride) {

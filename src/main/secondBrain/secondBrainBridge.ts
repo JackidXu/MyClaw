@@ -44,9 +44,32 @@ const LAYER_NAME_MAP: Record<number, string> = {
   6: '表达方式',
 };
 
-// 存储全局或 session 维度的认证头
+export interface FmpToolDefinition {
+  type: 'function';
+  function: {
+    name: string;
+    description: string;
+    parameters: unknown;
+  };
+}
+
+// 存储全局或 session 维度的认证头与工具定义
 let latestAuthHeaders: FmpAuthHeaders = { claw_cookie: '', claw_uid: '' };
 const authHeadersBySessionKey = new Map<string, FmpAuthHeaders>();
+let latestToolDefinition: FmpToolDefinition | null = null;
+
+export function updateSecondBrainToolDefinitions(tools?: FmpToolDefinition[] | null): void {
+  if (Array.isArray(tools) && tools.length > 0) {
+    const retrieveTool = tools.find(t => t.function?.name === 'retrieve_fmp') || tools[0];
+    if (retrieveTool) {
+      latestToolDefinition = retrieveTool;
+    }
+  }
+}
+
+export function getSecondBrainToolDefinition(): FmpToolDefinition | null {
+  return latestToolDefinition;
+}
 
 export function updateSecondBrainAuthHeaders(sessionKey: string | null, headers: FmpAuthHeaders): void {
   if (headers.claw_cookie || headers.claw_uid) {
@@ -58,6 +81,7 @@ export function updateSecondBrainAuthHeaders(sessionKey: string | null, headers:
 }
 
 export function getSecondBrainAuthHeaders(sessionKey?: string): FmpAuthHeaders {
+
   if (sessionKey) {
     if (authHeadersBySessionKey.has(sessionKey)) {
       return authHeadersBySessionKey.get(sessionKey)!;
