@@ -96,6 +96,11 @@ export class McpRuntime {
     return this.bridgeServer?.mediaCallbackUrl ?? null;
   }
 
+  getSecondBrainCallbackUrl(): string | null {
+    return this.bridgeServer?.secondBrainCallbackUrl ?? null;
+  }
+
+
   getBridgeSecret(): string {
     return this.bridgeSecret;
   }
@@ -348,6 +353,7 @@ export class McpRuntime {
     }
 
     console.log(
+
       `[MCP] resolved ${resolved.length}/${enabledServers.length} enabled server(s) for OpenClaw in ${Date.now() - startedAt}ms; optimized=${optimizedCount}, raw=${rawCount}, skipped=${skippedCount}, builtIn=${builtInCount}`,
     );
     return resolved;

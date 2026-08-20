@@ -490,6 +490,7 @@ import {
 } from './openclawSessionPolicy/store';
 import { registerVoiceInputPermissionHandler } from './permissions/voiceInputPermission';
 import { isHiddenUserPluginId } from './plugins/pluginManager';
+import { updateSecondBrainAuthHeaders } from './secondBrain/secondBrainBridge';
 import { SkillManager } from './skills/skillManager';
 import { getSkillServiceManager } from './skills/skillServices';
 import {
@@ -2348,7 +2349,9 @@ const getOpenClawConfigSync = (): OpenClawConfigSync => {
       },
       getAskUserCallbackUrl: () => getMcpRuntime().getAskUserCallbackUrl(),
       getMediaCallbackUrl: () => getMcpRuntime().getMediaCallbackUrl(),
+      getSecondBrainCallbackUrl: () => getMcpRuntime().getSecondBrainCallbackUrl(),
       getMcpBridgeSecret: () => getMcpRuntime().getBridgeSecret(),
+
       getAgents: () => getCoworkStore().listAgents(),
       getUserPlugins: () =>
         getCoworkStore()
@@ -8915,6 +8918,10 @@ if (!gotTheLock) {
         mediaReferences?: MediaAttachmentRefMain[];
         selectedTextSnippets?: CoworkSelectedTextSnippet[];
         browserAnnotations?: CoworkBrowserAnnotationMessageBatch[];
+        /** 第二大脑工具定义列表 */
+        fmpTools?: Array<{ type: 'function'; function: { name: string; description: string; parameters: unknown } }>;
+        /** 第二大脑认证头 */
+        fmpAuthHeaders?: { claw_cookie: string; claw_uid: string };
       },
     ) => {
       try {
@@ -9012,6 +9019,11 @@ if (!gotTheLock) {
             secondBrainEnabled: (options as { secondBrainEnabled?: boolean }).secondBrainEnabled,
           },
         );
+
+        if (options.fmpAuthHeaders) {
+          updateSecondBrainAuthHeaders(session.id, options.fmpAuthHeaders);
+        }
+
 
         if (options.modelOverride) {
           console.log(
@@ -9166,10 +9178,16 @@ if (!gotTheLock) {
         mediaReferences?: MediaAttachmentRefMain[];
         selectedTextSnippets?: CoworkSelectedTextSnippet[];
         browserAnnotations?: CoworkBrowserAnnotationMessageBatch[];
+        /** 第二大脑认证头 */
+        fmpAuthHeaders?: { claw_cookie: string; claw_uid: string };
       },
     ) => {
       try {
+        if (options.fmpAuthHeaders) {
+          updateSecondBrainAuthHeaders(options.sessionId, options.fmpAuthHeaders);
+        }
         const ipcStartedAtMs = Date.now();
+
         const requestAccountScope = getCurrentMediaAccountScope();
         console.log(
           '[CoworkFirstResponseTiming] continue IPC received.',

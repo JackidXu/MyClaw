@@ -1,0 +1,29 @@
+{
+  "id": "second-brain",
+  "name": "SecondBrain",
+  "description": "Second Brain cognition retrieval tool powered by HeyClaw.",
+  "contracts": {
+    "tools": [
+      "retrieve_fmp"
+    ]
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "callbackUrl": {
+        "type": "string",
+        "description": "HeyClaw HTTP callback URL for second brain retrieval requests"
+      },
+      "secret": {
+        "type": "string",
+        "description": "Shared secret for callback authentication"
+      },
+      "requestTimeoutMs": {
+        "type": "number",
+        "minimum": 1000,
+        "description": "Request timeout in milliseconds"
+      }
+    }
+  }
+}

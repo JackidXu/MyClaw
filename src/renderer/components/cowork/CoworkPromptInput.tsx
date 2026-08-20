@@ -58,7 +58,7 @@ import {
   LogReporterEntry,
   reportYdAnalyzer,
 } from '../../services/logReporter';
-import { fetchCognitionInjection } from '../../services/secondBrainApi';
+import { fetchCognitionInjection, type FmpTool } from '../../services/secondBrainApi';
 import { resolveLocalizedText, skillService } from '../../services/skill';
 import { vipService } from '../../services/vipService';
 import { RootState } from '../../store';
@@ -425,7 +425,9 @@ interface CoworkPromptInputProps {
     selectedTextSnippets?: CoworkSelectedTextSnippet[],
     browserAnnotations?: CoworkBrowserAnnotationMessageBatch[],
     collaborationMode?: CoworkCollaborationMode,
+    fmpTools?: FmpTool[],
   ) => boolean | void | Promise<boolean | void>;
+
   onStop?: () => void | Promise<void>;
   isStreaming?: boolean;
   placeholder?: string;
@@ -1866,12 +1868,16 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     }
 
     let finalSkillPrompt = skillPrompt;
+    let fmpInjectionTools: FmpTool[] = [];
     // 认知注入只在 Session 第一条消息时触发，避免多轮对话 systemPrompt 频繁变化破坏 Prompt Cache
     if (secondBrainEnabled && !sessionHasMessages) {
       try {
         const injection = await fetchCognitionInjection();
-        if (injection && injection.trim()) {
-          finalSkillPrompt = [skillPrompt, injection.trim()].filter(Boolean).join('\n\n');
+        if (injection.prompt?.trim()) {
+          finalSkillPrompt = [skillPrompt, injection.prompt.trim()].filter(Boolean).join('\n\n');
+        }
+        if (injection.tools && injection.tools.length > 0) {
+          fmpInjectionTools = injection.tools;
         }
       } catch (err) {
         console.warn('[CoworkPromptInput] fetchCognitionInjection failed:', err);
@@ -1886,7 +1892,9 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
       promptPayload.selectedTextSnippets,
       preparedBrowserAnnotations,
       effectiveCollaborationMode,
+      fmpInjectionTools.length > 0 ? fmpInjectionTools : undefined,
     );
+
     if (result === false) {
       setValue(previousValue);
       dispatch(setDraftPrompt({ sessionId: draftKey, draft: previousValue }));

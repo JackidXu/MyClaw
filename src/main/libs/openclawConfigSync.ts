@@ -1877,7 +1877,9 @@ type OpenClawConfigSyncDeps = {
   getResolvedMcpServers?: () => ResolvedMcpServer[];
   getAskUserCallbackUrl?: () => string | null;
   getMediaCallbackUrl?: () => string | null;
+  getSecondBrainCallbackUrl?: () => string | null;
   getMcpBridgeSecret?: () => string;
+
   getSkillsList?: () => Array<{ id: string; name: string; enabled: boolean }>;
   getAgents?: () => Agent[];
   getUserPlugins?: () => Array<{ pluginId: string; enabled: boolean; config?: Record<string, unknown> }>;
@@ -1905,7 +1907,9 @@ export class OpenClawConfigSync {
   private readonly getResolvedMcpServers?: () => ResolvedMcpServer[];
   private readonly getAskUserCallbackUrl?: () => string | null;
   private readonly getMediaCallbackUrl?: () => string | null;
+  private readonly getSecondBrainCallbackUrl?: () => string | null;
   private readonly getMcpBridgeSecret?: () => string;
+
   private readonly getSkillsList?: () => Array<{ id: string; name: string; enabled: boolean }>;
   private readonly getAgents?: () => Agent[];
   private readonly getUserPlugins: () => Array<{ pluginId: string; enabled: boolean; config?: Record<string, unknown> }>;
@@ -1934,7 +1938,9 @@ export class OpenClawConfigSync {
     this.getResolvedMcpServers = deps.getResolvedMcpServers;
     this.getAskUserCallbackUrl = deps.getAskUserCallbackUrl;
     this.getMediaCallbackUrl = deps.getMediaCallbackUrl;
+    this.getSecondBrainCallbackUrl = deps.getSecondBrainCallbackUrl;
     this.getMcpBridgeSecret = deps.getMcpBridgeSecret;
+
     this.getSkillsList = deps.getSkillsList;
     this.getAgents = deps.getAgents;
     this.getUserPlugins = deps.getUserPlugins ?? (() => []);
@@ -2348,6 +2354,8 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
     );
     const hasAskUserPlugin = isBundledPluginAvailable('ask-user-question');
     const hasMediaGenPlugin = isBundledPluginAvailable('lobster-media-generation');
+    const hasSecondBrainPlugin = isBundledPluginAvailable('second-brain');
+
     // Runtime-bundled xai extension (dist/extensions/xai): provides the Grok
     // model compat hooks (e.g. only grok-4.3 accepts reasoningEffort) plus the
     // OAuth refresh hook for credentials in the auth-profiles store. Declare
@@ -2595,6 +2603,8 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
             : {}),
           ...(hasAskUserPlugin ? { 'ask-user-question': { enabled: true } } : {}),
           ...(hasMediaGenPlugin ? { 'lobster-media-generation': { enabled: true } } : {}),
+          ...(hasSecondBrainPlugin ? { 'second-brain': { enabled: true } } : {}),
+
           ...(hasModelCompatConfig
             ? {
                 [OPENCLAW_MODEL_COMPAT_PLUGIN_ID]: {
@@ -2641,12 +2651,16 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
           // plugins we rely on must be listed here explicitly or they never
           // load — entries.enabled alone is not enough.
           ...(hasXaiPlugin ? ['xai'] : []),
+          ...(hasAskUserPlugin ? ['ask-user-question'] : []),
+          ...(hasMediaGenPlugin ? ['lobster-media-generation'] : []),
+          ...(hasSecondBrainPlugin ? ['second-brain'] : []),
           ...(hasModelCompatConfig
             ? [OPENCLAW_MODEL_COMPAT_PLUGIN_ID]
             : []),
           ...preinstalledPlugins.map(plugin => plugin.pluginId),
           ...userPlugins.filter(plugin => plugin.enabled).map(plugin => plugin.pluginId),
         ])).sort();
+
 
         return Object.keys(pluginEntries).length > 0
           ? {
@@ -2721,6 +2735,22 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
         },
       };
     }
+
+    // Sync SecondBrain plugin config
+    const secondBrainCallbackUrl = this.getSecondBrainCallbackUrl?.();
+    if (hasSecondBrainPlugin && secondBrainCallbackUrl && managedConfig.plugins) {
+      const plugins = managedConfig.plugins as Record<string, unknown>;
+      const entries = plugins.entries as Record<string, Record<string, unknown>>;
+      entries['second-brain'] = {
+        enabled: true,
+        config: {
+          callbackUrl: secondBrainCallbackUrl,
+          secret: '${LOBSTER_MCP_BRIDGE_SECRET}',
+          requestTimeoutMs: 60000,
+        },
+      };
+    }
+
 
     // Sync Dreaming config into memory-core plugin
     if (managedConfig.plugins) {

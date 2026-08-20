@@ -8,7 +8,9 @@ import crypto from 'crypto';
 import http from 'http';
 import net from 'net';
 
+import { executeSecondBrainRetrieve } from '../secondBrain/secondBrainBridge';
 import { serializeForLog } from './sanitizeForLog';
+
 
 const log = (level: string, msg: string) => {
   const formatted = `[AskUser:HTTP][${level}] ${msg}`;
@@ -85,6 +87,11 @@ export class McpBridgeServer {
   get mediaCallbackUrl(): string | null {
     return this._port ? `http://127.0.0.1:${this._port}/media-generation/tool` : null;
   }
+
+  get secondBrainCallbackUrl(): string | null {
+    return this._port ? `http://127.0.0.1:${this._port}/second-brain/retrieve` : null;
+  }
+
 
   /**
    * Register a callback that fires when an AskUserQuestion request arrives.
@@ -239,7 +246,13 @@ export class McpBridgeServer {
       return;
     }
 
+    if (req.url?.startsWith('/second-brain/retrieve')) {
+      await this.handleSecondBrainRetrieve(req, res);
+      return;
+    }
+
     res.writeHead(404, { 'Content-Type': 'application/json' });
+
     res.end(JSON.stringify({ error: 'Not found' }));
   }
 
@@ -350,6 +363,33 @@ export class McpBridgeServer {
       }
     }
   }
+
+  private async handleSecondBrainRetrieve(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    const t0 = Date.now();
+    try {
+      const body = await this.readBody(req);
+      const payload = JSON.parse(body) as { query?: string; topK?: number; sessionKey?: string; toolCallId?: string };
+      log('INFO', `Second brain retrieve request received: query="${payload.query ?? ''}" toolCallId=${payload.toolCallId ?? ''}`);
+
+      const result = await executeSecondBrainRetrieve({
+        query: typeof payload.query === 'string' ? payload.query : '',
+        topK: typeof payload.topK === 'number' ? payload.topK : undefined,
+        sessionKey: typeof payload.sessionKey === 'string' ? payload.sessionKey : undefined,
+      });
+
+      log('INFO', `Second brain retrieve completed in ${Date.now() - t0}ms, isError=${result.isError ?? false}`);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(result));
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      log('ERROR', `Second brain retrieve request failed after ${Date.now() - t0}ms: ${errMsg}`);
+      if (!res.writableEnded) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ content: [{ type: 'text', text: `第二大脑检索失败: ${errMsg}` }], isError: true }));
+      }
+    }
+  }
+
 
   private readBody(req: http.IncomingMessage): Promise<string> {
     return new Promise((resolve, reject) => {

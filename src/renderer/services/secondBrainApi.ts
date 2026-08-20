@@ -332,25 +332,94 @@ export async function reExtractDocument(documentId: number): Promise<void> {
   await post<unknown>('/fmp/document/reExtract', { documentId });
 }
 
-export interface CognitionInjectionData {
-  prompt?: string;
-  version?: number;
+/** /fmp/inject 返回的工具函数定义 */
+export interface FmpToolFunction {
+  name: string;
+  description: string;
+  parameters: {
+    type: string;
+    properties: Record<string, { type: string; description?: string }>;
+    required?: string[];
+  };
 }
 
-/** 获取认知注入 System prompt (GET /fmp/inject) */
-export async function fetchCognitionInjection(): Promise<string> {
+/** /fmp/inject 返回的工具项 */
+export interface FmpTool {
+  type: 'function';
+  function: FmpToolFunction;
+}
+
+/** /fmp/inject v2 响应数据结构 */
+export interface FmpInjectionResult {
+  /** 精简后的认知注入提示词 */
+  prompt: string;
+  /** 需要注册给大模型的工具列表 */
+  tools: FmpTool[];
+  /** 数据版本号 */
+  version?: number;
+  /** 是否来自后端缓存 */
+  cached?: boolean;
+}
+
+/** /fmp/retrieve 返回的单条认知节点 */
+export interface FmpRetrieveItem {
+  type: 'node';
+  id: number;
+  /** 认知层级：0=思维模型 1=价值观念 2=决策规则 3=工作方式 4=行业知识 5=案例经验 6=表达方式 */
+  layer: number;
+  text: string;
+  /** 归一化后的相关性分数 */
+  score: number;
+  /** 原始余弦相似度 */
+  raw_score: number;
+}
+
+/** /fmp/retrieve 响应数据结构 */
+export interface FmpRetrieveResult {
+  /** 检索是否成功 */
+  status: boolean;
+  /** 实际返回的条目数 */
+  count: number;
+  /** 全局候选里最高的原始余弦相似度，用于判断整体相关度 */
+  top_score: number;
+  /** top_score >= threshold 时为 true，表示问题与第二大脑相关 */
+  relevant: boolean;
+  /** 当前生效的相关性阈值（默认 0.4） */
+  threshold: number;
+  /** 命中的 top-K 认知条目 */
+  items: FmpRetrieveItem[];
+  /** 已格式化的 Markdown 文本，可直接作为 tool_result 回填给模型 */
+  document: string;
+}
+
+/** 获取认知注入数据（GET /fmp/inject） */
+export async function fetchCognitionInjection(): Promise<FmpInjectionResult> {
   try {
-    const res = await get<CognitionInjectionData | string>('/fmp/inject');
-    if (typeof res === 'string') return res;
-    if (typeof res === 'object' && res !== null) {
-      return res.prompt ?? '';
+    const res = await get<FmpInjectionResult | { prompt?: string; version?: number } | string>('/fmp/inject');
+    if (typeof res === 'string') {
+      return { prompt: res, tools: [] };
     }
-    return '';
+    if (typeof res === 'object' && res !== null) {
+      const obj = res as Record<string, unknown>;
+      return {
+        prompt: typeof obj.prompt === 'string' ? obj.prompt : '',
+        tools: Array.isArray(obj.tools) ? (obj.tools as FmpTool[]) : [],
+        version: typeof obj.version === 'number' ? obj.version : undefined,
+        cached: typeof obj.cached === 'boolean' ? obj.cached : undefined,
+      };
+    }
+    return { prompt: '', tools: [] };
   } catch (err) {
     console.warn('[SecondBrain] fetchCognitionInjection error:', err);
-    return '';
+    return { prompt: '', tools: [] };
   }
 }
+
+/** RAG 检索（POST /fmp/retrieve） */
+export async function retrieveFmp(params: { query: string; topK?: number }): Promise<FmpRetrieveResult> {
+  return post<FmpRetrieveResult>('/fmp/retrieve', params);
+}
+
 
 export interface ChatReportParams {
   chatId: string;
@@ -410,10 +479,12 @@ export const secondBrainApi = {
   deleteChat,
   reExtractDocument,
   fetchCognitionInjection,
+  retrieveFmp,
   reportChatSession,
   fetchPersonaDetail,
   updatePersona,
   get,
   post,
 };
+
 

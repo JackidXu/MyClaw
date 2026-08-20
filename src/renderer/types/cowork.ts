@@ -375,7 +375,12 @@ export interface CoworkStartOptions {
   mediaReferences?: import('./mediaGeneration').MediaAttachmentRef[];
   selectedTextSnippets?: CoworkSelectedTextSnippet[];
   browserAnnotations?: CoworkBrowserAnnotationMessageBatch[];
+  /** 第二大脑工具定义列表，由 /fmp/inject 接口返回 */
+  fmpTools?: import('../services/secondBrainApi').FmpTool[];
+  /** 第二大脑认证头，供主进程调用 retrieve 接口时使用 */
+  fmpAuthHeaders?: { claw_cookie: string; claw_uid: string };
 }
+
 
 // Continue session options
 export interface CoworkContinueOptions {
@@ -392,7 +397,10 @@ export interface CoworkContinueOptions {
   mediaReferences?: import('./mediaGeneration').MediaAttachmentRef[];
   selectedTextSnippets?: CoworkSelectedTextSnippet[];
   browserAnnotations?: CoworkBrowserAnnotationMessageBatch[];
+  /** 第二大脑认证头，供主进程调用 retrieve 接口时使用 */
+  fmpAuthHeaders?: { claw_cookie: string; claw_uid: string };
 }
+
 
 // IPC result types
 export interface CoworkSessionResult {
