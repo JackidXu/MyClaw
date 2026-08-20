@@ -2,12 +2,21 @@ import fs from 'fs';
 
 import {
   HtmlShareAccessMode,
+  type HtmlShareAnalytics,
+  type HtmlShareAnalyticsResult,
   type HtmlShareConfigurableStatus,
   type HtmlShareDisabledSource,
   HtmlShareSourceType,
   HtmlShareStatus,
   type HtmlShareStatus as HtmlShareStatusValue,
 } from '../../../shared/htmlShare/constants';
+import {
+  normalizePublishingQuotaErrorData,
+  normalizePublishingTrialPolicy,
+  type PublishingQuota,
+  type PublishingQuotaErrorData,
+  type PublishingTrialPolicy,
+} from '../../../shared/publishing/constants';
 
 export interface CreateHtmlShareUploadInput {
   archivePath: string;
@@ -32,10 +41,26 @@ export interface HtmlShareCreateResult {
   moderationStatus?: string;
   updatedAt?: string;
   contentUpdatedAt?: string;
+  accessExpiresAt?: string | null;
   disabledAt?: string | null;
   disabledReason?: string | null;
   disabledSource?: HtmlShareDisabledSource | null;
   restoredByUpdate?: boolean;
+  error?: string;
+  code?: number;
+  quota?: PublishingQuotaErrorData;
+}
+
+export interface HtmlShareQuotaResult {
+  success: boolean;
+  data?: PublishingQuota;
+  error?: string;
+  code?: number;
+}
+
+export interface PublishingTrialPolicyResult {
+  success: boolean;
+  data?: PublishingTrialPolicy;
   error?: string;
   code?: number;
 }
@@ -49,30 +74,45 @@ export interface HtmlShareLookupResult {
 
 type FetchWithAuth = (url: string, options?: RequestInit) => Promise<Response>;
 
+interface HtmlShareApiData extends Partial<PublishingQuota> {
+  shareId?: string;
+  url?: string;
+  accessMode?: (typeof HtmlShareAccessMode)[keyof typeof HtmlShareAccessMode];
+  shareCode?: string;
+  shareCodeUnavailable?: boolean;
+  status?: HtmlShareStatusValue;
+  moderationStatus?: string;
+  updatedAt?: string;
+  contentUpdatedAt?: string;
+  accessExpiresAt?: string | null;
+  disabledAt?: string | null;
+  disabledReason?: string | null;
+  disabledSource?: HtmlShareDisabledSource | null;
+  restoredByUpdate?: boolean;
+}
+
 interface HtmlShareApiResponse {
   code: number;
   message?: string;
-  data?: {
-    shareId?: string;
-    url?: string;
-    accessMode?: (typeof HtmlShareAccessMode)[keyof typeof HtmlShareAccessMode];
-    shareCode?: string;
-    shareCodeUnavailable?: boolean;
-    status?: HtmlShareStatusValue;
-    moderationStatus?: string;
-    updatedAt?: string;
-    contentUpdatedAt?: string;
-    disabledAt?: string | null;
-    disabledReason?: string | null;
-    disabledSource?: HtmlShareDisabledSource | null;
-    restoredByUpdate?: boolean;
-  };
+  data?: HtmlShareApiData;
+}
+
+interface PublishingTrialPolicyApiResponse {
+  code: number;
+  message?: string;
+  data?: unknown;
 }
 
 interface HtmlShareListApiResponse {
   code: number;
   message?: string;
   data?: unknown;
+}
+
+interface HtmlShareAnalyticsApiResponse {
+  code: number;
+  message?: string;
+  data?: HtmlShareAnalytics;
 }
 
 export function buildHtmlSharePublicUrl(publicBaseUrl: string, shareId: string): string {
@@ -116,10 +156,24 @@ function buildHtmlShareResult(
     moderationStatus: payload.data.moderationStatus,
     updatedAt: payload.data.updatedAt,
     contentUpdatedAt: payload.data.contentUpdatedAt,
+    accessExpiresAt: payload.data.accessExpiresAt,
     disabledAt: payload.data.disabledAt,
     disabledReason: payload.data.disabledReason,
     disabledSource: payload.data.disabledSource,
     restoredByUpdate: payload.data.restoredByUpdate,
+  };
+}
+
+function buildHtmlShareFailure(
+  payload: HtmlShareApiResponse | null,
+  fallbackError: string,
+): HtmlShareCreateResult {
+  const quota = normalizePublishingQuotaErrorData(payload?.data);
+  return {
+    success: false,
+    error: payload?.message || fallbackError,
+    code: payload?.code,
+    ...(quota ? { quota } : {}),
   };
 }
 
@@ -221,11 +275,7 @@ export async function uploadHtmlShare(
     console.debug(
       `[HtmlShare] upload failed with HTTP ${response.status}, API code ${payload?.code ?? 'missing'}, and share URL ${result?.url ? 'present' : 'missing'}`,
     );
-    return {
-      success: false,
-      error: payload?.message || `Share upload failed: ${response.status}`,
-      code: payload?.code,
-    };
+    return buildHtmlShareFailure(payload, `Share upload failed: ${response.status}`);
   }
 
   console.debug(
@@ -253,11 +303,7 @@ export async function updateHtmlShare(
   const payload = (await response.json().catch((): null => null)) as HtmlShareApiResponse | null;
   const result = payload ? buildHtmlShareResult(payload, publicBaseUrl) : null;
   if (!response.ok || payload?.code !== 0 || !result) {
-    return {
-      success: false,
-      error: payload?.message || `Share update failed: ${response.status}`,
-      code: payload?.code,
-    };
+    return buildHtmlShareFailure(payload, `Share update failed: ${response.status}`);
   }
   return result;
 }
@@ -288,11 +334,7 @@ export async function updateHtmlShareStatus(
   const payload = (await response.json().catch((): null => null)) as HtmlShareApiResponse | null;
   const result = payload ? buildHtmlShareResult(payload, publicBaseUrl) : null;
   if (!response.ok || payload?.code !== 0 || !result) {
-    return {
-      success: false,
-      error: payload?.message || `Share status update failed: ${response.status}`,
-      code: payload?.code,
-    };
+    return buildHtmlShareFailure(payload, `Share status update failed: ${response.status}`);
   }
   return result;
 }
@@ -322,11 +364,7 @@ export async function updateHtmlShareAccessMode(
   const payload = (await response.json().catch((): null => null)) as HtmlShareApiResponse | null;
   const result = payload ? buildHtmlShareResult(payload, publicBaseUrl) : null;
   if (!response.ok || payload?.code !== 0 || !result) {
-    return {
-      success: false,
-      error: payload?.message || `Share access mode update failed: ${response.status}`,
-      code: payload?.code,
-    };
+    return buildHtmlShareFailure(payload, `Share access mode update failed: ${response.status}`);
   }
   return result;
 }
@@ -388,4 +426,88 @@ export async function getHtmlShareBySource(
     success: true,
     share: fallbackShare,
   };
+}
+
+export async function getHtmlShareAnalytics(
+  serverBaseUrl: string,
+  fetchWithAuth: FetchWithAuth,
+  shareId: string,
+  options: { from?: string; to?: string } = {},
+): Promise<HtmlShareAnalyticsResult> {
+  const params = new URLSearchParams();
+  if (options.from) params.set('from', options.from);
+  if (options.to) params.set('to', options.to);
+  const query = params.size > 0 ? `?${params.toString()}` : '';
+  const response = await fetchWithAuth(
+    `${serverBaseUrl}/api/html-shares/${encodeURIComponent(shareId)}/analytics${query}`,
+  );
+  const payload = (await response.json().catch((): null => null)) as
+    | HtmlShareAnalyticsApiResponse
+    | null;
+  if (!response.ok || payload?.code !== 0 || !payload.data) {
+    return {
+      success: false,
+      error: payload?.message || `Share analytics request failed: ${response.status}`,
+      code: payload?.code,
+    };
+  }
+  return {
+    success: true,
+    analytics: payload.data,
+  };
+}
+
+export async function getHtmlShareQuota(
+  serverBaseUrl: string,
+  fetchWithAuth: FetchWithAuth,
+): Promise<HtmlShareQuotaResult> {
+  const response = await fetchWithAuth(`${serverBaseUrl}/api/html-shares/quota`);
+  const payload = (await response.json().catch((): null => null)) as HtmlShareApiResponse | null;
+  const normalized = normalizePublishingQuotaErrorData(payload?.data);
+  if (
+    !response.ok
+    || payload?.code !== 0
+    || !normalized
+    || typeof payload.data?.allowed !== 'boolean'
+    || typeof payload.data.remaining !== 'number'
+  ) {
+    return {
+      success: false,
+      error: payload?.message || `Share quota request failed: ${response.status}`,
+      code: payload?.code,
+    };
+  }
+  return {
+    success: true,
+    data: {
+      ...normalized,
+      allowed: payload.data.allowed,
+      remaining: payload.data.remaining,
+      ...(payload.data.planName ? { planName: payload.data.planName } : {}),
+      ...(payload.data.planDisplayName
+        ? { planDisplayName: payload.data.planDisplayName }
+        : {}),
+    },
+  };
+}
+
+export async function getPublishingTrialPolicy(
+  serverBaseUrl: string,
+  fetchWithAuth: FetchWithAuth,
+): Promise<PublishingTrialPolicyResult> {
+  const response = await fetchWithAuth(`${serverBaseUrl}/api/publishing/trial-policy`, {
+    cache: 'no-store',
+  });
+  const payload = (await response.json().catch((): null => null)) as
+    | PublishingTrialPolicyApiResponse
+    | null;
+  const policy = normalizePublishingTrialPolicy(payload?.data);
+  if (!response.ok || payload?.code !== 0 || !policy) {
+    return {
+      success: false,
+      error: payload?.message || `Publishing trial policy request failed: ${response.status}`,
+      code: payload?.code,
+    };
+  }
+  return { success: true, data: policy };
 }

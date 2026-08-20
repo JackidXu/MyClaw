@@ -44,6 +44,11 @@ import {
   CARD_OVERFLOW_MENU_SUBMENU_MAX_HEIGHT_PX,
   CARD_OVERFLOW_MENU_SURFACE_CLASSNAME,
 } from '../common/CardOverflowMenu';
+import {
+  MANAGEMENT_BODY_TEXT,
+  MANAGEMENT_META_TEXT,
+  MANAGEMENT_TITLE_TEXT,
+} from '../common/managementTypography';
 import Modal from '../common/Modal';
 import FileTypeIcon from '../icons/fileTypes/FileTypeIcon';
 import ShareUploadIcon from '../icons/ShareUploadIcon';
@@ -292,11 +297,11 @@ const LibraryPreviewModalContent: React.FC<LibraryPreviewModalProps> = ({
           <div className="min-w-0 flex-1">
             <h2
               id="library-preview-title"
-              className="truncate text-[13px] font-semibold leading-4 text-foreground"
+              className={`truncate ${MANAGEMENT_TITLE_TEXT} font-semibold leading-5 text-foreground`}
             >
               {item.title}
             </h2>
-            <p className="truncate text-[10px] leading-4 text-secondary">
+            <p className={`truncate ${MANAGEMENT_META_TEXT} leading-[var(--lobster-leading-xs)] text-secondary`}>
               {i18nService.t('libraryLastModifiedAt')}: {formatLibraryTime(item.sortTime)}
             </p>
           </div>
@@ -458,7 +463,7 @@ const LibraryPreviewModalContent: React.FC<LibraryPreviewModalProps> = ({
         >
           {localItem ? (
             loading ? (
-              <div className="flex h-full items-center justify-center text-sm text-secondary">
+              <div className={`flex h-full items-center justify-center ${MANAGEMENT_BODY_TEXT} text-secondary`}>
                 {i18nService.t('loading')}
               </div>
             ) : artifact ? (
@@ -466,7 +471,7 @@ const LibraryPreviewModalContent: React.FC<LibraryPreviewModalProps> = ({
             ) : (
               <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
                 <InformationCircleIcon className="h-9 w-9 text-tertiary" />
-                <p className="max-w-md text-sm text-secondary">
+                <p className={`max-w-md ${MANAGEMENT_BODY_TEXT} leading-[var(--lobster-leading-sm)] text-secondary`}>
                   {i18nService.t('libraryPreviewUnavailable')}
                 </p>
                 <button
@@ -485,8 +490,10 @@ const LibraryPreviewModalContent: React.FC<LibraryPreviewModalProps> = ({
                 <GlobeAltIcon className="h-8 w-8 text-primary" />
               </div>
               <div>
-                <h3 className="text-base font-semibold text-foreground">{item.title}</h3>
-                <p className="mt-1 max-w-md text-sm text-secondary">
+                <h3 className={`${MANAGEMENT_TITLE_TEXT} font-semibold text-foreground`}>
+                  {item.title}
+                </h3>
+                <p className={`${MANAGEMENT_BODY_TEXT} mt-1 max-w-md leading-[var(--lobster-leading-sm)] text-secondary`}>
                   {i18nService.t('libraryCloudPreviewDescription')}
                 </p>
               </div>

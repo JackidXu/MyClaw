@@ -61,6 +61,8 @@ import type {
 } from '../../shared/enterpriseAccount/types';
 import type {
   HtmlShareAccessMode,
+  HtmlShareAnalyticsInput,
+  HtmlShareAnalyticsResult,
   HtmlShareConfigurableStatus,
   HtmlShareDisabledSource,
   HtmlShareSourceType,
@@ -96,6 +98,11 @@ import type {
   OpenClawEnginePhase as SharedOpenClawEnginePhase,
   OpenClawGatewayRepairErrorCode,
 } from '../../shared/openclawEngine/constants';
+import type {
+  PublishingQuota,
+  PublishingQuotaErrorData,
+  PublishingTrialPolicy,
+} from '../../shared/publishing/constants';
 import type {
   ShareDeploymentAnalyzeProjectInput,
   ShareDeploymentCreateNodeInput,
@@ -587,12 +594,14 @@ interface HtmlShareResult {
   moderationStatus?: string;
   updatedAt?: string;
   contentUpdatedAt?: string;
+  accessExpiresAt?: string | null;
   disabledAt?: string | null;
   disabledReason?: string | null;
   disabledSource?: HtmlShareDisabledSource | null;
   restoredByUpdate?: boolean;
   error?: string;
   code?: number;
+  quota?: PublishingQuotaErrorData;
   warnings?: string[];
 }
 
@@ -1326,6 +1335,19 @@ interface IElectronAPI {
     }) => Promise<HtmlShareResult>;
     disable: (shareId: string) => Promise<HtmlShareResult>;
     get: (shareId: string) => Promise<{ success: boolean; share?: unknown; error?: string }>;
+    getQuota: () => Promise<{
+      success: boolean;
+      data?: PublishingQuota;
+      error?: string;
+      code?: number;
+    }>;
+    getTrialPolicy: () => Promise<{
+      success: boolean;
+      data?: PublishingTrialPolicy;
+      error?: string;
+      code?: number;
+    }>;
+    getAnalytics: (options: HtmlShareAnalyticsInput) => Promise<HtmlShareAnalyticsResult>;
   };
   shareDeployment: {
     detectProjectCandidates: (

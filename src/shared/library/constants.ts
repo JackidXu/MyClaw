@@ -11,6 +11,13 @@ export const LibrarySourceFilter = {
 } as const;
 export type LibrarySourceFilter = typeof LibrarySourceFilter[keyof typeof LibrarySourceFilter];
 
+export const LibraryNavigationEvent = {
+  OpenCloud: 'lobsterai:library-open-cloud',
+} as const;
+
+export type LibraryNavigationEvent =
+  (typeof LibraryNavigationEvent)[keyof typeof LibraryNavigationEvent];
+
 export const LibraryCloudKind = {
   All: 'all',
   SharedFile: LibraryItemKind.SharedFile,
@@ -33,6 +40,15 @@ export const LibraryCloudAvailabilityFilter = {
 } as const;
 export type LibraryCloudAvailabilityFilter =
   typeof LibraryCloudAvailabilityFilter[keyof typeof LibraryCloudAvailabilityFilter];
+
+export const LibraryCloudUnavailableReason = {
+  ShareNotLive: 'share_not_live',
+  SiteNotOnline: 'site_not_online',
+  FreeAccessExpired: 'free_access_expired',
+  EntitlementGraceExpired: 'entitlement_grace_expired',
+} as const;
+export type LibraryCloudUnavailableReason =
+  typeof LibraryCloudUnavailableReason[keyof typeof LibraryCloudUnavailableReason];
 
 export const LibraryCategory = {
   All: 'all',

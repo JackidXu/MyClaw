@@ -48,7 +48,12 @@ import {
 } from '../artifacts/ArtifactFileShareController';
 import { isArtifactFileShareable } from '../artifacts/artifactFileSharePolicy';
 import CardOverflowMenu, { type CardOverflowMenuItem } from '../common/CardOverflowMenu';
-import { MANAGEMENT_PAGE_TITLE_TEXT } from '../common/managementTypography';
+import {
+  MANAGEMENT_BODY_TEXT,
+  MANAGEMENT_META_TEXT,
+  MANAGEMENT_PAGE_TITLE_TEXT,
+  MANAGEMENT_TITLE_TEXT,
+} from '../common/managementTypography';
 import FileTypeIcon from '../icons/fileTypes/FileTypeIcon';
 import ShareUploadIcon from '../icons/ShareUploadIcon';
 import SidebarToggleIcon from '../icons/SidebarToggleIcon';
@@ -95,6 +100,8 @@ interface LibraryViewProps {
   sitesHidden?: boolean;
   sitesReadOnly?: boolean;
   updateBadge?: React.ReactNode;
+  requestedSource?: LibrarySourceFilter;
+  navigationRequestId?: number;
 }
 
 interface LibrarySessionGroup {
@@ -288,7 +295,7 @@ const LibraryItemCard: React.FC<{
         className="group flex min-h-14 items-center gap-3 px-2 py-2 transition-colors hover:bg-surface-raised/60 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary/30"
       >
         <LibraryListItemIcon item={item} />
-        <h3 className="min-w-0 flex-1 truncate text-sm font-medium leading-5 text-foreground">
+        <h3 className={`min-w-0 flex-1 truncate ${MANAGEMENT_BODY_TEXT} font-medium leading-5 text-foreground`}>
           {item.title}
         </h3>
         <div className="ml-auto flex shrink-0 items-center">
@@ -317,15 +324,17 @@ const LibraryItemCard: React.FC<{
         <LibraryThumbnail item={item} />
       </div>
       <div className="min-w-0 pt-2 pr-10">
-        <h3 className="line-clamp-2 text-sm font-medium leading-5 text-foreground">
+        <h3 className={`line-clamp-2 ${MANAGEMENT_BODY_TEXT} font-medium leading-5 text-foreground`}>
           {item.title}
         </h3>
-        <div className="mt-1 flex min-w-0 items-center gap-1.5 text-[11px] text-secondary">
+        <div className={`mt-1 flex min-w-0 items-center gap-1.5 ${MANAGEMENT_META_TEXT} leading-[var(--lobster-leading-xs)] text-secondary`}>
           <span className="truncate">{getLibrarySourceLabel(item)}</span>
           <span aria-hidden="true">·</span>
           <span className="truncate">{getLibraryItemStatus(item)}</span>
         </div>
-        <div className="mt-1 text-[10px] text-tertiary">{formatLibraryTime(item.sortTime)}</div>
+        <div className={`${MANAGEMENT_META_TEXT} mt-1 leading-[var(--lobster-leading-xs)] text-tertiary`}>
+          {formatLibraryTime(item.sortTime)}
+        </div>
       </div>
       <div className="absolute right-2 top-2">
         <CardOverflowMenu
@@ -348,11 +357,13 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
   sitesHidden = false,
   sitesReadOnly = false,
   updateBadge,
+  requestedSource = LibrarySourceFilter.Local,
+  navigationRequestId = 0,
 }) => {
   const artifactFileShare = useOptionalArtifactFileShare();
   const ownerAccountKey = useSelector((state: RootState) => state.auth.ownerAccountKey);
   const favoriteOwnerScope = ownerAccountKey ?? undefined;
-  const [source, setSource] = useState<LibrarySourceFilter>(LibrarySourceFilter.Local);
+  const [source, setSource] = useState<LibrarySourceFilter>(requestedSource);
   const [category, setCategory] = useState<LibraryCategory>(LibraryCategory.All);
   const [keywordInput, setKeywordInput] = useState('');
   const [keyword, setKeyword] = useState('');
@@ -393,6 +404,15 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
     setSource(nextSource);
     scrollContainerRef.current?.scrollTo({ top: 0 });
   };
+
+  useEffect(() => {
+    setActiveItem(undefined);
+    setCategory(LibraryCategory.All);
+    setKeywordInput('');
+    setKeyword('');
+    setSource(requestedSource);
+    scrollContainerRef.current?.scrollTo({ top: 0 });
+  }, [navigationRequestId, requestedSource]);
 
   useEffect(() => {
     if (sitesHidden && category === LibraryCategory.Site) {
@@ -984,6 +1004,7 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
               value={category}
               options={CATEGORY_FILTERS}
               onChange={setCategory}
+              grouped
             />
             <div className="ml-auto flex min-w-0 flex-[1_1_240px] items-center justify-end gap-2">
               <label className="relative min-w-[96px] max-w-56 flex-1">
@@ -992,7 +1013,7 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
                   value={keywordInput}
                   onChange={event => setKeywordInput(event.target.value)}
                   placeholder={i18nService.t('librarySearchPlaceholder')}
-                  className="h-9 w-full rounded-xl border border-border bg-surface pl-9 pr-3 text-sm text-foreground outline-none placeholder:text-tertiary focus:ring-2 focus:ring-primary/30"
+                  className="h-9 w-full rounded-xl border border-border bg-surface pl-9 pr-3 text-xs text-foreground outline-none placeholder:text-tertiary focus:ring-2 focus:ring-primary/30"
                 />
               </label>
               <Tooltip
@@ -1061,15 +1082,19 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
             ) : dateGroups.length === 0 ? (
               <div className="mt-12 rounded-2xl border border-dashed border-border py-16 text-center">
                 <DocumentIcon className="mx-auto h-8 w-8 text-tertiary" />
-                <h2 className="mt-3 text-sm font-medium text-foreground">{i18nService.t('libraryEmptyTitle')}</h2>
-                <p className="mt-1 text-xs text-secondary">{i18nService.t('libraryEmptyDescription')}</p>
+                <h2 className={`${MANAGEMENT_TITLE_TEXT} mt-3 font-semibold text-foreground`}>
+                  {i18nService.t('libraryEmptyTitle')}
+                </h2>
+                <p className={`${MANAGEMENT_BODY_TEXT} mt-1 leading-[var(--lobster-leading-sm)] text-secondary`}>
+                  {i18nService.t('libraryEmptyDescription')}
+                </p>
               </div>
             ) : (
               <div className="mt-6 space-y-10">
                 {dateGroups.map(dateGroup => (
                   <section key={dateGroup.key}>
                     <div className="mb-5 flex items-center gap-3">
-                      <h2 className="shrink-0 text-sm font-semibold text-foreground">
+                      <h2 className={`shrink-0 ${MANAGEMENT_TITLE_TEXT} font-semibold text-foreground`}>
                         {dateGroup.title}
                       </h2>
                       <div className="h-px flex-1 bg-border" />
@@ -1082,12 +1107,12 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
                               <button
                                 type="button"
                                 onClick={() => onOpenSession(group.session!)}
-                                className="min-w-0 truncate text-left text-sm font-semibold text-foreground hover:text-primary"
+                                className={`min-w-0 truncate text-left ${MANAGEMENT_TITLE_TEXT} font-semibold text-foreground hover:text-primary`}
                               >
                                 {group.title}
                               </button>
                             ) : (
-                              <h3 className="min-w-0 truncate text-sm font-semibold text-foreground">
+                              <h3 className={`min-w-0 truncate ${MANAGEMENT_TITLE_TEXT} font-semibold text-foreground`}>
                                 {group.title}
                               </h3>
                             )}

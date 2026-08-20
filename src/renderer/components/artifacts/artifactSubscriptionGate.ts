@@ -87,26 +87,20 @@ export function getArtifactSubscriptionDecision(
       reason: ArtifactSubscriptionBlockReason.LoginRequired,
     };
   }
-  const entitled = feature === ArtifactSubscriptionFeature.Share
-    ? snapshot.shareEntitled
-    : snapshot.deploymentEntitled;
-  if (entitled === true) {
-    return { allowed: true };
-  }
   const isEnterprise = snapshot.accountMode === EnterpriseAccountMode.Enterprise
     || snapshot.subscriptionStatus === AuthSubscriptionStatus.Enterprise;
   if (isEnterprise) {
+    const entitled = feature === ArtifactSubscriptionFeature.Share
+      ? snapshot.shareEntitled
+      : snapshot.deploymentEntitled;
+    if (entitled === true) return { allowed: true };
     return {
       allowed: false,
       reason: ArtifactSubscriptionBlockReason.EnterpriseUnavailable,
     };
   }
-  if (entitled === false || snapshot.subscriptionStatus !== AuthSubscriptionStatus.Active) {
-    return {
-      allowed: false,
-      reason: ArtifactSubscriptionBlockReason.SubscriptionRequired,
-    };
-  }
+  // Logged-in personal accounts are allowed through. The server resolves the
+  // current subscription plan and enforces either free or subscriber quotas.
   return { allowed: true };
 }
 

@@ -30,11 +30,13 @@ describe('library list state', () => {
       hasMore: true,
       counts: { sharedFile: 83, deployedSite: 14 },
       sharedStatusCounts: { all: 83, live: 70, disabled: 13 },
+      serverNow: 1_000,
     })).toEqual({
       list: [],
       hasMore: false,
       counts: { sharedFile: 83, deployedSite: 14 },
       sharedStatusCounts: { all: 83, live: 70, disabled: 13 },
+      serverNow: 1_000,
     });
   });
 

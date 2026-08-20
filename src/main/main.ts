@@ -123,6 +123,7 @@ import { resolveEnterpriseQuotaError } from '../shared/enterpriseAccount/quotaEr
 import {
   HtmlShareAccessMode,
   type HtmlShareAccessMode as HtmlShareAccessModeValue,
+  type HtmlShareAnalyticsInput,
   type HtmlShareConfigurableStatus,
   HtmlShareIpc,
   HtmlShareSourceType,
@@ -343,7 +344,10 @@ import {
   packageArtifactFile,
 } from './libs/htmlShare/artifactFileSharePackager';
 import {
+  getHtmlShareAnalytics,
   getHtmlShareBySource,
+  getHtmlShareQuota,
+  getPublishingTrialPolicy,
   updateHtmlShare,
   updateHtmlShareAccessMode,
   updateHtmlShareStatus,
@@ -641,6 +645,33 @@ interface HtmlShareUpdateStatusInput {
 interface HtmlShareUpdateAccessModeInput {
   shareId: string;
   accessMode: HtmlShareAccessModeValue;
+}
+
+function sanitizeHtmlShareAnalyticsInput(input: unknown): HtmlShareAnalyticsInput {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    throw new Error('Invalid HTML share analytics request.');
+  }
+  const source = input as Record<string, unknown>;
+  const from = sanitizeOptionalHtmlShareString(source.from, 'from', 10);
+  const to = sanitizeOptionalHtmlShareString(source.to, 'to', 10);
+  if (Boolean(from) !== Boolean(to)) {
+    throw new Error('from and to must be provided together.');
+  }
+  for (const [fieldName, value] of [['from', from], ['to', to]] as const) {
+    if (!value) continue;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      throw new Error(`${fieldName} must use YYYY-MM-DD format.`);
+    }
+    const parsed = new Date(`${value}T00:00:00.000Z`);
+    if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) {
+      throw new Error(`${fieldName} must be a valid date.`);
+    }
+  }
+  return {
+    shareId: sanitizeHtmlShareString(source.shareId, 'shareId', 64),
+    ...(from ? { from } : {}),
+    ...(to ? { to } : {}),
+  };
 }
 
 interface ShareDeploymentAnalyzeProjectDirectoryInput {
@@ -7486,6 +7517,51 @@ if (!gotTheLock) {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to load share',
+      };
+    }
+  });
+
+  ipcMain.handle(HtmlShareIpc.GetQuota, async () => {
+    try {
+      return await getHtmlShareQuota(getServerApiBaseUrl(), fetchWithAuth);
+    } catch (error) {
+      console.error('[HtmlShare] failed to load publishing quota:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to load share quota',
+      };
+    }
+  });
+
+  ipcMain.handle(HtmlShareIpc.GetTrialPolicy, async () => {
+    try {
+      return await getPublishingTrialPolicy(
+        getServerApiBaseUrl(),
+        (url, options) => fetch(url, options),
+      );
+    } catch (error) {
+      console.error('[HtmlShare] failed to load publishing trial policy:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to load publishing trial policy',
+      };
+    }
+  });
+
+  ipcMain.handle(HtmlShareIpc.GetAnalytics, async (_event, input: unknown) => {
+    try {
+      const options = sanitizeHtmlShareAnalyticsInput(input);
+      return await getHtmlShareAnalytics(
+        getServerApiBaseUrl(),
+        fetchWithAuth,
+        options.shareId,
+        options,
+      );
+    } catch (error) {
+      console.error('[HtmlShare] failed to load owner analytics:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to load share analytics',
       };
     }
   });

@@ -44,6 +44,7 @@ import {
 } from '../shared/enterpriseAccount/constants';
 import {
   type HtmlShareAccessMode,
+  type HtmlShareAnalyticsInput,
   type HtmlShareConfigurableStatus,
   HtmlShareIpc,
   type HtmlShareSourceType,
@@ -832,6 +833,10 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.invoke(HtmlShareIpc.UpdateAccessMode, options),
     disable: (shareId: string) => ipcRenderer.invoke(HtmlShareIpc.Disable, shareId),
     get: (shareId: string) => ipcRenderer.invoke(HtmlShareIpc.Get, shareId),
+    getQuota: () => ipcRenderer.invoke(HtmlShareIpc.GetQuota),
+    getTrialPolicy: () => ipcRenderer.invoke(HtmlShareIpc.GetTrialPolicy),
+    getAnalytics: (options: HtmlShareAnalyticsInput) =>
+      ipcRenderer.invoke(HtmlShareIpc.GetAnalytics, options),
   },
   shareDeployment: {
     detectProjectCandidates: (options: ShareDeploymentDetectCandidatesInput) =>

@@ -10,6 +10,10 @@ import {
   AppUpdateStatus,
   isManualDownloadUrl,
 } from '../shared/appUpdate/constants';
+import {
+  LibraryNavigationEvent,
+  LibrarySourceFilter,
+} from '../shared/library/constants';
 import type { LibrarySessionRef } from '../shared/library/types';
 import { ProviderAuthType, ProviderName, ProviderRegistry } from '../shared/providers';
 import { SIDEBAR_TASK_FILTER_ENABLED } from './components/agentSidebar/SidebarTaskFilterButton';
@@ -163,6 +167,13 @@ const App: React.FC = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [settingsOptions, setSettingsOptions] = useState<SettingsOpenOptions & { requestId: number }>({ requestId: 0 });
   const [mainView, setMainView] = useState<'cowork' | 'skills' | 'scheduledTasks' | 'kits' | 'mcp' | 'library' | 'sites'>('cowork');
+  const [libraryNavigationRequest, setLibraryNavigationRequest] = useState<{
+    source: LibrarySourceFilter;
+    requestId: number;
+  }>({
+    source: LibrarySourceFilter.Local,
+    requestId: 0,
+  });
   const [isInitialized, setIsInitialized] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<ToastEventDetail | null>(null);
@@ -642,7 +653,25 @@ const App: React.FC = () => {
   }, []);
 
   const handleShowLibrary = useCallback(() => {
+    setLibraryNavigationRequest(current => ({
+      source: LibrarySourceFilter.Local,
+      requestId: current.requestId + 1,
+    }));
     setMainView('library');
+  }, []);
+
+  useEffect(() => {
+    const handleOpenCloudLibrary = (): void => {
+      setLibraryNavigationRequest(current => ({
+        source: LibrarySourceFilter.Cloud,
+        requestId: current.requestId + 1,
+      }));
+      setMainView('library');
+    };
+    window.addEventListener(LibraryNavigationEvent.OpenCloud, handleOpenCloudLibrary);
+    return () => {
+      window.removeEventListener(LibraryNavigationEvent.OpenCloud, handleOpenCloudLibrary);
+    };
   }, []);
 
   const handleOpenLibrarySession = useCallback((session: LibrarySessionRef) => {
@@ -1810,6 +1839,8 @@ const App: React.FC = () => {
                 sitesHidden={enterpriseConfig?.ui?.sites === 'hide'}
                 sitesReadOnly={enterpriseConfig?.ui?.sites === 'readonly'}
                 updateBadge={collapsedHeaderUpdateBadge}
+                requestedSource={libraryNavigationRequest.source}
+                navigationRequestId={libraryNavigationRequest.requestId}
               />
             ) : mainView === 'sites' ? (
               <SitesView

@@ -1,10 +1,13 @@
 import { CheckIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
 import React, { useEffect, useRef, useState } from 'react';
 
+import { MANAGEMENT_BODY_TEXT } from '../common/managementTypography';
+
 export interface LibraryFilterDropdownOption<T extends string> {
   value: T;
   label: string;
   leading?: React.ReactNode;
+  labelClassName?: string;
 }
 
 interface LibraryFilterDropdownProps<T extends string> {
@@ -12,7 +15,10 @@ interface LibraryFilterDropdownProps<T extends string> {
   options: readonly LibraryFilterDropdownOption<T>[];
   ariaLabel: string;
   onChange: (value: T) => void;
+  triggerLabel?: string;
   triggerLeading?: React.ReactNode;
+  showSelectedLeading?: boolean;
+  active?: boolean;
   triggerClassName?: string;
   menuClassName?: string;
 }
@@ -22,7 +28,10 @@ const LibraryFilterDropdown = <T extends string,>({
   options,
   ariaLabel,
   onChange,
+  triggerLabel,
   triggerLeading,
+  showSelectedLeading = true,
+  active = false,
   triggerClassName = 'min-w-[104px]',
   menuClassName = 'w-44',
 }: LibraryFilterDropdownProps<T>): React.ReactElement => {
@@ -48,6 +57,11 @@ const LibraryFilterDropdown = <T extends string,>({
 
   const selectedOption = options.find(option => option.value === value);
   const selectedLabel = selectedOption?.label ?? value;
+  const selectedLeading = triggerLeading !== undefined
+    ? triggerLeading
+    : showSelectedLeading
+      ? selectedOption?.leading
+      : undefined;
 
   return (
     <div ref={containerRef} className="relative shrink-0">
@@ -57,11 +71,20 @@ const LibraryFilterDropdown = <T extends string,>({
         aria-expanded={isOpen}
         aria-label={`${ariaLabel}: ${selectedLabel}`}
         onClick={() => setIsOpen(open => !open)}
-        className={`inline-flex h-9 items-center gap-2 rounded-xl border bg-surface px-3 text-xs font-medium text-foreground transition-colors hover:bg-surface-raised focus:outline-none focus:ring-2 focus:ring-primary/30 ${
-          isOpen ? 'border-primary/40 bg-surface-raised' : 'border-border'
+        className={`inline-flex h-9 items-center gap-2 rounded-xl border bg-surface px-3 text-xs font-medium text-foreground transition-colors hover:bg-surface-raised focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
+          isOpen
+            ? 'border-primary/40 bg-surface-raised'
+            : active
+              ? 'border-primary/30 bg-primary/5 text-primary'
+              : 'border-border'
         } ${triggerClassName}`}
       >
-        {triggerLeading ?? selectedOption?.leading}
+        {selectedLeading}
+        {triggerLabel && (
+          <span className={`shrink-0 font-normal ${active ? 'text-primary/80' : 'text-tertiary'}`}>
+            {triggerLabel}
+          </span>
+        )}
         <span className="min-w-0 flex-1 truncate text-left">{selectedLabel}</span>
         <ChevronDownIcon
           className={`h-3.5 w-3.5 shrink-0 text-secondary transition-transform ${
@@ -88,14 +111,16 @@ const LibraryFilterDropdown = <T extends string,>({
                   onChange(option.value);
                   setIsOpen(false);
                 }}
-                className={`flex h-9 w-full items-center gap-3 px-3 text-left text-sm transition-colors ${
+                className={`flex h-9 w-full items-center gap-3 px-3 text-left ${MANAGEMENT_BODY_TEXT} transition-colors ${
                   selected
                     ? 'bg-surface-raised font-medium text-foreground'
                     : 'text-foreground hover:bg-surface-raised'
                 }`}
               >
                 {option.leading}
-                <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                <span className={`min-w-0 flex-1 truncate ${option.labelClassName ?? ''}`}>
+                  {option.label}
+                </span>
                 {selected && <CheckIcon className="h-4 w-4 shrink-0" strokeWidth={2.25} />}
               </button>
             );

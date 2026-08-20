@@ -11,6 +11,7 @@ import type {
   LibraryCategory,
   LibraryCloudAvailabilityFilter,
   LibraryCloudKind,
+  LibraryCloudUnavailableReason,
   LibraryErrorCode,
   LibraryIndexPhase,
   LibraryItemKind,
@@ -84,6 +85,10 @@ export interface SharedFileItem extends LibraryItemBase {
   shareCodeUnavailable?: boolean;
   updatedAt?: string;
   contentUpdatedAt?: string;
+  accessExpiresAt?: number;
+  effectiveAvailable?: boolean;
+  effectiveExpiresAt?: number;
+  effectiveUnavailableReason?: LibraryCloudUnavailableReason;
 }
 
 export interface DeployedSiteItem extends LibraryItemBase {
@@ -99,6 +104,10 @@ export interface DeployedSiteItem extends LibraryItemBase {
   clientSourceKey?: string;
   artifactId?: string;
   updatedAt?: string;
+  accessExpiresAt?: number;
+  effectiveAvailable?: boolean;
+  effectiveExpiresAt?: number;
+  effectiveUnavailableReason?: LibraryCloudUnavailableReason;
 }
 
 export type LibraryItem = LocalArtifactItem | SharedFileItem | DeployedSiteItem;
@@ -156,6 +165,7 @@ export interface LibraryCloudListData {
   hasMore: boolean;
   counts: LibraryCloudCounts;
   sharedStatusCounts: LibrarySharedStatusCounts;
+  serverNow?: number;
 }
 
 export interface LibraryArtifactCandidate {

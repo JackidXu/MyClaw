@@ -58,4 +58,38 @@ describe('getLibraryCloudAvailability', () => {
     expect(getLibraryCloudAvailability(siteItem(SiteStatus.Online, HtmlShareStatus.Disabled)))
       .toBe(LibraryCloudAvailabilityFilter.Unavailable);
   });
+
+  test('treats a fixed-expiry free resource as unavailable after the server clock passes it', () => {
+    const share = { ...sharedItem(HtmlShareStatus.Live), accessExpiresAt: 10_000 };
+    const site = {
+      ...siteItem(SiteStatus.Online, HtmlShareStatus.Live),
+      accessExpiresAt: 10_000,
+    };
+    expect(getLibraryCloudAvailability(share, 9_999))
+      .toBe(LibraryCloudAvailabilityFilter.Available);
+    expect(getLibraryCloudAvailability(share, 10_000))
+      .toBe(LibraryCloudAvailabilityFilter.Unavailable);
+    expect(getLibraryCloudAvailability(site, 10_001))
+      .toBe(LibraryCloudAvailabilityFilter.Unavailable);
+  });
+
+  test('uses the read-only entitlement projection for subscription and team resources', () => {
+    const projectedUnavailable = {
+      ...sharedItem(HtmlShareStatus.Live),
+      effectiveAvailable: false,
+      effectiveExpiresAt: 10_000,
+    };
+    const projectedGrace = {
+      ...siteItem(SiteStatus.Online, HtmlShareStatus.Live),
+      effectiveAvailable: true,
+      effectiveExpiresAt: 10_000,
+    };
+
+    expect(getLibraryCloudAvailability(projectedUnavailable, 9_999))
+      .toBe(LibraryCloudAvailabilityFilter.Unavailable);
+    expect(getLibraryCloudAvailability(projectedGrace, 9_999))
+      .toBe(LibraryCloudAvailabilityFilter.Available);
+    expect(getLibraryCloudAvailability(projectedGrace, 10_000))
+      .toBe(LibraryCloudAvailabilityFilter.Unavailable);
+  });
 });

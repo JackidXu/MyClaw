@@ -13,29 +13,26 @@ interface LibraryAvailabilityDropdownProps {
   value: LibraryCloudAvailabilityFilterValue;
   options: readonly LibraryCloudAvailabilityFilterValue[];
   onChange: (value: LibraryCloudAvailabilityFilterValue) => void;
+  grouped?: boolean;
 }
 
-const STATUS_DOT_CLASSNAME: Record<LibraryCloudAvailabilityFilterValue, string> = {
-  [LibraryCloudAvailabilityFilter.All]: 'bg-tertiary/50',
-  [LibraryCloudAvailabilityFilter.Available]: 'bg-emerald-500',
-  [LibraryCloudAvailabilityFilter.Unavailable]: 'bg-tertiary',
+const STATUS_TEXT_CLASSNAME: Record<LibraryCloudAvailabilityFilterValue, string> = {
+  [LibraryCloudAvailabilityFilter.All]: '',
+  [LibraryCloudAvailabilityFilter.Available]: 'text-emerald-600 dark:text-emerald-400',
+  [LibraryCloudAvailabilityFilter.Unavailable]: 'text-secondary',
 };
 
 const LibraryAvailabilityDropdown: React.FC<LibraryAvailabilityDropdownProps> = ({
   value,
   options,
   onChange,
+  grouped = false,
 }) => {
   const dropdownOptions: LibraryFilterDropdownOption<LibraryCloudAvailabilityFilterValue>[] = (
     options.map(option => ({
       value: option,
       label: i18nService.t(`libraryCloudAvailability_${option}`),
-      leading: (
-        <span
-          aria-hidden="true"
-          className={`h-2 w-2 shrink-0 rounded-full ${STATUS_DOT_CLASSNAME[option]}`}
-        />
-      ),
+      labelClassName: STATUS_TEXT_CLASSNAME[option],
     }))
   );
 
@@ -45,7 +42,10 @@ const LibraryAvailabilityDropdown: React.FC<LibraryAvailabilityDropdownProps> = 
       options={dropdownOptions}
       ariaLabel={i18nService.t('libraryCloudAvailabilityFilter')}
       onChange={onChange}
-      triggerClassName="min-w-[116px]"
+      triggerLabel={grouped ? i18nService.t('libraryFilterStatusLabel') : undefined}
+      showSelectedLeading={!grouped}
+      active={grouped && value !== LibraryCloudAvailabilityFilter.All}
+      triggerClassName={grouped ? 'min-w-[104px]' : 'min-w-[116px]'}
       menuClassName="w-40"
     />
   );

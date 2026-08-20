@@ -10,6 +10,7 @@ import {
   LibraryCategory,
   LibraryCloudAvailabilityFilter,
   LibraryCloudKind,
+  LibraryCloudUnavailableReason,
   LibraryErrorCode,
   LibraryItemKind,
   LibraryLimits,
@@ -52,6 +53,10 @@ interface LibraryCloudApiItem {
   createdAt?: unknown;
   updatedAt?: unknown;
   contentUpdatedAt?: unknown;
+  accessExpiresAt?: unknown;
+  effectiveAvailable?: unknown;
+  effectiveExpiresAt?: unknown;
+  effectiveUnavailableReason?: unknown;
   sortTime?: unknown;
 }
 
@@ -68,6 +73,7 @@ interface LibraryCloudApiData {
     live?: number;
     disabled?: number;
   };
+  serverNow?: unknown;
 }
 
 interface LibraryCloudApiResponse {
@@ -84,6 +90,10 @@ const readNumber = (value: unknown): number | undefined => (
   typeof value === 'number' && Number.isFinite(value) ? value : undefined
 );
 
+const readBoolean = (value: unknown): boolean | undefined => (
+  typeof value === 'boolean' ? value : undefined
+);
+
 const readTimestamp = (value: unknown, fallback: number): number => {
   const numeric = readNumber(value);
   if (numeric !== undefined) return numeric;
@@ -91,6 +101,15 @@ const readTimestamp = (value: unknown, fallback: number): number => {
   if (!text) return fallback;
   const parsed = new Date(text).getTime();
   return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const readOptionalTimestamp = (value: unknown): number | undefined => {
+  const numeric = readNumber(value);
+  if (numeric !== undefined) return numeric;
+  const text = readString(value);
+  if (!text) return undefined;
+  const parsed = new Date(text).getTime();
+  return Number.isFinite(parsed) ? parsed : undefined;
 };
 
 const normalizeCloudItem = (
@@ -110,6 +129,22 @@ const normalizeCloudItem = (
   const clientSourceKey = readString(input.clientSourceKey);
   const latestSession = localStore.resolveCloudSession(sessionId, clientSourceKey);
   const createdAt = readTimestamp(input.createdAt, sortTime);
+  const accessExpiresAt = readOptionalTimestamp(input.accessExpiresAt);
+  const effectiveAvailable = readBoolean(input.effectiveAvailable);
+  const effectiveExpiresAt = readOptionalTimestamp(input.effectiveExpiresAt);
+  const effectiveUnavailableReason = readString(input.effectiveUnavailableReason);
+  const normalizedEffectiveUnavailableReason = Object.values(
+    LibraryCloudUnavailableReason,
+  ).includes(effectiveUnavailableReason as LibraryCloudUnavailableReason)
+    ? effectiveUnavailableReason as LibraryCloudUnavailableReason
+    : undefined;
+  const effectiveAccessFields = {
+    ...(effectiveAvailable === undefined ? {} : { effectiveAvailable }),
+    ...(effectiveExpiresAt === undefined ? {} : { effectiveExpiresAt }),
+    ...(normalizedEffectiveUnavailableReason === undefined
+      ? {}
+      : { effectiveUnavailableReason: normalizedEffectiveUnavailableReason }),
+  };
 
   if (input.itemKind === LibraryItemKind.SharedFile) {
     const sourceType = readString(input.sourceType);
@@ -160,6 +195,8 @@ const normalizeCloudItem = (
       ...(readString(input.contentUpdatedAt)
         ? { contentUpdatedAt: readString(input.contentUpdatedAt) }
         : {}),
+      ...(accessExpiresAt === undefined ? {} : { accessExpiresAt }),
+      ...effectiveAccessFields,
     };
     return item;
   }
@@ -205,6 +242,8 @@ const normalizeCloudItem = (
       ...(clientSourceKey ? { clientSourceKey } : {}),
       ...(readString(input.artifactId) ? { artifactId: readString(input.artifactId) } : {}),
       ...(readString(input.updatedAt) ? { updatedAt: readString(input.updatedAt) } : {}),
+      ...(accessExpiresAt === undefined ? {} : { accessExpiresAt }),
+      ...effectiveAccessFields,
     };
     return item;
   }
@@ -252,6 +291,7 @@ export const listLibraryCloudItems = async (
       disabled: 0,
     };
     let pageCount = 0;
+    let serverNow = Date.now();
     const items = new Map<string, LibraryCloudItem>();
     do {
       const query = new URLSearchParams({
@@ -277,13 +317,14 @@ export const listLibraryCloudItems = async (
           error: body?.message || response.statusText || 'Cloud library request failed.',
         };
       }
+      serverNow = readOptionalTimestamp(body.data.serverNow) ?? serverNow;
       for (const input of body.data.list ?? []) {
         const item = normalizeCloudItem(input, favorites, localStore);
         if (
           !item
           || (options.favoritesOnly && !item.isFavorite)
           || (options.availability
-            && !matchesLibraryCloudAvailability(item, options.availability))
+            && !matchesLibraryCloudAvailability(item, options.availability, serverNow))
         ) {
           continue;
         }
@@ -317,6 +358,7 @@ export const listLibraryCloudItems = async (
         ...(hasMore && nextCursor ? { nextCursor } : {}),
         counts,
         sharedStatusCounts,
+        serverNow,
       },
     };
   } catch (error) {

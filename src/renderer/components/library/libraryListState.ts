@@ -50,4 +50,5 @@ export const hideLibraryCloudItems = (
   hasMore: false,
   counts: data.counts,
   sharedStatusCounts: data.sharedStatusCounts,
+  ...(data.serverNow === undefined ? {} : { serverNow: data.serverNow }),
 });

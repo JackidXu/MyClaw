@@ -2,6 +2,7 @@ import {
   ArrowLeftIcon,
   ArrowPathIcon,
   ArrowTopRightOnSquareIcon,
+  ChartBarIcon,
   ChatBubbleLeftRightIcon,
   ClipboardDocumentIcon,
   Cog6ToothIcon,
@@ -20,7 +21,10 @@ import {
   HtmlShareStatus,
   type HtmlShareStatus as HtmlShareStatusValue,
 } from '../../../shared/htmlShare/constants';
-import { matchesLibraryCloudAvailability } from '../../../shared/library/cloudAvailability';
+import {
+  isLibraryCloudAccessExpired,
+  matchesLibraryCloudAvailability,
+} from '../../../shared/library/cloudAvailability';
 import {
   LibraryCategory,
   LibraryCloudAvailabilityFilter,
@@ -34,8 +38,10 @@ import type {
   LibrarySessionRef,
   SharedFileItem,
 } from '../../../shared/library/types';
+import type { PublishingQuotaErrorData } from '../../../shared/publishing/constants';
 import type { SiteDetail } from '../../../shared/site/constants';
 import { copyTextToClipboard } from '../../services/clipboard';
+import { getPortalPricingUrl, PortalPricingKeyfrom } from '../../services/endpoints';
 import { i18nService } from '../../services/i18n';
 import { showToast } from '../../utils/localFileActions';
 import { buildArtifactFileShareCopyText } from '../artifacts/artifactFileShareCopy';
@@ -45,10 +51,19 @@ import type {
 import {
   ArtifactFileSharePermission,
   ArtifactFileSharePermissionChangeAction,
+  ArtifactFileSharePermissionConfirmationKind,
   buildArtifactFileSharePermissionPlan,
   deriveArtifactFileSharePermission,
+  resolveArtifactFileSharePermissionConfirmation,
 } from '../artifacts/artifactFileSharePermission';
+import PublishingQuotaLimitDialog from '../artifacts/PublishingQuotaLimitDialog';
 import CardOverflowMenu, { type CardOverflowMenuItem } from '../common/CardOverflowMenu';
+import {
+  MANAGEMENT_BODY_TEXT,
+  MANAGEMENT_META_TEXT,
+  MANAGEMENT_PAGE_TITLE_TEXT,
+  MANAGEMENT_TITLE_TEXT,
+} from '../common/managementTypography';
 import FileTypeIcon from '../icons/fileTypes/FileTypeIcon';
 import { SitesView } from '../sites';
 import Tooltip, { TooltipAlign, TooltipPosition } from '../ui/Tooltip';
@@ -60,6 +75,7 @@ import {
   getLibraryAccessModeLabel,
   getLibraryDisplayFileName,
 } from './libraryItemPresentation';
+import LibraryShareAnalyticsView from './LibraryShareAnalyticsView';
 import LibraryShareConfirmDialog from './LibraryShareConfirmDialog';
 const CATEGORY_FILTERS = [
   LibraryCategory.All,
@@ -131,10 +147,19 @@ const readBoolean = (value: unknown): boolean | undefined => (
 );
 
 const readDateMillis = (value: unknown): number | undefined => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
   const text = readString(value);
   if (!text) return undefined;
   const parsed = new Date(text).getTime();
   return Number.isFinite(parsed) ? parsed : undefined;
+};
+
+const clearEffectiveAccessProjection = <T extends LibraryCloudItem>(item: T): T => {
+  const next = { ...item };
+  delete next.effectiveAvailable;
+  delete next.effectiveExpiresAt;
+  delete next.effectiveUnavailableReason;
+  return next;
 };
 
 const deriveDisabledSource = (
@@ -198,6 +223,12 @@ const mergeShareDetail = (
       : deriveDisabledSource({ ...detail, status: nextStatus }) ?? item.disabledSource,
   };
 
+  if (Object.prototype.hasOwnProperty.call(detail, 'accessExpiresAt')) {
+    const accessExpiresAt = readDateMillis(detail.accessExpiresAt);
+    if (accessExpiresAt === undefined) delete merged.accessExpiresAt;
+    else merged.accessExpiresAt = accessExpiresAt;
+  }
+
   if (nextAccessMode === HtmlShareAccessMode.Public) {
     delete merged.shareCode;
     delete merged.shareCodeUnavailable;
@@ -252,25 +283,107 @@ const isResumeLocked = (source?: HtmlShareDisabledSourceValue | null): boolean =
   || source === HtmlShareDisabledSource.System
 );
 
-const CloudAvailabilityBadge: React.FC<{ item: LibraryCloudItem }> = ({ item }) => {
+const CloudAvailabilityLabel: React.FC<{
+  item: LibraryCloudItem;
+  textClassName?: string;
+  now?: number;
+}> = ({ item, textClassName = 'text-xs', now = Date.now() }) => {
   const isAvailable = matchesLibraryCloudAvailability(
     item,
     LibraryCloudAvailabilityFilter.Available,
+    now,
   );
+  const expiryLabel = item.accessExpiresAt === undefined
+    ? undefined
+    : item.accessExpiresAt <= now
+      ? i18nService.t('libraryAccessExpiryExpired')
+      : (() => {
+          const remainingMs = item.accessExpiresAt - now;
+          if (remainingMs < 60_000) {
+            return i18nService.t('libraryAccessExpiryLessThanMinute');
+          }
+          const remainingMinutes = Math.max(
+            1,
+            Math.ceil(remainingMs / 60_000),
+          );
+          const hours = Math.floor(remainingMinutes / 60);
+          const minutes = remainingMinutes % 60;
+          return hours > 0 && minutes === 0
+            ? i18nService.t('libraryAccessExpiryHours')
+                .replace('{hours}', String(hours))
+            : hours > 0
+            ? i18nService.t('libraryAccessExpiryHoursMinutes')
+                .replace('{hours}', String(hours))
+                .replace('{minutes}', String(minutes))
+            : i18nService.t('libraryAccessExpiryMinutes')
+                .replace('{minutes}', String(minutes));
+        })();
   return (
-    <span className={`inline-flex items-center gap-1.5 text-xs ${
-      isAvailable ? 'text-emerald-600 dark:text-emerald-400' : 'text-secondary'
-    }`}>
-      <span className={`h-1.5 w-1.5 rounded-full ${
-        isAvailable ? 'bg-emerald-500' : 'bg-tertiary'
-      }`} />
-      {i18nService.t(`libraryCloudAvailability_${
-        isAvailable
-          ? LibraryCloudAvailabilityFilter.Available
-          : LibraryCloudAvailabilityFilter.Unavailable
-      }`)}
-    </span>
+    <div className="min-w-0">
+      <span className={`${textClassName} ${
+        isAvailable ? 'text-emerald-600 dark:text-emerald-400' : 'text-secondary'
+      }`}>
+        {i18nService.t(`libraryCloudAvailability_${
+          isAvailable
+            ? LibraryCloudAvailabilityFilter.Available
+            : LibraryCloudAvailabilityFilter.Unavailable
+        }`)}
+      </span>
+      {expiryLabel && (
+        <div className="mt-0.5 truncate text-[11px] leading-4 text-tertiary">
+          {expiryLabel}
+        </div>
+      )}
+    </div>
   );
+};
+
+const useLibraryServerClock = (
+  serverNow: number | undefined,
+  expirations: number[],
+): number => {
+  const [now, setNow] = useState(serverNow ?? Date.now());
+  const expirationKey = expirations.join(',');
+
+  useEffect(() => {
+    const wallClockBaseline = Date.now();
+    const monotonicBaseline = performance.now();
+    const serverBaseline = serverNow ?? wallClockBaseline;
+    let timer: number | undefined;
+
+    const currentServerTime = (): number => (
+      serverBaseline + Math.max(0, performance.now() - monotonicBaseline)
+    );
+    const refresh = (): void => {
+      if (timer !== undefined) window.clearTimeout(timer);
+      const nextNow = currentServerTime();
+      setNow(nextNow);
+      const nearestExpiry = expirations
+        .filter(value => value > nextNow)
+        .reduce<number | undefined>(
+          (nearest, value) => nearest === undefined || value < nearest ? value : nearest,
+          undefined,
+        );
+      const nextBoundaryDelay = nearestExpiry === undefined
+        ? 30_000
+        : Math.max(250, nearestExpiry - nextNow + 50);
+      timer = window.setTimeout(refresh, Math.min(30_000, nextBoundaryDelay));
+    };
+    const handleVisibilityChange = (): void => {
+      if (!document.hidden) refresh();
+    };
+
+    refresh();
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      if (timer !== undefined) window.clearTimeout(timer);
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [expirationKey, expirations, serverNow]);
+
+  return now;
 };
 
 const HeaderAction: React.FC<React.ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -296,22 +409,41 @@ const LIBRARY_SHARE_PERMISSIONS = [
 ] as const;
 
 const LibraryShareConfirmationKind = {
-  MakePublic: 'make_public',
-  Stop: 'stop',
-  Resume: 'resume',
+  ...ArtifactFileSharePermissionConfirmationKind,
   Discard: 'discard',
 } as const;
 
 type LibraryShareConfirmationKind =
   (typeof LibraryShareConfirmationKind)[keyof typeof LibraryShareConfirmationKind];
 
+const getLibrarySharePermissionLabel = (
+  permission: ArtifactFileSharePermissionValue,
+): string => {
+  if (permission === ArtifactFileSharePermission.Public) {
+    return i18nService.t('htmlShareAccessModePublic');
+  }
+  if (permission === ArtifactFileSharePermission.Code) {
+    return i18nService.t('artifactFileShareCodeAccess');
+  }
+  return i18nService.t('artifactFileShareStopAccess');
+};
+
+const LibraryShareDetailView = {
+  Settings: 'settings',
+  Analytics: 'analytics',
+} as const;
+
+type LibraryShareDetailView =
+  (typeof LibraryShareDetailView)[keyof typeof LibraryShareDetailView];
+
 const LibraryShareSettingsView: React.FC<{
   initialItem: SharedFileItem;
+  now: number;
   onBack: () => void;
   onItemUpdated: (item: SharedFileItem) => void;
   onOpenSession: (session: LibrarySessionRef) => void;
   onToggleFavorite: (item: SharedFileItem) => void;
-}> = ({ initialItem, onBack, onItemUpdated, onOpenSession, onToggleFavorite }) => {
+}> = ({ initialItem, now, onBack, onItemUpdated, onOpenSession, onToggleFavorite }) => {
   const [state, setState] = useState<ShareDetailState>({
     item: initialItem,
     loading: true,
@@ -321,12 +453,19 @@ const LibraryShareSettingsView: React.FC<{
     deriveArtifactFileSharePermission(initialItem),
   );
   const [confirmationKind, setConfirmationKind] = useState<LibraryShareConfirmationKind>();
+  const [detailView, setDetailView] = useState<LibraryShareDetailView>(
+    LibraryShareDetailView.Settings,
+  );
+  const [publishingQuota, setPublishingQuota] =
+    useState<PublishingQuotaErrorData | null>(null);
 
   useEffect(() => {
     let active = true;
     setState({ item: initialItem, loading: true, saving: false });
     setSelectedPermission(deriveArtifactFileSharePermission(initialItem));
     setConfirmationKind(undefined);
+    setPublishingQuota(null);
+    setDetailView(LibraryShareDetailView.Settings);
     void loadLatestSharedFileItem(initialItem).then(item => {
       if (!active) return;
       setState({
@@ -352,11 +491,13 @@ const LibraryShareSettingsView: React.FC<{
     ?? item.sortTime;
   const committedPermission = deriveArtifactFileSharePermission(item);
   const hasPendingChanges = selectedPermission !== committedPermission;
+  const isAccessExpired = isLibraryCloudAccessExpired(item, now);
   const resumeLocked = committedPermission === ArtifactFileSharePermission.Stopped
     && isResumeLocked(item.disabledSource);
   const permissionLocked = state.loading
     || state.saving
     || item.status === HtmlShareStatus.Failed
+    || isAccessExpired
     || resumeLocked;
   const copyResult = useMemo(() => buildArtifactFileShareCopyText({
     accessMode: item.accessMode,
@@ -367,7 +508,12 @@ const LibraryShareSettingsView: React.FC<{
     shareCode: item.shareCode,
     url: item.url,
   }), [item.accessMode, item.shareCode, item.url]);
-  const canUseShare = item.status === HtmlShareStatus.Live && !hasPendingChanges;
+  const canUseShare = matchesLibraryCloudAvailability(
+    item,
+    LibraryCloudAvailabilityFilter.Available,
+    now,
+  )
+    && !hasPendingChanges;
   const canCopyShareInformation = canUseShare && !state.saving && copyResult.copyable;
 
   const openLink = (): void => {
@@ -418,25 +564,27 @@ const LibraryShareSettingsView: React.FC<{
             accessMode: step.accessMode,
           });
           if (!result.success) {
+            if (result.quota) setPublishingQuota(result.quota);
             throw new Error(result.error ?? i18nService.t('htmlShareAccessModeUpdateFailed'));
           }
-          workingItem = mergeShareDetail({
+          workingItem = clearEffectiveAccessProjection(mergeShareDetail({
             ...workingItem,
             accessMode: result.accessMode ?? step.accessMode,
-          }, result);
+          }, result));
         } else if (step.action === ArtifactFileSharePermissionChangeAction.UpdateStatus) {
           const result = await window.electron.htmlShare.updateStatus({
             shareId: item.shareId,
             status: step.status,
           });
           if (!result.success) {
+            if (result.quota) setPublishingQuota(result.quota);
             throw new Error(result.error ?? i18nService.t('htmlShareStatusUpdateFailed'));
           }
-          workingItem = mergeShareDetail({
+          workingItem = clearEffectiveAccessProjection(mergeShareDetail({
             ...workingItem,
             status: result.status ?? step.status,
             disabledSource: result.disabledSource,
-          }, result);
+          }, result));
         }
       }
 
@@ -465,25 +613,17 @@ const LibraryShareSettingsView: React.FC<{
 
   const requestSave = (): void => {
     if (!hasPendingChanges || permissionLocked) return;
-    if (selectedPermission === ArtifactFileSharePermission.Stopped) {
-      setConfirmationKind(LibraryShareConfirmationKind.Stop);
-      return;
-    }
-    if (committedPermission === ArtifactFileSharePermission.Stopped) {
-      setConfirmationKind(LibraryShareConfirmationKind.Resume);
-      return;
-    }
-    if (
-      committedPermission === ArtifactFileSharePermission.Code
-      && selectedPermission === ArtifactFileSharePermission.Public
-    ) {
-      setConfirmationKind(LibraryShareConfirmationKind.MakePublic);
-      return;
-    }
-    void applyPermission(selectedPermission);
+    setConfirmationKind(resolveArtifactFileSharePermissionConfirmation(
+      committedPermission,
+      selectedPermission,
+    ));
   };
 
   const requestBack = (): void => {
+    if (detailView === LibraryShareDetailView.Analytics) {
+      setDetailView(LibraryShareDetailView.Settings);
+      return;
+    }
     if (hasPendingChanges) {
       setConfirmationKind(LibraryShareConfirmationKind.Discard);
     } else {
@@ -506,6 +646,13 @@ const LibraryShareSettingsView: React.FC<{
           title: i18nService.t('libraryShareConfirmPublicTitle'),
           message: i18nService.t('libraryShareConfirmPublicMessage'),
           confirmLabel: i18nService.t('libraryShareConfirmPublicAction'),
+          destructive: false,
+        };
+      case LibraryShareConfirmationKind.RequireCode:
+        return {
+          title: i18nService.t('libraryShareConfirmCodeTitle'),
+          message: i18nService.t('libraryShareConfirmCodeMessage'),
+          confirmLabel: i18nService.t('libraryShareConfirmCodeAction'),
           destructive: false,
         };
       case LibraryShareConfirmationKind.Stop:
@@ -534,6 +681,15 @@ const LibraryShareSettingsView: React.FC<{
     }
   }, [confirmationKind]);
 
+  const confirmationTransition = confirmationKind
+    && confirmationKind !== LibraryShareConfirmationKind.Discard
+    && hasPendingChanges
+    ? {
+        from: getLibrarySharePermissionLabel(committedPermission),
+        to: getLibrarySharePermissionLabel(selectedPermission),
+      }
+    : undefined;
+
   const confirmPendingAction = (): void => {
     if (confirmationKind === LibraryShareConfirmationKind.Discard) {
       setConfirmationKind(undefined);
@@ -561,13 +717,19 @@ const LibraryShareSettingsView: React.FC<{
             <FileTypeIcon fileName={getLibraryDisplayFileName(item)} className="h-5 w-5" />
           </div>
           <div className="min-w-0 flex-1">
-            <h1 className="truncate text-lg font-medium text-foreground">{getLibraryDisplayFileName(item)}</h1>
-            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-secondary">
+            <h1 className={`truncate ${MANAGEMENT_PAGE_TITLE_TEXT} font-semibold text-foreground`}>
+              {getLibraryDisplayFileName(item)}
+            </h1>
+            <div className={`mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 ${MANAGEMENT_META_TEXT} leading-[var(--lobster-leading-xs)] text-secondary`}>
               <span>{i18nService.t('librarySharedFile')}</span>
               <span aria-hidden="true">·</span>
               <span>{i18nService.t('libraryLastModifiedAt')}: {formatLibraryTime(lastModifiedAt)}</span>
               <span aria-hidden="true">·</span>
-              <CloudAvailabilityBadge item={item} />
+              <CloudAvailabilityLabel
+                item={item}
+                textClassName={MANAGEMENT_META_TEXT}
+                now={now}
+              />
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
@@ -577,6 +739,17 @@ const LibraryShareSettingsView: React.FC<{
             disabled={!canUseShare || state.saving}
           >
             <ArrowTopRightOnSquareIcon className="h-4 w-4" />
+          </HeaderAction>
+          <HeaderAction
+            label={i18nService.t('libraryShareAnalytics')}
+            aria-pressed={detailView === LibraryShareDetailView.Analytics}
+            onClick={() => setDetailView(LibraryShareDetailView.Analytics)}
+            disabled={state.loading || state.saving}
+            className={detailView === LibraryShareDetailView.Analytics
+              ? 'bg-primary/10 !text-primary'
+              : ''}
+          >
+            <ChartBarIcon className="h-4 w-4" />
           </HeaderAction>
           <HeaderAction
             label={item.isFavorite
@@ -610,22 +783,26 @@ const LibraryShareSettingsView: React.FC<{
 
         {state.loading ? (
           <div className="mt-5 h-52 animate-pulse rounded-xl border border-border bg-surface-raised/50" />
+        ) : detailView === LibraryShareDetailView.Analytics ? (
+          <LibraryShareAnalyticsView shareId={item.shareId} />
         ) : (
           <div className="mt-5 space-y-3">
             <section className="rounded-xl border border-border p-5">
-              <h2 className="text-sm font-semibold text-foreground">
+              <h2 className={`${MANAGEMENT_TITLE_TEXT} font-semibold text-foreground`}>
                 {i18nService.t('libraryShareAccessSetting')}
               </h2>
-              <p className="mt-1 text-xs text-secondary">
+              <p className={`${MANAGEMENT_BODY_TEXT} mt-1 leading-[var(--lobster-leading-sm)] text-secondary`}>
                 {i18nService.t('libraryShareAccessSettingDescription')}
               </p>
 
               <div className="mt-4">
-                <div className="text-[11px] font-medium text-secondary">
+                <div className={`${MANAGEMENT_META_TEXT} font-medium leading-[var(--lobster-leading-xs)] text-secondary`}>
                   {i18nService.t('libraryShareAccessAddress')}
                 </div>
                 <div className="mt-2 flex min-w-0 items-center gap-3 rounded-lg bg-surface-raised px-3 py-2.5">
-                  <p className="min-w-0 flex-1 truncate text-xs text-secondary">{item.url}</p>
+                  <p className={`min-w-0 flex-1 truncate ${MANAGEMENT_BODY_TEXT} text-secondary`}>
+                    {item.url}
+                  </p>
                   <button
                     type="button"
                     disabled={!canCopyShareInformation}
@@ -643,11 +820,7 @@ const LibraryShareSettingsView: React.FC<{
               <div className="mt-4 grid gap-2 sm:grid-cols-3">
               {LIBRARY_SHARE_PERMISSIONS.map(permission => {
                 const selected = selectedPermission === permission;
-                const label = permission === ArtifactFileSharePermission.Public
-                  ? i18nService.t('htmlShareAccessModePublic')
-                  : permission === ArtifactFileSharePermission.Code
-                    ? i18nService.t('artifactFileShareCodeAccess')
-                    : i18nService.t('artifactFileShareStopAccess');
+                const label = getLibrarySharePermissionLabel(permission);
                 const hint = permission === ArtifactFileSharePermission.Public
                   ? i18nService.t('htmlShareAccessModePublicHint')
                   : permission === ArtifactFileSharePermission.Code
@@ -666,7 +839,7 @@ const LibraryShareSettingsView: React.FC<{
                         : 'border-border hover:bg-surface-raised'
                     }`}
                   >
-                    <span className="flex items-center gap-2 text-xs font-medium text-foreground">
+                    <span className={`flex items-center gap-2 ${MANAGEMENT_BODY_TEXT} font-medium text-foreground`}>
                       <span className={`flex h-4 w-4 items-center justify-center rounded-full border ${
                         selected ? 'border-primary' : 'border-border'
                       }`}>
@@ -674,7 +847,9 @@ const LibraryShareSettingsView: React.FC<{
                       </span>
                       {label}
                     </span>
-                    <span className="mt-2 block text-[11px] leading-4 text-secondary">{hint}</span>
+                    <span className={`${MANAGEMENT_META_TEXT} mt-2 block leading-[var(--lobster-leading-xs)] text-secondary`}>
+                      {hint}
+                    </span>
                   </button>
                 );
               })}
@@ -736,24 +911,45 @@ const LibraryShareSettingsView: React.FC<{
             </section>
 
             <section className="rounded-xl border border-border p-5">
-              <h2 className="text-sm font-semibold text-foreground">
+              <h2 className={`${MANAGEMENT_TITLE_TEXT} font-semibold text-foreground`}>
                 {i18nService.t('libraryShareBasicInfo')}
               </h2>
-              <p className="mt-1 text-xs text-secondary">
+              <p className={`${MANAGEMENT_BODY_TEXT} mt-1 leading-[var(--lobster-leading-sm)] text-secondary`}>
                 {i18nService.t('libraryShareBasicInfoHint')}
               </p>
               <div className="mt-4">
-                <div className="text-[11px] font-medium text-secondary">
+                <div className={`${MANAGEMENT_META_TEXT} font-medium leading-[var(--lobster-leading-xs)] text-secondary`}>
                   {i18nService.t('libraryResourceName')}
                 </div>
-                <div className="mt-2 h-9 truncate rounded-lg border border-border bg-surface-raised px-3 py-2 text-xs text-secondary">
+                <div className={`${MANAGEMENT_BODY_TEXT} mt-2 h-9 truncate rounded-lg border border-border bg-surface-raised px-3 py-2 text-secondary`}>
                   {getLibraryDisplayFileName(item)}
                 </div>
               </div>
               <dl className="mt-4 grid gap-x-8 gap-y-4 sm:grid-cols-3">
-                <div><dt className="text-[11px] text-tertiary">{i18nService.t('libraryResourceType')}</dt><dd className="mt-1 text-xs text-foreground">{i18nService.t(`libraryCategory_${item.category}`)}</dd></div>
-                <div><dt className="text-[11px] text-tertiary">{i18nService.t('libraryShareCreatedAt')}</dt><dd className="mt-1 text-xs text-foreground">{formatLibraryTime(item.createdAt)}</dd></div>
-                <div><dt className="text-[11px] text-tertiary">{i18nService.t('libraryLastModifiedAt')}</dt><dd className="mt-1 text-xs text-foreground">{formatLibraryTime(lastModifiedAt)}</dd></div>
+                <div>
+                  <dt className={`${MANAGEMENT_META_TEXT} leading-[var(--lobster-leading-xs)] text-tertiary`}>
+                    {i18nService.t('libraryResourceType')}
+                  </dt>
+                  <dd className={`${MANAGEMENT_BODY_TEXT} mt-1 text-foreground`}>
+                    {i18nService.t(`libraryCategory_${item.category}`)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className={`${MANAGEMENT_META_TEXT} leading-[var(--lobster-leading-xs)] text-tertiary`}>
+                    {i18nService.t('libraryShareCreatedAt')}
+                  </dt>
+                  <dd className={`${MANAGEMENT_BODY_TEXT} mt-1 text-foreground`}>
+                    {formatLibraryTime(item.createdAt)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className={`${MANAGEMENT_META_TEXT} leading-[var(--lobster-leading-xs)] text-tertiary`}>
+                    {i18nService.t('libraryLastModifiedAt')}
+                  </dt>
+                  <dd className={`${MANAGEMENT_BODY_TEXT} mt-1 text-foreground`}>
+                    {formatLibraryTime(lastModifiedAt)}
+                  </dd>
+                </div>
               </dl>
             </section>
           </div>
@@ -764,10 +960,27 @@ const LibraryShareSettingsView: React.FC<{
             title={confirmationPresentation.title}
             message={confirmationPresentation.message}
             confirmLabel={confirmationPresentation.confirmLabel}
+            transition={confirmationTransition}
             destructive={confirmationPresentation.destructive}
             busy={state.saving}
             onCancel={() => setConfirmationKind(undefined)}
             onConfirm={confirmPendingAction}
+          />
+        )}
+        {publishingQuota && (
+          <PublishingQuotaLimitDialog
+            quota={publishingQuota}
+            onClose={() => setPublishingQuota(null)}
+            onSubscribe={() => {
+              setPublishingQuota(null);
+              void window.electron?.shell?.openExternal(
+                getPortalPricingUrl(PortalPricingKeyfrom.HtmlShare),
+              );
+            }}
+            onManage={() => {
+              setPublishingQuota(null);
+              onBack();
+            }}
           />
         )}
       </div>
@@ -803,16 +1016,25 @@ const LibraryCloudView: React.FC<LibraryCloudViewProps> = ({
   const [activeItem, setActiveItem] = useState<SharedFileItem>();
   const [activeSite, setActiveSite] = useState<DeployedSiteItem>();
   const [interactionError, setInteractionError] = useState<string>();
+  const expirations = useMemo(
+    () => data.list
+      .flatMap(item => [item.accessExpiresAt, item.effectiveExpiresAt])
+      .filter((value): value is number => value !== undefined)
+      .sort((left, right) => left - right),
+    [data.list],
+  );
+  const effectiveNow = useLibraryServerClock(data.serverNow, expirations);
   const items = useMemo(() => data.list.filter(item => (
     (!hideSites || item.itemKind !== LibraryItemKind.DeployedSite)
     && (category === LibraryCategory.All || item.category === category)
-    && matchesLibraryCloudAvailability(item, status)
-  )), [category, data.list, hideSites, status]);
+    && matchesLibraryCloudAvailability(item, status, effectiveNow)
+  )), [category, data.list, effectiveNow, hideSites, status]);
 
   if (activeItem) {
     return (
       <LibraryShareSettingsView
         initialItem={activeItem}
+        now={effectiveNow}
         onBack={() => setActiveItem(undefined)}
         onItemUpdated={onItemUpdated}
         onOpenSession={onOpenSession}
@@ -824,7 +1046,7 @@ const LibraryCloudView: React.FC<LibraryCloudViewProps> = ({
   if (activeSite) {
     const updateActiveSite = (site: SiteDetail): void => {
       const parsedUpdatedAt = Date.parse(site.updatedAt);
-      const updatedItem: DeployedSiteItem = {
+      const updatedItem = clearEffectiveAccessProjection<DeployedSiteItem>({
         ...activeSite,
         title: site.title,
         url: site.url,
@@ -836,7 +1058,7 @@ const LibraryCloudView: React.FC<LibraryCloudViewProps> = ({
         ...(site.deploymentId ? { deploymentId: site.deploymentId } : {}),
         ...(site.deploymentStatus ? { deploymentStatus: site.deploymentStatus } : {}),
         ...(site.artifactId ? { artifactId: site.artifactId } : {}),
-      };
+      });
       setActiveSite(updatedItem);
       onItemUpdated(updatedItem);
     };
@@ -849,6 +1071,7 @@ const LibraryCloudView: React.FC<LibraryCloudViewProps> = ({
         readOnly={sitesReadOnly}
         embedded
         initialShareId={activeSite.shareId}
+        initialAccessExpired={isLibraryCloudAccessExpired(activeSite, effectiveNow)}
         initialDetailTab="settings"
         onBack={() => setActiveSite(undefined)}
         onSiteUpdated={updateActiveSite}
@@ -874,6 +1097,11 @@ const LibraryCloudView: React.FC<LibraryCloudViewProps> = ({
   };
 
   const openLink = (item: LibraryCloudItem): void => {
+    if (!matchesLibraryCloudAvailability(
+      item,
+      LibraryCloudAvailabilityFilter.Available,
+      effectiveNow,
+    )) return;
     void window.electron.shell.openExternal(item.url).then(result => {
       if (!result.success) setInteractionError(result.error ?? i18nService.t('unknownError'));
     });
@@ -902,6 +1130,11 @@ const LibraryCloudView: React.FC<LibraryCloudViewProps> = ({
         key: 'open-link',
         label: i18nService.t('libraryOpenLink'),
         icon: <ArrowTopRightOnSquareIcon className="h-4 w-4" />,
+        disabled: !matchesLibraryCloudAvailability(
+          item,
+          LibraryCloudAvailabilityFilter.Available,
+          effectiveNow,
+        ),
         onSelect: () => openLink(item),
       },
       {
@@ -937,25 +1170,26 @@ const LibraryCloudView: React.FC<LibraryCloudViewProps> = ({
     return menuItems;
   };
 
-  const getSiteDomain = (item: DeployedSiteItem): string => {
-    try {
-      return new URL(item.url).host;
-    } catch {
-      return item.url;
-    }
-  };
-
   return (
     <div className="mx-auto w-full max-w-[1120px] px-8 py-6">
       <div className="sticky top-0 z-10 border-b border-border bg-background pb-3 pt-1">
         <div className="flex min-w-[760px] items-center gap-3">
-          <LibraryCategoryDropdown
-            value={category}
-            options={CATEGORY_FILTERS.filter(value => (
-              !hideSites || value !== LibraryCategory.Site
-            ))}
-            onChange={onCategoryChange}
-          />
+          <div className="flex shrink-0 items-center gap-2">
+            <LibraryCategoryDropdown
+              value={category}
+              options={CATEGORY_FILTERS.filter(value => (
+                !hideSites || value !== LibraryCategory.Site
+              ))}
+              onChange={onCategoryChange}
+              grouped
+            />
+            <LibraryAvailabilityDropdown
+              value={status}
+              options={STATUS_FILTERS}
+              onChange={onStatusChange}
+              grouped
+            />
+          </div>
           <div className="ml-auto flex shrink-0 items-center gap-2">
             <label className="relative w-56">
               <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-tertiary" />
@@ -963,7 +1197,7 @@ const LibraryCloudView: React.FC<LibraryCloudViewProps> = ({
                 value={keywordInput}
                 onChange={event => onKeywordInputChange(event.target.value)}
                 placeholder={i18nService.t('librarySearchCloudPlaceholder')}
-                className="h-9 w-full rounded-xl border border-border bg-surface pl-9 pr-3 text-sm text-foreground outline-none placeholder:text-tertiary focus:ring-2 focus:ring-primary/30"
+                className="h-9 w-full rounded-xl border border-border bg-surface pl-9 pr-3 text-xs text-foreground outline-none placeholder:text-tertiary focus:ring-2 focus:ring-primary/30"
               />
             </label>
             <HeaderAction
@@ -979,11 +1213,6 @@ const LibraryCloudView: React.FC<LibraryCloudViewProps> = ({
                 ? <StarSolidIcon className="h-4 w-4" />
                 : <StarIcon className="h-4 w-4" />}
             </HeaderAction>
-            <LibraryAvailabilityDropdown
-              value={status}
-              options={STATUS_FILTERS}
-              onChange={onStatusChange}
-            />
             <HeaderAction label={i18nService.t('refresh')} align={TooltipAlign.End} onClick={onRefresh} disabled={loading}>
               <ArrowPathIcon className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             </HeaderAction>
@@ -1015,16 +1244,20 @@ const LibraryCloudView: React.FC<LibraryCloudViewProps> = ({
         </div>
       ) : items.length === 0 ? (
         <div className="mt-12 rounded-2xl border border-dashed border-border py-16 text-center">
-          <h2 className="text-sm font-medium text-foreground">{i18nService.t('libraryCloudEmptyTitle')}</h2>
-          <p className="mt-1 text-xs text-secondary">{i18nService.t('libraryCloudEmptyDescription')}</p>
+          <h2 className={`${MANAGEMENT_TITLE_TEXT} font-semibold text-foreground`}>
+            {i18nService.t('libraryCloudEmptyTitle')}
+          </h2>
+          <p className={`${MANAGEMENT_BODY_TEXT} mt-1 leading-[var(--lobster-leading-sm)] text-secondary`}>
+            {i18nService.t('libraryCloudEmptyDescription')}
+          </p>
         </div>
       ) : (
         <div className="mt-6 min-w-[760px] border-y border-border">
-          <div className="grid grid-cols-[minmax(320px,1fr)_120px_140px_44px] items-center gap-4 border-b border-border px-4 py-2.5 text-[11px] font-medium text-tertiary">
+          <div className={`grid grid-cols-[minmax(320px,1fr)_120px_140px_44px] items-center gap-4 border-b border-border px-4 py-2.5 ${MANAGEMENT_META_TEXT} font-medium leading-[var(--lobster-leading-xs)] text-tertiary`}>
             <span>{i18nService.t('libraryCloudColumnResource')}</span>
             <span>{i18nService.t('librarySharedColumnStatus')}</span>
             <span>{i18nService.t('librarySharedColumnAccess')}</span>
-            <span className="text-right">{i18nService.t('librarySharedColumnActions')}</span>
+            <span className="text-center">{i18nService.t('librarySharedColumnActions')}</span>
           </div>
           {items.map(item => (
             <div
@@ -1048,22 +1281,25 @@ const LibraryCloudView: React.FC<LibraryCloudViewProps> = ({
                   )}
                 </div>
                 <div className="min-w-0">
-                  <div className="truncate text-sm font-medium text-foreground">
+                  <div className={`truncate ${MANAGEMENT_BODY_TEXT} font-medium text-foreground`}>
                     {getLibraryDisplayFileName(item)}
                   </div>
-                  {item.itemKind === LibraryItemKind.DeployedSite && (
-                    <div className="mt-0.5 truncate text-[11px] text-tertiary">
-                      {getSiteDomain(item)}
-                    </div>
-                  )}
+                  <div className={`${MANAGEMENT_META_TEXT} mt-0.5 truncate leading-[var(--lobster-leading-xs)] text-tertiary`}>
+                    <time
+                      dateTime={new Date(item.sortTime).toISOString()}
+                      aria-label={`${i18nService.t('libraryLastModifiedAt')}: ${formatLibraryTime(item.sortTime)}`}
+                    >
+                      {formatLibraryTime(item.sortTime)}
+                    </time>
+                  </div>
                 </div>
               </div>
-              <CloudAvailabilityBadge item={item} />
+              <CloudAvailabilityLabel item={item} now={effectiveNow} />
               <span className="text-xs text-secondary">{getLibraryAccessModeLabel(item)}</span>
               <CardOverflowMenu
                 items={buildMenuItems(item)}
                 menuWidthPx={LIBRARY_ACTION_MENU_WIDTH_PX}
-                className="!h-8 !w-8 text-tertiary hover:bg-surface hover:text-foreground"
+                className="!h-8 !w-8 justify-self-center text-tertiary hover:bg-surface hover:text-foreground"
               />
             </div>
           ))}

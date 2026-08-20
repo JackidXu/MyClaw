@@ -15,6 +15,10 @@ import {
   type ArtifactFileSharePermission as ArtifactFileSharePermissionValue,
 } from './artifactFileSharePermission';
 import ArtifactPreviewIdentity from './ArtifactPreviewIdentity';
+import {
+  PublishingTrialStatus,
+  usePublishingTrialStatus,
+} from './PublishingTrialStatus';
 
 const t = (key: string) => i18nService.t(key);
 
@@ -66,6 +70,7 @@ interface ArtifactFileShareDialogProps {
   message?: string;
   error?: string;
   shareCodeUnavailable?: boolean;
+  accessExpiresAt?: string | null;
   canRetry: boolean;
   canCreate: boolean;
   canSubmitPermission: boolean;
@@ -137,6 +142,7 @@ const ArtifactFileShareDialog = ({
   message,
   error,
   shareCodeUnavailable = false,
+  accessExpiresAt,
   canRetry,
   canCreate,
   canSubmitPermission,
@@ -153,12 +159,17 @@ const ArtifactFileShareDialog = ({
   onUpdateFile,
   onCopy,
 }: ArtifactFileShareDialogProps) => {
+  const trialStatus = usePublishingTrialStatus(accessExpiresAt);
   const isPreparing = phase === ArtifactFileSharePhase.Preparing;
   const isReady = phase === ArtifactFileSharePhase.Ready;
   const isCreating = operation === ArtifactFileShareOperation.Creating;
   const isPermissionUpdating = operation === ArtifactFileShareOperation.Permission;
   const isUpdatingFile = operation === ArtifactFileShareOperation.UpdateFile;
-  const permissionDisabled = !isReady || Boolean(operation) || isPermissionLocked;
+  const permissionDisabled =
+    !isReady || Boolean(operation) || isPermissionLocked || trialStatus.isExpired;
+  const displayedPermission = trialStatus.isExpired
+    ? ArtifactFileSharePermission.Stopped
+    : selectedPermission;
   const primaryAction = getArtifactFileSharePrimaryAction(
     intent,
     isReady,
@@ -186,13 +197,16 @@ const ArtifactFileShareDialog = ({
         aria-describedby="artifact-file-share-dialog-description"
         className="relative w-full max-w-[440px] rounded-2xl bg-background p-6 shadow-2xl"
       >
-        <div className="flex items-center justify-between gap-3">
-          <h2
-            id="artifact-file-share-dialog-title"
-            className="text-lg font-semibold leading-7 text-foreground"
-          >
-            {t('htmlShare')}
-          </h2>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 flex-wrap items-center gap-3">
+            <h2
+              id="artifact-file-share-dialog-title"
+              className="text-lg font-semibold leading-7 text-foreground"
+            >
+              {t('htmlShare')}
+            </h2>
+            <PublishingTrialStatus status={trialStatus} />
+          </div>
           <button
             ref={closeButtonRef}
             type="button"
@@ -215,9 +229,9 @@ const ArtifactFileShareDialog = ({
             <h3 className="text-sm font-semibold text-foreground">
               {t('artifactFileShareAccessPermission')}
             </h3>
-            {stoppedNotice && (
+            {(trialStatus.isExpired || stoppedNotice) && (
               <span className="text-xs font-medium text-red-500" role="status">
-                {stoppedNotice}
+                {trialStatus.isExpired ? t('htmlShareStoppedNotice') : stoppedNotice}
               </span>
             )}
           </div>
@@ -228,8 +242,8 @@ const ArtifactFileShareDialog = ({
             aria-label={t('artifactFileShareAccessPermission')}
           >
             {PERMISSION_OPTIONS.map(option => {
-              const isSelected = selectedPermission === option.value;
-              const isPending = isPermissionUpdating && selectedPermission === option.value;
+              const isSelected = displayedPermission === option.value;
+              const isPending = isPermissionUpdating && displayedPermission === option.value;
               const isOptionDisabled =
                 permissionDisabled ||
                 isArtifactFileSharePermissionOptionDisabled(intent, option.value);
@@ -302,7 +316,7 @@ const ArtifactFileShareDialog = ({
             <button
               type="button"
               onClick={onUpdateFile}
-              disabled={!canUpdateFile || Boolean(operation)}
+              disabled={!canUpdateFile || Boolean(operation) || trialStatus.isExpired}
               title={
                 committedPermission === ArtifactFileSharePermission.Stopped
                   ? t('htmlShareDisabledCannotUpdate')
@@ -329,7 +343,7 @@ const ArtifactFileShareDialog = ({
             <button
               type="button"
               onClick={onSubmitPermission}
-              disabled={!canSubmitPermission || Boolean(operation)}
+              disabled={!canSubmitPermission || Boolean(operation) || trialStatus.isExpired}
               className="inline-flex h-10 min-w-[128px] items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isPermissionUpdating

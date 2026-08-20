@@ -31,6 +31,7 @@ const cloudItem = (itemId: string, sortTime: number) => ({
 const response = (
   list: Array<ReturnType<typeof cloudItem> | ReturnType<typeof siteItem>>,
   nextCursor?: string,
+  serverNow = 1_000,
 ) => new Response(JSON.stringify({
   code: 0,
   message: 'success',
@@ -40,6 +41,7 @@ const response = (
     nextCursor,
     counts: { sharedFile: 3, deployedSite: 0 },
     sharedStatusCounts: { all: 3, live: 2, disabled: 1 },
+    serverNow,
   },
 }), { status: 200, headers: { 'content-type': 'application/json' } });
 
@@ -80,6 +82,7 @@ describe('listLibraryCloudItems', () => {
       data: {
         hasMore: true,
         nextCursor: 'next-1',
+        serverNow: 1_000,
         list: [{ itemId: 'share-1', isFavorite: false }],
       },
     });
@@ -165,6 +168,57 @@ describe('listLibraryCloudItems', () => {
       data: { list: [{ itemId: 'site-deploying' }], hasMore: false },
     });
     expect(fetchWithAuth).toHaveBeenCalledTimes(2);
+  });
+
+  test('normalizes fixed expiry and filters it using the server clock', async () => {
+    const expiring = { ...cloudItem('share-expired', 300), accessExpiresAt: 9_999 };
+    const fetchWithAuth = vi.fn(async () => response([expiring], undefined, 10_000));
+
+    const result = await listLibraryCloudItems(
+      'https://api.example',
+      fetchWithAuth,
+      createStore([]),
+      'cloud:owner',
+      { availability: LibraryCloudAvailabilityFilter.Unavailable },
+    );
+
+    expect(result).toMatchObject({
+      success: true,
+      data: {
+        serverNow: 10_000,
+        list: [{ itemId: 'share-expired', accessExpiresAt: 9_999 }],
+      },
+    });
+  });
+
+  test('normalizes the effective entitlement projection and filters stale live rows', async () => {
+    const projected = {
+      ...cloudItem('share-entitlement-expired', 300),
+      effectiveAvailable: false,
+      effectiveExpiresAt: 9_999,
+      effectiveUnavailableReason: 'entitlement_grace_expired',
+    };
+    const fetchWithAuth = vi.fn(async () => response([projected], undefined, 10_000));
+
+    const result = await listLibraryCloudItems(
+      'https://api.example',
+      fetchWithAuth,
+      createStore([]),
+      'cloud:owner',
+      { availability: LibraryCloudAvailabilityFilter.Unavailable },
+    );
+
+    expect(result).toMatchObject({
+      success: true,
+      data: {
+        list: [{
+          itemId: 'share-entitlement-expired',
+          effectiveAvailable: false,
+          effectiveExpiresAt: 9_999,
+          effectiveUnavailableReason: 'entitlement_grace_expired',
+        }],
+      },
+    });
   });
 
   test('walks bounded server pages to find locally favorited cloud items', async () => {

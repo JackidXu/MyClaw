@@ -40,6 +40,12 @@ import { i18nService } from '../../services/i18n';
 import type { RootState } from '../../store';
 import { showToast } from '../../utils/localFileActions';
 import { buildArtifactFileShareCopyText } from '../artifacts/artifactFileShareCopy';
+import {
+  MANAGEMENT_BODY_TEXT,
+  MANAGEMENT_META_TEXT,
+  MANAGEMENT_PAGE_TITLE_TEXT,
+  MANAGEMENT_TITLE_TEXT,
+} from '../common/managementTypography';
 import Modal from '../common/Modal';
 import { MessageCopyButton } from '../cowork/MessageActionButton';
 import Cog6ToothIcon from '../icons/Cog6ToothIcon';
@@ -48,6 +54,10 @@ import SidebarToggleIcon from '../icons/SidebarToggleIcon';
 import Tooltip, { TooltipAlign, TooltipPosition } from '../ui/Tooltip';
 import SiteAnalyticsChart from './SiteAnalyticsChart';
 import SiteDefaultIcon from './SiteDefaultIcon';
+import {
+  resolveSiteSettingsSaveDecision,
+  SiteSettingsSaveDecision,
+} from './siteSettingsSaveDecision';
 
 type DetailTab = 'analytics' | 'settings';
 
@@ -69,6 +79,7 @@ interface SitesViewProps {
   readOnly?: boolean;
   embedded?: boolean;
   initialShareId?: string;
+  initialAccessExpired?: boolean;
   initialDetailTab?: DetailTab;
   onBack?: () => void;
   onSiteUpdated?: (site: SiteDetail) => void;
@@ -178,6 +189,16 @@ const deriveSiteAccessSelection = (site: SiteDetail): SiteAccessSelection => (
     ? SiteAccessSelection.Stopped
     : site.accessMode
 );
+
+const getSiteAccessSelectionLabel = (selection: SiteAccessSelection): string => {
+  if (selection === SiteAccessSelection.Public) {
+    return i18nService.t('sitesPublicAccess');
+  }
+  if (selection === SiteAccessSelection.Code) {
+    return i18nService.t('sitesCodeAccess');
+  }
+  return i18nService.t('sitesStopAccess');
+};
 
 const SiteHeaderAction: React.FC<React.ButtonHTMLAttributes<HTMLButtonElement> & {
   label: string;
@@ -293,6 +314,7 @@ const SitesView: React.FC<SitesViewProps> = ({
   readOnly = false,
   embedded = false,
   initialShareId,
+  initialAccessExpired = false,
   initialDetailTab = 'analytics',
   onBack,
   onSiteUpdated,
@@ -1081,31 +1103,63 @@ const SitesView: React.FC<SitesViewProps> = ({
   if (selectedSite) {
     const isNode = selectedSite.siteKind === SiteKind.NodeService;
     const canStop = !readOnly && selectedSite.editableActions.includes(SiteAction.StopAccess);
-    const canResume = !readOnly && selectedSite.editableActions.includes(SiteAction.ResumeAccess);
+    const canResume = !readOnly
+      && !initialAccessExpired
+      && selectedSite.editableActions.includes(SiteAction.ResumeAccess);
     const canDelete = !readOnly && selectedSite.editableActions.includes(SiteAction.Delete);
     const requiresResourceRelease =
       isNode && selectedSite.siteStatus === SiteStatus.Blocked && canStop;
+    const committedSiteAccess = deriveSiteAccessSelection(selectedSite);
+    const titleChanged = titleDraft.trim() !== selectedSite.title;
+    const siteAccessChanged = siteAccessSelectionDraft !== committedSiteAccess;
     const hasUnsavedSettings =
-      titleDraft.trim() !== selectedSite.title
+      titleChanged
       || (embedded
-        ? siteAccessSelectionDraft !== deriveSiteAccessSelection(selectedSite)
+        ? siteAccessChanged
         : accessModeDraft !== selectedSite.accessMode);
-    const canVisit = selectedSite.siteStatus === SiteStatus.Online;
-    const siteAccessChanged = siteAccessSelectionDraft !== deriveSiteAccessSelection(selectedSite);
-    const canChangeAccessMode = selectedSite.editableActions.includes(SiteAction.ChangeAccessMode);
-    const canCopyAccessInformation = canVisit
+    const isSiteOnline = selectedSite.siteStatus === SiteStatus.Online;
+    const canVisit = isSiteOnline && !initialAccessExpired;
+    const canChangeAccessMode = !initialAccessExpired
+      && selectedSite.editableActions.includes(SiteAction.ChangeAccessMode);
+    const canCopyAccessInformation = isSiteOnline
       && !siteAccessChanged
       && (selectedSite.accessMode !== HtmlShareAccessMode.Code || Boolean(selectedSite.shareCode));
     const requestEmbeddedSettingsSave = () => {
-      if (!hasUnsavedSettings || actionLoading) return;
-      if (siteAccessSelectionDraft === SiteAccessSelection.Stopped) {
-        setConfirmAction('stop');
-      } else if (deriveSiteAccessSelection(selectedSite) === SiteAccessSelection.Stopped) {
-        setConfirmAction('resume');
-      } else {
-        setConfirmAction('save');
+      const decision = resolveSiteSettingsSaveDecision({
+        accessChanged: siteAccessChanged,
+        actionLoading,
+        currentAccessStopped: committedSiteAccess === SiteAccessSelection.Stopped,
+        hasUnsavedSettings,
+        targetAccessStopped: siteAccessSelectionDraft === SiteAccessSelection.Stopped,
+      });
+      switch (decision) {
+        case SiteSettingsSaveDecision.SaveDirectly:
+          void saveEmbeddedSettings();
+          break;
+        case SiteSettingsSaveDecision.ConfirmStop:
+          setConfirmAction('stop');
+          break;
+        case SiteSettingsSaveDecision.ConfirmResume:
+          setConfirmAction('resume');
+          break;
+        case SiteSettingsSaveDecision.ConfirmChange:
+          setConfirmAction('save');
+          break;
+        default:
+          break;
       }
     };
+    const confirmationTargetAccess = confirmAction === 'stop'
+      ? SiteAccessSelection.Stopped
+      : confirmAction === 'resume' && !embedded
+        ? selectedSite.accessMode
+        : siteAccessSelectionDraft;
+    const confirmationTransition = confirmAction && committedSiteAccess !== confirmationTargetAccess
+      ? {
+          from: getSiteAccessSelectionLabel(committedSiteAccess),
+          to: getSiteAccessSelectionLabel(confirmationTargetAccess),
+        }
+      : undefined;
     const leaveSiteDetail = () => {
       if (hasUnsavedSettings) {
         setLeaveConfirmOpen(true);
@@ -1145,8 +1199,10 @@ const SitesView: React.FC<SitesViewProps> = ({
                   <GlobeAltIcon className="h-5 w-5" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <h1 className="truncate text-lg font-medium text-foreground">{selectedSite.title}</h1>
-                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-secondary">
+                  <h1 className={`truncate ${MANAGEMENT_PAGE_TITLE_TEXT} font-semibold text-foreground`}>
+                    {selectedSite.title}
+                  </h1>
+                  <div className={`mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 ${MANAGEMENT_META_TEXT} leading-[var(--lobster-leading-xs)] text-secondary`}>
                     <span>{i18nService.t('sitesTitle')}</span>
                     <span aria-hidden="true">·</span>
                     <span>{i18nService.t('libraryLastModifiedAt')}: {formatDateTime(selectedSite.updatedAt)}</span>
@@ -1257,12 +1313,12 @@ const SitesView: React.FC<SitesViewProps> = ({
           ? 'mx-auto min-h-0 w-full max-w-[1120px] flex-1 overflow-y-auto px-6 pb-8 sm:px-8'
           : 'min-h-0 min-w-[720px] flex-1 overflow-y-auto p-6'}>
           {actionError && (
-            <div className={`${embedded ? 'max-w-[920px]' : 'mx-auto max-w-3xl'} mb-4 mt-4 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2 text-sm text-red-600`}>
+            <div className={`${embedded ? 'max-w-[920px]' : 'mx-auto max-w-3xl'} ${MANAGEMENT_BODY_TEXT} mb-4 mt-4 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2 text-red-600`}>
               {actionError}
             </div>
           )}
           {readOnly && detailTab === 'settings' && (
-            <div className={`${embedded ? 'max-w-[920px]' : 'mx-auto max-w-3xl'} mb-4 mt-4 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-sm text-amber-700 dark:text-amber-300`}>
+            <div className={`${embedded ? 'max-w-[920px]' : 'mx-auto max-w-3xl'} ${MANAGEMENT_BODY_TEXT} mb-4 mt-4 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-amber-700 dark:text-amber-300`}>
               {i18nService.t('sitesReadOnlyNotice')}
             </div>
           )}
@@ -1270,10 +1326,10 @@ const SitesView: React.FC<SitesViewProps> = ({
             <div className={`${embedded ? 'max-w-[920px] pt-5' : 'mx-auto max-w-5xl'} space-y-3`}>
               <div className="flex min-h-9 items-center justify-between gap-4 px-0.5">
                 <div>
-                  <h2 className="text-sm font-semibold text-foreground">
+                  <h2 className={`${MANAGEMENT_TITLE_TEXT} font-semibold text-foreground`}>
                     {i18nService.t('sitesPerformance')}
                   </h2>
-                  <p className="mt-1 text-xs text-secondary">
+                  <p className={`${MANAGEMENT_META_TEXT} mt-1 leading-[var(--lobster-leading-xs)] text-secondary`}>
                     {formatAnalyticsDate(analytics?.meta.from ?? requestedAnalyticsDates.from)}
                     {' – '}
                     {formatAnalyticsDate(analytics?.meta.to ?? requestedAnalyticsDates.to)}
@@ -1292,7 +1348,7 @@ const SitesView: React.FC<SitesViewProps> = ({
                 </select>
               </div>
               {analyticsLoading && !analytics ? (
-                <div className="flex h-56 items-center justify-center text-sm text-secondary">
+                <div className={`flex h-56 items-center justify-center ${MANAGEMENT_BODY_TEXT} text-secondary`}>
                   <ArrowPathIcon className="mr-2 h-4 w-4 animate-spin" />
                   {i18nService.t('loading')}
                 </div>
@@ -1301,7 +1357,7 @@ const SitesView: React.FC<SitesViewProps> = ({
                   <>
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <div className="rounded-xl border border-border bg-surface p-4">
-                        <p className="text-xs text-secondary">
+                        <p className={`${MANAGEMENT_META_TEXT} leading-[var(--lobster-leading-xs)] text-secondary`}>
                           {i18nService.t('sitesUniqueVisitors')}
                         </p>
                         <p className="mt-1.5 text-2xl font-semibold leading-none text-foreground">
@@ -1309,7 +1365,9 @@ const SitesView: React.FC<SitesViewProps> = ({
                         </p>
                       </div>
                       <div className="rounded-xl border border-border bg-surface p-4">
-                        <p className="text-xs text-secondary">{i18nService.t('sitesPageViews')}</p>
+                        <p className={`${MANAGEMENT_META_TEXT} leading-[var(--lobster-leading-xs)] text-secondary`}>
+                          {i18nService.t('sitesPageViews')}
+                        </p>
                         <p className="mt-1.5 text-2xl font-semibold leading-none text-foreground">
                           {analytics.summary.pageViews}
                         </p>
@@ -1317,24 +1375,24 @@ const SitesView: React.FC<SitesViewProps> = ({
                     </div>
                     <SiteAnalyticsChart trend={analytics.trend} />
                     <section className="rounded-xl border border-border bg-surface p-4">
-                      <h2 className="text-sm font-semibold text-foreground">
+                      <h2 className={`${MANAGEMENT_TITLE_TEXT} font-semibold text-foreground`}>
                         {i18nService.t('sitesPopularPages')}
                       </h2>
                       <div className="mt-2.5">
-                        <div className="grid grid-cols-[minmax(0,1fr)_96px_96px] border-b border-border pb-2 text-xs text-secondary sm:grid-cols-[minmax(0,1fr)_120px_120px]">
+                        <div className={`grid grid-cols-[minmax(0,1fr)_96px_96px] border-b border-border pb-2 ${MANAGEMENT_META_TEXT} leading-[var(--lobster-leading-xs)] text-secondary sm:grid-cols-[minmax(0,1fr)_120px_120px]`}>
                           <span>{i18nService.t('sitesPage')}</span>
                           <span className="text-right">{i18nService.t('sitesPageViews')}</span>
                           <span className="text-right">{i18nService.t('sitesUniqueVisitors')}</span>
                         </div>
                         {analytics.topPages.length === 0 ? (
-                          <p className="py-5 text-center text-xs text-secondary">
+                          <p className={`${MANAGEMENT_BODY_TEXT} py-5 text-center text-secondary`}>
                             {i18nService.t('sitesNoAnalyticsData')}
                           </p>
                         ) : (
                           analytics.topPages.map(item => (
                             <div
                               key={item.path}
-                              className="grid grid-cols-[minmax(0,1fr)_96px_96px] border-b border-border/60 py-2.5 text-sm last:border-0 sm:grid-cols-[minmax(0,1fr)_120px_120px]"
+                              className={`grid grid-cols-[minmax(0,1fr)_96px_96px] border-b border-border/60 py-2.5 ${MANAGEMENT_BODY_TEXT} last:border-0 sm:grid-cols-[minmax(0,1fr)_120px_120px]`}
                             >
                               <span className="truncate font-mono text-xs text-foreground">
                                 {item.path}
@@ -1356,19 +1414,19 @@ const SitesView: React.FC<SitesViewProps> = ({
           {detailTab === 'settings' && (embedded ? (
             <div className="max-w-[920px] space-y-3 pt-5">
               <section className="rounded-xl border border-border p-5">
-                <h2 className="text-sm font-semibold text-foreground">
+                <h2 className={`${MANAGEMENT_TITLE_TEXT} font-semibold text-foreground`}>
                   {i18nService.t('libraryShareAccessSetting')}
                 </h2>
-                <p className="mt-1 text-xs text-secondary">
+                <p className={`${MANAGEMENT_BODY_TEXT} mt-1 leading-[var(--lobster-leading-sm)] text-secondary`}>
                   {i18nService.t('sitesUnifiedAccessSettingDescription')}
                 </p>
 
                 <div className="mt-4">
-                  <div className="text-[11px] font-medium text-secondary">
+                  <div className={`${MANAGEMENT_META_TEXT} font-medium leading-[var(--lobster-leading-xs)] text-secondary`}>
                     {i18nService.t('libraryShareAccessAddress')}
                   </div>
                   <div className="mt-2 flex min-w-0 items-center gap-3 rounded-lg bg-surface-raised px-3 py-2.5">
-                    <p className="min-w-0 flex-1 truncate text-xs text-secondary">
+                    <p className={`min-w-0 flex-1 truncate ${MANAGEMENT_BODY_TEXT} text-secondary`}>
                       {selectedSite.url}
                     </p>
                     <button
@@ -1428,7 +1486,7 @@ const SitesView: React.FC<SitesViewProps> = ({
                             : 'border-border hover:bg-surface-raised'
                         }`}
                       >
-                        <span className="flex items-center gap-2 text-xs font-medium text-foreground">
+                        <span className={`flex items-center gap-2 ${MANAGEMENT_BODY_TEXT} font-medium text-foreground`}>
                           <span className={`flex h-4 w-4 items-center justify-center rounded-full border ${
                             selected ? 'border-primary' : 'border-border'
                           }`}>
@@ -1436,7 +1494,7 @@ const SitesView: React.FC<SitesViewProps> = ({
                           </span>
                           {label}
                         </span>
-                        <span className="mt-2 block text-[11px] leading-4 text-secondary">
+                        <span className={`${MANAGEMENT_META_TEXT} mt-2 block leading-[var(--lobster-leading-xs)] text-secondary`}>
                           {description}
                         </span>
                       </button>
@@ -1471,7 +1529,10 @@ const SitesView: React.FC<SitesViewProps> = ({
                       </button>
                       <button
                         type="button"
-                        disabled={readOnly || actionLoading || !titleDraft.trim()}
+                        disabled={readOnly
+                          || initialAccessExpired
+                          || actionLoading
+                          || !titleDraft.trim()}
                         onClick={requestEmbeddedSettingsSave}
                         className="rounded-lg bg-primary px-4 py-2 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
                       >
@@ -1485,14 +1546,14 @@ const SitesView: React.FC<SitesViewProps> = ({
               </section>
 
               <section className="rounded-xl border border-border p-5">
-                <h2 className="text-sm font-semibold text-foreground">
+                <h2 className={`${MANAGEMENT_TITLE_TEXT} font-semibold text-foreground`}>
                   {i18nService.t('libraryShareBasicInfo')}
                 </h2>
-                <p className="mt-1 text-xs text-secondary">
+                <p className={`${MANAGEMENT_BODY_TEXT} mt-1 leading-[var(--lobster-leading-sm)] text-secondary`}>
                   {i18nService.t('sitesBasicInfoDescription')}
                 </p>
                 <div className="mt-4">
-                  <label className="text-[11px] font-medium text-secondary" htmlFor="site-name">
+                  <label className={`${MANAGEMENT_META_TEXT} font-medium leading-[var(--lobster-leading-xs)] text-secondary`} htmlFor="site-name">
                     {i18nService.t('libraryResourceName')}
                   </label>
                   <input
@@ -1501,30 +1562,40 @@ const SitesView: React.FC<SitesViewProps> = ({
                     maxLength={100}
                     disabled={readOnly || actionLoading}
                     onChange={event => setTitleDraft(event.target.value)}
-                    className="mt-2 h-9 w-full rounded-lg border border-border bg-background px-3 text-xs text-foreground outline-none transition-colors focus:border-primary disabled:text-tertiary"
+                    className={`${MANAGEMENT_BODY_TEXT} mt-2 h-9 w-full rounded-lg border border-border bg-background px-3 text-foreground outline-none transition-colors focus:border-primary disabled:text-tertiary`}
                   />
                 </div>
                 <dl className="mt-4 grid gap-x-8 gap-y-4 sm:grid-cols-3">
                   <div>
-                    <dt className="text-[11px] text-tertiary">{i18nService.t('libraryResourceType')}</dt>
-                    <dd className="mt-1 text-xs text-foreground">
+                    <dt className={`${MANAGEMENT_META_TEXT} leading-[var(--lobster-leading-xs)] text-tertiary`}>
+                      {i18nService.t('libraryResourceType')}
+                    </dt>
+                    <dd className={`${MANAGEMENT_BODY_TEXT} mt-1 text-foreground`}>
                       {i18nService.t(isNode ? 'sitesNodeService' : 'sitesStaticSite')}
                     </dd>
                   </div>
                   <div>
-                    <dt className="text-[11px] text-tertiary">{i18nService.t('sitesCreatedAt')}</dt>
-                    <dd className="mt-1 text-xs text-foreground">{formatDateTime(selectedSite.createdAt)}</dd>
+                    <dt className={`${MANAGEMENT_META_TEXT} leading-[var(--lobster-leading-xs)] text-tertiary`}>
+                      {i18nService.t('sitesCreatedAt')}
+                    </dt>
+                    <dd className={`${MANAGEMENT_BODY_TEXT} mt-1 text-foreground`}>
+                      {formatDateTime(selectedSite.createdAt)}
+                    </dd>
                   </div>
                   <div>
-                    <dt className="text-[11px] text-tertiary">{i18nService.t('libraryLastModifiedAt')}</dt>
-                    <dd className="mt-1 text-xs text-foreground">{formatDateTime(selectedSite.updatedAt)}</dd>
+                    <dt className={`${MANAGEMENT_META_TEXT} leading-[var(--lobster-leading-xs)] text-tertiary`}>
+                      {i18nService.t('libraryLastModifiedAt')}
+                    </dt>
+                    <dd className={`${MANAGEMENT_BODY_TEXT} mt-1 text-foreground`}>
+                      {formatDateTime(selectedSite.updatedAt)}
+                    </dd>
                   </div>
                 </dl>
               </section>
 
               <section className="flex items-center justify-between gap-6 rounded-xl border border-red-500/25 p-5">
                 <div className="min-w-0">
-                  <p className="text-xs leading-5 text-secondary">
+                  <p className={`${MANAGEMENT_BODY_TEXT} leading-[var(--lobster-leading-sm)] text-secondary`}>
                     {canDelete
                       ? i18nService.t('sitesDeleteDescription')
                       : i18nService.t('sitesDeleteRequiresStopped')}
@@ -1538,7 +1609,7 @@ const SitesView: React.FC<SitesViewProps> = ({
                     setDeleteConfirmText('');
                     setDeleteConfirmOpen(true);
                   }}
-                  className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-red-500/40 px-3 text-sm font-medium text-red-600 transition-colors hover:bg-red-500/5 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-red-500/40 px-3 text-xs font-medium text-red-600 transition-colors hover:bg-red-500/5 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <TrashIcon className="h-4 w-4" />
                   {i18nService.t('sitesDeleteAction')}
@@ -1733,7 +1804,7 @@ const SitesView: React.FC<SitesViewProps> = ({
           onClose={() => !actionLoading && setConfirmAction(null)}
           className="w-[430px] max-w-[calc(100vw-32px)] rounded-2xl border border-border bg-background p-6 shadow-2xl"
         >
-          <h2 className="text-base font-semibold text-foreground">
+          <h2 className={`${MANAGEMENT_TITLE_TEXT} font-semibold text-foreground`}>
             {confirmAction === 'stop'
               ? i18nService.t(
                   requiresResourceRelease
@@ -1744,7 +1815,7 @@ const SitesView: React.FC<SitesViewProps> = ({
                 ? i18nService.t('sitesResumeConfirmTitle')
                 : i18nService.t('sitesSettingsConfirmTitle')}
           </h2>
-          <p className="mt-2 text-sm leading-6 text-secondary">
+          <p className={`${MANAGEMENT_BODY_TEXT} mt-2 leading-[var(--lobster-leading-sm)] text-secondary`}>
             {confirmAction === 'stop'
               ? requiresResourceRelease
                 ? i18nService.t('sitesReleaseResourcesConfirm')
@@ -1755,13 +1826,26 @@ const SitesView: React.FC<SitesViewProps> = ({
                 ? i18nService.t('sitesResumeConfirm')
                 : i18nService.t('sitesSettingsConfirmDescription')}
           </p>
-          {actionError && <p className="mt-3 text-sm text-red-600">{actionError}</p>}
+          {confirmationTransition && (
+            <div className={`mt-3 flex min-w-0 items-center gap-2 rounded-lg bg-surface-raised px-3 py-2 ${MANAGEMENT_BODY_TEXT}`}>
+              <span className="min-w-0 truncate font-medium text-foreground">
+                {confirmationTransition.from}
+              </span>
+              <span className="shrink-0 text-tertiary" aria-hidden="true">→</span>
+              <span className="min-w-0 truncate font-medium text-foreground">
+                {confirmationTransition.to}
+              </span>
+            </div>
+          )}
+          {actionError && (
+            <p className={`${MANAGEMENT_BODY_TEXT} mt-3 text-red-600`}>{actionError}</p>
+          )}
           <div className="mt-6 flex justify-end gap-2">
             <button
               type="button"
               disabled={actionLoading}
               onClick={() => setConfirmAction(null)}
-              className="rounded-lg border border-border px-4 py-2 text-sm text-foreground hover:bg-surface-raised"
+              className={`rounded-lg border border-border px-4 py-2 ${MANAGEMENT_BODY_TEXT} text-foreground hover:bg-surface-raised`}
             >
               {i18nService.t('cancel')}
             </button>
@@ -1769,7 +1853,7 @@ const SitesView: React.FC<SitesViewProps> = ({
               type="button"
               disabled={actionLoading}
               onClick={() => void (embedded ? saveEmbeddedSettings() : updateAccessStatus())}
-              className={`rounded-lg px-4 py-2 text-sm font-medium ${confirmAction === 'stop' ? 'bg-red-600 text-white' : 'bg-primary text-primary-foreground hover:bg-primary-hover'}`}
+              className={`rounded-lg px-4 py-2 ${MANAGEMENT_BODY_TEXT} font-medium ${confirmAction === 'stop' ? 'bg-red-600 text-white' : 'bg-primary text-primary-foreground hover:bg-primary-hover'}`}
             >
               {actionLoading
                 ? i18nService.t('saving')
@@ -1798,10 +1882,10 @@ const SitesView: React.FC<SitesViewProps> = ({
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-500/10 text-red-600">
             <TrashIcon className="h-5 w-5" />
           </div>
-          <h2 className="mt-4 text-base font-semibold text-foreground">
+          <h2 className={`${MANAGEMENT_TITLE_TEXT} mt-4 font-semibold text-foreground`}>
             {i18nService.t('sitesDeleteConfirmTitle')}
           </h2>
-          <p className="mt-2 text-sm leading-6 text-secondary">
+          <p className={`${MANAGEMENT_BODY_TEXT} mt-2 leading-[var(--lobster-leading-sm)] text-secondary`}>
             {i18nService.t('sitesDeleteConfirmDescription')}
           </p>
           {isNode && selectedSite.persistence?.enabled && (
@@ -1810,7 +1894,7 @@ const SitesView: React.FC<SitesViewProps> = ({
             </p>
           )}
           <label
-            className="mt-4 block text-xs font-medium text-secondary"
+            className={`${MANAGEMENT_META_TEXT} mt-4 block font-medium leading-[var(--lobster-leading-xs)] text-secondary`}
             htmlFor="site-delete-confirm"
           >
             {i18nService.t('sitesDeleteConfirmInputLabel').replace('{name}', selectedSite.title)}
@@ -1821,9 +1905,11 @@ const SitesView: React.FC<SitesViewProps> = ({
             disabled={actionLoading}
             onChange={event => setDeleteConfirmText(event.target.value)}
             autoComplete="off"
-            className="mt-2 h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-foreground outline-none transition-colors focus:border-red-500"
+            className={`${MANAGEMENT_BODY_TEXT} mt-2 h-10 w-full rounded-lg border border-border bg-surface px-3 text-foreground outline-none transition-colors focus:border-red-500`}
           />
-          {actionError && <p className="mt-3 text-sm text-red-600">{actionError}</p>}
+          {actionError && (
+            <p className={`${MANAGEMENT_BODY_TEXT} mt-3 text-red-600`}>{actionError}</p>
+          )}
           <div className="mt-6 flex justify-end gap-2">
             <button
               type="button"
@@ -1833,7 +1919,7 @@ const SitesView: React.FC<SitesViewProps> = ({
                 setDeleteConfirmText('');
                 setActionError(null);
               }}
-              className="rounded-lg border border-border px-4 py-2 text-sm text-foreground hover:bg-surface-raised disabled:opacity-40"
+              className={`rounded-lg border border-border px-4 py-2 ${MANAGEMENT_BODY_TEXT} text-foreground hover:bg-surface-raised disabled:opacity-40`}
             >
               {i18nService.t('cancel')}
             </button>
@@ -1842,7 +1928,7 @@ const SitesView: React.FC<SitesViewProps> = ({
               disabled={actionLoading || deleteConfirmText !== selectedSite.title}
               onClick={() => void deleteSelectedSite()}
               aria-busy={actionLoading}
-              className="inline-flex min-w-[104px] items-center justify-center gap-1.5 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-40"
+              className={`inline-flex min-w-[104px] items-center justify-center gap-1.5 rounded-lg bg-red-600 px-4 py-2 ${MANAGEMENT_BODY_TEXT} font-medium text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-40`}
             >
               {actionLoading ? (
                 <>
@@ -1860,17 +1946,17 @@ const SitesView: React.FC<SitesViewProps> = ({
           onClose={() => setLeaveConfirmOpen(false)}
           className="w-[430px] max-w-[calc(100vw-32px)] rounded-2xl border border-border bg-background p-6 shadow-2xl"
         >
-          <h2 className="text-base font-semibold text-foreground">
+          <h2 className={`${MANAGEMENT_TITLE_TEXT} font-semibold text-foreground`}>
             {i18nService.t('sitesDiscardConfirmTitle')}
           </h2>
-          <p className="mt-2 text-sm leading-6 text-secondary">
+          <p className={`${MANAGEMENT_BODY_TEXT} mt-2 leading-[var(--lobster-leading-sm)] text-secondary`}>
             {i18nService.t('sitesDiscardConfirmDescription')}
           </p>
           <div className="mt-6 flex justify-end gap-2">
             <button
               type="button"
               onClick={() => setLeaveConfirmOpen(false)}
-              className="rounded-lg border border-border px-4 py-2 text-sm text-foreground hover:bg-surface-raised"
+              className={`rounded-lg border border-border px-4 py-2 ${MANAGEMENT_BODY_TEXT} text-foreground hover:bg-surface-raised`}
             >
               {i18nService.t('cancel')}
             </button>
@@ -1880,7 +1966,7 @@ const SitesView: React.FC<SitesViewProps> = ({
                 setLeaveConfirmOpen(false);
                 exitSiteDetail();
               }}
-              className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
+              className={`rounded-lg bg-primary px-4 py-2 ${MANAGEMENT_BODY_TEXT} font-medium text-primary-foreground hover:bg-primary-hover`}
             >
               {i18nService.t('sitesDiscardAndLeave')}
             </button>
