@@ -320,25 +320,6 @@ export const registerLibraryIpcHandlers = ({
     }
   });
 
-  ipcMain.handle(LibraryIpc.TrashLocal, async (_event, value: unknown) => {
-    try {
-      const itemId = requireItemId(value);
-      const filePath = localStore.resolvePath(itemId);
-      if (!filePath) return failure(LibraryErrorCode.NotFound, 'Library item was not found.');
-      await shell.trashItem(filePath);
-      indexService.unwatchItem(itemId);
-      localStore.deletePermanently(itemId);
-      indexService.notifyChange({ reason: 'trashed', itemIds: [itemId] });
-      return success({ itemId });
-    } catch (error) {
-      const code = error instanceof Error && 'code' in error
-        && ['EACCES', 'EPERM'].includes((error as NodeJS.ErrnoException).code ?? '')
-        ? LibraryErrorCode.PermissionDenied
-        : LibraryErrorCode.NotAvailable;
-      return failure(code, error instanceof Error ? error.message : 'Unable to move file to trash.');
-    }
-  });
-
   ipcMain.handle(LibraryIpc.OpenLocal, async (_event, value: unknown) => {
     try {
       const filePath = localStore.resolvePath(requireItemId(value));

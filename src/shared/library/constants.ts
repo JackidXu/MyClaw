@@ -134,7 +134,6 @@ export const LibraryIpc = {
   RecordCandidates: 'library:recordCandidates',
   AddLocalFiles: 'library:addLocalFiles',
   SetFavorite: 'library:setFavorite',
-  TrashLocal: 'library:trashLocal',
   OpenLocal: 'library:openLocal',
   RevealLocal: 'library:revealLocal',
   RepairIndex: 'library:repairIndex',

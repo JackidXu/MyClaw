@@ -232,7 +232,6 @@ export interface LibraryChangedPayload {
     | 'recorded'
     | 'file_changed'
     | 'favorite'
-    | 'trashed'
     | 'repair'
     | 'session_deleted';
   itemIds?: string[];

@@ -57,8 +57,6 @@ describe('library item action policy', () => {
       LibraryItemAction.ToggleFavorite,
       LibraryItemAction.OpenWithApp,
       LibraryItemAction.RevealLocal,
-      LibraryItemAction.RelatedSessions,
-      LibraryItemAction.TrashLocal,
     ]);
   });
 
@@ -91,8 +89,6 @@ describe('library item action policy', () => {
     expect(getLibraryPreviewActionIds(makeItem(LibraryItemKind.LocalArtifact))).toEqual([
       LibraryItemAction.OpenWithApp,
       LibraryItemAction.RevealLocal,
-      LibraryItemAction.RelatedSessions,
-      LibraryItemAction.TrashLocal,
     ]);
   });
 

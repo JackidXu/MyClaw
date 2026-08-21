@@ -34,8 +34,8 @@ const PublishingQuotaLimitDialog: React.FC<PublishingQuotaLimitDialogProps> = ({
     ? 'publishingQuotaTotalMessage'
     : 'publishingQuotaActiveMessage';
   const message = t(messageKey)
-    .replace('{resource}', resourceLabel)
-    .replace('{limit}', String(quota.limit));
+    .replace(/\{resource\}/g, resourceLabel)
+    .replace(/\{limit\}/g, String(quota.limit));
 
   if (isFreeTrialLimit) {
     const trialFeatureLabel = t(isFile
@@ -43,7 +43,7 @@ const PublishingQuotaLimitDialog: React.FC<PublishingQuotaLimitDialogProps> = ({
       : 'publishingTrialFeatureSite');
     const trialMessage = t('publishingTrialLimitReachedMessage')
       .replace('{feature}', trialFeatureLabel)
-      .replace('{limit}', String(quota.limit));
+      .replace(/\{limit\}/g, String(quota.limit));
     return createPortal(
       <div
         className="fixed inset-0 z-[10040] flex items-center justify-center bg-black/35 px-4"

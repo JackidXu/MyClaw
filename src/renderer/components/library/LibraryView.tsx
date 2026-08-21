@@ -10,7 +10,7 @@ import {
   MagnifyingGlassIcon,
   Squares2X2Icon,
   StarIcon,
-  TrashIcon,
+  XMarkIcon,
 } from '@heroicons/react/24/outline';
 import { StarIcon as StarSolidIcon } from '@heroicons/react/24/solid';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -70,6 +70,7 @@ import {
 } from './libraryDateGrouping';
 import {
   getLibraryCardActionIds,
+  getLibraryPreviewActionIds,
   LibraryItemAction,
   type LibraryItemAction as LibraryItemActionValue,
 } from './libraryItemActionPolicy';
@@ -386,6 +387,7 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
   const cardDetailRequestIdsRef = useRef(new Set<string>());
   const scrollContainerRef = useRef<HTMLElement>(null);
   const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
+  const localSearchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setKeyword(keywordInput.trim()), 300);
@@ -394,6 +396,14 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
 
   const wantsLocal = source === LibrarySourceFilter.Local;
   const wantsCloud = source === LibrarySourceFilter.Cloud;
+  const hasActiveLocalFilter = category !== LibraryCategory.All
+    || keyword.length > 0
+    || favoritesOnly;
+
+  const clearKeyword = useCallback(() => {
+    setKeywordInput('');
+    setKeyword('');
+  }, []);
 
   const handleSourceChange = (nextSource: LibrarySourceFilter): void => {
     if (nextSource === source) return;
@@ -564,7 +574,16 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
   useEffect(() => {
     let active = true;
     setLocalDetail(null);
-    if (activeItem?.itemKind !== LibraryItemKind.LocalArtifact) return () => { active = false; };
+    const hasRelatedSessionsAction = activeItem
+      ? getLibraryPreviewActionIds(activeItem).includes(LibraryItemAction.RelatedSessions)
+      : false;
+    if (
+      activeItem?.itemKind !== LibraryItemKind.LocalArtifact
+      || !hasRelatedSessionsAction
+    ) {
+      setDetailLoading(false);
+      return () => { active = false; };
+    }
     setDetailLoading(true);
     void window.electron.library.getLocalDetail(activeItem.itemId).then(result => {
       if (active && result.success) setLocalDetail(result.data);
@@ -671,13 +690,6 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
     void window.electron.library.openLocal(item.itemId).then(result => {
       if (!result.success) setError(result.error);
     });
-  };
-
-  const handleTrash = async (item: LocalArtifactItem): Promise<void> => {
-    if (!window.confirm(i18nService.t('libraryTrashConfirm'))) return;
-    const result = await window.electron.library.trashLocal(item.itemId);
-    if (!result.success) setError(result.error);
-    else setActiveItem(undefined);
   };
 
   const revealLocal = (item: LocalArtifactItem): void => {
@@ -825,7 +837,6 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
     if (action === LibraryItemAction.ShareLocal) return i18nService.t('htmlShare');
     if (action === LibraryItemAction.OpenWithApp) return i18nService.t('libraryOpenWithApp');
     if (action === LibraryItemAction.RevealLocal) return i18nService.t('libraryRevealFile');
-    if (action === LibraryItemAction.TrashLocal) return i18nService.t('libraryMoveToTrash');
     if (action === LibraryItemAction.CopyLink) return i18nService.t('libraryCopyLink');
     if (action === LibraryItemAction.ManageSite) return i18nService.t('libraryManageSite');
     if (action === LibraryItemAction.RelatedSessions) {
@@ -851,7 +862,6 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
     if (action === LibraryItemAction.CopyLink) {
       return <ClipboardDocumentIcon className="h-4 w-4" />;
     }
-    if (action === LibraryItemAction.TrashLocal) return <TrashIcon className="h-4 w-4" />;
     if (action === LibraryItemAction.ManageSite) return <GlobeAltIcon className="h-4 w-4" />;
     return <ArrowTopRightOnSquareIcon className="h-4 w-4" />;
   };
@@ -864,8 +874,6 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
       disabled: action === LibraryItemAction.ShareLocal
         && item.itemKind === LibraryItemKind.LocalArtifact
         && !canShareLibraryArtifact(item),
-      destructive: action === LibraryItemAction.TrashLocal,
-      separatorBefore: action === LibraryItemAction.TrashLocal,
       ...(action === LibraryItemAction.RelatedSessions
         ? {
             children: getRelatedSessionMenuItems(item),
@@ -887,7 +895,6 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
           if (action === LibraryItemAction.ShareLocal) void shareLocalItem(item);
           else if (action === LibraryItemAction.OpenWithApp) openLocalWithApp(item);
           else if (action === LibraryItemAction.RevealLocal) revealLocal(item);
-          else if (action === LibraryItemAction.TrashLocal) void handleTrash(item);
           return;
         }
         if (action === LibraryItemAction.OpenLink) openCloudLink(item);
@@ -984,6 +991,7 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
               }}
               onToggleFavoritesOnly={() => setFavoritesOnly(value => !value)}
               onKeywordInputChange={setKeywordInput}
+              onKeywordClear={clearKeyword}
               onRefresh={() => void loadData(false)}
               onDetailOpen={() => scrollContainerRef.current?.scrollTo({ top: 0 })}
               onShowLogin={onShowLogin}
@@ -1007,15 +1015,38 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
               grouped
             />
             <div className="ml-auto flex min-w-0 flex-[1_1_240px] items-center justify-end gap-2">
-              <label className="relative min-w-[96px] max-w-56 flex-1">
+              <div className="relative min-w-[96px] max-w-56 flex-1">
                 <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-tertiary" />
                 <input
+                  ref={localSearchInputRef}
                   value={keywordInput}
                   onChange={event => setKeywordInput(event.target.value)}
                   placeholder={i18nService.t('librarySearchPlaceholder')}
-                  className="h-9 w-full rounded-xl border border-border bg-surface pl-9 pr-3 text-xs text-foreground outline-none placeholder:text-tertiary focus:ring-2 focus:ring-primary/30"
+                  className="h-9 w-full rounded-xl border border-border bg-surface pl-9 pr-9 text-xs text-foreground outline-none placeholder:text-tertiary focus:ring-2 focus:ring-primary/30"
                 />
-              </label>
+                {keywordInput.length > 0 && (
+                  <div className="absolute right-1.5 top-1/2 -translate-y-1/2">
+                    <Tooltip
+                      content={i18nService.t('libraryClearSearch')}
+                      position={TooltipPosition.Bottom}
+                      align={TooltipAlign.End}
+                      delay={250}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          clearKeyword();
+                          localSearchInputRef.current?.focus();
+                        }}
+                        aria-label={i18nService.t('libraryClearSearch')}
+                        className="inline-flex h-6 w-6 items-center justify-center rounded-md text-tertiary hover:bg-surface-raised hover:text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      >
+                        <XMarkIcon className="h-4 w-4" />
+                      </button>
+                    </Tooltip>
+                  </div>
+                )}
+              </div>
               <Tooltip
                 content={i18nService.t('libraryFavorites')}
                 position={TooltipPosition.Bottom}
@@ -1083,10 +1114,14 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
               <div className="mt-12 rounded-2xl border border-dashed border-border py-16 text-center">
                 <DocumentIcon className="mx-auto h-8 w-8 text-tertiary" />
                 <h2 className={`${MANAGEMENT_TITLE_TEXT} mt-3 font-semibold text-foreground`}>
-                  {i18nService.t('libraryEmptyTitle')}
+                  {i18nService.t(hasActiveLocalFilter
+                    ? 'libraryEmptyTitle'
+                    : 'libraryLocalEmptyTitle')}
                 </h2>
                 <p className={`${MANAGEMENT_BODY_TEXT} mt-1 leading-[var(--lobster-leading-sm)] text-secondary`}>
-                  {i18nService.t('libraryEmptyDescription')}
+                  {i18nService.t(hasActiveLocalFilter
+                    ? 'libraryEmptyDescription'
+                    : 'libraryLocalEmptyDescription')}
                 </p>
               </div>
             ) : (
@@ -1107,12 +1142,16 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
                               <button
                                 type="button"
                                 onClick={() => onOpenSession(group.session!)}
-                                className={`min-w-0 truncate text-left ${MANAGEMENT_TITLE_TEXT} font-semibold text-foreground hover:text-primary`}
+                                title={group.title}
+                                className={`min-w-0 max-w-xl truncate text-left ${MANAGEMENT_TITLE_TEXT} font-semibold text-foreground hover:text-primary`}
                               >
                                 {group.title}
                               </button>
                             ) : (
-                              <h3 className={`min-w-0 truncate ${MANAGEMENT_TITLE_TEXT} font-semibold text-foreground`}>
+                              <h3
+                                title={group.title}
+                                className={`min-w-0 max-w-xl truncate ${MANAGEMENT_TITLE_TEXT} font-semibold text-foreground`}
+                              >
                                 {group.title}
                               </h3>
                             )}
@@ -1138,6 +1177,9 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
                                 viewMode={viewMode}
                                 onOpen={() => openItem(item)}
                                 onMenuOpen={item.itemKind === LibraryItemKind.LocalArtifact
+                                  && getLibraryCardActionIds(item).includes(
+                                    LibraryItemAction.RelatedSessions,
+                                  )
                                   ? () => loadCardDetail(item)
                                   : undefined}
                                 menuItems={buildCardMenuItems(item)}
@@ -1172,40 +1214,35 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
 
       {wantsLocal && activeItem && (
         <LibraryPreviewModal
-              item={activeItem}
-              detail={localDetail}
-              detailLoading={detailLoading}
-              onClose={() => setActiveItem(undefined)}
-              onToggleFavorite={() => void updateFavorite(activeItem)}
-              onOpenWithApp={() => {
-                if (activeItem.itemKind === LibraryItemKind.LocalArtifact) {
-                  openLocalWithApp(activeItem);
-                }
-              }}
-              onReveal={() => {
-                if (activeItem.itemKind === LibraryItemKind.LocalArtifact) {
-                  revealLocal(activeItem);
-                }
-              }}
-              onOpenLink={() => {
-                if (activeItem.itemKind !== LibraryItemKind.LocalArtifact) {
-                  openCloudLink(activeItem);
-                }
-              }}
-              onCopyLink={() => {
-                if (activeItem.itemKind !== LibraryItemKind.LocalArtifact) {
-                  copyValue(activeItem.url);
-                }
-              }}
-              onOpenSession={session => {
-                setActiveItem(undefined);
-                onOpenSession(session);
-              }}
-              onTrash={() => {
-                if (activeItem.itemKind === LibraryItemKind.LocalArtifact) {
-                  void handleTrash(activeItem);
-                }
-              }}
+          item={activeItem}
+          detail={localDetail}
+          detailLoading={detailLoading}
+          onClose={() => setActiveItem(undefined)}
+          onToggleFavorite={() => void updateFavorite(activeItem)}
+          onOpenWithApp={() => {
+            if (activeItem.itemKind === LibraryItemKind.LocalArtifact) {
+              openLocalWithApp(activeItem);
+            }
+          }}
+          onReveal={() => {
+            if (activeItem.itemKind === LibraryItemKind.LocalArtifact) {
+              revealLocal(activeItem);
+            }
+          }}
+          onOpenLink={() => {
+            if (activeItem.itemKind !== LibraryItemKind.LocalArtifact) {
+              openCloudLink(activeItem);
+            }
+          }}
+          onCopyLink={() => {
+            if (activeItem.itemKind !== LibraryItemKind.LocalArtifact) {
+              copyValue(activeItem.url);
+            }
+          }}
+          onOpenSession={session => {
+            setActiveItem(undefined);
+            onOpenSession(session);
+          }}
           onShowSites={() => undefined}
         />
       )}
