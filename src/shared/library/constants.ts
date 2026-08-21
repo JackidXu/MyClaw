@@ -127,6 +127,16 @@ export const LibraryErrorCode = {
 } as const;
 export type LibraryErrorCode = typeof LibraryErrorCode[keyof typeof LibraryErrorCode];
 
+export const LibraryChangeReason = {
+  Recorded: 'recorded',
+  FileChanged: 'file_changed',
+  Favorite: 'favorite',
+  Repair: 'repair',
+  SessionDeleted: 'session_deleted',
+} as const;
+export type LibraryChangeReason =
+  typeof LibraryChangeReason[keyof typeof LibraryChangeReason];
+
 export const LibraryIpc = {
   ListLocal: 'library:listLocal',
   ListCloud: 'library:listCloud',

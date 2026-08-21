@@ -5,10 +5,11 @@ import {
   type PublishingQuotaErrorData,
   PublishingResourceKind,
 } from '@shared/publishing/constants';
-import React from 'react';
-import { createPortal } from 'react-dom';
+import React, { useId, useRef } from 'react';
 
 import { i18nService } from '@/services/i18n';
+
+import PublishingRestrictionDialogShell from './PublishingRestrictionDialogShell';
 
 interface PublishingQuotaLimitDialogProps {
   quota: PublishingQuotaErrorData;
@@ -25,6 +26,9 @@ const PublishingQuotaLimitDialog: React.FC<PublishingQuotaLimitDialogProps> = ({
   onManage,
   onSubscribe,
 }) => {
+  const titleId = useId();
+  const descriptionId = useId();
+  const initialButtonRef = useRef<HTMLButtonElement>(null);
   const isFile = quota.resourceKind === PublishingResourceKind.File;
   const isFreeTrialLimit = quota.identityType === PublishingIdentityType.Free;
   const resourceLabel = t(isFile ? 'publishingQuotaResourceFile' : 'publishingQuotaResourceSite');
@@ -44,30 +48,26 @@ const PublishingQuotaLimitDialog: React.FC<PublishingQuotaLimitDialogProps> = ({
     const trialMessage = t('publishingTrialLimitReachedMessage')
       .replace('{feature}', trialFeatureLabel)
       .replace(/\{limit\}/g, String(quota.limit));
-    return createPortal(
-      <div
-        className="fixed inset-0 z-[10040] flex items-center justify-center bg-black/35 px-4"
-        onMouseDown={event => {
-          if (event.target === event.currentTarget) onClose();
-        }}
+    return (
+      <PublishingRestrictionDialogShell
+        titleId={titleId}
+        descriptionId={descriptionId}
+        onClose={onClose}
+        initialFocusRef={initialButtonRef}
       >
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="publishing-trial-limit-title"
-          className="w-full max-w-[448px] border border-border bg-background px-8 py-9 shadow-2xl"
-        >
+        <div className="px-8 py-9">
           <h2
-            id="publishing-trial-limit-title"
-            className="text-center text-lg font-semibold text-foreground"
+            id={titleId}
+            className="px-8 text-center text-lg font-semibold text-foreground"
           >
             {t(isFile ? 'publishingTrialShareTitle' : 'publishingTrialSiteTitle')}
           </h2>
-          <p className="mt-5 text-center text-sm leading-6 text-foreground">
+          <p id={descriptionId} className="mt-5 text-center text-sm leading-6 text-foreground">
             {trialMessage}
           </p>
           <div className="mt-8 flex flex-col items-stretch gap-3">
             <button
+              ref={initialButtonRef}
               type="button"
               onClick={onSubscribe}
               className="h-11 rounded-lg bg-primary px-5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
@@ -83,28 +83,28 @@ const PublishingQuotaLimitDialog: React.FC<PublishingQuotaLimitDialogProps> = ({
             </button>
           </div>
         </div>
-      </div>,
-      document.body,
+      </PublishingRestrictionDialogShell>
     );
   }
 
-  return createPortal(
-    <div className="fixed inset-0 z-[10040] flex items-center justify-center bg-black/35 px-4">
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="publishing-quota-title"
-        className="w-full max-w-[480px] rounded-2xl border border-border bg-background p-6 shadow-2xl"
-      >
+  return (
+    <PublishingRestrictionDialogShell
+      titleId={titleId}
+      descriptionId={descriptionId}
+      onClose={onClose}
+      initialFocusRef={initialButtonRef}
+      maxWidthClassName="max-w-[480px]"
+    >
+      <div className="p-6">
         <div className="flex items-start gap-3">
           <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-300">
             <ExclamationTriangleIcon className="h-5 w-5" aria-hidden="true" />
           </div>
           <div className="min-w-0 flex-1">
-            <h2 id="publishing-quota-title" className="text-lg font-semibold text-foreground">
+            <h2 id={titleId} className="pr-10 text-lg font-semibold text-foreground">
               {t(isFile ? 'publishingQuotaFileTitle' : 'publishingQuotaSiteTitle')}
             </h2>
-            <p className="mt-2 text-sm leading-6 text-secondary">{message}</p>
+            <p id={descriptionId} className="mt-2 text-sm leading-6 text-secondary">{message}</p>
           </div>
         </div>
 
@@ -126,6 +126,7 @@ const PublishingQuotaLimitDialog: React.FC<PublishingQuotaLimitDialogProps> = ({
             {t('cancel')}
           </button>
           <button
+            ref={initialButtonRef}
             type="button"
             onClick={onManage}
             className="h-9 rounded-lg bg-primary px-5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
@@ -134,8 +135,7 @@ const PublishingQuotaLimitDialog: React.FC<PublishingQuotaLimitDialogProps> = ({
           </button>
         </div>
       </div>
-    </div>,
-    document.body,
+    </PublishingRestrictionDialogShell>
   );
 };
 

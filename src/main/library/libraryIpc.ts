@@ -8,6 +8,7 @@ import {
   isLibraryItemKind,
   isLibraryRelationKind,
   isLibrarySharedStatusFilter,
+  LibraryChangeReason,
   LibraryCloudKind,
   LibraryErrorCode,
   LibraryFavoriteScope,
@@ -310,7 +311,7 @@ export const registerLibraryIpcHandlers = ({
         itemId,
         favorite: input.favorite,
       });
-      indexService.notifyChange({ reason: 'favorite', itemIds: [itemId] });
+      indexService.notifyChange({ reason: LibraryChangeReason.Favorite, itemIds: [itemId] });
       return success({ favorite: input.favorite });
     } catch (error) {
       return failure(

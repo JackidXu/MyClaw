@@ -1,5 +1,4 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 
 import { i18nService } from '@/services/i18n';
 
@@ -9,6 +8,7 @@ import {
   ArtifactSubscriptionFeature,
   getArtifactSubscriptionPromptCopyKeys,
 } from './artifactSubscriptionGate';
+import PublishingRestrictionDialogShell from './PublishingRestrictionDialogShell';
 
 interface ArtifactSubscriptionPromptDialogProps {
   feature: ArtifactSubscriptionFeature;
@@ -25,9 +25,7 @@ const ArtifactSubscriptionPromptDialog = ({
   onLogin,
   onSubscribe,
 }: ArtifactSubscriptionPromptDialogProps) => {
-  const dialogRef = useRef<HTMLDivElement>(null);
   const initialButtonRef = useRef<HTMLButtonElement>(null);
-  const previousFocusRef = useRef<HTMLElement | null>(null);
   const [trialPolicy, setTrialPolicy] = useState<PublishingTrialPolicy | null>(null);
   const [isTrialPolicyLoading, setIsTrialPolicyLoading] = useState(false);
   const titleId = useId();
@@ -64,51 +62,6 @@ const ArtifactSubscriptionPromptDialog = ({
     };
   }, [isLoginRequired]);
 
-  useEffect(() => {
-    previousFocusRef.current =
-      document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const frameId = window.requestAnimationFrame(() => initialButtonRef.current?.focus());
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        onCancel();
-        return;
-      }
-      if (event.key !== 'Tab') return;
-      const dialogElement = dialogRef.current;
-      if (!dialogElement) return;
-      const focusableElements = Array.from(
-        dialogElement.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
-        ),
-      );
-      if (focusableElements.length === 0) {
-        event.preventDefault();
-        return;
-      }
-      const firstElement = focusableElements[0];
-      const lastElement = focusableElements[focusableElements.length - 1];
-      const activeElement = document.activeElement;
-      if (!dialogElement.contains(activeElement)) {
-        event.preventDefault();
-        (event.shiftKey ? lastElement : firstElement).focus();
-      } else if (event.shiftKey && activeElement === firstElement) {
-        event.preventDefault();
-        lastElement.focus();
-      } else if (!event.shiftKey && activeElement === lastElement) {
-        event.preventDefault();
-        firstElement.focus();
-      }
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      window.cancelAnimationFrame(frameId);
-      document.removeEventListener('keydown', handleKeyDown);
-      previousFocusRef.current?.focus();
-      previousFocusRef.current = null;
-    };
-  }, [onCancel]);
-
   const trialTitleKey = feature === ArtifactSubscriptionFeature.Share
     ? 'publishingTrialShareTitle'
     : 'publishingTrialSiteTitle';
@@ -127,28 +80,19 @@ const ArtifactSubscriptionPromptDialog = ({
       .replace('{limit}', String(resourcePolicy.limit));
   })();
 
-  const dialog = (
-    <div
-      className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/35 px-4"
-      onMouseDown={event => {
-        if (event.target === event.currentTarget) onCancel();
-      }}
+  return (
+    <PublishingRestrictionDialogShell
+      titleId={titleId}
+      descriptionId={descriptionId}
+      onClose={onCancel}
+      initialFocusRef={initialButtonRef}
+      maxWidthClassName={!isLoginRequired ? 'max-w-[420px]' : 'max-w-[448px]'}
+      overlayClassName="fixed inset-0 z-[10000] flex items-center justify-center bg-black/35 p-4"
     >
-      <div
-        ref={dialogRef}
-        role="alertdialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        aria-describedby={descriptionId}
-        className={`w-full border border-border bg-background shadow-2xl ${
-          !isLoginRequired
-            ? 'max-w-[420px] rounded-lg p-4'
-            : 'max-w-[448px] rounded-none px-8 py-9'
-        }`}
-      >
+      <div className={!isLoginRequired ? 'p-6' : 'px-8 py-9'}>
         {!isLoginRequired ? (
           <>
-            <h2 id={titleId} className="text-sm font-semibold text-foreground">
+            <h2 id={titleId} className="pr-10 text-sm font-semibold text-foreground">
               {i18nService.t(copyKeys.titleKey)}
             </h2>
             <div
@@ -179,7 +123,7 @@ const ArtifactSubscriptionPromptDialog = ({
           </>
         ) : (
           <>
-            <h2 id={titleId} className="text-center text-lg font-semibold text-foreground">
+            <h2 id={titleId} className="px-8 text-center text-lg font-semibold text-foreground">
               {i18nService.t(trialTitleKey)}
             </h2>
             <div
@@ -209,10 +153,8 @@ const ArtifactSubscriptionPromptDialog = ({
           </>
         )}
       </div>
-    </div>
+    </PublishingRestrictionDialogShell>
   );
-
-  return typeof document === 'undefined' ? dialog : createPortal(dialog, document.body);
 };
 
 export default ArtifactSubscriptionPromptDialog;

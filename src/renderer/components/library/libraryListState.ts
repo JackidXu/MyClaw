@@ -1,13 +1,49 @@
 import {
+  LibraryChangeReason,
   LibrarySharedStatusFilter,
   type LibrarySharedStatusFilter as LibrarySharedStatusFilterValue,
 } from '../../../shared/library/constants';
 import type {
+  LibraryChangedPayload,
   LibraryCloudListData,
+  LibraryItem,
   LibraryLocalListData,
   LibrarySharedStatusCounts,
   SharedFileItem,
 } from '../../../shared/library/types';
+
+const isSameLibraryItem = (
+  left: Pick<LibraryItem, 'itemId' | 'itemKind'>,
+  right: Pick<LibraryItem, 'itemId' | 'itemKind'>,
+): boolean => left.itemId === right.itemId && left.itemKind === right.itemKind;
+
+export const shouldReloadLibraryAfterChange = (
+  payload: LibraryChangedPayload,
+): boolean => payload.reason !== LibraryChangeReason.Favorite;
+
+export const applyLibraryFavoriteState = <T extends LibraryItem>(
+  items: T[],
+  target: T,
+  favorite: boolean,
+  favoritesOnly: boolean,
+): T[] => items.flatMap(item => {
+  if (!isSameLibraryItem(item, target)) return [item];
+  if (favoritesOnly && !favorite) return [];
+  return [{ ...item, isFavorite: favorite } as T];
+});
+
+export const restoreLibraryFavoriteState = <T extends LibraryItem>(
+  items: T[],
+  target: T,
+): T[] => {
+  let found = false;
+  const restored = items.map(item => {
+    if (!isSameLibraryItem(item, target)) return item;
+    found = true;
+    return { ...item, isFavorite: target.isFavorite } as T;
+  });
+  return found ? restored : [...restored, target];
+};
 
 type CloudStatusCountData = Pick<LibraryCloudListData, 'counts'> & {
   sharedStatusCounts?: Partial<LibrarySharedStatusCounts>;

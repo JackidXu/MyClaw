@@ -48,8 +48,24 @@ export const getLibraryAccessModeLabel = (item: LibraryItem): string | undefined
     : i18nService.t('htmlShareAccessModeCode');
 };
 
-export const getLibraryDisplayFileName = (item: LibraryItem): string => (
-  item.itemKind === LibraryItemKind.SharedFile
-    ? item.entryFile ?? item.title
-    : item.title
-);
+const getLegacySanitizedFileName = (fileName: string): string => {
+  const baseName = fileName.split(/[\\/]/).pop()?.trim() ?? '';
+  return baseName.replace(/[^A-Za-z0-9._-]/g, '_');
+};
+
+export const getLibraryDisplayFileName = (item: LibraryItem): string => {
+  if (item.itemKind !== LibraryItemKind.SharedFile || !item.entryFile) {
+    return item.title;
+  }
+
+  // Older clients replaced every non-ASCII character in the archive entry with `_`.
+  // Prefer the original title only when it exactly explains that legacy entry name.
+  if (
+    item.title !== item.entryFile
+    && getLegacySanitizedFileName(item.title) === item.entryFile
+  ) {
+    return item.title;
+  }
+
+  return item.entryFile;
+};

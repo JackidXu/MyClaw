@@ -9,6 +9,7 @@ import type {
   LibraryArtifactType,
   LibraryAvailability,
   LibraryCategory,
+  LibraryChangeReason,
   LibraryCloudAvailabilityFilter,
   LibraryCloudKind,
   LibraryCloudUnavailableReason,
@@ -228,11 +229,6 @@ export interface LibraryBackfillState {
 }
 
 export interface LibraryChangedPayload {
-  reason:
-    | 'recorded'
-    | 'file_changed'
-    | 'favorite'
-    | 'repair'
-    | 'session_deleted';
+  reason: LibraryChangeReason;
   itemIds?: string[];
 }
