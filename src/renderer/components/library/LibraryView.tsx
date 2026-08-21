@@ -81,8 +81,11 @@ import {
   getLibrarySourceLabel,
 } from './libraryItemPresentation';
 import {
+  applyLibraryFavoriteState,
   hideLibraryCloudItems,
   hideLibraryLocalItems,
+  restoreLibraryFavoriteState,
+  shouldReloadLibraryAfterChange,
 } from './libraryListState';
 import LibraryPreviewModal from './LibraryPreviewModal';
 import LibraryCloudView from './LibrarySharedFilesView';
@@ -566,7 +569,8 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
 
   useEffect(() => {
     void startLibraryBackfill();
-    return window.electron.library.onChanged(() => {
+    return window.electron.library.onChanged(payload => {
+      if (!shouldReloadLibraryAfterChange(payload)) return;
       void loadData(false);
     });
   }, [loadData]);
@@ -638,12 +642,17 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
 
   const updateFavorite = async (item: LibraryItem): Promise<void> => {
     const next = !item.isFavorite;
-    const updateItem = (value: LibraryItem): LibraryItem => value.itemId === item.itemId
-      && value.itemKind === item.itemKind ? { ...value, isFavorite: next } : value;
-    setLocalData(current => ({ ...current, list: current.list.map(updateItem) as LocalArtifactItem[] }));
-    setCloudData(current => ({ ...current, list: current.list.map(updateItem).filter(
-      (value): value is typeof current.list[number] => value.itemKind !== LibraryItemKind.LocalArtifact,
-    ) }));
+    if (item.itemKind === LibraryItemKind.LocalArtifact) {
+      setLocalData(current => ({
+        ...current,
+        list: applyLibraryFavoriteState(current.list, item, next, favoritesOnly),
+      }));
+    } else {
+      setCloudData(current => ({
+        ...current,
+        list: applyLibraryFavoriteState(current.list, item, next, favoritesOnly),
+      }));
+    }
     setActiveItem(current => current?.itemId === item.itemId
       && current.itemKind === item.itemKind ? { ...current, isFavorite: next } : current);
     const result = await window.electron.library.setFavorite({
@@ -654,7 +663,19 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
     });
     if (!result.success) {
       setError(result.error);
-      void loadData(false);
+      if (item.itemKind === LibraryItemKind.LocalArtifact) {
+        setLocalData(current => ({
+          ...current,
+          list: restoreLibraryFavoriteState(current.list, item),
+        }));
+      } else {
+        setCloudData(current => ({
+          ...current,
+          list: restoreLibraryFavoriteState(current.list, item),
+        }));
+      }
+      setActiveItem(current => current?.itemId === item.itemId
+        && current.itemKind === item.itemKind ? { ...current, isFavorite: item.isFavorite } : current);
     }
   };
 
