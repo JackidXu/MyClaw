@@ -353,6 +353,11 @@ import { exportLogsZip } from './libs/logExport';
 import { MainLogReporter } from './libs/mainLogReporter';
 import { inferImageMimeTypeFromDataUrl, type PersistedGeneratedImageAsset, persistGeneratedImageAssets, type PersistGeneratedImageAssetsResult, persistGeneratedVideoAssets, type RemoteGeneratedMediaAsset } from './libs/mediaAssetPersistence';
 import {
+  installGlobalNetworkInterceptor,
+  recordApiTraffic,
+  setTrafficLogMainWindow,
+} from './libs/networkInterceptor';
+import {
   migrateAgentModelRefs,
   parsePrimaryModelRef,
   resolveQualifiedAgentModelRef,
@@ -417,7 +422,7 @@ import {
 } from './libs/openclawTokenProxy';
 import { migrateMainAgentWorkspace } from './libs/openclawWorkspaceMigration';
 import { ensurePythonRuntimeReady } from './libs/pythonRuntime';
-import { sanitizeUrlForLog, serializeForLog } from './libs/sanitizeForLog';
+import { serializeForLog } from './libs/sanitizeForLog';
 import { packageNodeServiceDeployment } from './libs/shareDeployment/nodeServiceDeploymentPackager';
 import {
   analyzeNodeServiceProjectDirectory,
@@ -1799,6 +1804,8 @@ if (startupDataMigrationRestoreResult) {
 }
 
 const isDev = process.env.NODE_ENV === 'development';
+// 在主进程启动最开始立即安装全局底层网络拦截器
+installGlobalNetworkInterceptor(isDev);
 const isLinux = process.platform === 'linux';
 const isMac = process.platform === 'darwin';
 const isWindows = process.platform === 'win32';
@@ -12933,10 +12940,25 @@ if (!gotTheLock) {
         body?: string;
       },
     ) => {
-      const sanitizedUrl = sanitizeUrlForLog(options.url);
-      console.log(
-        `[api:fetch] ${options.method} ${sanitizedUrl}, headers: ${serializeForLog(options.headers)}, body: ${options.body}`,
-      );
+      const reqId = `ipc_fetch_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      let parsedBody: any = undefined;
+      if (options.body) {
+        try {
+          parsedBody = JSON.parse(options.body);
+        } catch {
+          parsedBody = options.body;
+        }
+      }
+
+      recordApiTraffic({
+        id: reqId,
+        type: 'request',
+        timestamp: Date.now(),
+        method: (options.method || 'GET').toUpperCase(),
+        url: options.url,
+        headers: options.headers,
+        body: parsedBody,
+      });
 
       const doFetch = async (headers: Record<string, string>) => {
         const response = await session.defaultSession.fetch(options.url, {
@@ -12967,10 +12989,6 @@ if (!gotTheLock) {
 
       try {
         let result = await doFetch(options.headers);
-        console.log(
-          `[api:fetch] ${options.method} ${sanitizedUrl} -> ${result.status} ${result.statusText}`,
-          typeof result.data === 'object' ? JSON.stringify(result.data) : result.data,
-        );
 
         // Auto-retry once for Copilot 401/403
         if (
@@ -12983,16 +13001,32 @@ if (!gotTheLock) {
             await retryCopilotWithRefreshedToken(options);
           if (retried) {
             result = await doFetch(refreshedHeaders);
-            console.log(`[api:fetch] retry -> ${result.status} ${result.statusText}`);
           }
         }
 
+        recordApiTraffic({
+          id: reqId,
+          type: 'response',
+          timestamp: Date.now(),
+          method: (options.method || 'GET').toUpperCase(),
+          url: options.url,
+          status: result.status,
+          statusText: result.statusText,
+          ok: result.ok,
+          responseData: result.data,
+        });
+
         return result;
       } catch (error) {
-        console.error(
-          `[api:fetch] ${options.method} ${sanitizedUrl} -> ERROR:`,
-          error instanceof Error ? error.message : error,
-        );
+        recordApiTraffic({
+          id: reqId,
+          type: 'error',
+          timestamp: Date.now(),
+          method: (options.method || 'GET').toUpperCase(),
+          url: options.url,
+          error: error instanceof Error ? error.message : String(error),
+        });
+
         return {
           ok: false,
           status: 0,
@@ -13459,6 +13493,13 @@ if (!gotTheLock) {
       scheduleReload('webContents-crashed');
     });
 
+    mainWindow.webContents.on('did-finish-load', () => {
+      setTrafficLogMainWindow(mainWindow);
+    });
+    mainWindow.webContents.on('dom-ready', () => {
+      setTrafficLogMainWindow(mainWindow);
+    });
+
     if (isDev) {
       // 开发环境
       const maxRetries = 3;
@@ -13898,6 +13939,9 @@ if (!gotTheLock) {
     await app.whenReady();
     profiler.measure('app.whenReady');
     console.log('[Main] initApp: app is ready');
+
+    // 在网络请求开始前安装底层全局网络流量拦截器（开发模式）
+    installGlobalNetworkInterceptor(isDev);
 
     // Note: Calendar permission is checked on-demand when calendar operations are requested
     // We don't trigger permission dialogs at startup to avoid annoying users

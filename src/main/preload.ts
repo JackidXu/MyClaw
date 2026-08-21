@@ -217,47 +217,7 @@ contextBridge.exposeInMainWorld('electron', {
       headers: Record<string, string>;
       body?: string;
     }) => {
-      // 依据端口及域名智能判断是否处于开发环境
-      const isDev = typeof window !== 'undefined' && 
-                    (window.location.port === '5175' || 
-                     window.location.hostname === 'localhost' || 
-                     window.location.hostname === '127.0.0.1');
-
-      if (isDev) {
-        console.groupCollapsed(`%c🌐 [Global API Request] ${options.method} ${options.url}`, 'color: #007acc; font-weight: bold; font-size: 11px;');
-        console.log('%cURL:', 'color: #888; font-weight: bold;', options.url);
-        console.log('%cMethod:', 'color: #888; font-weight: bold;', options.method);
-        console.log('%cHeaders:', 'color: #888; font-weight: bold;', options.headers);
-        if (options.body) {
-          try {
-            console.log('%cBody:', 'color: #888; font-weight: bold;', JSON.parse(options.body));
-          } catch {
-            console.log('%cBody:', 'color: #888; font-weight: bold;', options.body);
-          }
-        }
-        console.groupEnd();
-      }
-
-      try {
-        const resp = await ipcRenderer.invoke('api:fetch', options) as any;
-        if (isDev) {
-          const statusColor = resp && resp.ok ? 'color: #4caf50;' : 'color: #f44336;';
-          console.groupCollapsed(
-            `%c📥 [Global API Response] ${options.method} ${options.url} -> Status: ${resp?.status || 'Unknown'} (${resp?.ok ? 'Success' : 'Failed'})`,
-            `${statusColor} font-weight: bold; font-size: 11px;`
-          );
-          console.log('%cResponse Body:', 'color: #888; font-weight: bold;', resp?.data);
-          console.groupEnd();
-        }
-        return resp;
-      } catch (err: any) {
-        if (isDev) {
-          console.groupCollapsed(`%c❌ [Global API Error] ${options.method} ${options.url}`, 'color: #f44336; font-weight: bold; font-size: 11px;');
-          console.error('Error Details:', err);
-          console.groupEnd();
-        }
-        throw err;
-      }
+      return ipcRenderer.invoke('api:fetch', options);
     },
 
     // 流式 API 请求
@@ -1413,3 +1373,71 @@ contextBridge.exposeInMainWorld('electron', {
     },
   },
 });
+
+// 全局网络流量 DevTools 统一透明打印监听器
+if (
+  typeof window !== 'undefined' &&
+  (window.location.port === '5175' ||
+    window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1')
+) {
+  const logTrafficEntry = (entry: {
+    id: string;
+    type: 'request' | 'response' | 'error';
+    method: string;
+    url: string;
+    headers?: Record<string, string>;
+    body?: any;
+    status?: number;
+    statusText?: string;
+    ok?: boolean;
+    responseData?: any;
+    error?: string;
+  }) => {
+    if (entry.type === 'request') {
+      console.groupCollapsed(
+        `%c🌐 [Global API Request] ${entry.method} ${entry.url}`,
+        'color: #007acc; font-weight: bold; font-size: 11px;',
+      );
+      console.log('%cURL:', 'color: #888; font-weight: bold;', entry.url);
+      console.log('%cMethod:', 'color: #888; font-weight: bold;', entry.method);
+      if (entry.headers && Object.keys(entry.headers).length > 0) {
+        console.log('%cHeaders:', 'color: #888; font-weight: bold;', entry.headers);
+      }
+      if (entry.body !== undefined) {
+        console.log('%cBody:', 'color: #888; font-weight: bold;', entry.body);
+      }
+      console.groupEnd();
+    } else if (entry.type === 'response') {
+      const statusColor = entry.ok ? 'color: #4caf50;' : 'color: #f44336;';
+      console.groupCollapsed(
+        `%c📥 [Global API Response] ${entry.method} ${entry.url} -> Status: ${entry.status || 'Unknown'} (${entry.ok ? 'Success' : 'Failed'})`,
+        `${statusColor} font-weight: bold; font-size: 11px;`,
+      );
+      console.log('%cResponse Body:', 'color: #888; font-weight: bold;', entry.responseData);
+      console.groupEnd();
+    } else if (entry.type === 'error') {
+      console.groupCollapsed(
+        `%c❌ [Global API Error] ${entry.method} ${entry.url}`,
+        'color: #f44336; font-weight: bold; font-size: 11px;',
+      );
+      console.error('Error Details:', entry.error);
+      console.groupEnd();
+    }
+  };
+
+  // 1. 实时监听后续网络日志
+  ipcRenderer.on('api:traffic-log', (_event, entry) => {
+    logTrafficEntry(entry);
+  });
+
+  // 2. 主动握手拉取应用冷启动期间已产生的网络日志（如专家拉取）
+  void ipcRenderer.invoke('api:traffic-log:ready').then((entries: any[]) => {
+    if (Array.isArray(entries)) {
+      for (const entry of entries) {
+        logTrafficEntry(entry);
+      }
+    }
+  }).catch(() => {});
+}
+
