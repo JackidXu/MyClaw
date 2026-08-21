@@ -760,6 +760,7 @@ interface IElectronAPI {
     presetTemplates: () => Promise<PresetAgent[]>;
     addPreset: (presetId: string) => Promise<Agent>;
     getPaidExperts: () => Promise<import('./paidExpert').PaidExpert[]>;
+    getExpertTeams: () => Promise<import('./expertTeam').ExpertTeam[]>;
   };
   api: {
     fetch: (options: {

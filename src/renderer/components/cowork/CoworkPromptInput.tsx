@@ -978,7 +978,12 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
         setImageVisionHint(false);
       }
       requestAnimationFrame(() => {
-        textareaRef.current?.focus();
+        const textarea = textareaRef.current;
+        if (textarea) {
+          textarea.focus();
+          const length = textarea.value.length;
+          textarea.setSelectionRange(length, length);
+        }
       });
     };
     window.addEventListener(CoworkUiEvent.FocusInput, handleFocusInput);

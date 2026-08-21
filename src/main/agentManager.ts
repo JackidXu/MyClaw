@@ -1,5 +1,5 @@
 import type { Agent, CoworkStore, CreateAgentRequest, UpdateAgentRequest } from './coworkStore';
-import { getPaidExperts,getPresetExperts } from './libs/expertStore';
+import { getExpertTeams, getPaidExperts, getPresetExperts } from './libs/expertStore';
 import { type PresetAgent, presetToCreateRequest } from './presetAgents';
 
 /**
@@ -26,7 +26,7 @@ export class AgentManager {
   private enrichPresetAgent(agent: Agent): Agent {
     if (agent.source === 'preset' || agent.presetId) {
       const presetId = agent.presetId || agent.id;
-      const allExperts: any[] = [...getPresetExperts(), ...getPaidExperts()];
+      const allExperts: any[] = [...getPresetExperts(), ...getPaidExperts(), ...getExpertTeams()];
       const preset = allExperts.find(p => p.id === presetId);
       if (preset) {
         return { ...agent, skillIds: preset.skillIds || [] };
@@ -81,7 +81,7 @@ export class AgentManager {
   }
 
   addPresetAgent(presetId: string, defaultModel?: string): Agent | null {
-    const allExperts: any[] = [...getPresetExperts(), ...getPaidExperts()];
+    const allExperts: any[] = [...getPresetExperts(), ...getPaidExperts(), ...getExpertTeams()];
     const preset = allExperts.find(p => p.id === presetId);
     if (!preset) return null;
 
