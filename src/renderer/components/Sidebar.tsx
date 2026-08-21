@@ -1434,7 +1434,10 @@ const Sidebar: React.FC<SidebarProps> = ({
 
       {/* 充值 Modal */}
       {isPayModalOpen && (
-        <PayModal onClose={() => setIsPayModalOpen(false)} />
+        <PayModal
+          onClose={() => setIsPayModalOpen(false)}
+          onSuccess={() => setIsPayModalOpen(false)}
+        />
       )}
 
       {/* 修改密码模态框 */}

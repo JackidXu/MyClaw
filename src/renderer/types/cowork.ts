@@ -159,7 +159,7 @@ export interface CoworkSession {
   activeSkillIds: string[];
   activeKitIds?: string[];
   agentId: string;
-  secondBrainEnabled: boolean;
+  secondBrainEnabled?: boolean;
   messages: CoworkMessage[];
   /** Offset of the first loaded message in the full message history. 0 means loaded from the beginning. */
   messagesOffset: number;

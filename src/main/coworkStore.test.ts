@@ -58,6 +58,7 @@ function setupDb(): void {
       execution_mode TEXT NOT NULL DEFAULT 'local',
       active_skill_ids TEXT,
       agent_id TEXT DEFAULT 'main',
+      second_brain_enabled INTEGER NOT NULL DEFAULT 1,
       parent_session_id TEXT,
       forked_from_message_id TEXT,
       forked_at INTEGER,

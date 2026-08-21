@@ -2341,10 +2341,11 @@ class CoworkService {
     await new Promise((resolve) => setTimeout(resolve, 600));
     try {
       const coworkState = store.getState().cowork;
-      let session = coworkState.sessions.find(s => s.id === sessionId)
+      let session: CoworkSession | null = (coworkState.sessions.find(s => s.id === sessionId) as CoworkSession | undefined)
         ?? (coworkState.currentSession?.id === sessionId ? coworkState.currentSession : null);
       if (!session) {
-        session = await window.electron.cowork.getSession(sessionId);
+        const res = await window.electron.cowork.getSession(sessionId);
+        session = res?.session ?? null;
       }
       const enabled = session?.secondBrainEnabled ?? true;
 

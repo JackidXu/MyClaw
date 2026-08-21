@@ -160,7 +160,7 @@ interface CoworkSession {
   executionMode: 'auto' | 'local' | 'sandbox';
   activeSkillIds: string[];
   agentId: string;
-  secondBrainEnabled: boolean;
+  secondBrainEnabled?: boolean;
   messages: CoworkMessage[];
   messagesOffset: number;
   totalMessages: number;
@@ -880,6 +880,8 @@ interface IElectronAPI {
       imageAttachments?: Array<{ name: string; mimeType: string; base64Data: string; sizeBytes?: number; localPath?: string; previewMimeType?: string; previewBase64Data?: string }>;
       mediaSelection?: { mode: string; modelId?: string; modelName?: string; imageModelId?: string; videoModelId?: string };
       mediaReferences?: Array<{ token: string; mediaType: string; index: number; fileId: string; fileName: string; mimeType: string; localPath?: string; remoteUrl?: string; dataUrl?: string; role?: string }>;
+      fmpAuthHeaders?: { claw_cookie: string; claw_uid: string };
+      fmpTools?: Array<{ type: 'function'; function: { name: string; description: string; parameters: unknown } }>;
     }) => Promise<{
       success: boolean;
       session?: CoworkSession;
@@ -901,6 +903,8 @@ interface IElectronAPI {
       imageAttachments?: Array<{ name: string; mimeType: string; base64Data: string; sizeBytes?: number; localPath?: string; previewMimeType?: string; previewBase64Data?: string }>;
       mediaSelection?: { mode: string; modelId?: string; modelName?: string; imageModelId?: string; videoModelId?: string };
       mediaReferences?: Array<{ token: string; mediaType: string; index: number; fileId: string; fileName: string; mimeType: string; localPath?: string; remoteUrl?: string; dataUrl?: string; role?: string }>;
+      fmpAuthHeaders?: { claw_cookie: string; claw_uid: string };
+      fmpTools?: Array<{ type: 'function'; function: { name: string; description: string; parameters: unknown } }>;
     }) => Promise<{
       success: boolean;
       session?: CoworkSession;
