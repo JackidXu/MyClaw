@@ -88,7 +88,7 @@ describe('createScheduledTaskFormState', () => {
 
   test('applies template defaults for new tasks', () => {
     const template = SCHEDULED_TASK_TEMPLATES.find(
-      item => item.id === ScheduledTaskTemplateId.TechBriefing,
+      item => item.id === ScheduledTaskTemplateId.NextMonthTopics,
     );
 
     expect(template).toBeDefined();
@@ -97,10 +97,10 @@ describe('createScheduledTaskFormState', () => {
 
     expect(form.name).toBe(i18nService.t(template!.titleKey));
     expect(form.payloadText).toBe(i18nService.t(template!.promptKey));
-    expect(form.planType).toBe(ScheduledTaskTemplatePlanType.Weekly);
-    expect(form.hour).toBe(8);
-    expect(form.minute).toBe(30);
-    expect(form.weekdays).toEqual([1, 2, 3, 4, 5]);
+    expect(form.planType).toBe(ScheduledTaskTemplatePlanType.Monthly);
+    expect(form.hour).toBe(9);
+    expect(form.minute).toBe(0);
+    expect(form.monthDay).toBe(1);
     expect(form.modelId).toBe(fallbackModelRef);
   });
 });

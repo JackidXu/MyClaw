@@ -2993,47 +2993,85 @@ const translations: Record<LanguageType, Record<string, string>> = {
     scheduledTasksMoreActions: '更多操作',
     scheduledTasksBlankCreate: '从空白创建',
     scheduledTasksBlankCreateHint: '自定义任务指令与执行计划',
-    scheduledTasksTemplatesSection: '从模板快速创建',
+    scheduledTasksTemplatesSection: '推荐业务自动任务模板 · 一键复用',
+    scheduledTasksTemplatesSectionSubtitle:
+      '下面按老板高频业务节奏配好，点击即可成为你的自动任务，到点自动推你微信。',
+    scheduledTasksTemplateMonthlyCategory: '🗓 每月例行',
+    scheduledTasksTemplateWeeklyCategory: '📆 每周例行',
+    scheduledTasksTemplateDailyCategory: '📅 每日例行',
+    scheduledTasksTemplateAdoptBtn: '一键设为我的自动任务',
     scheduledTasksTemplateTitle: '定时任务模板',
-    scheduledTasksTemplateSubtitle: '选择一个常见办公自动化场景，系统会自动填好周期和任务指令',
+    scheduledTasksTemplateSubtitle: '选择一个常见业务自动化场景，系统会自动填好周期和任务指令',
     scheduledTasksTemplateUse: '使用模版',
     scheduledTasksTemplateNew: '新建',
     scheduledTasksTemplateEmpty: '暂无可用模板',
-    scheduledTasksTemplateTechBriefingTitle: '科技早报',
-    scheduledTasksTemplateTechBriefingDesc:
-      '工作日早晨汇总科技、AI 和产品动态，筛出适合办公人群快速浏览的重点。',
-    scheduledTasksTemplateTechBriefingSchedule: '工作日 08:30',
-    scheduledTasksTemplateTechBriefingPrompt:
-      '请收集并总结过去 24 小时的科技、AI 与产品动态，筛选 5-8 条与办公、研发和产品人群相关的重点。每条包含事件、影响、可跟进行动，并在结尾列出今天值得关注的关键词。',
-    scheduledTasksTemplateWorkdayWrapTitle: '每日工作收尾',
-    scheduledTasksTemplateWorkdayWrapDesc:
-      '下班前整理当天进展、风险和明日待办，适合个人复盘或团队同步。',
-    scheduledTasksTemplateWorkdayWrapSchedule: '工作日 18:00',
-    scheduledTasksTemplateWorkdayWrapPrompt:
-      '请整理今天的工作收尾摘要，按「已完成」「进行中」「遇到的问题」「明日待办」输出。内容要简洁、可执行，并提醒我哪些事项需要提前同步给同事。',
-    scheduledTasksTemplateMeetingPrepTitle: '会议准备',
-    scheduledTasksTemplateMeetingPrepDesc:
-      '每天开始前梳理会议目标、待确认问题和需要提前准备的材料。',
-    scheduledTasksTemplateMeetingPrepSchedule: '工作日 08:45',
-    scheduledTasksTemplateMeetingPrepPrompt:
-      '请基于可访问的日程、待办或工作记录，为今天的会议和重点事项做准备。列出每个会议的目标、需要提前看的材料、待确认问题，以及会后应跟进的动作。',
-    scheduledTasksTemplateWeeklyReportTitle: '周报草稿',
-    scheduledTasksTemplateWeeklyReportDesc:
-      '每周五生成一份结构化周报草稿，减少临下班补材料的成本。',
-    scheduledTasksTemplateWeeklyReportSchedule: '周五 17:30',
-    scheduledTasksTemplateWeeklyReportPrompt:
-      '请整理本周工作周报草稿，包含本周完成、关键进展、数据或结果、问题与风险、下周计划。请用适合直接发给主管或团队的语气输出。',
-    scheduledTasksTemplateProjectHealthTitle: '项目健康巡检',
-    scheduledTasksTemplateProjectHealthDesc:
-      '定期检查项目状态、近期变更和潜在风险，适合研发或运营项目。',
-    scheduledTasksTemplateProjectHealthSchedule: '每天 10:00',
-    scheduledTasksTemplateProjectHealthPrompt:
-      '请检查当前项目的健康状态，关注最近变更、测试或构建状态、明显的 TODO/风险点和可改进项。请给出简短巡检报告，并把需要人工处理的事项列为清单。',
-    scheduledTasksTemplateMonthlyAdminTitle: '月度行政提醒',
-    scheduledTasksTemplateMonthlyAdminDesc: '月底前提醒整理发票、报销、续费、合同和常规行政待办。',
-    scheduledTasksTemplateMonthlyAdminSchedule: '每月 25 日 10:00',
-    scheduledTasksTemplateMonthlyAdminPrompt:
-      '请提醒我整理本月行政待办，包括发票、报销、订阅续费、合同、设备和其他月底前需要处理的事项。请输出一份可勾选清单，并标出建议优先级。',
+    scheduledTasksTemplateNextMonthTopicsTitle: '下月选题规划',
+    scheduledTasksTemplateNextMonthTopicsDesc:
+      '基于第二大脑与全网热点，自动生成下月 30 天 IP 选题日历并推送。',
+    scheduledTasksTemplateNextMonthTopicsBadge: '每月 1 日 09:00 · 自动',
+    scheduledTasksTemplateNextMonthTopicsSchedule: '每月 1 日 09:00',
+    scheduledTasksTemplateNextMonthTopicsTeam: '选题专家 · 卖点转换 · 日历规划 协同',
+    scheduledTasksTemplateNextMonthTopicsPrompt:
+      '请结合我的第二大脑知识库与当前行业热点趋势，自动规划下月 30 天的老板 IP 选题日历。包含：选题名称、核心观点钩子、目标受众、转化路径（公域/私域）与建议发布形式，并输出结构化表格。',
+    scheduledTasksTemplateMonthlyBusinessReviewTitle: '月度经营盘点',
+    scheduledTasksTemplateMonthlyBusinessReviewDesc:
+      '每月末自动汇总经营数据、现金流与关键决策，推送到微信。',
+    scheduledTasksTemplateMonthlyBusinessReviewBadge: '每月末 · 自动',
+    scheduledTasksTemplateMonthlyBusinessReviewSchedule: '每月 28 日 18:00',
+    scheduledTasksTemplateMonthlyBusinessReviewTeam: '经营决策专家 · 财税顾问 协同',
+    scheduledTasksTemplateMonthlyBusinessReviewPrompt:
+      '请对本月经营情况进行全面盘点，梳理核心经营指标达成情况、现金流状态、主要项目毛利、应收账款账龄与重大经营决策执行进度，给出下月重点经营建议。',
+    scheduledTasksTemplateMonthlyPaymentRiskTitle: '月度回款风险扫描',
+    scheduledTasksTemplateMonthlyPaymentRiskDesc:
+      '每月末自动扫描大客户账龄、回款节点与风险客户，推送催款优先级清单。',
+    scheduledTasksTemplateMonthlyPaymentRiskBadge: '每月 28 日 · 自动',
+    scheduledTasksTemplateMonthlyPaymentRiskSchedule: '每月 28 日 10:00',
+    scheduledTasksTemplateMonthlyPaymentRiskTeam: '大客户攻防专家 · 回款风控 协同',
+    scheduledTasksTemplateMonthlyPaymentRiskPrompt:
+      '请扫描当前所有大客户回款进度与账龄分布，识别超期 30/60/90 天的风险客户。按照「风险级别、欠款金额、账龄、对接人、建议催款策略」输出高优先级催款行动清单。',
+    scheduledTasksTemplateWeeklyDataReviewTitle: '数据复盘',
+    scheduledTasksTemplateWeeklyDataReviewDesc: '每周一自动汇总上周核心数据与待跟进行动。',
+    scheduledTasksTemplateWeeklyDataReviewBadge: '每周一 · 自动',
+    scheduledTasksTemplateWeeklyDataReviewSchedule: '每周一 09:30',
+    scheduledTasksTemplateWeeklyDataReviewTeam: '经营决策专家 · 数据分析 协同',
+    scheduledTasksTemplateWeeklyDataReviewPrompt:
+      '请汇总上周全业务线核心经营与运营数据（线索量、转化率、成交额、客户跟进数等），与目标对比分析波动原因，并列出本周需要重点跟进的 3 项核心动作。',
+    scheduledTasksTemplateWeeklyVipReportTitle: '大客户周报',
+    scheduledTasksTemplateWeeklyVipReportDesc: '每周五自动生成大客户跟进周报与回款风险提示。',
+    scheduledTasksTemplateWeeklyVipReportBadge: '每周五 · 自动',
+    scheduledTasksTemplateWeeklyVipReportSchedule: '周五 17:30',
+    scheduledTasksTemplateWeeklyVipReportTeam: '大客户攻防专家 · 回款风控 协同',
+    scheduledTasksTemplateWeeklyVipReportPrompt:
+      '请梳理本周重点大客户的商务洽谈进展、签约回款情况、客诉及异常风险，按「重点进展、风险预警、下周攻坚目标」生成大客户业务周报。',
+    scheduledTasksTemplateWeeklyCognitiveConflictTitle: '认知冲突周裁决',
+    scheduledTasksTemplateWeeklyCognitiveConflictDesc:
+      '每周日自动汇总本周新发现认知冲突，请你一键裁决。',
+    scheduledTasksTemplateWeeklyCognitiveConflictBadge: '每周日 · 自动',
+    scheduledTasksTemplateWeeklyCognitiveConflictSchedule: '周日 20:00',
+    scheduledTasksTemplateWeeklyCognitiveConflictTeam: '第二大脑 · 认知冲突检测 协同',
+    scheduledTasksTemplateWeeklyCognitiveConflictPrompt:
+      '请汇总第二大脑在本周提取的待确认认知与新旧观点冲突项，提取分歧要点、新旧观点对比及置信度，形成一份待裁决清单供老板拍板。',
+    scheduledTasksTemplateDailyContentScriptTitle: '今日内容脚本',
+    scheduledTasksTemplateDailyContentScriptDesc: '每天早晨自动生成今日 IP 内容脚本与配套素材并推送。',
+    scheduledTasksTemplateDailyContentScriptBadge: '每日 09:00 · 自动',
+    scheduledTasksTemplateDailyContentScriptSchedule: '每天 09:00',
+    scheduledTasksTemplateDailyContentScriptTeam: '老板 IP 营销专家 · 写口播 · 出图 协同',
+    scheduledTasksTemplateDailyContentScriptPrompt:
+      '请结合当月选题规划与我的第二大脑人设认知，生成今日的一条 60 秒老板 IP 短视频口播脚本，包含：3 秒黄金开头钩子、反常识论点、案例支撑与结尾互动引导，并附带小红书图文文案。',
+    scheduledTasksTemplateDailyHotspotShootTitle: '热点跟拍',
+    scheduledTasksTemplateDailyHotspotShootDesc: '抓取全网热点并结合你的卖点，生成可跟拍选题。',
+    scheduledTasksTemplateDailyHotspotShootBadge: '一键',
+    scheduledTasksTemplateDailyHotspotShootSchedule: '每天 11:30',
+    scheduledTasksTemplateDailyHotspotShootTeam: '搜全网热点 · 选题专家 协同',
+    scheduledTasksTemplateDailyHotspotShootPrompt:
+      '请实时抓取全网（抖音、微博、微信生态）与商业、职场、行业相关的最新热门话题，结合我的产品卖点与核心人设，产出 3 个高转化跟拍选题角度及简要脚本。',
+    scheduledTasksTemplateDailyMomentsReachTitle: '朋友圈 / 私域触达',
+    scheduledTasksTemplateDailyMomentsReachDesc: '生成朋友圈/私域触达文案与配图建议。',
+    scheduledTasksTemplateDailyMomentsReachBadge: '一键',
+    scheduledTasksTemplateDailyMomentsReachSchedule: '每天 19:00',
+    scheduledTasksTemplateDailyMomentsReachTeam: '私域运营专家 · 写口播 协同',
+    scheduledTasksTemplateDailyMomentsReachPrompt:
+      '请根据今日工作感悟与客户互动，为我撰写 2 条晚间朋友圈文案（1条人设价值输出、1条客户成交见证）以及 1 套社群晚报触达话术，保持专业真实不硬广。',
     scheduledTasksServiceStarting: '定时任务服务正在启动...',
     scheduledTasksLoading: '正在加载定时任务...',
     scheduledTasksLoadFailed: '定时任务数据加载失败',
@@ -6608,49 +6646,91 @@ const translations: Record<LanguageType, Record<string, string>> = {
     scheduledTasksMoreActions: 'More actions',
     scheduledTasksBlankCreate: 'Start from scratch',
     scheduledTasksBlankCreateHint: 'Write your own prompt and schedule',
-    scheduledTasksTemplatesSection: 'Quick start from a template',
+    scheduledTasksTemplatesSection: 'Recommended Business Automation Templates',
+    scheduledTasksTemplatesSectionSubtitle:
+      'Pre-configured based on executive business routines. Click to adopt and receive updates.',
+    scheduledTasksTemplateMonthlyCategory: '🗓 Monthly Routine',
+    scheduledTasksTemplateWeeklyCategory: '📆 Weekly Routine',
+    scheduledTasksTemplateDailyCategory: '📅 Daily Routine',
+    scheduledTasksTemplateAdoptBtn: 'Adopt as My Task',
     scheduledTasksTemplateTitle: 'Scheduled Task Templates',
     scheduledTasksTemplateSubtitle:
-      'Pick a common office automation scenario to prefill the plan and task instructions',
+      'Pick a common business automation scenario to prefill the plan and task instructions',
     scheduledTasksTemplateUse: 'Use template',
     scheduledTasksTemplateNew: 'New',
     scheduledTasksTemplateEmpty: 'No templates available',
-    scheduledTasksTemplateTechBriefingTitle: 'Tech Morning Brief',
-    scheduledTasksTemplateTechBriefingDesc:
-      'Summarize technology, AI, and product updates on workday mornings for quick scanning.',
-    scheduledTasksTemplateTechBriefingSchedule: 'Weekdays 08:30',
-    scheduledTasksTemplateTechBriefingPrompt:
-      'Collect and summarize technology, AI, and product updates from the past 24 hours. Select 5-8 items relevant to office, engineering, and product teams. For each item, include what happened, why it matters, and a possible follow-up action. End with keywords worth watching today.',
-    scheduledTasksTemplateWorkdayWrapTitle: 'Workday Wrap-up',
-    scheduledTasksTemplateWorkdayWrapDesc:
-      'Review daily progress, risks, and tomorrow tasks before the end of each workday.',
-    scheduledTasksTemplateWorkdayWrapSchedule: 'Weekdays 18:00',
-    scheduledTasksTemplateWorkdayWrapPrompt:
-      "Prepare today's work wrap-up with sections for completed items, in-progress work, blockers, and tomorrow's to-do list. Keep it concise and actionable, and call out items that should be synced with teammates.",
-    scheduledTasksTemplateMeetingPrepTitle: 'Meeting Prep',
-    scheduledTasksTemplateMeetingPrepDesc:
-      'Prepare goals, open questions, and materials before the day starts.',
-    scheduledTasksTemplateMeetingPrepSchedule: 'Weekdays 08:45',
-    scheduledTasksTemplateMeetingPrepPrompt:
-      "Use accessible calendar, task, or work records to prepare for today's meetings and priorities. List each meeting's goal, materials to review, questions to confirm, and follow-up actions to track afterward.",
-    scheduledTasksTemplateWeeklyReportTitle: 'Weekly Report Draft',
-    scheduledTasksTemplateWeeklyReportDesc:
-      'Draft a structured weekly report every Friday before the end of the day.',
-    scheduledTasksTemplateWeeklyReportSchedule: 'Friday 17:30',
-    scheduledTasksTemplateWeeklyReportPrompt:
-      "Draft this week's work report with completed work, key progress, measurable outcomes, problems and risks, and next week's plan. Use a tone suitable for sending directly to a manager or team.",
-    scheduledTasksTemplateProjectHealthTitle: 'Project Health Check',
-    scheduledTasksTemplateProjectHealthDesc:
-      'Check project status, recent changes, and potential risks on a regular schedule.',
-    scheduledTasksTemplateProjectHealthSchedule: 'Daily 10:00',
-    scheduledTasksTemplateProjectHealthPrompt:
-      'Check the current project health. Focus on recent changes, test or build status, obvious TODOs or risks, and improvement opportunities. Provide a brief inspection report and list items that need human follow-up.',
-    scheduledTasksTemplateMonthlyAdminTitle: 'Monthly Admin Reminder',
-    scheduledTasksTemplateMonthlyAdminDesc:
-      'Remind me to handle invoices, expenses, renewals, contracts, and routine admin tasks.',
-    scheduledTasksTemplateMonthlyAdminSchedule: 'Monthly on the 25th at 10:00',
-    scheduledTasksTemplateMonthlyAdminPrompt:
-      "Remind me to organize this month's admin tasks, including invoices, expenses, subscription renewals, contracts, equipment, and other items that should be handled before month end. Output a checklist and mark suggested priority.",
+    scheduledTasksTemplateNextMonthTopicsTitle: 'Next Month Topic Planning',
+    scheduledTasksTemplateNextMonthTopicsDesc:
+      'Automatically generate and push a 30-day executive IP topic calendar based on Second Brain & trends.',
+    scheduledTasksTemplateNextMonthTopicsBadge: 'Monthly on the 1st at 09:00 · Auto',
+    scheduledTasksTemplateNextMonthTopicsSchedule: 'Monthly on the 1st at 09:00',
+    scheduledTasksTemplateNextMonthTopicsTeam: 'Topic Expert · Selling Point Converter · Calendar Planner',
+    scheduledTasksTemplateNextMonthTopicsPrompt:
+      'Please combine my Second Brain knowledge base with current industry trends to automatically plan a 30-day executive IP topic calendar for next month. Include: topic title, core hook, target audience, conversion path (public/private), and suggested format.',
+    scheduledTasksTemplateMonthlyBusinessReviewTitle: 'Monthly Business Review',
+    scheduledTasksTemplateMonthlyBusinessReviewDesc:
+      'Automatically summarize business metrics, cash flow, and key decisions at month-end.',
+    scheduledTasksTemplateMonthlyBusinessReviewBadge: 'Month-end · Auto',
+    scheduledTasksTemplateMonthlyBusinessReviewSchedule: 'Monthly on the 28th at 18:00',
+    scheduledTasksTemplateMonthlyBusinessReviewTeam: 'Business Decision Expert · Financial Advisor',
+    scheduledTasksTemplateMonthlyBusinessReviewPrompt:
+      'Please conduct a comprehensive monthly business review, analyzing core metric achievement, cash flow status, project gross margins, accounts receivable aging, and key decision execution progress with actionable recommendations.',
+    scheduledTasksTemplateMonthlyPaymentRiskTitle: 'Monthly Payment Risk Scan',
+    scheduledTasksTemplateMonthlyPaymentRiskDesc:
+      'Scan VIP accounts receivable aging and payment milestones at month-end, pushing prioritized collection lists.',
+    scheduledTasksTemplateMonthlyPaymentRiskBadge: 'Monthly on the 28th · Auto',
+    scheduledTasksTemplateMonthlyPaymentRiskSchedule: 'Monthly on the 28th at 10:00',
+    scheduledTasksTemplateMonthlyPaymentRiskTeam: 'Key Account Strategy Expert · Payment Risk Control',
+    scheduledTasksTemplateMonthlyPaymentRiskPrompt:
+      'Please scan all key accounts for payment progress and aging distribution, identifying clients overdue by 30/60/90 days. Output a prioritized collection action list with risk levels, amounts, and recommended strategies.',
+    scheduledTasksTemplateWeeklyDataReviewTitle: 'Weekly Data Review',
+    scheduledTasksTemplateWeeklyDataReviewDesc:
+      'Automatically summarize core business metrics and action items every Monday.',
+    scheduledTasksTemplateWeeklyDataReviewBadge: 'Every Monday · Auto',
+    scheduledTasksTemplateWeeklyDataReviewSchedule: 'Every Monday at 09:30',
+    scheduledTasksTemplateWeeklyDataReviewTeam: 'Business Decision Expert · Data Analytics',
+    scheduledTasksTemplateWeeklyDataReviewPrompt:
+      'Please summarize last week core business data (leads, conversion rate, GMV, follow-ups) compared to targets, analyze fluctuation reasons, and list 3 key action items for this week.',
+    scheduledTasksTemplateWeeklyVipReportTitle: 'Key Account Weekly Report',
+    scheduledTasksTemplateWeeklyVipReportDesc:
+      'Generate key account progress reports and payment risk alerts every Friday.',
+    scheduledTasksTemplateWeeklyVipReportBadge: 'Every Friday · Auto',
+    scheduledTasksTemplateWeeklyVipReportSchedule: 'Friday 17:30',
+    scheduledTasksTemplateWeeklyVipReportTeam: 'Key Account Strategy Expert · Payment Risk Control',
+    scheduledTasksTemplateWeeklyVipReportPrompt:
+      'Please organize this week key account negotiation progress, contract and collection status, customer issues, and abnormal risks into a structured business weekly report.',
+    scheduledTasksTemplateWeeklyCognitiveConflictTitle: 'Cognitive Conflict Adjudication',
+    scheduledTasksTemplateWeeklyCognitiveConflictDesc:
+      'Summarize newly discovered cognitive conflicts weekly for one-click adjudication.',
+    scheduledTasksTemplateWeeklyCognitiveConflictBadge: 'Every Sunday · Auto',
+    scheduledTasksTemplateWeeklyCognitiveConflictSchedule: 'Sunday 20:00',
+    scheduledTasksTemplateWeeklyCognitiveConflictTeam: 'Second Brain · Cognitive Conflict Detection',
+    scheduledTasksTemplateWeeklyCognitiveConflictPrompt:
+      'Please summarize pending cognitive insights and viewpoint conflicts extracted by Second Brain this week, detailing divergence points and confidence scores for executive adjudication.',
+    scheduledTasksTemplateDailyContentScriptTitle: 'Daily Content Script',
+    scheduledTasksTemplateDailyContentScriptDesc:
+      'Automatically generate today executive IP content script and supporting assets every morning.',
+    scheduledTasksTemplateDailyContentScriptBadge: 'Daily 09:00 · Auto',
+    scheduledTasksTemplateDailyContentScriptSchedule: 'Daily 09:00',
+    scheduledTasksTemplateDailyContentScriptTeam: 'Executive IP Marketing Expert · Scriptwriter · Graphic Creator',
+    scheduledTasksTemplateDailyContentScriptPrompt:
+      'Please generate a 60-second executive IP short video script based on monthly topic planning and Second Brain insights, including a 3-second golden hook, counter-intuitive arguments, case examples, and call-to-action.',
+    scheduledTasksTemplateDailyHotspotShootTitle: 'Hotspot Trend Shooting',
+    scheduledTasksTemplateDailyHotspotShootDesc:
+      'Capture internet trending topics and combine with your value propositions for instant shooting.',
+    scheduledTasksTemplateDailyHotspotShootBadge: 'One-click',
+    scheduledTasksTemplateDailyHotspotShootSchedule: 'Daily 11:30',
+    scheduledTasksTemplateDailyHotspotShootTeam: 'Web Trend Scraper · Topic Expert',
+    scheduledTasksTemplateDailyHotspotShootPrompt:
+      'Please fetch trending topics across platforms related to business and career, combining them with my product selling points to output 3 high-converting video angles and outline scripts.',
+    scheduledTasksTemplateDailyMomentsReachTitle: 'Moments & Private Domain Reach',
+    scheduledTasksTemplateDailyMomentsReachDesc:
+      'Generate WeChat Moments copy and private domain outreach suggestions.',
+    scheduledTasksTemplateDailyMomentsReachBadge: 'One-click',
+    scheduledTasksTemplateDailyMomentsReachSchedule: 'Daily 19:00',
+    scheduledTasksTemplateDailyMomentsReachTeam: 'Private Domain Operations Expert · Scriptwriter',
+    scheduledTasksTemplateDailyMomentsReachPrompt:
+      'Please craft 2 evening WeChat Moments posts (1 personal value insight, 1 client deal testimonial) and 1 community night-wrap message based on today work reflections.',
     scheduledTasksServiceStarting: 'Starting scheduled task service...',
     scheduledTasksLoading: 'Loading scheduled tasks...',
     scheduledTasksLoadFailed: 'Failed to load scheduled task data',
