@@ -225,7 +225,7 @@ export function registerKitHandlers(deps: KitHandlerDeps): void {
 
   // Fetch kit store catalog from overmind
   ipcMain.handle('kits:fetchStore', async () => {
-    const url = `${getKitStoreUrl()}?t=${Date.now()}`;
+    const url = getKitStoreUrl()
     console.log(`[KitStore] fetching from: ${url}`);
     try {
       const http = await import('http');

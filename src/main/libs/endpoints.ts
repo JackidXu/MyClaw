@@ -50,7 +50,7 @@ export const getFallbackDownloadUrl = (): string => (
   'https://claw.chaohui.ai/'
 );
 
-export const getSkillStoreUrl = (): string => `https://scrm0.cdn.banchengyun.com/heyclaw/server-assets/skill-store.json?_t=${Date.now()}`;
+export const getSkillStoreUrl = (): string => `${getServerApiBaseUrl()}/api/skills`;
 
 // Portal 页面
 const PORTAL_BASE_TEST = 'https://lobsterai.inner.youdao.com/portal#';
@@ -60,4 +60,6 @@ const getPortalBase = (): string => isTestModeEnabled() ? PORTAL_BASE_TEST : POR
 
 export const getPortalTasksUrl = (): string => `${getPortalBase()}/profile/detail?tab=tasks`;
 
-export const getKitStoreUrl = (): string => `https://scrm0.cdn.banchengyun.com/heyclaw/server-assets/kit-store.json?_t=${Date.now()}`;
+export const getKitStoreUrl = (): string => `${getServerApiBaseUrl()}/api/kits`;
+
+export const getQuickActionsUrl = (): string => `${getServerApiBaseUrl()}/api/quick-actions`;
