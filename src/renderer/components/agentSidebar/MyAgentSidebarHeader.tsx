@@ -14,8 +14,8 @@ const MyAgentSidebarHeader: React.FC<MyAgentSidebarHeaderProps> = ({
   onSearchTasks,
 }) => {
   return (
-    <div className="group sticky top-0 z-30 -ml-[6px] flex h-10 w-[calc(100%+12px)] items-center justify-between bg-surface-raised pl-3 pr-1">
-      <h2 className="min-w-0 truncate text-sm font-normal text-secondary">
+    <div className="group sticky top-0 z-30 -ml-[6px] flex h-9 w-[calc(100%+12px)] items-center justify-between bg-surface-raised pl-3 pr-1">
+      <h2 className="min-w-0 truncate text-[12px] font-medium text-secondary/75 tracking-wide">
         {i18nService.t('myAgents')}
       </h2>
       <div className="flex items-center gap-0.5">
@@ -23,10 +23,10 @@ const MyAgentSidebarHeader: React.FC<MyAgentSidebarHeaderProps> = ({
           <button
             type="button"
             onClick={onSearchTasks}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-foreground opacity-[0.34] transition-opacity hover:opacity-[0.5]"
+            className="inline-flex h-6 w-6 items-center justify-center rounded-md text-secondary/60 transition-colors hover:bg-foreground/[0.04] hover:text-foreground"
             aria-label="搜索任务"
           >
-            <MagnifyingGlassIcon className="h-4 w-4" />
+            <MagnifyingGlassIcon className="h-3.5 w-3.5" />
           </button>
         )}
         <Tooltip
@@ -39,10 +39,10 @@ const MyAgentSidebarHeader: React.FC<MyAgentSidebarHeaderProps> = ({
           <button
             type="button"
             onClick={onCreateAgent}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-foreground/60 transition-colors hover:text-foreground"
+            className="inline-flex h-6 w-6 items-center justify-center rounded-md text-secondary/60 transition-colors hover:bg-foreground/[0.04] hover:text-foreground"
             aria-label={i18nService.t('createNewAgent')}
           >
-            <PlusIcon className="h-4 w-4" />
+            <PlusIcon className="h-3.5 w-3.5" />
           </button>
         </Tooltip>
       </div>

@@ -83,10 +83,10 @@ const SidebarNewFeatureBadge = {
   KitsVersion: '2026-06-05',
 } as const;
 const sidebarNavItemClassName =
-  'w-full inline-flex h-7 items-center gap-2 rounded-md px-1.5 text-left text-sm font-normal text-foreground transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.04]';
+  'w-full inline-flex h-[34px] items-center gap-2.5 rounded-lg px-2.5 text-left text-[13px] font-normal text-foreground/85 transition-all duration-150 hover:bg-foreground/[0.04] hover:text-foreground dark:hover:bg-white/[0.05]';
 const activeSidebarNavItemClassName =
-  `${sidebarNavItemClassName} bg-black/[0.06] font-medium hover:bg-black/[0.06] dark:bg-white/[0.07] dark:hover:bg-white/[0.07]`;
-const sidebarCreateIconClassName = 'h-4 w-4 shrink-0';
+  'w-full inline-flex h-[34px] items-center gap-2.5 rounded-lg px-2.5 text-left text-[13px] font-medium text-foreground bg-foreground/[0.07] shadow-[inset_0_0_0_1px_rgba(0,0,0,0.04)] dark:bg-white/[0.08] dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)] transition-all duration-150';
+const sidebarCreateIconClassName = 'h-4 w-4 shrink-0 text-foreground/80';
 
 type SidebarAnalyticsSource = 'home_sidebar' | 'home_agent_sidebar';
 
@@ -842,11 +842,11 @@ const Sidebar: React.FC<SidebarProps> = ({
           </div>
         )}
         {showHeaderRow && (
-          <div className="px-3 py-1.5 flex items-center select-none font-semibold text-[12.5px] text-tertiary opacity-40">
-             HeyClaw生意增长助手
+          <div className="px-3 pt-2 pb-1 flex items-center select-none text-[11px] font-medium tracking-wide text-secondary/60">
+            HeyClaw 增长助手
           </div>
         )}
-        <div className="mt-[5px] space-y-0.5 px-3">
+        <div className="mt-1 space-y-1 px-2.5">
           <button
             type="button"
             onClick={() => {
@@ -856,7 +856,10 @@ const Sidebar: React.FC<SidebarProps> = ({
             className={sidebarNavItemClassName}
           >
             <ComposeIcon className={sidebarCreateIconClassName} />
-            {i18nService.t('newChat')}
+            <span>{i18nService.t('newChat')}</span>
+            <span className="ml-auto inline-flex items-center text-[10.5px] font-medium text-secondary/40">
+              ⌘N
+            </span>
           </button>
           <button
             type="button"
