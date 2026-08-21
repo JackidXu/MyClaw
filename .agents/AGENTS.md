@@ -115,3 +115,7 @@ HeyClaw 采用双后端支撑体系：
 - **精准 Lint 检查（规避老旧历史包袱）**：
   `npx eslint --ext ts,tsx --report-unused-disable-directives --max-warnings 0 <改动文件路径>`。
 
+### 2.10 改完代码必须验证原则 (Mandatory Verification Post-Edit)
+- **改完代码必须验证**：任何代码修改完成后，必须第一时间主动运行编译/类型检查（如主进程改动必须运行 `npm run compile:electron`，触碰代码必须运行指定文件的 eslint 检查），**严禁未验证直接向用户交付**。
+
+
