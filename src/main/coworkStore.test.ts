@@ -85,6 +85,14 @@ function setupDb(): void {
   `);
 
   db.exec(`
+    CREATE TABLE IF NOT EXISTS library_artifact_sessions (
+      artifact_id TEXT NOT NULL,
+      session_id TEXT NOT NULL,
+      PRIMARY KEY (artifact_id, session_id)
+    );
+  `);
+
+  db.exec(`
     CREATE TABLE IF NOT EXISTS cowork_config (
       key TEXT PRIMARY KEY,
       value TEXT
@@ -914,6 +922,9 @@ test('deleteSession removes messages without relying on foreign key cascade', ()
   const sid = 'sess-delete-hard';
   insertSession(sid);
   insertMessage('msg-delete-hard', sid, 'user', 'remove me', '{}', 1);
+  db.prepare(`
+    INSERT INTO library_artifact_sessions (artifact_id, session_id) VALUES (?, ?)
+  `).run('artifact-delete-hard', sid);
 
   store.deleteSession(sid);
 
@@ -922,6 +933,10 @@ test('deleteSession removes messages without relying on foreign key cascade', ()
     .prepare('SELECT COUNT(*) AS count FROM cowork_messages WHERE session_id = ?')
     .get(sid) as { count: number };
   expect(messageCount.count).toBe(0);
+  const relationCount = db
+    .prepare('SELECT COUNT(*) AS count FROM library_artifact_sessions WHERE session_id = ?')
+    .get(sid) as { count: number };
+  expect(relationCount.count).toBe(0);
 });
 
 test('forkSession copies stable history and records fork metadata', () => {

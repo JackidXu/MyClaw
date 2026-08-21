@@ -7,6 +7,8 @@ import {
   HtmlShareStatus,
   type HtmlShareStatus as HtmlShareStatusValue,
 } from '@shared/htmlShare/constants';
+import { LibraryNavigationEvent } from '@shared/library/constants';
+import type { PublishingQuotaErrorData } from '@shared/publishing/constants';
 import {
   createContext,
   type ReactNode,
@@ -68,6 +70,7 @@ import {
   resolveArtifactSubscriptionDecision,
 } from './artifactSubscriptionGate';
 import ArtifactSubscriptionPromptDialog from './ArtifactSubscriptionPromptDialog';
+import PublishingQuotaLimitDialog from './PublishingQuotaLimitDialog';
 
 const t = (key: string) => i18nService.t(key);
 
@@ -79,6 +82,7 @@ interface ArtifactFileShareRecord {
   shareCodeUnavailable?: boolean;
   status: HtmlShareStatusValue;
   disabledSource?: HtmlShareDisabledSourceValue | null;
+  accessExpiresAt?: string | null;
 }
 
 interface ArtifactFileShareDialogState {
@@ -98,6 +102,7 @@ interface PreparedArtifactFileShare {
 }
 
 interface ArtifactFileShareControllerValue {
+  isOverlayOpen: boolean;
   openShare: (
     artifact: Artifact,
     context: ArtifactFileShareOpenContext,
@@ -121,11 +126,13 @@ const ArtifactFileShareContext = createContext<ArtifactFileShareControllerValue 
 
 class ArtifactFileShareRequestError extends Error {
   readonly code?: number;
+  readonly quota?: PublishingQuotaErrorData;
 
-  constructor(message: string, code?: number) {
+  constructor(message: string, code?: number, quota?: PublishingQuotaErrorData) {
     super(message);
     this.name = 'ArtifactFileShareRequestError';
     this.code = code;
+    this.quota = quota;
   }
 }
 
@@ -173,6 +180,7 @@ function getShareRecord(
         shareCodeUnavailable?: boolean;
         status?: HtmlShareStatusValue;
         disabledSource?: HtmlShareDisabledSourceValue | null;
+        accessExpiresAt?: string | null;
       }
     | null
     | undefined,
@@ -202,6 +210,7 @@ function getShareRecord(
       status === HtmlShareStatus.Disabled
         ? (value?.disabledSource ?? previous?.disabledSource)
         : undefined,
+    accessExpiresAt: value?.accessExpiresAt ?? previous?.accessExpiresAt,
   };
 }
 
@@ -210,7 +219,11 @@ function requireShareRecord(
   previous?: ArtifactFileShareRecord,
 ): ArtifactFileShareRecord {
   if (!result?.success) {
-    throw new ArtifactFileShareRequestError(getFailureMessage(result), result?.code);
+    throw new ArtifactFileShareRequestError(
+      getFailureMessage(result),
+      result?.code,
+      result?.quota,
+    );
   }
   const share = getShareRecord(result, previous);
   if (!share) {
@@ -297,6 +310,8 @@ export function ArtifactFileShareProvider({ sessionId, children }: ArtifactFileS
   const [dialog, setDialog] = useState<ArtifactFileShareDialogState | null>(null);
   const [subscriptionPrompt, setSubscriptionPrompt] =
     useState<ArtifactSubscriptionPromptState | null>(null);
+  const [publishingQuota, setPublishingQuota] =
+    useState<PublishingQuotaErrorData | null>(null);
   const [copyStatus, setCopyStatus] = useState<ArtifactFileShareCopyStatus>(
     ArtifactFileShareCopyStatus.Idle,
   );
@@ -329,6 +344,7 @@ export function ArtifactFileShareProvider({ sessionId, children }: ArtifactFileS
     preparationPromisesRef.current.clear();
     setDialog(null);
     setSubscriptionPrompt(null);
+    setPublishingQuota(null);
     resetFeedback();
   }, [
     authState.accountGeneration,
@@ -348,6 +364,13 @@ export function ArtifactFileShareProvider({ sessionId, children }: ArtifactFileS
   const closeSubscriptionPrompt = useCallback(() => {
     generationRef.current += 1;
     setSubscriptionPrompt(null);
+  }, []);
+
+  const showPublishingQuota = useCallback((error: unknown): boolean => {
+    if (!(error instanceof ArtifactFileShareRequestError) || !error.quota) return false;
+    setDialog(null);
+    setPublishingQuota(error.quota);
+    return true;
   }, []);
 
   const isDialogOpen = Boolean(dialog);
@@ -512,6 +535,7 @@ export function ArtifactFileShareProvider({ sessionId, children }: ArtifactFileS
       resetFeedback();
       setDialog(null);
       setSubscriptionPrompt(null);
+      setPublishingQuota(null);
 
       try {
         const subscriptionDecision = await getSubscriptionDecision();
@@ -716,6 +740,7 @@ export function ArtifactFileShareProvider({ sessionId, children }: ArtifactFileS
         });
         return;
       }
+      if (showPublishingQuota(error)) return;
       const message = error instanceof Error ? error.message : t('htmlShareFailed');
       logShare(
         'warn',
@@ -732,7 +757,7 @@ export function ArtifactFileShareProvider({ sessionId, children }: ArtifactFileS
       }
       releaseMutationBarrier?.();
     }
-  }, [dialog, refreshShare, resetFeedback]);
+  }, [dialog, refreshShare, resetFeedback, showPublishingQuota]);
 
   const submitPermissionChange = useCallback(async (): Promise<void> => {
     const snapshot = dialog;
@@ -832,6 +857,7 @@ export function ArtifactFileShareProvider({ sessionId, children }: ArtifactFileS
         });
         return;
       }
+      if (showPublishingQuota(error)) return;
       const refreshedShare = await refreshShare(api, snapshot.request, lastConfirmedShare);
       if (generationRef.current !== runId) return;
       const retryPlan = buildArtifactFileSharePermissionPlan(refreshedShare, targetPermission);
@@ -859,7 +885,7 @@ export function ArtifactFileShareProvider({ sessionId, children }: ArtifactFileS
       }
       releaseMutationBarrier?.();
     }
-  }, [dialog, refreshShare]);
+  }, [dialog, refreshShare, showPublishingQuota]);
 
   const updateFile = useCallback(async (): Promise<void> => {
     const snapshot = dialog;
@@ -928,6 +954,7 @@ export function ArtifactFileShareProvider({ sessionId, children }: ArtifactFileS
         });
         return;
       }
+      if (showPublishingQuota(error)) return;
       const message = error instanceof Error ? error.message : t('htmlShareFailed');
       setDialog(previous =>
         previous && previous.artifact.id === snapshot.artifact.id
@@ -940,7 +967,7 @@ export function ArtifactFileShareProvider({ sessionId, children }: ArtifactFileS
       }
       releaseMutationBarrier?.();
     }
-  }, [dialog, refreshShare, resetFeedback, showTimedUpdateSuccess]);
+  }, [dialog, refreshShare, resetFeedback, showPublishingQuota, showTimedUpdateSuccess]);
 
   const copyShare = useCallback(async (): Promise<void> => {
     const share = dialog?.share;
@@ -980,9 +1007,17 @@ export function ArtifactFileShareProvider({ sessionId, children }: ArtifactFileS
     closeSubscriptionPrompt();
   }, [closeSubscriptionPrompt]);
 
+  const openLoginPage = useCallback(() => {
+    closeSubscriptionPrompt();
+    void authService.login();
+  }, [closeSubscriptionPrompt]);
+
   const contextValue = useMemo<ArtifactFileShareControllerValue>(
-    () => ({ openShare }),
-    [openShare],
+    () => ({
+      isOverlayOpen: isDialogOpen || Boolean(subscriptionPrompt) || Boolean(publishingQuota),
+      openShare,
+    }),
+    [isDialogOpen, openShare, publishingQuota, subscriptionPrompt],
   );
 
   const share = dialog?.share;
@@ -1087,6 +1122,7 @@ export function ArtifactFileShareProvider({ sessionId, children }: ArtifactFileS
               !isPermissionDirty &&
               (share.shareCodeUnavailable || !share.shareCode),
             )}
+            accessExpiresAt={share?.accessExpiresAt}
             canRetry={Boolean(dialog.request)}
             canCreate={canCreate}
             canSubmitPermission={canSubmitPermission}
@@ -1112,7 +1148,20 @@ export function ArtifactFileShareProvider({ sessionId, children }: ArtifactFileS
       feature={subscriptionPrompt.feature}
       reason={subscriptionPrompt.reason}
       onCancel={closeSubscriptionPrompt}
+      onLogin={openLoginPage}
       onSubscribe={openSubscriptionPage}
+    />
+  ) : null;
+
+  const publishingQuotaPortal = publishingQuota ? (
+    <PublishingQuotaLimitDialog
+      quota={publishingQuota}
+      onClose={() => setPublishingQuota(null)}
+      onSubscribe={openSubscriptionPage}
+      onManage={() => {
+        setPublishingQuota(null);
+        window.dispatchEvent(new Event(LibraryNavigationEvent.OpenCloud));
+      }}
     />
   ) : null;
 
@@ -1121,6 +1170,7 @@ export function ArtifactFileShareProvider({ sessionId, children }: ArtifactFileS
       {children}
       {dialogPortal}
       {subscriptionPromptPortal}
+      {publishingQuotaPortal}
     </ArtifactFileShareContext.Provider>
   );
 }

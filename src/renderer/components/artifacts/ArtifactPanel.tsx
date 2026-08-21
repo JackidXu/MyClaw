@@ -32,7 +32,9 @@ import {
   HtmlShareStatus,
   type HtmlShareStatus as HtmlShareStatusValue,
 } from '@shared/htmlShare/constants';
+import { LibraryNavigationEvent } from '@shared/library/constants';
 import type { LocalWebService } from '@shared/localWebServices/constants';
+import type { PublishingQuotaErrorData } from '@shared/publishing/constants';
 import {
   ShareDeploymentCandidateSource,
   ShareDeploymentFailureCode,
@@ -51,7 +53,6 @@ import { findShareDeploymentPersistencePathConflict } from '@shared/shareDeploym
 import {
   type SiteDeploymentQuota,
   SiteErrorCode,
-  type SiteQuotaCandidate,
 } from '@shared/site/constants';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -149,13 +150,17 @@ import NodeDeploymentPersistenceOperationStatus, {
   NodeDeploymentPersistenceOperationPhase,
   type NodeDeploymentPersistenceOperationState,
 } from './NodeDeploymentPersistenceOperationStatus';
+import PublishingQuotaLimitDialog from './PublishingQuotaLimitDialog';
+import {
+  PublishingTrialStatus,
+  usePublishingTrialStatus,
+} from './PublishingTrialStatus';
 import CodeRenderer from './renderers/CodeRenderer';
 import {
   OfficePreviewActionsContext,
   type OfficePreviewZoomControlsConfig,
 } from './renderers/OfficePreviewActionsContext';
 import { OfficeZoomControls } from './renderers/OfficeZoomControls';
-import SiteQuotaReplacementDialog from './SiteQuotaReplacementDialog';
 
 const t = (key: string) => i18nService.t(key);
 
@@ -264,6 +269,7 @@ interface HtmlShareDialogState {
   status?: HtmlShareStatusValue;
   targetStatus?: HtmlShareConfigurableStatus;
   disabledSource?: HtmlShareDisabledSourceValue | null;
+  accessExpiresAt?: string | null;
   statusError?: string;
   contentUpdateStatus?: HtmlShareContentUpdateStatus;
 }
@@ -276,6 +282,7 @@ interface ExistingHtmlShareInfo {
   shareCodeUnavailable?: boolean;
   status?: HtmlShareStatusValue;
   disabledSource?: HtmlShareDisabledSourceValue | null;
+  accessExpiresAt?: string | null;
 }
 
 interface HtmlShareLookupState {
@@ -330,14 +337,6 @@ interface NodeDeploymentLaunchContext {
   projectCandidates?: ShareDeploymentProjectCandidate[];
 }
 
-interface SiteQuotaDialogState {
-  quota: SiteDeploymentQuota;
-  launchContext: NodeDeploymentLaunchContext;
-  targetShareId?: string;
-  keyword: string;
-  error?: string;
-}
-
 function isNodeDeploymentDialogForLocalService(
   dialog: NodeDeploymentDialogState | null,
   localService: LocalWebService | null,
@@ -358,6 +357,7 @@ function getExistingHtmlShareInfo(
     shareCodeUnavailable?: boolean;
     status?: HtmlShareStatusValue;
     disabledSource?: HtmlShareDisabledSourceValue | null;
+    accessExpiresAt?: string | null;
   } | null | undefined,
 ): ExistingHtmlShareInfo | null {
   if (!share?.shareId || !share.url) return null;
@@ -369,6 +369,7 @@ function getExistingHtmlShareInfo(
     shareCodeUnavailable: share.shareCodeUnavailable,
     status: share.status,
     disabledSource: share.disabledSource,
+    accessExpiresAt: share.accessExpiresAt,
   };
 }
 
@@ -805,8 +806,8 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
   const [isNodeDeploymentLookupPending, setIsNodeDeploymentLookupPending] = useState(false);
   const [isNodeDeploymentBusy, setIsNodeDeploymentBusy] = useState(false);
   const [isNodeDeploymentAccessUpdating, setIsNodeDeploymentAccessUpdating] = useState(false);
-  const [siteQuotaDialog, setSiteQuotaDialog] = useState<SiteQuotaDialogState | null>(null);
-  const [isSiteQuotaActionBusy, setIsSiteQuotaActionBusy] = useState(false);
+  const [publishingQuotaDialog, setPublishingQuotaDialog] =
+    useState<PublishingQuotaErrorData | null>(null);
   const [isHtmlShareStatusUpdating, setIsHtmlShareStatusUpdating] = useState(false);
   const [htmlShareCopyStatus, setHtmlShareCopyStatus] =
     useState<HtmlShareCopyStatus>(HtmlShareCopyStatus.Idle);
@@ -1286,6 +1287,7 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
     setHtmlShareLookup(null);
     setHtmlSharePhase(HtmlSharePhase.Idle);
     setSubscriptionPrompt(null);
+    setPublishingQuotaDialog(null);
     setNodeDeploymentLookup(null);
     setNodeDeploymentDialog(null);
     setNodeDeploymentPersistenceOperations({});
@@ -1760,6 +1762,11 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
     closeSubscriptionPrompt();
   }, [closeSubscriptionPrompt]);
 
+  const openLoginPage = useCallback(() => {
+    closeSubscriptionPrompt();
+    void authService.login();
+  }, [closeSubscriptionPrompt]);
+
   const formatShareClipboardText = useCallback((url: string, shareCode?: string): string => {
     if (!shareCode) return url;
     const linkLine = `${t('htmlShareClipboardLinkLabel')}: ${url}`;
@@ -1832,6 +1839,7 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
         shareCodeUnavailable?: boolean;
         status?: HtmlShareStatusValue;
         disabledSource?: HtmlShareDisabledSourceValue | null;
+        accessExpiresAt?: string | null;
       } | null | undefined,
     );
     if (!existingShare) return;
@@ -1854,14 +1862,30 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
     });
   }, []);
 
+  const showPublishingQuotaDialog = useCallback((
+    quota: PublishingQuotaErrorData | null | undefined,
+  ): boolean => {
+    if (!quota) return false;
+    setHtmlShareDialog(null);
+    setHtmlSharePendingRequest(null);
+    setNodeDeploymentDialog(null);
+    setIsNodeDeploymentDialogOpen(false);
+    setPublishingQuotaDialog(quota);
+    return true;
+  }, []);
+
   const handleHtmlShareResult = useCallback(
     (
       result: Awaited<
         ReturnType<NonNullable<typeof window.electron>['htmlShare']['createFromHtmlFile']>
       >,
       action: 'create' | 'update' = 'create',
-    ) => {
+    ): boolean => {
       if (!result?.success || !result.url) {
+        if (showPublishingQuotaDialog(result?.quota)) {
+          setHtmlSharePhase(HtmlSharePhase.Failed);
+          return false;
+        }
         if (result?.code === HtmlShareErrorCode.SubscriptionRequired) {
           setHtmlShareDialog(null);
           setHtmlSharePendingRequest(null);
@@ -1870,7 +1894,7 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
             reason: ArtifactSubscriptionBlockReason.SubscriptionRequired,
           });
           setHtmlSharePhase(HtmlSharePhase.Failed);
-          return;
+          return false;
         }
         throw new Error(getHtmlShareFailureMessage(result));
       }
@@ -1900,9 +1924,11 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
         shareCodeUnavailable: result.shareCodeUnavailable,
         status: result.status,
         disabledSource: result.disabledSource,
+        accessExpiresAt: result.accessExpiresAt,
       });
+      return true;
     },
-    [],
+    [showPublishingQuotaDialog],
   );
 
   const openNodeDeploymentStatusDialog = useCallback((
@@ -2094,32 +2120,28 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
   );
 
   const fetchSiteDeploymentQuota = useCallback(async (
-    launchContext: NodeDeploymentLaunchContext,
     targetShareId?: string,
-    keyword = '',
-    page = 1,
   ): Promise<SiteDeploymentQuota> => {
     const result = await window.electron?.sites?.getDeploymentQuota({
       targetShareId,
-      keyword,
-      page,
+      page: 1,
       pageSize: 10,
     });
     if (!result?.success || !result.data) {
       throw new Error(result?.error || t('siteQuotaLoadFailed'));
     }
     if (!result.data.allowed) {
-      setNodeDeploymentDialog(null);
-      setIsNodeDeploymentDialogOpen(false);
-      setSiteQuotaDialog({
-        quota: result.data,
-        launchContext,
-        targetShareId,
-        keyword,
+      showPublishingQuotaDialog({
+        resourceKind: result.data.resourceKind,
+        identityType: result.data.identityType,
+        countMode: result.data.countMode,
+        used: result.data.usage.used,
+        limit: result.data.usage.limit,
+        canReleaseByClosing: result.data.canReleaseByClosing,
       });
     }
     return result.data;
-  }, []);
+  }, [showPublishingQuotaDialog]);
 
   const handleShareLocalServiceDeployment = useCallback(async (
     launchContext: NodeDeploymentLaunchContext,
@@ -2199,12 +2221,7 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
         existingDeployment = existing.deployment ?? null;
         rememberNodeDeployment(lookupKey, existingDeployment);
       }
-      const resolvedLaunchContext: NodeDeploymentLaunchContext = {
-        ...launchContext,
-        projectDirectory,
-      };
       const quota = await fetchSiteDeploymentQuota(
-        resolvedLaunchContext,
         existingDeployment?.shareId,
       );
       if (nodeDeploymentActionRunIdRef.current !== runId || !quota.allowed) return;
@@ -2329,76 +2346,6 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
     handleShareLocalServiceDeployment,
     selectedNodeDeploymentLookupKey,
   ]);
-
-  const querySiteQuotaCandidates = useCallback(async (keyword: string, page: number) => {
-    const snapshot = siteQuotaDialog;
-    if (!snapshot || isSiteQuotaActionBusy) return;
-    setIsSiteQuotaActionBusy(true);
-    try {
-      const quota = await fetchSiteDeploymentQuota(
-        snapshot.launchContext,
-        snapshot.targetShareId,
-        keyword,
-        page,
-      );
-      setSiteQuotaDialog(previous => previous
-        ? { ...previous, quota, keyword, error: undefined }
-        : previous);
-    } catch (error) {
-      setSiteQuotaDialog(previous => previous
-        ? {
-            ...previous,
-            error: error instanceof Error ? error.message : t('siteQuotaLoadFailed'),
-          }
-        : previous);
-    } finally {
-      setIsSiteQuotaActionBusy(false);
-    }
-  }, [fetchSiteDeploymentQuota, isSiteQuotaActionBusy, siteQuotaDialog]);
-
-  const stopSiteForQuotaAndContinue = useCallback(async (candidate: SiteQuotaCandidate) => {
-    const snapshot = siteQuotaDialog;
-    if (!snapshot || isSiteQuotaActionBusy) return;
-    setIsSiteQuotaActionBusy(true);
-    try {
-      const stopped = await window.electron?.sites?.updateAccessStatus({
-        shareId: candidate.shareId,
-        status: HtmlShareStatus.Disabled,
-      });
-      if (!stopped?.success) {
-        throw new Error(stopped?.error || t('siteQuotaStopFailed'));
-      }
-      const refreshed = await window.electron?.sites?.getDeploymentQuota({
-        targetShareId: snapshot.targetShareId,
-        page: 1,
-        pageSize: 10,
-      });
-      if (!refreshed?.success || !refreshed.data) {
-        throw new Error(refreshed?.error || t('siteQuotaLoadFailed'));
-      }
-      const refreshedQuota = refreshed.data;
-      if (!refreshedQuota.allowed) {
-        setSiteQuotaDialog(previous => previous
-          ? { ...previous, quota: refreshedQuota, keyword: '', error: undefined }
-          : previous);
-        return;
-      }
-      const launchContext = snapshot.launchContext;
-      setSiteQuotaDialog(null);
-      setNodeDeploymentDialog(null);
-      setIsNodeDeploymentDialogOpen(false);
-      window.setTimeout(() => void handleShareLocalServiceDeployment(launchContext), 0);
-    } catch (error) {
-      setSiteQuotaDialog(previous => previous
-        ? {
-            ...previous,
-            error: error instanceof Error ? error.message : t('siteQuotaStopFailed'),
-          }
-        : previous);
-    } finally {
-      setIsSiteQuotaActionBusy(false);
-    }
-  }, [handleShareLocalServiceDeployment, isSiteQuotaActionBusy, siteQuotaDialog]);
 
   useEffect(() => {
     const request = localServiceDeploymentRequest;
@@ -3301,10 +3248,6 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
     const startCommand = isStaticDeployment
       ? ''
       : currentDialog.startCommand || currentDialog.analysis?.startCommand || 'npm run start';
-    const quotaLaunchContext: NodeDeploymentLaunchContext = {
-      localService: currentDialog.localService,
-      projectDirectory: currentDialog.projectDirectory,
-    };
     let quotaReservationId: string | undefined;
     let deploymentAccepted = false;
 
@@ -3328,8 +3271,8 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
       });
       if (!reservation?.success || !reservation.data?.reservationId) {
         if (reservation?.code === SiteErrorCode.DeploymentQuotaExceeded) {
+          if (showPublishingQuotaDialog(reservation.quota)) return;
           await fetchSiteDeploymentQuota(
-            quotaLaunchContext,
             currentDialog.deployment?.shareId,
           );
           return;
@@ -3381,7 +3324,6 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
       if (!result?.success || !result.deployment) {
         if (result?.code === SiteErrorCode.DeploymentQuotaExceeded) {
           await fetchSiteDeploymentQuota(
-            quotaLaunchContext,
             currentDialog.deployment?.shareId,
           );
           return;
@@ -3473,6 +3415,7 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
     rememberLocalServiceProjectDirectory,
     rememberNodeDeployment,
     sessionId,
+    showPublishingQuotaDialog,
   ]);
 
   const storeNodeDeploymentPersistenceOperation = useCallback((
@@ -3726,7 +3669,7 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
               remoteUrl: request.remoteUrl,
             });
       if (publishingAccountGenerationRef.current !== requestAccountGeneration) return;
-      await handleHtmlShareResult(result);
+      if (!handleHtmlShareResult(result)) return;
       rememberHtmlShare(request.lookupKey, result);
       window.electron?.log?.fromRenderer?.(
         'debug',
@@ -3837,6 +3780,7 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
             });
       if (publishingAccountGenerationRef.current !== requestAccountGeneration) return;
       if (!result?.success || !result.url) {
+        if (showPublishingQuotaDialog(result?.quota)) return;
         throw new Error(getHtmlShareFailureMessage(result));
       }
       const resultStatus = getConfigurableHtmlShareStatus(result.status) ?? HtmlShareStatus.Live;
@@ -3870,6 +3814,7 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
           status: resultStatus,
           targetStatus: resultStatus,
           disabledSource: result.disabledSource ?? undefined,
+          accessExpiresAt: result.accessExpiresAt ?? previous.accessExpiresAt,
           statusError: undefined,
           contentUpdateStatus: allowActiveLimitRestore
             ? undefined
@@ -3913,6 +3858,7 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
     isHtmlShareContentUpdateDisabled,
     isHtmlSharing,
     rememberHtmlShare,
+    showPublishingQuotaDialog,
   ]);
 
   const updateHtmlShareAccessMode = useCallback(async () => {
@@ -3943,6 +3889,7 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
       });
       if (publishingAccountGenerationRef.current !== requestAccountGeneration) return;
       if (!result?.success || !result.url) {
+        if (showPublishingQuotaDialog(result?.quota)) return;
         throw new Error(getHtmlShareFailureMessage(result));
       }
       const resultAccessMode = normalizeHtmlShareAccessMode(result.accessMode ?? accessMode);
@@ -3954,6 +3901,7 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
         shareCodeUnavailable: result.shareCodeUnavailable,
         status: result.status ?? htmlShareDialog.status,
         disabledSource: result.disabledSource ?? htmlShareDialog.disabledSource,
+        accessExpiresAt: result.accessExpiresAt ?? htmlShareDialog.accessExpiresAt,
       };
       rememberHtmlShare(request.lookupKey, refreshedShare);
       setHtmlShareDialog(previous => {
@@ -3975,6 +3923,7 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
           status: refreshedShare.status,
           targetStatus: getConfigurableHtmlShareStatus(refreshedShare.status),
           disabledSource: refreshedShare.disabledSource ?? undefined,
+          accessExpiresAt: refreshedShare.accessExpiresAt ?? previous.accessExpiresAt,
           statusError: undefined,
         };
       });
@@ -3995,6 +3944,7 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
     htmlSharePendingRequest,
     isHtmlShareStatusUpdating,
     rememberHtmlShare,
+    showPublishingQuotaDialog,
   ]);
 
   const toggleHtmlShareTargetStatus = useCallback(async () => {
@@ -4053,6 +4003,7 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
       });
       if (publishingAccountGenerationRef.current !== requestAccountGeneration) return;
       if (!result?.success || !result.url) {
+        if (showPublishingQuotaDialog(result?.quota)) return;
         throw new Error(getHtmlShareFailureMessage(result));
       }
       let refreshedShare: ExistingHtmlShareInfo | null = null;
@@ -4088,6 +4039,8 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
           refreshedShare?.shareCodeUnavailable ?? result.shareCodeUnavailable,
         status: resultStatus,
         disabledSource: refreshedShare?.disabledSource ?? result.disabledSource,
+        accessExpiresAt:
+          refreshedShare?.accessExpiresAt ?? result.accessExpiresAt ?? htmlShareDialog.accessExpiresAt,
       };
       if (request) {
         rememberHtmlShare(request.lookupKey, refreshedResult);
@@ -4113,6 +4066,7 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
           status: resultStatus,
           targetStatus: resultStatus,
           disabledSource: refreshedResult.disabledSource ?? undefined,
+          accessExpiresAt: refreshedResult.accessExpiresAt ?? previous.accessExpiresAt,
           statusError: undefined,
         };
       });
@@ -4146,6 +4100,7 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
     canRestoreActiveLimitDisabledHtmlShare,
     isHtmlShareStatusUpdating,
     rememberHtmlShare,
+    showPublishingQuotaDialog,
     updateHtmlShare,
   ]);
 
@@ -4266,23 +4221,28 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
     htmlShareDialog?.kind === HtmlShareDialogKind.Create;
   const isHtmlShareExistingDialog =
     htmlShareDialog?.kind === HtmlShareDialogKind.Existing;
+  const htmlShareTrialStatus = usePublishingTrialStatus(htmlShareDialog?.accessExpiresAt);
   const isHtmlShareStoppedDialog =
     isHtmlShareExistingDialog &&
-    htmlShareDialog.targetStatus === HtmlShareStatus.Disabled;
+    (htmlShareTrialStatus.isExpired || htmlShareDialog.targetStatus === HtmlShareStatus.Disabled);
   const isHtmlShareActiveLimitStoppedDialog =
     isHtmlShareStoppedDialog &&
+    !htmlShareTrialStatus.isExpired &&
     htmlShareDialog.disabledSource === HtmlShareDisabledSource.ActiveLimit;
   const htmlShareStoppedNotice =
     !isHtmlShareStoppedDialog
       ? undefined
-      : htmlShareDialog.disabledSource === HtmlShareDisabledSource.ActiveLimit
+      : htmlShareTrialStatus.isExpired
+        ? t('htmlShareStoppedNotice')
+        : htmlShareDialog.disabledSource === HtmlShareDisabledSource.ActiveLimit
         ? t('htmlShareStoppedByActiveLimitNotice')
         : htmlShareDialog.disabledSource === HtmlShareDisabledSource.Admin
           ? t('htmlShareStoppedByAdminNotice')
           : htmlShareDialog.disabledSource === HtmlShareDisabledSource.Moderation
             ? t('htmlShareStoppedByModerationNotice')
             : t('htmlShareStoppedNotice');
-  const isHtmlShareFileUpdateDisabled = isHtmlSharing || isHtmlShareContentUpdateDisabled;
+  const isHtmlShareFileUpdateDisabled =
+    htmlShareTrialStatus.isExpired || isHtmlSharing || isHtmlShareContentUpdateDisabled;
   const htmlShareUpdateActionLabel = t('htmlShareUpdate');
   const htmlShareSelectedAccessMode = normalizeHtmlShareAccessMode(
     htmlShareDialog?.selectedAccessMode ?? htmlShareDialog?.accessMode,
@@ -4294,13 +4254,17 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
     canShowHtmlShareAccessModeControls &&
     htmlShareSelectedAccessMode !== normalizeHtmlShareAccessMode(htmlShareDialog?.accessMode);
   const isHtmlShareAccessModeActionDisabled = Boolean(
-    !isHtmlShareAccessModeChanged || isHtmlShareStatusUpdating || isHtmlSharing,
+    htmlShareTrialStatus.isExpired
+      || !isHtmlShareAccessModeChanged
+      || isHtmlShareStatusUpdating
+      || isHtmlSharing,
   );
   const canShowHtmlShareDialogCopyAction = Boolean(
     canUseHtmlShareDialogLink && !isHtmlShareAccessModeChanged,
   );
   const isHtmlShareAvailabilityActionDisabled = Boolean(
-    !htmlShareDialog?.shareId ||
+    htmlShareTrialStatus.isExpired ||
+      !htmlShareDialog?.shareId ||
       isHtmlShareStatusUpdating ||
       isHtmlSharing ||
       !htmlShareDialog.targetStatus,
@@ -4327,10 +4291,12 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
   );
   const nodeDeploymentAnalysis = nodeDeploymentDialog?.analysis;
   const nodeDeployment = nodeDeploymentDialog?.deployment;
+  const nodeDeploymentTrialStatus = usePublishingTrialStatus(nodeDeployment?.expiresAt);
   const nodeDeploymentShareStatus =
     getConfigurableHtmlShareStatus(nodeDeployment?.shareStatus) ?? HtmlShareStatus.Live;
   const isNodeDeploymentShareDisabled =
-    isLocalServiceDeploymentStopped(nodeDeploymentShareStatus, nodeDeployment?.status);
+    nodeDeploymentTrialStatus.isExpired
+    || isLocalServiceDeploymentStopped(nodeDeploymentShareStatus, nodeDeployment?.status);
   const isDynamicNodeDeployment = Boolean(
     nodeDeployment && nodeDeployment.deploymentKind !== ShareDeploymentKind.StaticSite,
   );
@@ -4372,14 +4338,16 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
     isNodeDeploymentPendingOperation || !isNodeDeploymentAnalysisReady,
   );
   const isNodeDeploymentPermissionUpdateDisabled = Boolean(
-    isNodeDeploymentAccessUpdating ||
+    nodeDeploymentTrialStatus.isExpired ||
+      isNodeDeploymentAccessUpdating ||
       isNodeDeploymentLookupPending ||
       isNodeDeploymentPending(nodeDeployment?.status) ||
       (isNodeDeploymentBusy &&
         (nodeDeploymentDialog?.phase !== NodeDeploymentPhase.Analyzing || !nodeDeployment)),
   );
   const isNodeDeploymentPermissionSubmitDisabled = Boolean(
-    nodeDeploymentPermissionSubmitAction !==
+    nodeDeploymentTrialStatus.isExpired ||
+      nodeDeploymentPermissionSubmitAction !==
       LocalServiceDeploymentPermissionSubmitAction.UpdatePermission ||
       isNodeDeploymentBusy ||
       isNodeDeploymentAccessUpdating ||
@@ -4393,7 +4361,8 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
       nodeDeploymentSelectedPermission === LocalServiceDeploymentPermission.Stopped,
   );
   const isNodeDeploymentSubmitDisabled = Boolean(
-    !isNodeDeploymentEditorDialog ||
+    nodeDeploymentTrialStatus.isExpired ||
+      !isNodeDeploymentEditorDialog ||
       isNodeDeploymentPendingOperation ||
       nodeDeploymentDialog?.phase === NodeDeploymentPhase.Live ||
       isNodeDeploymentStoppedWithoutRedeployTarget ||
@@ -4404,9 +4373,8 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
       !nodeDeploymentDialog?.port?.trim() ||
       nodeDeploymentAnalysis?.blockers.length,
   );
-  const isNodeDeploymentPermissionLocked = isLocalServiceDeploymentPermissionLocked(
-    nodeDeployment?.disabledSource,
-  );
+  const isNodeDeploymentPermissionLocked = nodeDeploymentTrialStatus.isExpired
+    || isLocalServiceDeploymentPermissionLocked(nodeDeployment?.disabledSource);
   const canCopyNodeDeploymentLink = canCopyLocalServiceDeploymentLink(
     nodeDeployment,
     isNodeDeploymentPendingOperation || isNodeDeploymentPermissionDirty,
@@ -4823,8 +4791,11 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
                 >
                   <CloseIcon />
                 </button>
-                <div className="pr-8 text-xl font-semibold leading-7 text-foreground">
-                  {t('htmlShare')}
+                <div className="flex min-w-0 flex-wrap items-center gap-3 pr-8">
+                  <div className="text-xl font-semibold leading-7 text-foreground">
+                    {t('htmlShare')}
+                  </div>
+                  <PublishingTrialStatus status={htmlShareTrialStatus} />
                 </div>
                 {isHtmlShareStoppedDialog ? (
                   <div
@@ -4866,7 +4837,11 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
                             key={option.mode}
                             type="button"
                             onClick={() => selectHtmlShareAccessMode(option.mode)}
-                            disabled={isHtmlSharing || isHtmlShareStatusUpdating}
+                            disabled={
+                              htmlShareTrialStatus.isExpired
+                              || isHtmlSharing
+                              || isHtmlShareStatusUpdating
+                            }
                             className={`min-h-[82px] rounded-lg border px-3 py-2 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
                               isSelected
                                 ? 'border-primary bg-primary/10 text-foreground'
@@ -5047,19 +5022,19 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
           feature={subscriptionPrompt.feature}
           reason={subscriptionPrompt.reason}
           onCancel={closeSubscriptionPrompt}
+          onLogin={openLoginPage}
           onSubscribe={openSubscriptionPage}
         />
       )}
-      {siteQuotaDialog && (
-        <SiteQuotaReplacementDialog
-          quota={siteQuotaDialog.quota}
-          busy={isSiteQuotaActionBusy}
-          error={siteQuotaDialog.error}
-          onClose={() => {
-            if (!isSiteQuotaActionBusy) setSiteQuotaDialog(null);
+      {publishingQuotaDialog && (
+        <PublishingQuotaLimitDialog
+          quota={publishingQuotaDialog}
+          onClose={() => setPublishingQuotaDialog(null)}
+          onSubscribe={openSubscriptionPage}
+          onManage={() => {
+            setPublishingQuotaDialog(null);
+            window.dispatchEvent(new Event(LibraryNavigationEvent.OpenCloud));
           }}
-          onQuery={(keyword, page) => void querySiteQuotaCandidates(keyword, page)}
-          onStopAndContinue={candidate => void stopSiteForQuotaAndContinue(candidate)}
         />
       )}
       {nodeDeploymentDialog && isNodeDeploymentDialogOpen &&
@@ -5083,12 +5058,15 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
                 <CloseIcon />
               </button>
               <div className="shrink-0 px-6 pb-3 pt-5 pr-14">
-                <h2
-                  id="node-deployment-dialog-title"
-                  className="text-lg font-semibold leading-7 text-foreground"
-                >
-                  {t('nodeDeploymentDialogTitle')}
-                </h2>
+                <div className="flex min-w-0 flex-wrap items-center gap-3">
+                  <h2
+                    id="node-deployment-dialog-title"
+                    className="text-lg font-semibold leading-7 text-foreground"
+                  >
+                    {t('nodeDeploymentDialogTitle')}
+                  </h2>
+                  <PublishingTrialStatus status={nodeDeploymentTrialStatus} />
+                </div>
               </div>
 
               <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-5">
@@ -5184,7 +5162,9 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
                                 type="radio"
                                 name="node-deployment-permission"
                                 value={option.value}
-                                checked={nodeDeploymentSelectedPermission === option.value}
+                                checked={nodeDeploymentTrialStatus.isExpired
+                                  ? option.value === LocalServiceDeploymentPermission.Stopped
+                                  : nodeDeploymentSelectedPermission === option.value}
                                 disabled={isDisabled}
                                 onChange={() => selectNodeDeploymentPermission(option.value)}
                                 className="h-4 w-4 accent-primary"

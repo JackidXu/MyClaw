@@ -1490,6 +1490,7 @@ export class CoworkStore {
   private deleteSessionRows(ids: string[]): void {
     if (ids.length === 0) return;
     const placeholders = ids.map(() => '?').join(',');
+    this.db.prepare(`DELETE FROM library_artifact_sessions WHERE session_id IN (${placeholders})`).run(...ids);
     this.db.prepare(`DELETE FROM cowork_session_capsules WHERE session_id IN (${placeholders})`).run(...ids);
     this.db.prepare(`DELETE FROM cowork_messages WHERE session_id IN (${placeholders})`).run(...ids);
     this.db.prepare(`DELETE FROM cowork_sessions WHERE id IN (${placeholders})`).run(...ids);

@@ -11,7 +11,10 @@ import {
 } from '../../../shared/htmlShare/constants';
 import {
   buildHtmlSharePublicUrl,
+  getHtmlShareAnalytics,
   getHtmlShareBySource,
+  getHtmlShareQuota,
+  getPublishingTrialPolicy,
   updateHtmlShare,
   updateHtmlShareAccessMode,
   updateHtmlShareStatus,
@@ -42,6 +45,131 @@ describe('htmlShareClient', () => {
     expect(buildHtmlSharePublicUrl('https://lobsterai-server.youdao.com/s/', 'shr_123')).toBe(
       'https://lobsterai-server.youdao.com/s/shr_123/',
     );
+  });
+
+  test('uses the server quota snapshot without client-side limit defaults', async () => {
+    const result = await getHtmlShareQuota(
+      'https://lobsterai-server.inner.youdao.com',
+      async () => new Response(JSON.stringify({
+        code: 0,
+        data: {
+          allowed: false,
+          identityType: 'free',
+          resourceKind: 'file',
+          countMode: 'total',
+          used: 3,
+          limit: 3,
+          remaining: 0,
+          canReleaseByClosing: false,
+        },
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    );
+
+    expect(result).toEqual({
+      success: true,
+      data: {
+        allowed: false,
+        identityType: 'free',
+        resourceKind: 'file',
+        countMode: 'total',
+        used: 3,
+        limit: 3,
+        remaining: 0,
+        canReleaseByClosing: false,
+      },
+    });
+  });
+
+  test('loads free publishing limits and validity from the public server policy', async () => {
+    let requestedUrl = '';
+    let requestedOptions: RequestInit | undefined;
+    const result = await getPublishingTrialPolicy(
+      'https://lobsterai-server.inner.youdao.com',
+      async (url, options) => {
+        requestedUrl = url;
+        requestedOptions = options;
+        return new Response(JSON.stringify({
+          code: 0,
+          data: {
+            identityType: 'free',
+            file: {
+              resourceKind: 'file',
+              countMode: 'total',
+              limit: 12,
+              accessTtlSeconds: 10_800,
+              canReleaseByClosing: false,
+            },
+            site: {
+              resourceKind: 'site',
+              countMode: 'total',
+              limit: 2,
+              accessTtlSeconds: 10_800,
+              canReleaseByClosing: false,
+            },
+          },
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      },
+    );
+
+    expect(requestedUrl).toBe(
+      'https://lobsterai-server.inner.youdao.com/api/publishing/trial-policy',
+    );
+    expect(requestedOptions).toEqual({ cache: 'no-store' });
+    expect(result).toEqual({
+      success: true,
+      data: {
+        identityType: 'free',
+        file: {
+          resourceKind: 'file',
+          countMode: 'total',
+          limit: 12,
+          accessTtlSeconds: 10_800,
+          canReleaseByClosing: false,
+        },
+        site: {
+          resourceKind: 'site',
+          countMode: 'total',
+          limit: 2,
+          accessTtlSeconds: 10_800,
+          canReleaseByClosing: false,
+        },
+      },
+    });
+  });
+
+  test('loads owner analytics for the requested date range', async () => {
+    let requestedUrl = '';
+    const result = await getHtmlShareAnalytics(
+      'https://lobsterai-server.inner.youdao.com',
+      async url => {
+        requestedUrl = url;
+        return new Response(JSON.stringify({
+          code: 0,
+          data: {
+            summary: { accesses: 8, uniqueVisitors: 3 },
+            trend: [{ date: '2026-08-19', accesses: 8, uniqueVisitors: 3 }],
+            meta: {
+              from: '2026-08-13',
+              to: '2026-08-19',
+              granularity: 'day',
+              timeZone: 'Asia/Shanghai',
+              dataScope: 'share_lifetime',
+              visitorMetric: 'ip_hash_estimate',
+              retentionDays: 180,
+              dataAvailableFrom: '2026-08-01',
+            },
+          },
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      },
+      'shr_123',
+      { from: '2026-08-13', to: '2026-08-19' },
+    );
+
+    expect(requestedUrl).toBe(
+      'https://lobsterai-server.inner.youdao.com/api/html-shares/shr_123/analytics?from=2026-08-13&to=2026-08-19',
+    );
+    expect(result.success).toBe(true);
+    expect(result.analytics?.summary.accesses).toBe(8);
   });
 
   test('uploads to the selected server and returns the server share URL', async () => {

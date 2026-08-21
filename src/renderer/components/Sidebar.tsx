@@ -33,6 +33,7 @@ import Cog6ToothIcon from './icons/Cog6ToothIcon';
 import ComposeIcon from './icons/ComposeIcon';
 import SidebarAutomationIcon from './icons/SidebarAutomationIcon';
 import SidebarKitsIcon from './icons/SidebarKitsIcon';
+import SidebarLibraryIcon from './icons/SidebarLibraryIcon';
 import SidebarSitesIcon from './icons/SidebarSitesIcon';
 import SidebarToggleIcon from './icons/SidebarToggleIcon';
 import SkillIcon from './icons/SkillIcon';
@@ -43,11 +44,12 @@ import SidebarExperienceSlot from './SidebarExperienceSlot';
 interface SidebarProps {
   onShowSettings: () => void;
   onShowLogin?: () => void;
-  activeView: 'cowork' | 'skills' | 'scheduledTasks' | 'kits' | 'mcp' | 'sites';
+  activeView: 'cowork' | 'skills' | 'scheduledTasks' | 'kits' | 'mcp' | 'library' | 'sites';
   onShowSkills: () => void;
   onShowCowork: () => void;
   onShowScheduledTasks: () => void;
   onShowKits: () => void;
+  onShowLibrary: () => void;
   onShowSites: () => void;
   onNewChat: () => void;
   isCollapsed: boolean;
@@ -158,6 +160,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onShowCowork,
   onShowScheduledTasks,
   onShowKits,
+  onShowLibrary,
   onShowSites,
   onNewChat,
   isCollapsed,
@@ -651,6 +654,19 @@ const Sidebar: React.FC<SidebarProps> = ({
           >
             <SkillIcon className="h-4 w-4 shrink-0" />
             <span className="min-w-0 truncate">{i18nService.t('skillsAndConnectors')}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              reportSidebarAction('open_library', { activeView, isCollapsed });
+              setIsSearchOpen(false);
+              onShowLibrary();
+            }}
+            className={activeView === 'library' ? activeSidebarNavItemClassName : sidebarNavItemClassName}
+            aria-current={activeView === 'library' ? 'page' : undefined}
+          >
+            <SidebarLibraryIcon className="h-4 w-4 shrink-0" />
+            <span className="min-w-0 truncate">{i18nService.t('librarySidebarTitle')}</span>
           </button>
           {!hideSites && (
             <button

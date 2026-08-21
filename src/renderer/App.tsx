@@ -10,6 +10,11 @@ import {
   AppUpdateStatus,
   isManualDownloadUrl,
 } from '../shared/appUpdate/constants';
+import {
+  LibraryNavigationEvent,
+  LibrarySourceFilter,
+} from '../shared/library/constants';
+import type { LibrarySessionRef } from '../shared/library/types';
 import { ProviderAuthType, ProviderName, ProviderRegistry } from '../shared/providers';
 import { SIDEBAR_TASK_FILTER_ENABLED } from './components/agentSidebar/SidebarTaskFilterButton';
 import { CoworkView } from './components/cowork';
@@ -28,6 +33,7 @@ import CoworkQuestionWizard from './components/cowork/CoworkQuestionWizard';
 import EngineFailureOverlay from './components/cowork/EngineFailureOverlay';
 import EngineStartupOverlay from './components/cowork/EngineStartupOverlay';
 import KitsView from './components/kits/KitsView';
+import LibraryView from './components/library/LibraryView';
 import { ScheduledTasksView } from './components/scheduledTasks';
 import Settings, { type SettingsOpenOptions } from './components/Settings';
 import Sidebar from './components/Sidebar';
@@ -76,6 +82,7 @@ import {
   selectFirstCurrentSessionPendingPermission,
   selectPendingPermissions,
 } from './store/selectors/coworkSelectors';
+import { openArtifactPreviewTab } from './store/slices/artifactSlice';
 import {
   clearDraftAttachments,
   clearDraftSelectedTextSnippets,
@@ -159,7 +166,14 @@ const logAppUpdateRendererLifecycle = (
 const App: React.FC = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [settingsOptions, setSettingsOptions] = useState<SettingsOpenOptions & { requestId: number }>({ requestId: 0 });
-  const [mainView, setMainView] = useState<'cowork' | 'skills' | 'scheduledTasks' | 'kits' | 'mcp' | 'sites'>('cowork');
+  const [mainView, setMainView] = useState<'cowork' | 'skills' | 'scheduledTasks' | 'kits' | 'mcp' | 'library' | 'sites'>('cowork');
+  const [libraryNavigationRequest, setLibraryNavigationRequest] = useState<{
+    source: LibrarySourceFilter;
+    requestId: number;
+  }>({
+    source: LibrarySourceFilter.Local,
+    requestId: 0,
+  });
   const [isInitialized, setIsInitialized] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<ToastEventDetail | null>(null);
@@ -639,6 +653,39 @@ const App: React.FC = () => {
   const handleShowSites = useCallback(() => {
     setMainView('sites');
   }, []);
+
+  const handleShowLibrary = useCallback(() => {
+    setLibraryNavigationRequest(current => ({
+      source: LibrarySourceFilter.Local,
+      requestId: current.requestId + 1,
+    }));
+    setMainView('library');
+  }, []);
+
+  useEffect(() => {
+    const handleOpenCloudLibrary = (): void => {
+      setLibraryNavigationRequest(current => ({
+        source: LibrarySourceFilter.Cloud,
+        requestId: current.requestId + 1,
+      }));
+      setMainView('library');
+    };
+    window.addEventListener(LibraryNavigationEvent.OpenCloud, handleOpenCloudLibrary);
+    return () => {
+      window.removeEventListener(LibraryNavigationEvent.OpenCloud, handleOpenCloudLibrary);
+    };
+  }, []);
+
+  const handleOpenLibrarySession = useCallback((session: LibrarySessionRef) => {
+    setMainView('cowork');
+    void coworkService.loadSession(session.sessionId).then(loaded => {
+      if (!loaded || !session.sessionArtifactId) return;
+      dispatch(openArtifactPreviewTab({
+        sessionId: session.sessionId,
+        artifactId: session.sessionArtifactId,
+      }));
+    });
+  }, [dispatch]);
 
   const handleShowKits = useCallback(() => {
     setMainView('kits');
@@ -1731,6 +1778,7 @@ const App: React.FC = () => {
           onShowCowork={handleShowCowork}
           onShowScheduledTasks={handleShowScheduledTasks}
           onShowKits={handleShowKits}
+          onShowLibrary={handleShowLibrary}
           onShowSites={handleShowSites}
           onNewChat={handleNewChat}
           isCollapsed={isSidebarCollapsed}
@@ -1782,6 +1830,19 @@ const App: React.FC = () => {
                 updateBadge={collapsedHeaderUpdateBadge}
                 onTryAsking={handleKitTryAsking}
                 onUseKit={handleKitUse}
+              />
+            ) : mainView === 'library' ? (
+              <LibraryView
+                isAuthenticated={Boolean(authUser)}
+                isSidebarCollapsed={isSidebarCollapsed}
+                onToggleSidebar={handleToggleSidebar}
+                onOpenSession={handleOpenLibrarySession}
+                onShowLogin={handleShowLogin}
+                sitesHidden={enterpriseConfig?.ui?.sites === 'hide'}
+                sitesReadOnly={enterpriseConfig?.ui?.sites === 'readonly'}
+                updateBadge={collapsedHeaderUpdateBadge}
+                requestedSource={libraryNavigationRequest.source}
+                navigationRequestId={libraryNavigationRequest.requestId}
               />
             ) : mainView === 'sites' ? (
               <SitesView
