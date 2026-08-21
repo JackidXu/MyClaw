@@ -18,9 +18,30 @@ export interface PaidExpert {
   model?: string;
 }
 
+// 专家团数据结构（与 PresetAgent 兼容，额外携带 subagentAllowAgentIds 协作列表）
+export interface ExpertTeam {
+  id: string;
+  name: string;
+  nameEn?: string;
+  avatar?: string;
+  description: string;
+  descriptionEn?: string;
+  identity?: string;
+  identityEn?: string;
+  systemPrompt?: string;
+  systemPromptEn?: string;
+  skillIds: string[];
+  subagentAllowAgentIds: string[];
+  department?: string;
+  sortOrder?: number;
+  enabled: boolean;
+  model?: string;
+}
+
 // 内存缓存（单次运行期内有效）
 let cachedPresetExperts: PresetAgent[] | null = null;
 let cachedPaidExperts: PaidExpert[] | null = null;
+let cachedExpertTeams: ExpertTeam[] | null = null;
 
 /**
  * 从云端拉取专家数据（无磁盘缓存，失败时返回空数组）
@@ -28,26 +49,33 @@ let cachedPaidExperts: PaidExpert[] | null = null;
 export async function fetchExpertsFromCloud(): Promise<{
   presetExperts: PresetAgent[];
   paidExperts: PaidExpert[];
+  expertTeams: ExpertTeam[];
 }> {
   try {
     const url = `${getServerApiBaseUrl()}/api/experts`;
     const res = await fetch(url, { method: 'GET' });
     if (!res.ok) {
       console.error(`[ExpertStore] HTTP ${res.status} fetching experts`);
-      return { presetExperts: [], paidExperts: [] };
+      return { presetExperts: [], paidExperts: [], expertTeams: [] };
     }
-    const data = await res.json() as { success: boolean; presetExperts?: PresetAgent[]; paidExperts?: PaidExpert[] };
+    const data = await res.json() as {
+      success: boolean;
+      presetExperts?: PresetAgent[];
+      paidExperts?: PaidExpert[];
+      expertTeams?: ExpertTeam[];
+    };
     if (!data.success) {
       console.error('[ExpertStore] Server returned success=false');
-      return { presetExperts: [], paidExperts: [] };
+      return { presetExperts: [], paidExperts: [], expertTeams: [] };
     }
     cachedPresetExperts = data.presetExperts || [];
     cachedPaidExperts = data.paidExperts || [];
-    console.log(`[ExpertStore] Loaded ${cachedPresetExperts.length} preset experts, ${cachedPaidExperts.length} paid experts`);
-    return { presetExperts: cachedPresetExperts, paidExperts: cachedPaidExperts };
+    cachedExpertTeams = data.expertTeams || [];
+    console.log(`[ExpertStore] Loaded ${cachedPresetExperts.length} preset experts, ${cachedPaidExperts.length} paid experts, ${cachedExpertTeams.length} expert teams`);
+    return { presetExperts: cachedPresetExperts, paidExperts: cachedPaidExperts, expertTeams: cachedExpertTeams };
   } catch (err) {
     console.error('[ExpertStore] Failed to fetch experts:', err);
-    return { presetExperts: [], paidExperts: [] };
+    return { presetExperts: [], paidExperts: [], expertTeams: [] };
   }
 }
 
@@ -63,6 +91,13 @@ export function getPresetExperts(): PresetAgent[] {
  */
 export function getPaidExperts(): PaidExpert[] {
   return cachedPaidExperts || [];
+}
+
+/**
+ * 返回专家团列表（使用内存缓存，若未初始化返回空数组）
+ */
+export function getExpertTeams(): ExpertTeam[] {
+  return cachedExpertTeams || [];
 }
 
 /**

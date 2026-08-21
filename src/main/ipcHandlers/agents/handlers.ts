@@ -10,7 +10,7 @@ import type { AgentManager } from '../../agentManager';
 import type { CoworkStore, CreateAgentRequest, UpdateAgentRequest } from '../../coworkStore';
 import type { IMGatewayManager } from '../../im';
 import type { CoworkEngineRouter } from '../../libs/agentEngine';
-import { getPaidExperts } from '../../libs/expertStore';
+import { getExpertTeams,getPaidExperts } from '../../libs/expertStore';
 import { cleanupLegacyAgentsMdIdentityBlockInWorkspace } from '../../libs/openclawAgentsMdIdentityMigration';
 
 type SyncOpenClawConfig = (options: {
@@ -274,6 +274,18 @@ export function registerAgentHandlers(deps: AgentHandlerDeps): void {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to get paid experts',
+      };
+    }
+  });
+
+  ipcMain.handle(AgentIpcChannel.GetExpertTeams, async () => {
+    try {
+      const teams = getExpertTeams();
+      return { success: true, teams };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to get expert teams',
       };
     }
   });

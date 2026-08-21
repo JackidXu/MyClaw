@@ -16,6 +16,7 @@ export const AgentIpcChannel = {
   PresetTemplates: 'agents:presetTemplates',
   AddPreset: 'agents:addPreset',
   GetPaidExperts: 'agents:getPaidExperts',
+  GetExpertTeams: 'agents:getExpertTeams',
 } as const;
 
 export type AgentIpcChannel = typeof AgentIpcChannel[keyof typeof AgentIpcChannel];

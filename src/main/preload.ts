@@ -437,6 +437,10 @@ contextBridge.exposeInMainWorld('electron', {
       const result = await ipcRenderer.invoke(AgentIpcChannel.GetPaidExperts);
       return result?.success ? result.experts : [];
     },
+    getExpertTeams: async () => {
+      const result = await ipcRenderer.invoke(AgentIpcChannel.GetExpertTeams);
+      return result?.success ? result.teams : [];
+    },
   },
   cowork: {
     // Session management

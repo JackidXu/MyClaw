@@ -23,7 +23,7 @@ export interface PresetAgent {
 // 坚决无兜底数据，所有预设专家一律从云端 GET API 动态获取
 export const PRESET_AGENTS: PresetAgent[] = [];
 
-export function presetToCreateRequest(preset: PresetAgent): CreateAgentRequest {
+export function presetToCreateRequest(preset: PresetAgent & { subagentAllowAgentIds?: string[] }): CreateAgentRequest {
   const isEn = getLanguage() === 'en';
   return {
     id: preset.id,
@@ -33,6 +33,7 @@ export function presetToCreateRequest(preset: PresetAgent): CreateAgentRequest {
     systemPrompt: isEn && preset.systemPromptEn ? preset.systemPromptEn : preset.systemPrompt,
     avatar: preset.avatar || '',
     skillIds: preset.skillIds,
+    subagentAllowAgentIds: preset.subagentAllowAgentIds || [],
     level: preset.level,
     department: preset.department,
     source: 'preset',
