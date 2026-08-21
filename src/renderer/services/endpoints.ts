@@ -21,13 +21,13 @@ export const getFallbackDownloadUrl = () =>
   'https://claw.chaohui.ai/';
 
 // Skill 商店
-export const getSkillStoreUrl = () => `https://scrm0.cdn.banchengyun.com/heyclaw/server-assets/skill-store.json?_t=${Date.now()}`;
+export const getSkillStoreUrl = () => `${getServerApiBaseUrl()}/api/skills`;
 
 // Kit 商店
-export const getKitStoreUrl = () => `https://scrm0.cdn.banchengyun.com/heyclaw/server-assets/kit-store.json?_t=${Date.now()}`;
+export const getKitStoreUrl = () => `${getServerApiBaseUrl()}/api/kits`;
 
 // 快速发问
-export const getQuickActionsUrl = () => `https://scrm0.cdn.banchengyun.com/heyclaw/server-assets/quick-actions.json?_t=${Date.now()}`;
+export const getQuickActionsUrl = () => `${getServerApiBaseUrl()}/api/quick-actions`;
 
 // 登录地址
 export const getLoginOvermindUrl = () => isTestModeEnabled()

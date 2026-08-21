@@ -21,7 +21,7 @@ class QuickActionService {
 
     try {
       const response = await window.electron.api.fetch({
-        url: `${getQuickActionsUrl()}?t=${Date.now()}`,
+        url: getQuickActionsUrl(),
         method: 'GET',
         headers: {},
       });
