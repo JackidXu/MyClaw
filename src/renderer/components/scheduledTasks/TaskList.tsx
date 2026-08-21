@@ -23,7 +23,7 @@ import TaskStatusChip from './TaskStatusChip';
 import {
   SCHEDULED_TASK_TEMPLATES,
   type ScheduledTaskTemplate,
-  templateIconComponents,
+  ScheduledTaskTemplateCategory,
 } from './taskTemplates';
 import TaskToggle from './TaskToggle';
 import {
@@ -339,68 +339,113 @@ interface TemplateGalleryProps {
   showHeader?: boolean;
 }
 
+interface TemplateGalleryProps {
+  onCreateFromTemplate: (template: ScheduledTaskTemplate) => void;
+  onCreateBlank?: () => void;
+  showHeader?: boolean;
+}
+
+const TEMPLATE_CATEGORIES = [
+  {
+    key: ScheduledTaskTemplateCategory.Monthly,
+    titleKey: 'scheduledTasksTemplateMonthlyCategory',
+  },
+  {
+    key: ScheduledTaskTemplateCategory.Weekly,
+    titleKey: 'scheduledTasksTemplateWeeklyCategory',
+  },
+  {
+    key: ScheduledTaskTemplateCategory.Daily,
+    titleKey: 'scheduledTasksTemplateDailyCategory',
+  },
+] as const;
+
 const TemplateGallery: React.FC<TemplateGalleryProps> = ({
   onCreateFromTemplate,
   onCreateBlank,
   showHeader = true,
 }) => (
-  <div>
+  <div className="space-y-4 pt-2">
     {showHeader && (
-      <div className="mb-3 flex items-center gap-3">
-        <span className="text-xs font-medium text-secondary">
+      <div>
+        <div className={`${MANAGEMENT_TITLE_TEXT} font-bold text-foreground`}>
           {i18nService.t('scheduledTasksTemplatesSection')}
-        </span>
-        <div className="h-px flex-1 bg-border-subtle" />
+        </div>
+        <p className="mt-1 text-xs text-secondary">
+          {i18nService.t('scheduledTasksTemplatesSectionSubtitle')}
+        </p>
       </div>
     )}
-    <div className={cardGridClass}>
-      {SCHEDULED_TASK_TEMPLATES.map(template => {
-        const Icon = templateIconComponents[template.icon];
+
+    {/* 3 列分类容器 */}
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+      {TEMPLATE_CATEGORIES.map(category => {
+        const categoryTemplates = SCHEDULED_TASK_TEMPLATES.filter(
+          t => t.category === category.key,
+        );
+
         return (
-          <button
-            key={template.id}
-            type="button"
-            onClick={() => onCreateFromTemplate(template)}
-            className="group flex items-start gap-3 rounded-xl border border-border bg-surface p-3 text-left shadow-subtle transition hover:border-primary/50 hover:shadow-card"
+          <div
+            key={category.key}
+            className="flex flex-col gap-3 rounded-2xl border border-border bg-surface p-4 shadow-subtle"
           >
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface-raised text-secondary transition-colors group-hover:bg-primary/10 group-hover:text-primary">
-              <Icon className="h-[18px] w-[18px]" />
+            {/* 分类标题 */}
+            <div className="border-b border-dashed border-border pb-2.5 text-sm font-semibold text-foreground">
+              {i18nService.t(category.titleKey)}
             </div>
-            <div className="min-w-0 flex-1">
-              <div className={`truncate ${MANAGEMENT_TITLE_TEXT} font-medium text-foreground`}>
-                {i18nService.t(template.titleKey)}
-              </div>
-              <div className="mt-0.5 text-xs leading-5 text-secondary line-clamp-2">
-                {i18nService.t(template.descriptionKey)}
-              </div>
-              <div className="mt-1.5 flex items-center gap-1 text-xs text-secondary/70">
-                <ClockIcon className="h-3 w-3" />
-                {i18nService.t(template.scheduleLabelKey)}
-              </div>
+
+            {/* 分类下的模版卡片列表 */}
+            <div className="flex flex-col gap-3">
+              {categoryTemplates.map(template => (
+                <div
+                  key={template.id}
+                  onClick={() => onCreateFromTemplate(template)}
+                  className="group flex cursor-pointer flex-col gap-2 rounded-xl border border-border bg-surface-raised/60 p-3.5 transition hover:border-primary/50 hover:bg-surface-raised hover:shadow-card"
+                >
+                  <div className="text-sm font-bold text-foreground">
+                    {i18nService.t(template.titleKey)}
+                  </div>
+
+                  <div className="flex items-center">
+                    <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                      {i18nService.t(template.scheduleBadgeKey)}
+                    </span>
+                  </div>
+
+                  <div className="text-xs leading-relaxed text-secondary line-clamp-2">
+                    {i18nService.t(template.teamKey)}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={e => {
+                      e.stopPropagation();
+                      onCreateFromTemplate(template);
+                    }}
+                    className="mt-1 w-full rounded-lg border border-border bg-surface py-1.5 text-xs font-semibold text-foreground shadow-sm transition hover:border-primary hover:bg-primary hover:text-white"
+                  >
+                    {i18nService.t('scheduledTasksTemplateAdoptBtn')}
+                  </button>
+                </div>
+              ))}
             </div>
-          </button>
+          </div>
         );
       })}
-      {onCreateBlank && (
-        <button
-          type="button"
-          onClick={onCreateBlank}
-          className="group flex items-start gap-3 rounded-xl border border-dashed border-border p-3 text-left transition hover:border-primary/50 hover:bg-surface"
-        >
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface-raised text-secondary transition-colors group-hover:bg-primary/10 group-hover:text-primary">
-            <PlusIcon className="h-[18px] w-[18px]" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className={`truncate ${MANAGEMENT_TITLE_TEXT} font-medium text-foreground`}>
-              {i18nService.t('scheduledTasksBlankCreate')}
-            </div>
-            <div className="mt-0.5 text-xs leading-5 text-secondary line-clamp-2">
-              {i18nService.t('scheduledTasksBlankCreateHint')}
-            </div>
-          </div>
-        </button>
-      )}
     </div>
+
+    {onCreateBlank && (
+      <button
+        type="button"
+        onClick={onCreateBlank}
+        className="group flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border p-3 text-center transition hover:border-primary/50 hover:bg-surface"
+      >
+        <PlusIcon className="h-4 w-4 text-secondary group-hover:text-primary" />
+        <span className="text-xs font-semibold text-foreground">
+          {i18nService.t('scheduledTasksBlankCreate')}
+        </span>
+      </button>
+    )}
   </div>
 );
 

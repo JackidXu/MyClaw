@@ -1,48 +1,26 @@
-import {
-  BellAlertIcon,
-  BriefcaseIcon,
-  CalendarDaysIcon,
-  ChartBarIcon,
-  CodeBracketSquareIcon,
-  NewspaperIcon,
-} from '@heroicons/react/24/outline';
-import type React from 'react';
-
 import type { PlanType } from './utils';
 
 export const ScheduledTaskTemplateId = {
-  TechBriefing: 'tech_briefing',
-  WorkdayWrap: 'workday_wrap',
-  MeetingPrep: 'meeting_prep',
-  WeeklyReport: 'weekly_report',
-  ProjectHealth: 'project_health',
-  MonthlyAdmin: 'monthly_admin',
+  NextMonthTopics: 'next_month_topics',
+  MonthlyBusinessReview: 'monthly_business_review',
+  MonthlyPaymentRisk: 'monthly_payment_risk',
+  WeeklyDataReview: 'weekly_data_review',
+  WeeklyVipReport: 'weekly_vip_report',
+  WeeklyCognitiveConflict: 'weekly_cognitive_conflict',
+  DailyContentScript: 'daily_content_script',
+  DailyHotspotShoot: 'daily_hotspot_shoot',
+  DailyMomentsReach: 'daily_moments_reach',
 } as const;
 export type ScheduledTaskTemplateId =
   typeof ScheduledTaskTemplateId[keyof typeof ScheduledTaskTemplateId];
 
-export const ScheduledTaskTemplateIcon = {
-  Newspaper: 'newspaper',
-  Briefcase: 'briefcase',
-  Calendar: 'calendar',
-  Report: 'report',
-  Code: 'code',
-  Reminder: 'reminder',
+export const ScheduledTaskTemplateCategory = {
+  Monthly: 'monthly',
+  Weekly: 'weekly',
+  Daily: 'daily',
 } as const;
-export type ScheduledTaskTemplateIcon =
-  typeof ScheduledTaskTemplateIcon[keyof typeof ScheduledTaskTemplateIcon];
-
-export const templateIconComponents: Record<
-  ScheduledTaskTemplateIcon,
-  React.ElementType<{ className?: string }>
-> = {
-  [ScheduledTaskTemplateIcon.Newspaper]: NewspaperIcon,
-  [ScheduledTaskTemplateIcon.Briefcase]: BriefcaseIcon,
-  [ScheduledTaskTemplateIcon.Calendar]: CalendarDaysIcon,
-  [ScheduledTaskTemplateIcon.Report]: ChartBarIcon,
-  [ScheduledTaskTemplateIcon.Code]: CodeBracketSquareIcon,
-  [ScheduledTaskTemplateIcon.Reminder]: BellAlertIcon,
-};
+export type ScheduledTaskTemplateCategory =
+  typeof ScheduledTaskTemplateCategory[keyof typeof ScheduledTaskTemplateCategory];
 
 export const ScheduledTaskTemplatePlanType = {
   Daily: 'daily',
@@ -60,64 +38,92 @@ interface ScheduledTaskTemplateSchedule {
 
 export interface ScheduledTaskTemplate {
   id: ScheduledTaskTemplateId;
-  icon: ScheduledTaskTemplateIcon;
+  category: ScheduledTaskTemplateCategory;
   titleKey: string;
   descriptionKey: string;
+  scheduleBadgeKey: string;
   scheduleLabelKey: string;
+  teamKey: string;
   promptKey: string;
   schedule: ScheduledTaskTemplateSchedule;
 }
 
 export const SCHEDULED_TASK_TEMPLATES: readonly ScheduledTaskTemplate[] = [
+  // 🗓 每月例行
   {
-    id: ScheduledTaskTemplateId.TechBriefing,
-    icon: ScheduledTaskTemplateIcon.Newspaper,
-    titleKey: 'scheduledTasksTemplateTechBriefingTitle',
-    descriptionKey: 'scheduledTasksTemplateTechBriefingDesc',
-    scheduleLabelKey: 'scheduledTasksTemplateTechBriefingSchedule',
-    promptKey: 'scheduledTasksTemplateTechBriefingPrompt',
+    id: ScheduledTaskTemplateId.NextMonthTopics,
+    category: ScheduledTaskTemplateCategory.Monthly,
+    titleKey: 'scheduledTasksTemplateNextMonthTopicsTitle',
+    descriptionKey: 'scheduledTasksTemplateNextMonthTopicsDesc',
+    scheduleBadgeKey: 'scheduledTasksTemplateNextMonthTopicsBadge',
+    scheduleLabelKey: 'scheduledTasksTemplateNextMonthTopicsSchedule',
+    teamKey: 'scheduledTasksTemplateNextMonthTopicsTeam',
+    promptKey: 'scheduledTasksTemplateNextMonthTopicsPrompt',
     schedule: {
-      planType: ScheduledTaskTemplatePlanType.Weekly,
-      hour: 8,
-      minute: 30,
-      weekdays: [1, 2, 3, 4, 5],
+      planType: ScheduledTaskTemplatePlanType.Monthly,
+      hour: 9,
+      minute: 0,
+      monthDay: 1,
     },
   },
   {
-    id: ScheduledTaskTemplateId.WorkdayWrap,
-    icon: ScheduledTaskTemplateIcon.Briefcase,
-    titleKey: 'scheduledTasksTemplateWorkdayWrapTitle',
-    descriptionKey: 'scheduledTasksTemplateWorkdayWrapDesc',
-    scheduleLabelKey: 'scheduledTasksTemplateWorkdayWrapSchedule',
-    promptKey: 'scheduledTasksTemplateWorkdayWrapPrompt',
+    id: ScheduledTaskTemplateId.MonthlyBusinessReview,
+    category: ScheduledTaskTemplateCategory.Monthly,
+    titleKey: 'scheduledTasksTemplateMonthlyBusinessReviewTitle',
+    descriptionKey: 'scheduledTasksTemplateMonthlyBusinessReviewDesc',
+    scheduleBadgeKey: 'scheduledTasksTemplateMonthlyBusinessReviewBadge',
+    scheduleLabelKey: 'scheduledTasksTemplateMonthlyBusinessReviewSchedule',
+    teamKey: 'scheduledTasksTemplateMonthlyBusinessReviewTeam',
+    promptKey: 'scheduledTasksTemplateMonthlyBusinessReviewPrompt',
     schedule: {
-      planType: ScheduledTaskTemplatePlanType.Weekly,
+      planType: ScheduledTaskTemplatePlanType.Monthly,
       hour: 18,
       minute: 0,
-      weekdays: [1, 2, 3, 4, 5],
+      monthDay: 28,
     },
   },
   {
-    id: ScheduledTaskTemplateId.MeetingPrep,
-    icon: ScheduledTaskTemplateIcon.Calendar,
-    titleKey: 'scheduledTasksTemplateMeetingPrepTitle',
-    descriptionKey: 'scheduledTasksTemplateMeetingPrepDesc',
-    scheduleLabelKey: 'scheduledTasksTemplateMeetingPrepSchedule',
-    promptKey: 'scheduledTasksTemplateMeetingPrepPrompt',
+    id: ScheduledTaskTemplateId.MonthlyPaymentRisk,
+    category: ScheduledTaskTemplateCategory.Monthly,
+    titleKey: 'scheduledTasksTemplateMonthlyPaymentRiskTitle',
+    descriptionKey: 'scheduledTasksTemplateMonthlyPaymentRiskDesc',
+    scheduleBadgeKey: 'scheduledTasksTemplateMonthlyPaymentRiskBadge',
+    scheduleLabelKey: 'scheduledTasksTemplateMonthlyPaymentRiskSchedule',
+    teamKey: 'scheduledTasksTemplateMonthlyPaymentRiskTeam',
+    promptKey: 'scheduledTasksTemplateMonthlyPaymentRiskPrompt',
+    schedule: {
+      planType: ScheduledTaskTemplatePlanType.Monthly,
+      hour: 10,
+      minute: 0,
+      monthDay: 28,
+    },
+  },
+  // 📆 每周例行
+  {
+    id: ScheduledTaskTemplateId.WeeklyDataReview,
+    category: ScheduledTaskTemplateCategory.Weekly,
+    titleKey: 'scheduledTasksTemplateWeeklyDataReviewTitle',
+    descriptionKey: 'scheduledTasksTemplateWeeklyDataReviewDesc',
+    scheduleBadgeKey: 'scheduledTasksTemplateWeeklyDataReviewBadge',
+    scheduleLabelKey: 'scheduledTasksTemplateWeeklyDataReviewSchedule',
+    teamKey: 'scheduledTasksTemplateWeeklyDataReviewTeam',
+    promptKey: 'scheduledTasksTemplateWeeklyDataReviewPrompt',
     schedule: {
       planType: ScheduledTaskTemplatePlanType.Weekly,
-      hour: 8,
-      minute: 45,
-      weekdays: [1, 2, 3, 4, 5],
+      hour: 9,
+      minute: 30,
+      weekdays: [1],
     },
   },
   {
-    id: ScheduledTaskTemplateId.WeeklyReport,
-    icon: ScheduledTaskTemplateIcon.Report,
-    titleKey: 'scheduledTasksTemplateWeeklyReportTitle',
-    descriptionKey: 'scheduledTasksTemplateWeeklyReportDesc',
-    scheduleLabelKey: 'scheduledTasksTemplateWeeklyReportSchedule',
-    promptKey: 'scheduledTasksTemplateWeeklyReportPrompt',
+    id: ScheduledTaskTemplateId.WeeklyVipReport,
+    category: ScheduledTaskTemplateCategory.Weekly,
+    titleKey: 'scheduledTasksTemplateWeeklyVipReportTitle',
+    descriptionKey: 'scheduledTasksTemplateWeeklyVipReportDesc',
+    scheduleBadgeKey: 'scheduledTasksTemplateWeeklyVipReportBadge',
+    scheduleLabelKey: 'scheduledTasksTemplateWeeklyVipReportSchedule',
+    teamKey: 'scheduledTasksTemplateWeeklyVipReportTeam',
+    promptKey: 'scheduledTasksTemplateWeeklyVipReportPrompt',
     schedule: {
       planType: ScheduledTaskTemplatePlanType.Weekly,
       hour: 17,
@@ -126,30 +132,65 @@ export const SCHEDULED_TASK_TEMPLATES: readonly ScheduledTaskTemplate[] = [
     },
   },
   {
-    id: ScheduledTaskTemplateId.ProjectHealth,
-    icon: ScheduledTaskTemplateIcon.Code,
-    titleKey: 'scheduledTasksTemplateProjectHealthTitle',
-    descriptionKey: 'scheduledTasksTemplateProjectHealthDesc',
-    scheduleLabelKey: 'scheduledTasksTemplateProjectHealthSchedule',
-    promptKey: 'scheduledTasksTemplateProjectHealthPrompt',
+    id: ScheduledTaskTemplateId.WeeklyCognitiveConflict,
+    category: ScheduledTaskTemplateCategory.Weekly,
+    titleKey: 'scheduledTasksTemplateWeeklyCognitiveConflictTitle',
+    descriptionKey: 'scheduledTasksTemplateWeeklyCognitiveConflictDesc',
+    scheduleBadgeKey: 'scheduledTasksTemplateWeeklyCognitiveConflictBadge',
+    scheduleLabelKey: 'scheduledTasksTemplateWeeklyCognitiveConflictSchedule',
+    teamKey: 'scheduledTasksTemplateWeeklyCognitiveConflictTeam',
+    promptKey: 'scheduledTasksTemplateWeeklyCognitiveConflictPrompt',
+    schedule: {
+      planType: ScheduledTaskTemplatePlanType.Weekly,
+      hour: 20,
+      minute: 0,
+      weekdays: [7],
+    },
+  },
+  // 📅 每日例行
+  {
+    id: ScheduledTaskTemplateId.DailyContentScript,
+    category: ScheduledTaskTemplateCategory.Daily,
+    titleKey: 'scheduledTasksTemplateDailyContentScriptTitle',
+    descriptionKey: 'scheduledTasksTemplateDailyContentScriptDesc',
+    scheduleBadgeKey: 'scheduledTasksTemplateDailyContentScriptBadge',
+    scheduleLabelKey: 'scheduledTasksTemplateDailyContentScriptSchedule',
+    teamKey: 'scheduledTasksTemplateDailyContentScriptTeam',
+    promptKey: 'scheduledTasksTemplateDailyContentScriptPrompt',
     schedule: {
       planType: ScheduledTaskTemplatePlanType.Daily,
-      hour: 10,
+      hour: 9,
       minute: 0,
     },
   },
   {
-    id: ScheduledTaskTemplateId.MonthlyAdmin,
-    icon: ScheduledTaskTemplateIcon.Reminder,
-    titleKey: 'scheduledTasksTemplateMonthlyAdminTitle',
-    descriptionKey: 'scheduledTasksTemplateMonthlyAdminDesc',
-    scheduleLabelKey: 'scheduledTasksTemplateMonthlyAdminSchedule',
-    promptKey: 'scheduledTasksTemplateMonthlyAdminPrompt',
+    id: ScheduledTaskTemplateId.DailyHotspotShoot,
+    category: ScheduledTaskTemplateCategory.Daily,
+    titleKey: 'scheduledTasksTemplateDailyHotspotShootTitle',
+    descriptionKey: 'scheduledTasksTemplateDailyHotspotShootDesc',
+    scheduleBadgeKey: 'scheduledTasksTemplateDailyHotspotShootBadge',
+    scheduleLabelKey: 'scheduledTasksTemplateDailyHotspotShootSchedule',
+    teamKey: 'scheduledTasksTemplateDailyHotspotShootTeam',
+    promptKey: 'scheduledTasksTemplateDailyHotspotShootPrompt',
     schedule: {
-      planType: ScheduledTaskTemplatePlanType.Monthly,
-      hour: 10,
+      planType: ScheduledTaskTemplatePlanType.Daily,
+      hour: 11,
+      minute: 30,
+    },
+  },
+  {
+    id: ScheduledTaskTemplateId.DailyMomentsReach,
+    category: ScheduledTaskTemplateCategory.Daily,
+    titleKey: 'scheduledTasksTemplateDailyMomentsReachTitle',
+    descriptionKey: 'scheduledTasksTemplateDailyMomentsReachDesc',
+    scheduleBadgeKey: 'scheduledTasksTemplateDailyMomentsReachBadge',
+    scheduleLabelKey: 'scheduledTasksTemplateDailyMomentsReachSchedule',
+    teamKey: 'scheduledTasksTemplateDailyMomentsReachTeam',
+    promptKey: 'scheduledTasksTemplateDailyMomentsReachPrompt',
+    schedule: {
+      planType: ScheduledTaskTemplatePlanType.Daily,
+      hour: 19,
       minute: 0,
-      monthDay: 25,
     },
   },
 ];
