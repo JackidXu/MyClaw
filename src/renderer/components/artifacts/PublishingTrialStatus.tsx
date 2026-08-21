@@ -19,6 +19,12 @@ export const parsePublishingAccessExpiry = (
   return Number.isFinite(value) ? value : undefined;
 };
 
+export const getPublishingRemainingMinutes = (remainingMs: number): number => (
+  // The expiry comes from the server clock. Minute-level rounding prevents a
+  // sub-minute clock difference from displaying a two-hour TTL as 2h 1m.
+  Math.max(1, Math.round(remainingMs / MINUTE_MS))
+);
+
 export const formatPublishingTrialExpiry = (
   accessExpiresAt: number,
   now: number,
@@ -30,7 +36,7 @@ export const formatPublishingTrialExpiry = (
   if (remainingMs < MINUTE_MS) {
     return i18nService.t('publishingTrialLinkExpiryLessThanMinute');
   }
-  const remainingMinutes = Math.max(1, Math.ceil(remainingMs / MINUTE_MS));
+  const remainingMinutes = getPublishingRemainingMinutes(remainingMs);
   const hours = Math.floor(remainingMinutes / 60);
   const minutes = remainingMinutes % 60;
   if (hours > 0 && minutes === 0) {
@@ -83,10 +89,13 @@ export const usePublishingTrialStatus = (
   if (expiresAt === undefined) {
     return { isTrial: false, isExpired: false };
   }
+  // accessExpiresAt can arrive after an asynchronous create/update operation.
+  // Do not render one frame with the time captured when the dialog first opened.
+  const currentNow = Math.max(now, Date.now());
   return {
     isTrial: true,
-    isExpired: expiresAt <= now,
-    label: formatPublishingTrialExpiry(expiresAt, now),
+    isExpired: expiresAt <= currentNow,
+    label: formatPublishingTrialExpiry(expiresAt, currentNow),
   };
 };
 

@@ -57,6 +57,7 @@ import {
   resolveArtifactFileSharePermissionConfirmation,
 } from '../artifacts/artifactFileSharePermission';
 import PublishingQuotaLimitDialog from '../artifacts/PublishingQuotaLimitDialog';
+import { getPublishingRemainingMinutes } from '../artifacts/PublishingTrialStatus';
 import CardOverflowMenu, { type CardOverflowMenuItem } from '../common/CardOverflowMenu';
 import {
   MANAGEMENT_BODY_TEXT,
@@ -287,7 +288,8 @@ const CloudAvailabilityLabel: React.FC<{
   item: LibraryCloudItem;
   textClassName?: string;
   now?: number;
-}> = ({ item, textClassName = 'text-xs', now = Date.now() }) => {
+  centered?: boolean;
+}> = ({ item, textClassName = 'text-xs', now = Date.now(), centered = false }) => {
   const isAvailable = matchesLibraryCloudAvailability(
     item,
     LibraryCloudAvailabilityFilter.Available,
@@ -302,10 +304,7 @@ const CloudAvailabilityLabel: React.FC<{
           if (remainingMs < 60_000) {
             return i18nService.t('libraryAccessExpiryLessThanMinute');
           }
-          const remainingMinutes = Math.max(
-            1,
-            Math.ceil(remainingMs / 60_000),
-          );
+          const remainingMinutes = getPublishingRemainingMinutes(remainingMs);
           const hours = Math.floor(remainingMinutes / 60);
           const minutes = remainingMinutes % 60;
           return hours > 0 && minutes === 0
@@ -319,7 +318,7 @@ const CloudAvailabilityLabel: React.FC<{
                 .replace('{minutes}', String(minutes));
         })();
   return (
-    <div className="min-w-0">
+    <div className={`flex min-w-0 flex-col ${centered ? 'items-center text-center' : 'items-start'}`}>
       <span className={`${textClassName} ${
         isAvailable ? 'text-emerald-600 dark:text-emerald-400' : 'text-secondary'
       }`}>
@@ -330,7 +329,7 @@ const CloudAvailabilityLabel: React.FC<{
         }`)}
       </span>
       {expiryLabel && (
-        <div className="mt-0.5 truncate text-[11px] leading-4 text-tertiary">
+        <div className="mt-0.5 whitespace-nowrap text-[11px] leading-4 text-muted">
           {expiryLabel}
         </div>
       )}
@@ -1253,9 +1252,9 @@ const LibraryCloudView: React.FC<LibraryCloudViewProps> = ({
         </div>
       ) : (
         <div className="mt-6 min-w-[760px] border-y border-border">
-          <div className={`grid grid-cols-[minmax(320px,1fr)_120px_140px_44px] items-center gap-4 border-b border-border px-4 py-2.5 ${MANAGEMENT_META_TEXT} font-medium leading-[var(--lobster-leading-xs)] text-tertiary`}>
+          <div className={`grid grid-cols-[minmax(320px,1fr)_180px_120px_44px] items-center gap-4 border-b border-border px-4 py-2.5 ${MANAGEMENT_META_TEXT} font-medium leading-[var(--lobster-leading-xs)] text-tertiary`}>
             <span>{i18nService.t('libraryCloudColumnResource')}</span>
-            <span>{i18nService.t('librarySharedColumnStatus')}</span>
+            <span className="text-center">{i18nService.t('librarySharedColumnStatus')}</span>
             <span>{i18nService.t('librarySharedColumnAccess')}</span>
             <span className="text-center">{i18nService.t('librarySharedColumnActions')}</span>
           </div>
@@ -1270,7 +1269,7 @@ const LibraryCloudView: React.FC<LibraryCloudViewProps> = ({
                   openItem(item);
                 }
               }}
-              className="grid min-h-16 grid-cols-[minmax(320px,1fr)_120px_140px_44px] items-center gap-4 border-b border-border px-4 transition-colors last:border-b-0 hover:bg-surface-raised/60 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary/30"
+              className="grid min-h-16 grid-cols-[minmax(320px,1fr)_180px_120px_44px] items-center gap-4 border-b border-border px-4 transition-colors last:border-b-0 hover:bg-surface-raised/60 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary/30"
             >
               <div className="flex min-w-0 items-center gap-3">
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface-raised">
@@ -1294,7 +1293,7 @@ const LibraryCloudView: React.FC<LibraryCloudViewProps> = ({
                   </div>
                 </div>
               </div>
-              <CloudAvailabilityLabel item={item} now={effectiveNow} />
+              <CloudAvailabilityLabel item={item} now={effectiveNow} centered />
               <span className="text-xs text-secondary">{getLibraryAccessModeLabel(item)}</span>
               <CardOverflowMenu
                 items={buildMenuItems(item)}
