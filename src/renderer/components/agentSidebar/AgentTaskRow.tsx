@@ -242,8 +242,8 @@ const AgentTaskRow: React.FC<AgentTaskRowProps> = ({
       ? i18nService.t('myAgentSidebarRunning')
       : i18nService.t('myAgentSidebarUnreadResult');
   const menuItemClassName =
-    'flex w-full items-center gap-2 whitespace-nowrap px-2.5 py-1.5 text-left text-[13px] text-foreground transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.04]';
-  const menuIconClassName = 'h-3.5 w-3.5';
+    'flex w-full items-center gap-2 whitespace-nowrap px-2.5 py-1.5 text-left text-[12.5px] text-foreground/90 transition-colors hover:bg-foreground/[0.04] dark:hover:bg-white/[0.05]';
+  const menuIconClassName = 'h-3.5 w-3.5 text-secondary';
   const relativeTime = formatAgentTaskRelativeTime(task.updatedAt || task.createdAt);
   const showRelativeTime = !contextLabel && task.indicator === AgentSidebarIndicator.None;
   const pinLabel = task.pinned ? i18nService.t('coworkUnpinSession') : i18nService.t('coworkPinSession');
@@ -252,16 +252,16 @@ const AgentTaskRow: React.FC<AgentTaskRowProps> = ({
 
   return (
     <div
-      className={`group relative -ml-[6px] flex w-[calc(100%+12px)] items-center gap-2 rounded-md ${
-        isActivityRow ? 'min-h-[48px] py-1.5' : 'h-[30px]'
+      className={`group relative -ml-[6px] flex w-[calc(100%+12px)] items-center gap-2 rounded-lg ${
+        isActivityRow ? 'min-h-[48px] py-1.5' : 'h-[32px]'
       } ${
-        isBatchMode ? 'pl-4' : isActivityRow ? 'pl-3.5' : 'pl-[38px]'
-      } pr-2.5 text-sm font-normal transition-colors ${
+        isBatchMode ? 'pl-4' : isActivityRow ? 'pl-3.5' : 'pl-[36px]'
+      } pr-2.5 text-[13px] font-normal transition-all duration-150 ${
         isSelectionDisabled
           ? 'cursor-default text-foreground/30'
           : task.isSelected && !hasActiveSubagent
-          ? 'cursor-pointer bg-black/[0.06] font-medium text-foreground dark:bg-white/[0.07]'
-          : 'cursor-pointer text-foreground hover:bg-black/[0.03] dark:hover:bg-white/[0.04]'
+          ? 'cursor-pointer bg-foreground/[0.07] font-medium text-foreground dark:bg-white/[0.08]'
+          : 'cursor-pointer text-foreground/85 hover:bg-foreground/[0.04] hover:text-foreground dark:hover:bg-white/[0.05]'
       }`}
       onClick={handleRowClick}
       onKeyDown={handleRowKeyDown}
@@ -283,12 +283,12 @@ const AgentTaskRow: React.FC<AgentTaskRowProps> = ({
             event.currentTarget.blur();
             void onTogglePin(nextPinned);
           }}
-          className={`absolute left-[13px] top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-foreground transition-opacity hover:opacity-[0.46] focus:outline-none ${
+          className={`absolute left-[11px] top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-foreground transition-opacity hover:opacity-[0.5] focus:outline-none ${
             suppressPinHover
               ? 'pointer-events-none opacity-0'
               : task.pinned
-                ? 'opacity-[0.46]'
-                : 'pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-[0.3] focus-visible:pointer-events-auto focus-visible:opacity-[0.46]'
+                ? 'opacity-[0.45]'
+                : 'pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-[0.3] focus-visible:pointer-events-auto focus-visible:opacity-[0.45]'
           }`}
           aria-label={pinLabel}
           title={pinLabel}
@@ -325,7 +325,7 @@ const AgentTaskRow: React.FC<AgentTaskRowProps> = ({
               handleRenameCancel();
             }
           }}
-          className="min-w-0 flex-1 rounded-md border border-border bg-background px-1.5 py-0.5 text-sm font-normal text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+          className="min-w-0 flex-1 rounded-md border border-border bg-background px-1.5 py-0.5 text-[13px] font-normal text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
         />
       ) : (
         <>
@@ -375,21 +375,21 @@ const AgentTaskRow: React.FC<AgentTaskRowProps> = ({
           )}
           {task.indicator === AgentSidebarIndicator.CompletedUnread && (
             <span
-              className="h-[7px] w-[7px] shrink-0 rounded-full bg-emerald-500 transition-opacity group-hover:opacity-0"
+              className="h-[6px] w-[6px] shrink-0 rounded-full bg-emerald-500 transition-opacity group-hover:opacity-0"
               title={indicatorLabel}
               aria-label={indicatorLabel}
             />
           )}
           {task.indicator === AgentSidebarIndicator.Error && (
             <span
-              className="h-[7px] w-[7px] shrink-0 rounded-full bg-red-500 transition-opacity group-hover:opacity-0"
+              className="h-[6px] w-[6px] shrink-0 rounded-full bg-red-500 transition-opacity group-hover:opacity-0"
               title={indicatorLabel}
               aria-label={indicatorLabel}
             />
           )}
           {showRelativeTime && (
             <span
-              className="shrink-0 whitespace-nowrap text-[12px] font-normal text-foreground/45 transition-opacity group-hover:opacity-0"
+              className="shrink-0 whitespace-nowrap text-[11px] font-normal text-secondary/50 transition-opacity group-hover:opacity-0"
               title={relativeTime.full}
             >
               {relativeTime.compact}
@@ -403,7 +403,7 @@ const AgentTaskRow: React.FC<AgentTaskRowProps> = ({
           ref={actionButtonRef}
           type="button"
           onClick={toggleMenu}
-          className={`absolute right-1 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-foreground transition-opacity hover:opacity-[0.46] ${
+          className={`absolute right-1 top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-md text-foreground transition-opacity hover:opacity-[0.46] ${
             isMenuOpen ? 'opacity-[0.46]' : 'opacity-0 group-hover:opacity-[0.3] focus-visible:opacity-[0.46]'
           }`}
           aria-label={i18nService.t('coworkSessionActions')}
