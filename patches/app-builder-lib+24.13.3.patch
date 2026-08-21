@@ -715,6 +715,36 @@ index 1b88a9d..0bdf231 100644
  !ifmacrodef customHeader
    !insertmacro customHeader
  !endif
+diff --git a/node_modules/app-builder-lib/templates/nsis/multiUser.nsh b/node_modules/app-builder-lib/templates/nsis/multiUser.nsh
+index 3de631b..a8d88cb 100644
+--- a/node_modules/app-builder-lib/templates/nsis/multiUser.nsh
++++ b/node_modules/app-builder-lib/templates/nsis/multiUser.nsh
+@@ -27,16 +27,16 @@ Var installMode
+     ${if} $perUserInstallationFolder != ""
+       StrCpy $INSTDIR $perUserInstallationFolder
+     ${else}
++      # Upstream queried SHGetKnownFolderPath(FOLDERID_UserProgramFiles) here
++      # and read the returned string with a fixed-size System struct read of
++      # NSIS_MAX_STRLEN wide chars: with the 8192-char build that reads 16KB
++      # out of a ~100-byte CoTaskMem block and faults as soon as the next page
++      # is unmapped -- the System.dll+0x1581 crash on fresh per-user installs
++      # (electron-builder#7921, never fixed upstream). The value was discarded
++      # anyway because System::Store L restored $0 afterwards. Use the default
++      # location directly: identical behaviour, no out-of-bounds read, and no
++      # leaked NSIS stack entry.
+       StrCpy $0 "$LocalAppData\Programs"
+-      System::Store S
+-      # Win7 has a per-user programfiles known folder and this can be a non-default location
+-      System::Call 'SHELL32::SHGetKnownFolderPath(g "${FOLDERID_UserProgramFiles}", i ${KF_FLAG_CREATE}, p 0, *p .r2)i.r1'
+-      ${If} $1 == 0
+-        System::Call '*$2(&w${NSIS_MAX_STRLEN} .s)'
+-        StrCpy $0 $1
+-        System::Call 'OLE32::CoTaskMemFree(p r2)'
+-      ${endif}
+-      System::Store L
+       StrCpy $INSTDIR "$0\${APP_FILENAME}"
+     ${endif}
+ 
 diff --git a/node_modules/app-builder-lib/templates/nsis/multiUserUi.nsh b/node_modules/app-builder-lib/templates/nsis/multiUserUi.nsh
 index 52a83df..0500e4e 100644
 --- a/node_modules/app-builder-lib/templates/nsis/multiUserUi.nsh

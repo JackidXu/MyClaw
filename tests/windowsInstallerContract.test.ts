@@ -22,10 +22,17 @@ const rootInstallerTemplate = repoFile(
 const webPackageTemplate = repoFile(
   'node_modules/app-builder-lib/templates/nsis/include/webPackage.nsh',
 );
+const multiUserTemplate = repoFile(
+  'node_modules/app-builder-lib/templates/nsis/multiUser.nsh',
+);
 const differentialUpdateInfoBuilder = repoFile(
   'node_modules/app-builder-lib/out/targets/differentialUpdateInfoBuilder.js',
 );
 const appBuilderPatch = repoFile('patches/app-builder-lib+24.13.3.patch');
+const gateScript = repoFile('scripts/verify-installer-patches.cjs');
+const webBuildScript = repoFile('scripts/dist-win-web.cjs');
+const packageScripts = (JSON.parse(repoFile('package.json')) as { scripts: Record<string, string> })
+  .scripts;
 const electronBuilderConfig = JSON.parse(repoFile('electron-builder.json')) as {
   nsis?: { deleteAppDataOnUninstall?: boolean };
 };
@@ -197,6 +204,58 @@ describe('Windows installer hardening contracts', () => {
     const cleanup = installerInclude.indexOf('phase=old-install-cleanup-scheduled');
     expect(commit).toBeGreaterThan(-1);
     expect(cleanup).toBeGreaterThan(commit);
+  });
+
+  test('gates every Windows installer build on applied patches and these contracts', () => {
+    // The NSIS fixes live in patches/ and only reach node_modules via
+    // patch-package (postinstall). A build machine that pulled a newer patch
+    // without reinstalling would ship an installer without the fixes, so
+    // dist:win and the web stub-only pass both run the gate first.
+    expect(packageScripts['verify:installer-patches']).toBe(
+      'node scripts/verify-installer-patches.cjs',
+    );
+    expect(packageScripts['dist:win'].startsWith('npm run verify:installer-patches && ')).toBe(
+      true,
+    );
+    expect(gateScript).toContain("'--error-on-fail'");
+    expect(gateScript).toContain("path.join('tests', 'windowsInstallerContract.test.ts')");
+    expect(gateScript).toContain('process.exit(1)');
+
+    const gateCall = webBuildScript.indexOf("'verify-installer-patches.cjs'");
+    const builderSpawn = webBuildScript.indexOf('const result = spawnSync(command, args, {');
+    expect(gateCall).toBeGreaterThan(-1);
+    expect(builderSpawn).toBeGreaterThan(gateCall);
+    expect(webBuildScript.slice(gateCall, builderSpawn)).toContain('process.exit(gate.status ?? 1)');
+  });
+
+  test('resolves the per-user install dir without a fixed-size struct read', () => {
+    // electron-builder#7921: setInstallModePerUser used to fetch
+    // SHGetKnownFolderPath(FOLDERID_UserProgramFiles) and read the returned
+    // ~100-byte CoTaskMem string as an NSIS_MAX_STRLEN-wide struct (16KB with
+    // the 8192-char build), faulting in System.dll+0x1581 on fresh per-user
+    // installs whenever the following page was unmapped. The value was
+    // discarded anyway (System::Store L restored $0), so the block is gone.
+    const macroStart = multiUserTemplate.indexOf('!macro setInstallModePerUser');
+    const macroEnd = multiUserTemplate.indexOf('!macroend', macroStart);
+    expect(macroStart).toBeGreaterThan(-1);
+    const stripComments = (text: string): string =>
+      text
+        .split(/\r?\n/)
+        .filter((line) => !/^\s*[#;]/.test(line))
+        .join('\n');
+    const macroCode = stripComments(multiUserTemplate.slice(macroStart, macroEnd));
+    expect(macroCode).not.toContain('SHGetKnownFolderPath');
+    expect(macroCode).not.toContain('System::Store');
+    expect(macroCode).not.toContain("System::Call '*");
+    expect(macroCode).toContain('StrCpy $0 "$LocalAppData\\Programs"');
+    expect(macroCode).toContain('StrCpy $INSTDIR "$0\\${APP_FILENAME}"');
+
+    // No fixed-size struct read of a foreign pointer anywhere in the template.
+    expect(stripComments(multiUserTemplate)).not.toContain('(&w${NSIS_MAX_STRLEN}');
+
+    expect(appBuilderPatch).toContain('templates/nsis/multiUser.nsh');
+    expect(appBuilderPatch).toContain('-      System::Store S');
+    expect(appBuilderPatch).toContain("-        System::Call '*$2(&w${NSIS_MAX_STRLEN} .s)'");
   });
 
   test('does not block silent web installs on a download failure prompt', () => {

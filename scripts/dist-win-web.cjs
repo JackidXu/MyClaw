@@ -197,6 +197,20 @@ if (values['dry-run']) {
   process.exit(0);
 }
 
+if (stubOnly) {
+  // The stub-only pass calls electron-builder directly (bypassing dist:win),
+  // so run the same installer gate dist:win runs: apply patches, verify the
+  // NSIS template contracts against node_modules, abort on any mismatch.
+  const gate = spawnSync(process.execPath, [path.join(__dirname, 'verify-installer-patches.cjs')], {
+    cwd: REPO_ROOT,
+    env,
+    stdio: 'inherit',
+  });
+  if (gate.status !== 0) {
+    process.exit(gate.status ?? 1);
+  }
+}
+
 const result = spawnSync(command, args, {
   cwd: REPO_ROOT,
   env,
