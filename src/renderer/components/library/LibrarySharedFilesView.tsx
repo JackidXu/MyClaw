@@ -9,6 +9,7 @@ import {
   GlobeAltIcon,
   MagnifyingGlassIcon,
   StarIcon,
+  XMarkIcon,
 } from '@heroicons/react/24/outline';
 import { StarIcon as StarSolidIcon } from '@heroicons/react/24/solid';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -111,6 +112,7 @@ interface LibraryCloudViewProps {
   onStatusChange: (status: LibraryCloudAvailabilityFilterValue) => void;
   onToggleFavoritesOnly: () => void;
   onKeywordInputChange: (keyword: string) => void;
+  onKeywordClear: () => void;
   onRefresh: () => void;
   onDetailOpen: () => void;
   onShowLogin: () => void;
@@ -1002,6 +1004,7 @@ const LibraryCloudView: React.FC<LibraryCloudViewProps> = ({
   onStatusChange,
   onToggleFavoritesOnly,
   onKeywordInputChange,
+  onKeywordClear,
   onRefresh,
   onDetailOpen,
   onShowLogin,
@@ -1012,6 +1015,7 @@ const LibraryCloudView: React.FC<LibraryCloudViewProps> = ({
   hideSites = false,
   sitesReadOnly = false,
 }) => {
+  const searchInputRef = React.useRef<HTMLInputElement>(null);
   const [activeItem, setActiveItem] = useState<SharedFileItem>();
   const [activeSite, setActiveSite] = useState<DeployedSiteItem>();
   const [interactionError, setInteractionError] = useState<string>();
@@ -1190,15 +1194,38 @@ const LibraryCloudView: React.FC<LibraryCloudViewProps> = ({
             />
           </div>
           <div className="ml-auto flex shrink-0 items-center gap-2">
-            <label className="relative w-56">
+            <div className="relative w-56">
               <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-tertiary" />
               <input
+                ref={searchInputRef}
                 value={keywordInput}
                 onChange={event => onKeywordInputChange(event.target.value)}
                 placeholder={i18nService.t('librarySearchCloudPlaceholder')}
-                className="h-9 w-full rounded-xl border border-border bg-surface pl-9 pr-3 text-xs text-foreground outline-none placeholder:text-tertiary focus:ring-2 focus:ring-primary/30"
+                className="h-9 w-full rounded-xl border border-border bg-surface pl-9 pr-9 text-xs text-foreground outline-none placeholder:text-tertiary focus:ring-2 focus:ring-primary/30"
               />
-            </label>
+              {keywordInput.length > 0 && (
+                <div className="absolute right-1.5 top-1/2 -translate-y-1/2">
+                  <Tooltip
+                    content={i18nService.t('libraryClearSearch')}
+                    position={TooltipPosition.Bottom}
+                    align={TooltipAlign.End}
+                    delay={250}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onKeywordClear();
+                        searchInputRef.current?.focus();
+                      }}
+                      aria-label={i18nService.t('libraryClearSearch')}
+                      className="inline-flex h-6 w-6 items-center justify-center rounded-md text-tertiary hover:bg-surface-raised hover:text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    >
+                      <XMarkIcon className="h-4 w-4" />
+                    </button>
+                  </Tooltip>
+                </div>
+              )}
+            </div>
             <HeaderAction
               label={i18nService.t('libraryFavorites')}
               aria-pressed={favoritesOnly}

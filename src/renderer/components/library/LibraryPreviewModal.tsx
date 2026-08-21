@@ -8,7 +8,6 @@ import {
   GlobeAltIcon,
   InformationCircleIcon,
   StarIcon,
-  TrashIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline';
 import { StarIcon as StarSolidIcon } from '@heroicons/react/24/solid';
@@ -76,7 +75,6 @@ interface LibraryPreviewModalProps {
   onOpenLink: () => void;
   onCopyLink: () => void;
   onOpenSession: (session: LibrarySessionRef) => void;
-  onTrash: () => void;
   onShowSites: () => void;
 }
 
@@ -117,7 +115,6 @@ const ActionIcon: React.FC<{
   if (action === LibraryItemAction.OpenWithApp || action === LibraryItemAction.OpenLink) {
     return <ArrowTopRightOnSquareIcon className="h-4 w-4" />;
   }
-  if (action === LibraryItemAction.TrashLocal) return <TrashIcon className="h-4 w-4" />;
   if (action === LibraryItemAction.ManageSite) return <GlobeAltIcon className="h-4 w-4" />;
   return <InformationCircleIcon className="h-4 w-4" />;
 };
@@ -129,7 +126,6 @@ const getActionLabel = (item: LibraryItem, action: LibraryItemActionValue): stri
       : i18nService.t('libraryAddFavorite');
   }
   if (action === LibraryItemAction.RevealLocal) return i18nService.t('libraryRevealFile');
-  if (action === LibraryItemAction.TrashLocal) return i18nService.t('libraryMoveToTrash');
   if (action === LibraryItemAction.ManageSite) return i18nService.t('libraryManageSite');
   if (action === LibraryItemAction.CopyLink) return i18nService.t('libraryCopyLink');
   if (action === LibraryItemAction.OpenLink) return i18nService.t('libraryOpenLink');
@@ -182,7 +178,6 @@ const LibraryPreviewModalContent: React.FC<LibraryPreviewModalProps> = ({
   onOpenLink,
   onCopyLink,
   onOpenSession,
-  onTrash,
   onShowSites,
 }) => {
   const artifactFileShare = useOptionalArtifactFileShare();
@@ -231,10 +226,8 @@ const LibraryPreviewModalContent: React.FC<LibraryPreviewModalProps> = ({
       : [];
   const previewActions = getLibraryPreviewActionIds(item);
   const regularPreviewActions = previewActions.filter(
-    action => action !== LibraryItemAction.TrashLocal
-      && action !== LibraryItemAction.RelatedSessions,
+    action => action !== LibraryItemAction.RelatedSessions,
   );
-  const hasTrashAction = previewActions.includes(LibraryItemAction.TrashLocal);
   const hasRelatedSessionsAction = previewActions.includes(LibraryItemAction.RelatedSessions);
   const relatedSessionCount = localItem
     ? Math.max(localItem.relatedSessionCount, sessions.length)
@@ -261,7 +254,6 @@ const LibraryPreviewModalContent: React.FC<LibraryPreviewModalProps> = ({
     if (action === LibraryItemAction.ToggleFavorite) onToggleFavorite();
     else if (action === LibraryItemAction.OpenWithApp) onOpenWithApp();
     else if (action === LibraryItemAction.RevealLocal) onReveal();
-    else if (action === LibraryItemAction.TrashLocal) onTrash();
     else if (action === LibraryItemAction.OpenLink) onOpenLink();
     else if (action === LibraryItemAction.CopyLink) onCopyLink();
     else if (action === LibraryItemAction.ManageSite) onShowSites();
@@ -283,14 +275,14 @@ const LibraryPreviewModalContent: React.FC<LibraryPreviewModalProps> = ({
     <Modal
       onClose={onClose}
       onEscape={handleEscape}
-      overlayClassName="fixed inset-0 z-40 flex items-center justify-center bg-black/45 p-4 backdrop-blur-[2px]"
-      className="non-draggable flex h-[calc(100vh-32px)] max-h-[900px] w-[calc(100vw-32px)] max-w-[1440px] overflow-hidden rounded-2xl border border-border bg-background shadow-2xl"
+      overlayClassName="fixed inset-0 z-40 flex h-[100dvh] items-center justify-center bg-black/45 px-4 py-12 backdrop-blur-[2px] lg:px-8"
+      className="non-draggable flex h-full max-h-[820px] min-h-0 w-full max-w-[1320px] min-w-0 overflow-hidden rounded-2xl border border-border bg-background shadow-2xl"
     >
       <section
         role="dialog"
         aria-modal="true"
         aria-labelledby="library-preview-title"
-        className="flex min-h-0 w-full flex-1 flex-col"
+        className="flex min-h-0 min-w-0 w-full flex-1 flex-col"
       >
         <header className="relative z-20 flex h-12 shrink-0 items-center gap-2 border-b border-border px-3">
           <HeaderIcon item={item} />
@@ -435,19 +427,6 @@ const LibraryPreviewModalContent: React.FC<LibraryPreviewModalProps> = ({
                       )}
                     </>
                   )}
-                  {hasTrashAction && (
-                    <div className="mt-1 border-t border-border pt-1">
-                      <button
-                        type="button"
-                        role="menuitem"
-                        onClick={() => runAction(LibraryItemAction.TrashLocal)}
-                        className={`${CARD_OVERFLOW_MENU_ITEM_CLASSNAME} text-red-500 dark:text-red-400`}
-                      >
-                        <ActionIcon action={LibraryItemAction.TrashLocal} item={item} />
-                        {getActionLabel(item, LibraryItemAction.TrashLocal)}
-                      </button>
-                    </div>
-                  )}
                 </div>
               )}
             </div>
@@ -455,7 +434,7 @@ const LibraryPreviewModalContent: React.FC<LibraryPreviewModalProps> = ({
         </header>
 
         <div
-          className="min-h-0 flex-1 bg-surface"
+          className="min-h-0 min-w-0 flex-1 overflow-hidden bg-surface"
           onMouseDown={() => {
             setActivePopover(undefined);
             setIsSessionsExpanded(false);

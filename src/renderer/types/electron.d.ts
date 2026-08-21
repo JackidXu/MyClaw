@@ -1419,7 +1419,6 @@ interface IElectronAPI {
     setFavorite: (
       input: LibraryFavoriteInput,
     ) => Promise<LibraryResult<{ favorite: boolean }>>;
-    trashLocal: (itemId: string) => Promise<LibraryResult<{ itemId: string }>>;
     openLocal: (itemId: string) => Promise<LibraryResult<null>>;
     revealLocal: (itemId: string) => Promise<LibraryResult<null>>;
     repairIndex: () => Promise<LibraryResult<LibraryIndexStatus>>;

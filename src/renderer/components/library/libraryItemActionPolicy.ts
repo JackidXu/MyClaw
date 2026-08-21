@@ -7,7 +7,6 @@ export const LibraryItemAction = {
   OpenWithApp: 'open_with_app',
   RevealLocal: 'reveal_local',
   RelatedSessions: 'related_sessions',
-  TrashLocal: 'trash_local',
   OpenLink: 'open_link',
   CopyLink: 'copy_link',
   ManageSite: 'manage_site',
@@ -21,8 +20,6 @@ const LOCAL_ACTIONS = [
   LibraryItemAction.ToggleFavorite,
   LibraryItemAction.OpenWithApp,
   LibraryItemAction.RevealLocal,
-  LibraryItemAction.RelatedSessions,
-  LibraryItemAction.TrashLocal,
 ] as const;
 
 const SHARED_ACTIONS = [

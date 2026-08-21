@@ -894,7 +894,6 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.invoke(LibraryIpc.AddLocalFiles, filePaths),
     setFavorite: (input: LibraryFavoriteInput) =>
       ipcRenderer.invoke(LibraryIpc.SetFavorite, input),
-    trashLocal: (itemId: string) => ipcRenderer.invoke(LibraryIpc.TrashLocal, itemId),
     openLocal: (itemId: string) => ipcRenderer.invoke(LibraryIpc.OpenLocal, itemId),
     revealLocal: (itemId: string) => ipcRenderer.invoke(LibraryIpc.RevealLocal, itemId),
     repairIndex: () => ipcRenderer.invoke(LibraryIpc.RepairIndex),
