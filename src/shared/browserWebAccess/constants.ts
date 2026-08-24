@@ -106,10 +106,12 @@ export const defaultBrowserWebAccessConfig: BrowserWebAccessConfig = {
   blockedHostnames: [],
   snapshotMode: BrowserSnapshotMode.Efficient,
   evaluateEnabled: true,
+  headless: true,
   webFetch: {
     enabled: true,
     followGlobalProxy: true,
     readability: true,
+    allowRfc2544BenchmarkRange: true,
   },
 };
 
@@ -356,7 +358,7 @@ export const normalizeBrowserWebAccessConfig = (
     evaluateEnabled: value?.evaluateEnabled ?? defaultBrowserWebAccessConfig.evaluateEnabled,
     ...(executablePath ? { executablePath } : {}),
     ...(cdpUrl ? { cdpUrl } : {}),
-    ...(value?.headless === true ? { headless: true } : {}),
+    headless: value?.headless !== false,
     ...(value?.attachOnly === true ? { attachOnly: true } : {}),
     ...(remoteCdpTimeoutMs ? { remoteCdpTimeoutMs } : {}),
     ...(remoteCdpHandshakeTimeoutMs ? { remoteCdpHandshakeTimeoutMs } : {}),
@@ -369,7 +371,7 @@ export const normalizeBrowserWebAccessConfig = (
       ...(maxChars ? { maxChars } : {}),
       ...(userAgent ? { userAgent } : {}),
       readability: webFetch.readability ?? defaultBrowserWebAccessConfig.webFetch.readability,
-      ...(webFetch.allowRfc2544BenchmarkRange === true ? { allowRfc2544BenchmarkRange: true } : {}),
+      allowRfc2544BenchmarkRange: webFetch.allowRfc2544BenchmarkRange !== false,
     },
   };
 };

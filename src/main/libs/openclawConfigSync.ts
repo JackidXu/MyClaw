@@ -384,8 +384,10 @@ const MANAGED_WEB_SEARCH_POLICY_PROMPT = [
   'Built-in `web_search` is disabled in this workspace. Do not ask for or rely on the Brave Search API.',
   '',
   'When you need live web information or research:',
+  '- **Reading User-Provided URLs / Content Fetching**: When the user asks you to read, summarize, analyze, or process a URL (e.g. shared articles, audio sharing links, API docs, public web pages), ALWAYS FIRST use `web_fetch` to silently fetch and extract the markdown/text in the background.',
+  '- **NEVER Launch External System Browsers**: NEVER run shell/terminal commands (such as `open <url>`, `start <url>`, `xdg-open`, `curl`, `wget`) via `exec`/`bash` to open web pages in the user\'s desktop browser. Web content extraction must happen internally and silently.',
   '- **Keyword Search & Discovery**: NEVER use `web_fetch` on search engine result pages (e.g. `baidu.com/s?wd=...`, `google.com/search`, `bing.com/search`, `sogou.com`). Search engines strictly block HTTP scrapers with CAPTCHAs. Use the `web-search` skill or the built-in `browser` tool instead.',
-  '- **Dynamic, SPA & Anti-Scraping Pages**: For websites requiring JavaScript rendering or strict bot verification (e.g. Xiaohongshu/小红书, WeChat articles/微信公众号, Zhihu, Weibo, major news portals), ALWAYS use `browser` (`target="host"`). Do not attempt `web_fetch`.',
+  '- **Dynamic, SPA & Anti-Scraping Pages**: For websites requiring JavaScript rendering or strict bot verification (e.g. Xiaohongshu/小红书, WeChat articles/微信公众号, Zhihu, Weibo, major news portals), ALWAYS use `browser` (`target="host"`). Do not attempt `web_fetch`. The browser runs in headless mode silently.',
   '- **Direct Static URLs**: Only use `web_fetch` for known, static, public direct article/API URLs without CAPTCHAs.',
   '- If a `web_fetch` call fails or gets blocked by a CAPTCHA/WAF, immediately switch to the `browser` tool or `web-search` skill instead of continuously guessing alternative HTTP URLs.',
   '- Only use the HeyClaw `web-search` skill when local command execution is available. Native channel sessions may deny `exec`, so prefer `browser` or `web_fetch` there.',
@@ -2005,7 +2007,7 @@ export class OpenClawConfigSync {
       enabled: true,
       defaultProfile: BrowserRuntimeProfile.Managed,
       evaluateEnabled: browserWebAccess.evaluateEnabled,
-      ...(browserWebAccess.headless === true ? { headless: true } : {}),
+      headless: browserWebAccess.headless !== false,
       ...(extraArgs.length > 0 ? { extraArgs } : {}),
       ssrfPolicy,
     };
@@ -2020,7 +2022,7 @@ export class OpenClawConfigSync {
       ...(fetch.maxRedirects ? { maxRedirects: fetch.maxRedirects } : {}),
       ...(fetch.maxChars ? { maxChars: fetch.maxChars } : {}),
       ...(fetch.userAgent ? { userAgent: fetch.userAgent } : {}),
-      ...(fetch.allowRfc2544BenchmarkRange === true
+      ...(fetch.allowRfc2544BenchmarkRange !== false
         ? { ssrfPolicy: { allowRfc2544BenchmarkRange: true } }
         : {}),
     };
