@@ -9,7 +9,7 @@ index 4b0bf4592..788616073 100644
 +// LobsterAI patch: raw runner failures now always forward the sanitized detail
 +// instead of collapsing to GENERIC_RUN_FAILURE_TEXT when verbose is off.
 +const FORWARDED_INCOMPLETE_TERMINAL_FAILURE_TEXT =
-+  "⚠️ Agent failed before reply: openai/gpt-5.5 ended with an incomplete terminal response. Please try again, or use /new to start a fresh session.";
++  "⚠️ 助手回复前遇到错误：openai/gpt-5.5 ended with an incomplete terminal response。 请重试，或发送 /new 开启新会话。";
 +
  describe("resolveSessionRuntimeOverrideForProvider", () => {
    it("ignores unsupported session runtime pins", () => {
@@ -29,7 +29,7 @@ index 4b0bf4592..788616073 100644
      if (result.kind === "final") {
 -      expect(result.payload.text).toBe(GENERIC_RUN_FAILURE_TEXT);
 +      expect(result.payload.text).toBe(
-+        "⚠️ Agent failed before reply: INVALID_ARGUMENT: some other failure. Please try again, or use /new to start a fresh session.",
++        "⚠️ 助手回复前遇到错误：INVALID_ARGUMENT: some other failure。 请重试，或发送 /new 开启新会话。",
 +      );
      }
    });
@@ -71,10 +71,48 @@ index 4b0bf4592..788616073 100644
    });
  
 diff --git a/src/auto-reply/reply/agent-runner-execution.ts b/src/auto-reply/reply/agent-runner-execution.ts
-index 7d13bf369..03698016f 100644
+index 7d13bf369..1d882bbf8 100644
 --- a/src/auto-reply/reply/agent-runner-execution.ts
 +++ b/src/auto-reply/reply/agent-runner-execution.ts
-@@ -841,10 +841,11 @@ function buildExternalRunFailureReply(
+@@ -780,14 +780,33 @@ function formatForwardedExternalRunFailureText(message: string): string {
+     .replace(/^⚠️\s*/u, "")
+     .replace(/\s+/gu, " ");
+   if (!sanitized) {
+-    return GENERIC_EXTERNAL_RUN_FAILURE_TEXT;
++    return "⚠️ 助手回复前遇到错误，请重试，或发送 /new 开启新会话。";
+   }
+-  const detail =
++  let detail =
+     sanitized.length > EXTERNAL_RUN_FAILURE_DETAIL_MAX_CHARS
+       ? `${sanitized.slice(0, EXTERNAL_RUN_FAILURE_DETAIL_MAX_CHARS - 1).trimEnd()}…`
+       : sanitized;
+-  const suffix = /[.!?]$/u.test(detail) ? "" : ".";
+-  return `⚠️ Agent failed before reply: ${detail}${suffix} Please try again, or use /new to start a fresh session.`;
++
++  if (
++    detail.includes("messages.content.type is invalid") ||
++    detail.includes("rejected the request schema") ||
++    detail.includes("does not support image")
++  ) {
++    detail = "当前模型不支持图片分析或输入格式不符";
++  } else if (
++    detail.includes("context length exceeded") ||
++    detail.includes("maximum context length")
++  ) {
++    detail = "会话上下文长度超出模型限制";
++  } else if (
++    detail.includes("Rate limit reached") ||
++    detail.includes("rate_limit")
++  ) {
++    detail = "模型调用频率已达上限";
++  }
++
++  const suffix = /[.!?。！？]$/u.test(detail) ? "" : "。";
++  return `⚠️ 助手回复前遇到错误：${detail}${suffix} 请重试，或发送 /new 开启新会话。`;
+ }
+ 
+ function buildExternalRunFailureReply(
+@@ -841,10 +860,11 @@ function buildExternalRunFailureReply(
    if (codexAppServerFailure) {
      return { text: codexAppServerFailure, isGenericRunnerFailure: false };
    }
@@ -89,3 +127,4 @@ index 7d13bf369..03698016f 100644
      isGenericRunnerFailure: true,
    };
  }
+

@@ -22,6 +22,7 @@ import {
   getCoworkOpenAICompatProxyBaseURL,
   getCoworkOpenAICompatProxyStatus,
   type OpenAICompatProxyTarget,
+  setProxyProviderConfigsGetter,
 } from './coworkOpenAICompatProxy';
 import { readOpenAICodexAuthFile } from './openaiCodexAuth';
 import { getOpenClawTokenProxyPort } from './openclawTokenProxy';
@@ -1107,5 +1108,7 @@ export function getCopilotGithubToken(): string | null {
   const token = sqliteStore.get<string>('github_copilot_github_token');
   return token?.trim() || null;
 }
+
+setProxyProviderConfigsGetter(resolveAllEnabledProviderConfigs);
 
 
