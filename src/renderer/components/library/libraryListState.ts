@@ -79,6 +79,18 @@ export const hideLibraryLocalItems = (
   counts: data.counts,
 });
 
+export const sanitizeLibraryLocalListData = (
+  data: LibraryLocalListData,
+): { data: LibraryLocalListData; ignoredCount: number } => {
+  const list = data.list.filter(item => (
+    Boolean(item.latestSession) && item.relatedSessionCount > 0
+  ));
+  return {
+    data: list.length === data.list.length ? data : { ...data, list },
+    ignoredCount: data.list.length - list.length,
+  };
+};
+
 export const hideLibraryCloudItems = (
   data: LibraryCloudListData,
 ): LibraryCloudListData => ({

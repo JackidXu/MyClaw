@@ -74,6 +74,7 @@ interface LibraryCloudApiData {
     disabled?: number;
   };
   serverNow?: unknown;
+  recoveryPending?: unknown;
 }
 
 interface LibraryCloudApiResponse {
@@ -292,6 +293,7 @@ export const listLibraryCloudItems = async (
     };
     let pageCount = 0;
     let serverNow = Date.now();
+    let recoveryPending = false;
     const items = new Map<string, LibraryCloudItem>();
     do {
       const query = new URLSearchParams({
@@ -318,6 +320,7 @@ export const listLibraryCloudItems = async (
         };
       }
       serverNow = readOptionalTimestamp(body.data.serverNow) ?? serverNow;
+      recoveryPending = recoveryPending || readBoolean(body.data.recoveryPending) === true;
       for (const input of body.data.list ?? []) {
         const item = normalizeCloudItem(input, favorites, localStore);
         if (
@@ -359,6 +362,7 @@ export const listLibraryCloudItems = async (
         counts,
         sharedStatusCounts,
         serverNow,
+        recoveryPending,
       },
     };
   } catch (error) {

@@ -5,8 +5,8 @@ import { isArtifactFileShareable } from '../artifacts/artifactFileSharePolicy';
 
 export const createLibraryArtifactCandidate = (item: LocalArtifactItem): Artifact => ({
   id: `library-${item.itemId}`,
-  messageId: item.latestSession?.lastMessageId ?? `library-${item.itemId}`,
-  sessionId: item.latestSession?.sessionId ?? 'library',
+  messageId: item.latestSession.lastMessageId ?? `library-${item.itemId}`,
+  sessionId: item.latestSession.sessionId,
   type: item.artifactType,
   title: item.title,
   content: '',

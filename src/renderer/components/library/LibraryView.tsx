@@ -85,6 +85,7 @@ import {
   hideLibraryCloudItems,
   hideLibraryLocalItems,
   restoreLibraryFavoriteState,
+  sanitizeLibraryLocalListData,
   shouldReloadLibraryAfterChange,
 } from './libraryListState';
 import LibraryPreviewModal from './LibraryPreviewModal';
@@ -136,6 +137,7 @@ const LIBRARY_GRID_CLASSNAME = 'grid justify-start gap-3';
 const LIBRARY_GRID_STYLE: React.CSSProperties = {
   gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 240px), 264px))',
 };
+const LIBRARY_CLOUD_RECOVERY_RETRY_DELAYS_MS = [3_000, 10_000, 30_000] as const;
 
 const EMPTY_LOCAL: LibraryLocalListData = {
   list: [],
@@ -173,8 +175,10 @@ const SOURCE_FILTERS = [
 ] as const;
 
 const getLibrarySessionKey = (item: LibraryItem): string => {
-  if (item.latestSession) return `session:${item.latestSession.sessionId}`;
-  return item.itemKind === LibraryItemKind.LocalArtifact ? 'unlinked' : 'cloud';
+  if (item.itemKind === LibraryItemKind.LocalArtifact) {
+    return `session:${item.latestSession.sessionId}`;
+  }
+  return item.latestSession ? `session:${item.latestSession.sessionId}` : 'cloud';
 };
 
 const formatLibrarySessionTime = (value: number): string => new Intl.DateTimeFormat(
@@ -236,7 +240,11 @@ const LibraryThumbnail: React.FC<{ item: LibraryItem }> = ({ item }) => {
   return (
     <div ref={containerRef} className="h-full w-full">
       {dataUrl ? (
-        <img src={dataUrl} alt={item.title} className="h-full w-full object-cover" />
+        <img
+          src={dataUrl}
+          alt={item.title}
+          className="h-full w-full bg-surface-raised object-contain"
+        />
       ) : (
         <div className="flex h-full w-full items-center justify-center bg-surface-raised text-secondary">
           <Icon className="h-6 w-6" aria-hidden="true" />
@@ -389,6 +397,10 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
   const scrollContainerRef = useRef<HTMLElement>(null);
   const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
   const localSearchInputRef = useRef<HTMLInputElement>(null);
+  const cloudRecoveryTimerRef = useRef<number | undefined>(undefined);
+  const cloudRecoveryAttemptRef = useRef(0);
+  const cloudRecoveryContextRef = useRef('');
+  const cloudRecoveryLoadRef = useRef<() => Promise<void>>(async () => undefined);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setKeyword(keywordInput.trim()), 300);
@@ -476,16 +488,23 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
         const localResult = await localPromise;
         if (requestId !== requestIdRef.current) return;
         if (localResult?.success) {
+          const sanitizedResult = sanitizeLibraryLocalListData(localResult.data);
+          if (sanitizedResult.ignoredCount > 0) {
+            console.warn(
+              '[Library] Ignored local artifacts without a valid task relation.',
+              { count: sanitizedResult.ignoredCount },
+            );
+          }
           setLocalData(current => {
             if (append) {
               return {
-                ...localResult.data,
-                list: appendUniqueItems(current.list, localResult.data.list),
+                ...sanitizedResult.data,
+                list: appendUniqueItems(current.list, sanitizedResult.data.list),
               };
             }
             return wantsLocal
-              ? localResult.data
-              : hideLibraryLocalItems(localResult.data);
+              ? sanitizedResult.data
+              : hideLibraryLocalItems(sanitizedResult.data);
           });
         } else if (localResult) {
           setError(localResult.error);
@@ -512,6 +531,8 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
               return {
                 ...cloudResult.data,
                 list: appendUniqueItems(current.list, cloudResult.data.list),
+                recoveryPending: current.recoveryPending
+                  || cloudResult.data.recoveryPending,
               };
             }
             return wantsCloud
@@ -550,6 +571,44 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
     wantsCloud,
     wantsLocal,
   ]);
+
+  useEffect(() => {
+    cloudRecoveryLoadRef.current = () => loadData(false);
+  }, [loadData]);
+
+  useEffect(() => {
+    if (cloudRecoveryTimerRef.current !== undefined) {
+      window.clearTimeout(cloudRecoveryTimerRef.current);
+      cloudRecoveryTimerRef.current = undefined;
+    }
+    const recoveryContext = `${wantsCloud ? 'cloud' : 'local'}:${favoriteOwnerScope ?? ''}`;
+    if (cloudRecoveryContextRef.current !== recoveryContext) {
+      cloudRecoveryContextRef.current = recoveryContext;
+      cloudRecoveryAttemptRef.current = 0;
+    }
+    if (
+      !wantsCloud
+      || !isAuthenticated
+      || !favoriteOwnerScope
+      || !cloudData.recoveryPending
+    ) {
+      cloudRecoveryAttemptRef.current = 0;
+      return undefined;
+    }
+    const attempt = cloudRecoveryAttemptRef.current;
+    if (attempt >= LIBRARY_CLOUD_RECOVERY_RETRY_DELAYS_MS.length) return undefined;
+    cloudRecoveryTimerRef.current = window.setTimeout(() => {
+      cloudRecoveryTimerRef.current = undefined;
+      cloudRecoveryAttemptRef.current = attempt + 1;
+      void cloudRecoveryLoadRef.current();
+    }, LIBRARY_CLOUD_RECOVERY_RETRY_DELAYS_MS[attempt]);
+    return () => {
+      if (cloudRecoveryTimerRef.current !== undefined) {
+        window.clearTimeout(cloudRecoveryTimerRef.current);
+        cloudRecoveryTimerRef.current = undefined;
+      }
+    };
+  }, [cloudData, favoriteOwnerScope, isAuthenticated, wantsCloud]);
 
   useEffect(() => {
     void loadData(false);
@@ -614,12 +673,9 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
       const sessionGroups = dateBucket.sessionBuckets.map(sessionBucket => {
         const firstItem = sessionBucket.items[0];
         const session = firstItem.latestSession;
-        const fallbackTitle = firstItem.itemKind === LibraryItemKind.LocalArtifact
-          ? i18nService.t('libraryUnlinkedSession')
-          : i18nService.t('libraryCloudGroup');
         return {
           key: `${dateBucket.dateKey}:${sessionBucket.sessionKey}`,
-          title: session?.title ?? fallbackTitle,
+          title: session?.title ?? i18nService.t('libraryCloudGroup'),
           sortTime: sessionBucket.representativeTime,
           ...(session ? { session } : {}),
           items: sessionBucket.items,
@@ -828,7 +884,7 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
     ) {
       menuItems.push({
         key: 'sessions-empty',
-        label: i18nService.t('libraryUnlinkedSession'),
+        label: i18nService.t('libraryRelatedSessionsUnavailable'),
         disabled: true,
       });
     } else if (

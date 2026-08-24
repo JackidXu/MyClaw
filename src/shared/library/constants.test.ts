@@ -24,4 +24,11 @@ describe('library type policy', () => {
     expect(getLibraryArtifactTypeForExtension('.svg')).toBe(LibraryArtifactType.Svg);
     expect(getLibraryArtifactTypeForExtension('.json')).toBeNull();
   });
+
+  test.each(['.xls', '.xlsx', '.csv', '.tsv', '.CSV'])(
+    'maps spreadsheet extension %s to the shareable document artifact type',
+    extension => {
+      expect(getLibraryArtifactTypeForExtension(extension)).toBe(LibraryArtifactType.Document);
+    },
+  );
 });

@@ -497,7 +497,7 @@ const LibraryPreviewModal: React.FC<LibraryPreviewModalProps> = props => {
     return <LibraryPreviewModalContent {...props} />;
   }
   return (
-    <ArtifactFileShareProvider sessionId={props.item.latestSession?.sessionId ?? 'library'}>
+    <ArtifactFileShareProvider sessionId={props.item.latestSession.sessionId}>
       <LibraryPreviewModalContent {...props} />
     </ArtifactFileShareProvider>
   );

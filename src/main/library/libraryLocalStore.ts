@@ -88,6 +88,17 @@ export interface LibraryRelocationCandidate {
   filePath: string;
 }
 
+export type LibraryStoredLocalArtifact = Omit<LocalArtifactItem, 'latestSession'> & {
+  latestSession?: LibrarySessionRef;
+};
+
+const VISIBLE_TASK_RELATION_PREDICATE = `EXISTS (
+  SELECT 1
+  FROM library_artifact_sessions visible_relation
+  JOIN cowork_sessions visible_session ON visible_session.id = visible_relation.session_id
+  WHERE visible_relation.artifact_id = a.id
+)`;
+
 const escapeLike = (value: string): string => value.replace(/[\\%_]/g, match => `\\${match}`);
 
 export const encodeLibraryLocalCursor = (cursor: LocalCursor): string => (
@@ -118,7 +129,7 @@ export class LibraryLocalStore {
     );
     const keyword = options.keyword?.trim().slice(0, LibraryLimits.MaxKeywordLength) ?? '';
     const cursor = decodeLibraryLocalCursor(options.cursor);
-    const where: string[] = [];
+    const where: string[] = [VISIBLE_TASK_RELATION_PREDICATE];
     const params: Array<string | number> = [];
 
     if (options.category && options.category !== LibraryCategory.All) {
@@ -178,7 +189,7 @@ export class LibraryLocalStore {
     `).all(...pageParams, pageSize + 1) as LocalArtifactRow[];
     const hasMore = rows.length > pageSize;
     const pageRows = hasMore ? rows.slice(0, pageSize) : rows;
-    const list = this.hydrateRows(pageRows);
+    const list = this.hydrateVisibleRows(pageRows);
     const last = pageRows[pageRows.length - 1];
 
     const counts: LibraryLocalCounts = {
@@ -197,15 +208,33 @@ export class LibraryLocalStore {
   }
 
   getDetail(itemId: string): LibraryLocalDetailData | null {
-    const row = this.db.prepare('SELECT * FROM library_local_artifacts WHERE id = ?')
-      .get(itemId) as LocalArtifactRow | undefined;
+    const row = this.db.prepare(`
+      SELECT a.*
+      FROM library_local_artifacts a
+      WHERE a.id = ?
+        AND a.availability <> ?
+        AND ${VISIBLE_TASK_RELATION_PREDICATE}
+    `).get(itemId, LibraryAvailability.Missing) as LocalArtifactRow | undefined;
     if (!row) return null;
-    const item = this.hydrateRows([row])[0];
+    const item = this.hydrateVisibleRows([row])[0];
+    if (!item) return null;
     const sessions = this.readRelations([itemId]).map(this.toSessionRelation);
     return { item, sessions };
   }
 
-  getItem(itemId: string): LocalArtifactItem | null {
+  getVisibleItem(itemId: string): LocalArtifactItem | null {
+    const row = this.db.prepare(`
+      SELECT a.*
+      FROM library_local_artifacts a
+      WHERE a.id = ?
+        AND a.availability <> ?
+        AND ${VISIBLE_TASK_RELATION_PREDICATE}
+    `).get(itemId, LibraryAvailability.Missing) as LocalArtifactRow | undefined;
+    if (!row) return null;
+    return this.hydrateVisibleRows([row])[0] ?? null;
+  }
+
+  getItem(itemId: string): LibraryStoredLocalArtifact | null {
     const row = this.db.prepare('SELECT * FROM library_local_artifacts WHERE id = ?')
       .get(itemId) as LocalArtifactRow | undefined;
     return row ? this.hydrateRows([row])[0] : null;
@@ -262,7 +291,15 @@ export class LibraryLocalStore {
     return relation ? this.toSessionRef(relation) : undefined;
   }
 
-  upsertFile(file: LibraryIndexedFile, candidate?: LibraryArtifactCandidate): LocalArtifactItem {
+  upsertFile(
+    file: LibraryIndexedFile,
+    candidate: LibraryArtifactCandidate,
+  ): LocalArtifactItem | null;
+  upsertFile(file: LibraryIndexedFile, candidate?: undefined): LibraryStoredLocalArtifact;
+  upsertFile(
+    file: LibraryIndexedFile,
+    candidate?: LibraryArtifactCandidate,
+  ): LibraryStoredLocalArtifact | LocalArtifactItem | null {
     const now = Date.now();
     const existing = this.db.prepare(
       'SELECT id, first_seen_at FROM library_local_artifacts WHERE path_key = ?',
@@ -270,7 +307,9 @@ export class LibraryLocalStore {
     const itemId = existing?.id ?? crypto.randomUUID();
     const firstSeenAt = existing?.first_seen_at ?? now;
 
-    this.db.transaction(() => {
+    const committed = this.db.transaction(() => {
+      if (candidate && !this.sessionExists(candidate.sessionId)) return false;
+
       this.db.prepare(`
         INSERT INTO library_local_artifacts (
           id, path_key, file_path, file_name, extension, artifact_type, category,
@@ -374,9 +413,12 @@ export class LibraryLocalStore {
             added_at = excluded.added_at
         `).run(file.pathKey, file.filePath, now);
       }
+      return true;
     })();
 
-    const item = this.getItem(itemId);
+    if (!committed) return null;
+
+    const item = candidate ? this.getVisibleItem(itemId) : this.getItem(itemId);
     if (!item) throw new Error('Failed to read indexed library item.');
     return item;
   }
@@ -650,7 +692,21 @@ export class LibraryLocalStore {
     };
   }
 
-  private hydrateRows(rows: LocalArtifactRow[]): LocalArtifactItem[] {
+  private hydrateVisibleRows(rows: LocalArtifactRow[]): LocalArtifactItem[] {
+    const items = this.hydrateRows(rows);
+    const visibleItems = items.filter((item): item is LocalArtifactItem => (
+      Boolean(item.latestSession) && item.relatedSessionCount > 0
+    ));
+    if (visibleItems.length !== items.length) {
+      console.warn(
+        '[Library] Ignored local artifacts without a valid task relation.',
+        { count: items.length - visibleItems.length },
+      );
+    }
+    return visibleItems;
+  }
+
+  private hydrateRows(rows: LocalArtifactRow[]): LibraryStoredLocalArtifact[] {
     if (rows.length === 0) return [];
     const itemIds = rows.map(row => row.id);
     const relationRows = this.readRelations(itemIds);

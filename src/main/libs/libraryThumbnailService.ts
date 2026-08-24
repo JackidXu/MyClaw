@@ -23,8 +23,8 @@ interface LibraryThumbnailServiceOptions {
   size?: ThumbnailSize;
 }
 
-const THUMBNAIL_CACHE_VERSION = 'native-image-v1';
-const DEFAULT_THUMBNAIL_SIZE = { width: 480, height: 320 };
+const THUMBNAIL_CACHE_VERSION = 'cross-platform-renderer-v1';
+const DEFAULT_THUMBNAIL_SIZE = { width: 480, height: 270 };
 
 export class LibraryThumbnailService {
   private readonly createThumbnail: LibraryThumbnailServiceOptions['createThumbnail'];

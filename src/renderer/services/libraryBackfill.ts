@@ -1,5 +1,6 @@
 import {
   isLibraryArtifactType,
+  LIBRARY_INDEX_POLICY_VERSION,
   LibraryOrigin,
   LibraryRelationKind,
 } from '../../shared/library/constants';
@@ -7,7 +8,6 @@ import type { LibraryArtifactCandidate } from '../../shared/library/types';
 import type { CoworkMessage } from '../types/cowork';
 import { collectSessionArtifacts } from './artifactDetection';
 
-const BACKFILL_POLICY_VERSION = 1;
 const SESSION_BATCH_SIZE = 8;
 const MESSAGE_PAGE_SIZE = 200;
 
@@ -65,12 +65,12 @@ const runLibraryBackfill = async (): Promise<void> => {
   const stateResult = await library.getBackfillState();
   if (!stateResult.success) return;
   if (
-    stateResult.data.policyVersion === BACKFILL_POLICY_VERSION
+    stateResult.data.policyVersion === LIBRARY_INDEX_POLICY_VERSION
     && stateResult.data.completedAt
   ) {
     return;
   }
-  let cursor = stateResult.data.policyVersion === BACKFILL_POLICY_VERSION
+  let cursor = stateResult.data.policyVersion === LIBRARY_INDEX_POLICY_VERSION
     ? readCursor(stateResult.data.cursor)
     : { offset: 0 };
 
@@ -113,7 +113,7 @@ const runLibraryBackfill = async (): Promise<void> => {
     const completed = sessionsResult.sessions.length < SESSION_BATCH_SIZE
       || !sessionsResult.hasMore;
     await library.setBackfillState({
-      policyVersion: BACKFILL_POLICY_VERSION,
+      policyVersion: LIBRARY_INDEX_POLICY_VERSION,
       cursor: JSON.stringify(cursor),
       ...(completed ? { completedAt: Date.now() } : {}),
     });
