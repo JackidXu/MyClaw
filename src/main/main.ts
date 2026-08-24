@@ -4315,18 +4315,26 @@ const EDIT_CONTEXT_FORM_CONTROLS = new Set<ContextMenuParams['formControlType']>
 const shouldShowEditContextMenu = (params: ContextMenuParams): boolean =>
   params.isEditable && EDIT_CONTEXT_FORM_CONTROLS.has(params.formControlType);
 
+const hasReadOnlySelection = (params: ContextMenuParams): boolean =>
+  !params.isEditable && params.selectionText.length > 0;
+
+const shouldShowTextContextMenu = (params: ContextMenuParams): boolean =>
+  shouldShowEditContextMenu(params) || hasReadOnlySelection(params);
+
 const installEditContextMenu = (webContents: WebContents) => {
   webContents.on('context-menu', (_event, params) => {
-    if (!shouldShowEditContextMenu(params)) return;
+    if (!shouldShowTextContextMenu(params)) return;
+
+    const isEditContext = shouldShowEditContextMenu(params);
 
     const template: MenuItemConstructorOptions[] = [];
 
     template.push(
-      { label: t('contextMenuCut'), role: 'cut', enabled: params.editFlags.canCut },
-      { label: t('contextMenuCopy'), role: 'copy', enabled: params.editFlags.canCopy },
-      { label: t('contextMenuPaste'), role: 'paste', enabled: params.editFlags.canPaste },
+      { label: t('contextMenuCut'), role: 'cut', enabled: isEditContext && params.editFlags.canCut },
+      { label: t('contextMenuCopy'), role: 'copy', enabled: isEditContext ? params.editFlags.canCopy : true },
+      { label: t('contextMenuPaste'), role: 'paste', enabled: isEditContext && params.editFlags.canPaste },
       { type: 'separator' },
-      { label: t('contextMenuSelectAll'), role: 'selectAll', enabled: params.editFlags.canSelectAll },
+      { label: t('contextMenuSelectAll'), role: 'selectAll', enabled: isEditContext && params.editFlags.canSelectAll },
     );
 
     const targetWindow = BrowserWindow.fromWebContents(webContents);
