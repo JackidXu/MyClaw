@@ -4760,9 +4760,13 @@ if (!gotTheLock) {
         if (fs.existsSync(logPath)) {
           const content = fs.readFileSync(logPath, 'utf8');
           const lines = content.split('\n');
-          const tailLines = lines.slice(-200);
+          const tailLines = lines.slice(-1500);
           recentLogSnippet = tailLines
-            .map((line) => line.replace(/(Bearer\s+)[A-Za-z0-9._-]+/gi, '$1[REDACTED]').replace(/(token['":\s]+)[A-Za-z0-9._-]+/gi, '$1[REDACTED]'))
+            .map((line) => line
+              .replace(/(Bearer\s+)[A-Za-z0-9._-]+/gi, '$1[REDACTED]')
+              .replace(/(token['":\s]+)[A-Za-z0-9._-]+/gi, '$1[REDACTED]')
+              .replace(/(api[_-]?key['":\s]+)[A-Za-z0-9._-]+/gi, '$1[REDACTED]')
+              .replace(/(password['":\s]+)[A-Za-z0-9._-]+/gi, '$1[REDACTED]'))
             .join('\n');
         }
       } catch (logErr) {
