@@ -393,9 +393,13 @@ const formatRewardExpiry = (expiresAt: string): string => {
 
 interface LoginButtonProps {
   contentLeftOffset?: number;
+  loggedOutVariant?: 'default' | 'sidebarPromo';
 }
 
-const LoginButton: React.FC<LoginButtonProps> = ({ contentLeftOffset = 0 }) => {
+const LoginButton: React.FC<LoginButtonProps> = ({
+  contentLeftOffset = 0,
+  loggedOutVariant = 'default',
+}) => {
   const { isLoggedIn, isLoading, profileSummary, user } = useSelector((state: RootState) => state.auth);
   const enterpriseAccountContext = useSelector(selectEnterpriseAccountContext);
   const [showMenu, setShowMenu] = useState(false);
@@ -496,12 +500,18 @@ const LoginButton: React.FC<LoginButtonProps> = ({ contentLeftOffset = 0 }) => {
     }
   };
 
+  const useSidebarPromoLogin = !isLoggedIn && loggedOutVariant === 'sidebarPromo';
+
   return (
     <div ref={containerRef} className="relative">
       <button
         type="button"
         onClick={handleClick}
-        className="inline-flex h-7 items-center justify-start gap-2 rounded-md px-1.5 text-[14px] font-normal text-foreground/80 transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.04] cursor-pointer"
+        className={
+          useSidebarPromoLogin
+            ? 'inline-flex h-8 w-[5.5rem] shrink-0 items-center justify-center rounded-lg bg-black px-3 text-[14px] font-medium text-white shadow-sm transition-colors hover:bg-black/85 dark:bg-white dark:text-black dark:hover:bg-white/85 cursor-pointer'
+            : 'inline-flex h-7 items-center justify-start gap-2 rounded-md px-1.5 text-[14px] font-normal text-foreground/80 transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.04] cursor-pointer'
+        }
       >
         {isLoggedIn ? (
           <>
@@ -513,10 +523,14 @@ const LoginButton: React.FC<LoginButtonProps> = ({ contentLeftOffset = 0 }) => {
             <span className="truncate max-w-[80px]">{i18nService.t('myAccount')}</span>
           </>
         ) : (
-          <>
-            <UserAvatarIcon className="h-4 w-4 shrink-0" />
-            {i18nService.t('login')}
-          </>
+          useSidebarPromoLogin ? (
+            i18nService.t('sidebarLoginNow')
+          ) : (
+            <>
+              <UserAvatarIcon className="h-4 w-4 shrink-0" />
+              {i18nService.t('login')}
+            </>
+          )
         )}
       </button>
       {showMenu && isLoggedIn && (
