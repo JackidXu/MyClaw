@@ -3778,7 +3778,12 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     mediaReferences?: Array<unknown>,
   ): 'complex' | 'simple' {
     // 有图片或媒体附件，通常是多模态任务，使用高性能模型
-    if ((imageAttachments && imageAttachments.length > 0) || (mediaReferences && mediaReferences.length > 0)) {
+    const hasImageIndication =
+      (imageAttachments && imageAttachments.length > 0) ||
+      (mediaReferences && mediaReferences.length > 0) ||
+      (prompt.includes('[附件信息]') && prompt.includes('类型: image')) ||
+      /!\[.*?\]\((?:file:\/\/\/|\/|~|[A-Za-z]:).*?\.(?:png|jpe?g|webp|gif|bmp)\)/i.test(prompt);
+    if (hasImageIndication) {
       return 'complex';
     }
     // Prompt 较长，往往是复杂任务
@@ -3890,7 +3895,9 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     // 多模态识图任务处理：如果检测到图片附件，仅在支持识图的模型中选择（若有的话）
     const isMultimodalTask =
       (imageAttachments && imageAttachments.length > 0) ||
-      (mediaReferences && mediaReferences.length > 0);
+      (mediaReferences && mediaReferences.length > 0) ||
+      (prompt.includes('[附件信息]') && prompt.includes('类型: image')) ||
+      /!\[.*?\]\((?:file:\/\/\/|\/|~|[A-Za-z]:).*?\.(?:png|jpe?g|webp|gif|bmp)\)/i.test(prompt);
 
     let filteredCandidates = candidates;
     if (isMultimodalTask) {

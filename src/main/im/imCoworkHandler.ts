@@ -10,7 +10,7 @@ import path from 'path';
 import { buildScheduledTaskEnginePrompt } from '../../scheduledTask/enginePrompt';
 import type { CoworkMessage,CoworkStore } from '../coworkStore';
 import { t } from '../i18n';
-import type { CoworkRuntime, PermissionRequest, PermissionResult } from '../libs/agentEngine/types';
+import type { CoworkImageAttachment, CoworkRuntime, PermissionRequest, PermissionResult } from '../libs/agentEngine/types';
 import { buildIMMediaInstruction } from './imMediaInstruction';
 import { analyzeIMReply, DEFAULT_IM_EMPTY_REPLY, stripThinkingBlocks } from './imReplyGuard';
 import {
@@ -277,18 +277,56 @@ export class IMCoworkHandler extends EventEmitter {
       );
     };
 
+    const imageAttachments = await this.resolveImageAttachments(message);
+    const hasImageAttachments = imageAttachments.length > 0;
+
     if (isActive) {
-      this.coworkRuntime.continueSession(coworkSessionId, formattedContent, { systemPrompt })
-        .catch(onSessionStartError);
+      this.coworkRuntime.continueSession(coworkSessionId, formattedContent, {
+        systemPrompt,
+        ...(hasImageAttachments ? { imageAttachments } : {}),
+      }).catch(onSessionStartError);
     } else {
       this.coworkRuntime.startSession(coworkSessionId, formattedContent, {
         workspaceRoot: session?.cwd,
         confirmationMode: 'text',
         systemPrompt,
+        ...(hasImageAttachments ? { imageAttachments } : {}),
       }).catch(onSessionStartError);
     }
 
     return responsePromise;
+  }
+
+  /**
+   * Resolve and read image attachments from IM message into CoworkImageAttachment payloads
+   */
+  private async resolveImageAttachments(message: IMMessage): Promise<CoworkImageAttachment[]> {
+    if (!message.attachments || message.attachments.length === 0) {
+      return [];
+    }
+
+    const imageAttachments: CoworkImageAttachment[] = [];
+    for (const att of message.attachments) {
+      if (att.type !== 'image' || !att.localPath) {
+        continue;
+      }
+      try {
+        if (fs.existsSync(att.localPath)) {
+          const buffer = await fs.promises.readFile(att.localPath);
+          const base64Data = buffer.toString('base64');
+          imageAttachments.push({
+            name: att.fileName || path.basename(att.localPath),
+            mimeType: att.mimeType || 'image/png',
+            base64Data,
+            sizeBytes: att.fileSize || buffer.length,
+            localPath: att.localPath,
+          });
+        }
+      } catch (err) {
+        console.warn(`[IMCoworkHandler] Failed to read image attachment from ${att.localPath}:`, err);
+      }
+    }
+    return imageAttachments;
   }
 
   /**

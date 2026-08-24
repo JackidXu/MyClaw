@@ -2343,6 +2343,94 @@ async function handleChatCompletionsStreamResponse(
   res.end();
 }
 
+export type ProxyProviderConfig = {
+  providerName: string;
+  baseURL: string;
+  apiKey?: string;
+  models: Array<{ id: string; supportsImage?: boolean }>;
+};
+
+let proxyProviderConfigsGetter: (() => ProxyProviderConfig[]) | null = null;
+
+export function setProxyProviderConfigsGetter(getter: () => ProxyProviderConfig[]): void {
+  proxyProviderConfigsGetter = getter;
+}
+
+function detectMultimodalImages(body: unknown): boolean {
+  const obj = toOptionalObject(body);
+  if (!obj) return false;
+
+  const messages = toArray(obj.messages);
+  for (const message of messages) {
+    const msgObj = toOptionalObject(message);
+    if (!msgObj) continue;
+
+    const content = msgObj.content;
+    if (typeof content === 'string') {
+      if (content.includes('data:image/') || (content.includes('[附件信息]') && content.includes('类型: image'))) {
+        return true;
+      }
+    } else if (Array.isArray(content)) {
+      for (const part of content) {
+        const partObj = toOptionalObject(part);
+        if (!partObj) continue;
+        const type = toString(partObj.type);
+        if (type === 'image_url' || type === 'image' || type === 'input_image') {
+          return true;
+        }
+        if (partObj.image_url || partObj.source) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+function resolveAutoUpstreamConfig(
+  hasImages: boolean,
+  fallbackConfig: OpenAICompatUpstreamConfig,
+): OpenAICompatUpstreamConfig {
+  if (!hasImages) {
+    return fallbackConfig;
+  }
+
+  try {
+    const enabledProviders = (proxyProviderConfigsGetter ? proxyProviderConfigsGetter() : []) as ProxyProviderConfig[];
+
+    // 1. 首先检查当前 upstream provider 是否有支持识图的模型
+    const currentProvider = enabledProviders.find(p => p.providerName === fallbackConfig.provider);
+    if (currentProvider) {
+      const visionModel = currentProvider.models.find(m => m.supportsImage === true);
+      if (visionModel) {
+        return {
+          baseURL: currentProvider.baseURL || fallbackConfig.baseURL,
+          apiKey: currentProvider.apiKey || fallbackConfig.apiKey,
+          model: visionModel.id,
+          provider: currentProvider.providerName,
+        };
+      }
+    }
+
+    // 2. 遍历所有已启用的 provider 寻找支持识图的模型
+    for (const provider of enabledProviders) {
+      const visionModel = provider.models.find(m => m.supportsImage === true);
+      if (visionModel) {
+        return {
+          baseURL: provider.baseURL,
+          apiKey: provider.apiKey,
+          model: visionModel.id,
+          provider: provider.providerName,
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('[CoworkProxy] Failed to dynamically resolve vision upstream config:', err);
+  }
+
+  return fallbackConfig;
+}
+
 async function handleRequest(
   req: http.IncomingMessage,
   res: http.ServerResponse
@@ -2516,12 +2604,15 @@ async function handleRequest(
       writeJSON(res, 400, createAnthropicErrorBody(message, 'invalid_request_error'));
       return;
     }
+    let effectiveUpstream = upstreamConfig;
     try {
       const parsed = JSON.parse(body);
       if (isAutoModelRef(parsed.model)) {
-        parsed.model = upstreamConfig.model;
+        const hasImages = detectMultimodalImages(parsed);
+        effectiveUpstream = resolveAutoUpstreamConfig(hasImages, upstreamConfig);
+        parsed.model = effectiveUpstream.model;
         body = JSON.stringify(parsed);
-        console.info(`[CoworkProxy] Remapped passthrough model: system/auto -> ${upstreamConfig.model}`);
+        console.info(`[CoworkProxy] Remapped passthrough model: system/auto -> ${effectiveUpstream.model} (hasImages: ${hasImages}, provider: ${effectiveUpstream.provider})`);
       }
     } catch {
       // Ignore
@@ -2529,10 +2620,10 @@ async function handleRequest(
     const upstreamHeaders: Record<string, string> = {
       'Content-Type': 'application/json',
     };
-    if (upstreamConfig.apiKey) {
-      upstreamHeaders.Authorization = `Bearer ${upstreamConfig.apiKey}`;
+    if (effectiveUpstream.apiKey) {
+      upstreamHeaders.Authorization = `Bearer ${effectiveUpstream.apiKey}`;
     }
-    if (upstreamConfig.provider === 'github-copilot') {
+    if (effectiveUpstream.provider === 'github-copilot') {
       upstreamHeaders['Copilot-Integration-Id'] = 'vscode-chat';
       upstreamHeaders['Editor-Version'] = 'vscode/1.96.2';
       upstreamHeaders['Editor-Plugin-Version'] = 'copilot-chat/0.26.7';
@@ -2540,11 +2631,11 @@ async function handleRequest(
       upstreamHeaders['Openai-Intent'] = 'conversation-panel';
     }
     // Build upstream URL: use the upstream baseURL + /chat/completions
-    const upstreamBase = upstreamConfig.baseURL.replace(/\/+$/, '');
+    const upstreamBase = effectiveUpstream.baseURL.replace(/\/+$/, '');
     const upstreamUrl = upstreamBase.endsWith('/chat/completions')
       ? upstreamBase
       : `${upstreamBase}/chat/completions`;
-    console.log(`[CoworkProxy] OpenAI passthrough → ${upstreamUrl} (provider: ${upstreamConfig.provider})`);
+    console.log(`[CoworkProxy] OpenAI passthrough → ${upstreamUrl} (provider: ${effectiveUpstream.provider})`);
     try {
       const { session } = await import('electron');
       let upstreamResponse = await session.defaultSession.fetch(upstreamUrl, {
@@ -2650,20 +2741,8 @@ async function handleRequest(
     return;
   }
 
-  const upstreamAPIType = resolveUpstreamAPIType(upstreamConfig.provider);
+  let effectiveUpstream = upstreamConfig;
   const openAIRequest = anthropicToOpenAI(parsedRequestBody);
-
-  // Inject session_id and user_message for lobsterai-server logging only.
-  // Strict providers (e.g. Gemini) reject unknown payload fields.
-  if (upstreamConfig.provider === 'lobsterai-server') {
-    if (currentCoworkSessionId) {
-      openAIRequest.session_id = currentCoworkSessionId;
-    }
-    const extractedUserMessage = extractLastUserMessageText(parsedRequestBody);
-    if (extractedUserMessage) {
-      openAIRequest.user_message = extractedUserMessage;
-    }
-  }
 
   if (!openAIRequest.model) {
     openAIRequest.model = upstreamConfig.model;
@@ -2675,8 +2754,10 @@ async function handleRequest(
   const requestModel = typeof openAIRequest.model === 'string' ? openAIRequest.model : '';
 
   if (isAutoModelRef(requestModel)) {
-    console.info(`[CoworkProxy] Remapping auto model: ${requestModel} -> ${upstreamConfig.model}`);
-    openAIRequest.model = upstreamConfig.model;
+    const hasImages = detectMultimodalImages(openAIRequest);
+    effectiveUpstream = resolveAutoUpstreamConfig(hasImages, upstreamConfig);
+    openAIRequest.model = effectiveUpstream.model;
+    console.info(`[CoworkProxy] Remapping auto model: ${requestModel} -> ${effectiveUpstream.model} (hasImages: ${hasImages}, provider: ${effectiveUpstream.provider})`);
   } else if (upstreamConfig.provider && upstreamConfig.provider !== 'anthropic' && upstreamConfig.provider !== 'openai') {
     if (requestModel !== upstreamConfig.model) {
       console.info(
@@ -2685,13 +2766,27 @@ async function handleRequest(
       openAIRequest.model = upstreamConfig.model;
     }
   }
-  filterOpenAIToolsForProvider(openAIRequest, upstreamConfig.provider);
-  remapMessageRolesForMiniMax(openAIRequest, upstreamConfig.provider);
-  hydrateOpenAIRequestToolCalls(openAIRequest, upstreamConfig.provider, upstreamConfig.baseURL);
-  sanitizeToolsForGemini(openAIRequest, upstreamConfig.provider, upstreamConfig.baseURL);
+
+  const upstreamAPIType = resolveUpstreamAPIType(effectiveUpstream.provider);
+
+  // Inject session_id and user_message for lobsterai-server logging only.
+  // Strict providers (e.g. Gemini) reject unknown payload fields.
+  if (effectiveUpstream.provider === 'lobsterai-server') {
+    if (currentCoworkSessionId) {
+      openAIRequest.session_id = currentCoworkSessionId;
+    }
+    const extractedUserMessage = extractLastUserMessageText(parsedRequestBody);
+    if (extractedUserMessage) {
+      openAIRequest.user_message = extractedUserMessage;
+    }
+  }
+  filterOpenAIToolsForProvider(openAIRequest, effectiveUpstream.provider);
+  remapMessageRolesForMiniMax(openAIRequest, effectiveUpstream.provider);
+  hydrateOpenAIRequestToolCalls(openAIRequest, effectiveUpstream.provider, effectiveUpstream.baseURL);
+  sanitizeToolsForGemini(openAIRequest, effectiveUpstream.provider, effectiveUpstream.baseURL);
 
   if (upstreamAPIType === 'chat_completions') {
-    normalizeMaxTokensFieldForOpenAIProvider(openAIRequest, upstreamConfig.provider);
+    normalizeMaxTokensFieldForOpenAIProvider(openAIRequest, effectiveUpstream.provider);
   }
 
   // Some providers (e.g. MiniMax) reject requests with multiple system messages.
@@ -2704,19 +2799,19 @@ async function handleRequest(
     : openAIRequest;
   const stream = Boolean(upstreamRequest.stream);
 
-  console.log(`[CoworkProxy] Upstream: apiType=${upstreamAPIType}, model=${upstreamRequest.model}, stream=${stream}, provider=${upstreamConfig.provider}`);
+  console.log(`[CoworkProxy] Upstream: apiType=${upstreamAPIType}, model=${upstreamRequest.model}, stream=${stream}, provider=${effectiveUpstream.provider}`);
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
-  if (upstreamConfig.apiKey) {
-    if (isGeminiProvider(upstreamConfig.provider, upstreamConfig.baseURL)) {
-      headers['x-goog-api-key'] = upstreamConfig.apiKey;
+  if (effectiveUpstream.apiKey) {
+    if (isGeminiProvider(effectiveUpstream.provider, effectiveUpstream.baseURL)) {
+      headers['x-goog-api-key'] = effectiveUpstream.apiKey;
     } else {
-      headers.Authorization = `Bearer ${upstreamConfig.apiKey}`;
+      headers.Authorization = `Bearer ${effectiveUpstream.apiKey}`;
     }
   }
-  if (upstreamConfig.provider === 'github-copilot') {
+  if (effectiveUpstream.provider === 'github-copilot') {
     headers['Copilot-Integration-Id'] = 'vscode-chat';
     headers['Editor-Version'] = 'vscode/1.96.2';
     headers['Editor-Plugin-Version'] = 'copilot-chat/0.26.7';
@@ -2724,7 +2819,7 @@ async function handleRequest(
     headers['Openai-Intent'] = 'conversation-panel';
   }
 
-  const targetURLs = buildUpstreamTargetUrls(upstreamConfig.baseURL, upstreamAPIType);
+  const targetURLs = buildUpstreamTargetUrls(effectiveUpstream.baseURL, upstreamAPIType);
   let currentTargetURL = targetURLs[0];
 
   const sendUpstreamRequest = async (
