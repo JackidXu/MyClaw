@@ -1071,6 +1071,14 @@ function buildPlanModeOutboundReminder(): string {
   ].join('\n');
 }
 
+function buildSecondBrainOutboundReminder(): string {
+  return [
+    '[Second Brain reminder]',
+    'Second Brain is active for this session. Keep the expert\'s Second Brain cognition framework and viewpoints in mind when answering.',
+    'If the current context is insufficient for specialized judgment, use the retrieve_fmp tool to look up relevant cognition before replying.',
+  ].join('\n');
+}
+
 type FirstResponseTiming = {
   turnStartedAtMs: number;
   gatewayReadyStartedAtMs?: number;
@@ -5969,6 +5977,9 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       if (planMode) {
         sections.push(buildPlanModeOutboundReminder());
       }
+      if (session?.secondBrainEnabled) {
+        sections.push(buildSecondBrainOutboundReminder());
+      }
       return sections.join('\n\n');
     }
 
@@ -6032,6 +6043,9 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     }
     if (planMode) {
       sections.push(buildPlanModeOutboundReminder());
+    }
+    if (session?.secondBrainEnabled) {
+      sections.push(buildSecondBrainOutboundReminder());
     }
     return sections.join('\n\n');
   }
