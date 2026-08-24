@@ -23,6 +23,10 @@
         "type": "number",
         "minimum": 1000,
         "description": "Request timeout in milliseconds"
+      },
+      "tool": {
+        "type": "object",
+        "description": "Dynamic tool definition for second brain retrieval"
       }
     }
   }
