@@ -130,10 +130,30 @@ export const IM_CONTEXT_OVERFLOW_MESSAGE = '⚠️ 当前对话上下文已满�
 /** 桌面端上下文超限提示文案 */
 export const DESKTOP_CONTEXT_OVERFLOW_MESSAGE = '⚠️ 当前对话上下文已满，请点击左上角【新建任务】开启新会话。';
 
+/** 匹配常见的由大模型或中转服务在末尾追加的截断标记 */
+const TRUNCATION_MARKER_SUFFIX_RE = /(?:\s*[\.\.。…]*\s*(?:\((?:truncated|截断)\)|\[(?:truncated|截断)\]|\.\.\.\(truncated\)\.\.\.|\(truncated\)\.\.\.)\s*)+$/i;
+
 /** 判断是否为上下文已满的错误提示文案 */
 export function isContextOverflowNotice(text?: string | null): boolean {
   if (!text) return false;
   return text.includes('当前对话上下文已满') || text.includes('/new 开启新对话');
+}
+
+/** 判断内容或元数据是否指示单次输出被截断 */
+export function isOutputTruncated(
+  content?: string | null,
+  metadata?: { isTruncated?: boolean; stopReason?: string } | null,
+): boolean {
+  if (metadata?.isTruncated === true) return true;
+  if (metadata?.stopReason === 'length' || metadata?.stopReason === 'max_tokens') return true;
+  if (content && TRUNCATION_MARKER_SUFFIX_RE.test(content.trim())) return true;
+  return false;
+}
+
+/** 清除文本末尾的截断标记字符串 */
+export function stripTruncationMarkers(text: string): string {
+  if (!text) return text;
+  return text.replace(TRUNCATION_MARKER_SUFFIX_RE, '').trimEnd();
 }
 
 /** 将内核/IM 通用上下文溢出提示转换为桌面端提示 */

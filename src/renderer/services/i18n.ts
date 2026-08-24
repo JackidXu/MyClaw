@@ -1899,6 +1899,9 @@ const translations: Record<LanguageType, Record<string, string>> = {
     coworkGatewaySessionSyncTimeout: 'OpenClaw 引擎响应缓慢，消息尚未发送。请等待 1~2 分钟后重新发送；若频繁出现，请检查系统内存与磁盘占用，并将 HeyClaw 加入杀毒软件白名单。',
     coworkErrorTranscriptOversized: '该任务的历史记录过大。为保护 AI 引擎，本次消息未发送；请新建任务继续，原任务记录仍会保留。',
     coworkContextOverflowDesktopNotice: '⚠️ 当前对话上下文已满，请点击左上角【新建任务】开启新会话。',
+    coworkOutputTruncatedNotice: '已达到单次最大输出上限，部分内容未完全生成。',
+    continueGenerating: '继续生成',
+    continueGeneratingPrompt: '请继续上面的内容接着输出',
     coworkErrorGatewayHeapOutOfMemory: '本地 AI 引擎内存不足并已自动重启。当前任务可能过大，请等待恢复后在新任务中继续。',
     coworkErrorGatewayDisconnected: 'AI 引擎连接中断，请重试。如果问题持续，请尝试重启应用。',
     coworkErrorServiceRestart: 'AI 引擎正在重启，请稍后重试。',
@@ -5475,6 +5478,10 @@ const translations: Record<LanguageType, Record<string, string>> = {
       'This task history is too large. The message was not sent to protect the AI engine. Continue in a new task; the original task will be preserved.',
     coworkContextOverflowDesktopNotice:
       '⚠️ Current conversation context is full. Please click [New Task] at the top left to start a new session.',
+    coworkOutputTruncatedNotice:
+      'Maximum single-response output limit reached. Some content may not be fully generated.',
+    continueGenerating: 'Continue Generating',
+    continueGeneratingPrompt: 'Please continue outputting from where you left off above.',
     coworkErrorGatewayHeapOutOfMemory:
       'The local AI engine ran out of memory and is restarting automatically. This task may be too large; wait for recovery and continue in a new task.',
     coworkErrorGatewayDisconnected:

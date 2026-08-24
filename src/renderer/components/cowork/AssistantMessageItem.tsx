@@ -1,8 +1,13 @@
-import { PlusIcon } from '@heroicons/react/24/outline';
+import {
+  ArrowPathIcon,
+  PlusIcon,
+} from '@heroicons/react/24/outline';
 import React, { useCallback, useEffect, useState } from 'react';
 
 import {
   isContextOverflowNotice,
+  isOutputTruncated,
+  stripTruncationMarkers,
 } from '../../../shared/cowork/constants';
 import {
   type CoworkGoal,
@@ -85,7 +90,9 @@ const AssistantMessageItem: React.FC<{
   const [isHovered, setIsHovered] = useState(false);
   const [expandedImage, setExpandedImage] = useState<ImagePreviewSource | null>(null);
   const rawContent = mapDisplayText ? mapDisplayText(message.content) : message.content;
-  const proposedPlan = parseProposedPlanBlock(rawContent);
+  const isTruncated = isOutputTruncated(rawContent, message.metadata as { isTruncated?: boolean; stopReason?: string });
+  const cleanedContent = isTruncated ? stripTruncationMarkers(rawContent) : rawContent;
+  const proposedPlan = parseProposedPlanBlock(cleanedContent);
   const displayContent = proposedPlan.visibleText.replace(MEDIA_TOKEN_DISPLAY_RE, '').trimEnd();
   const copyContent = [
     displayContent,
@@ -100,6 +107,15 @@ const AssistantMessageItem: React.FC<{
     : null;
   const metaVisible = isHovered || !!goalCompletionLabel;
   const showPlanConfirmationActions = planConfirmationMessageId === message.id;
+
+  const handleContinueGenerating = useCallback(() => {
+    window.dispatchEvent(new CustomEvent(CoworkUiEvent.FocusInput, {
+      detail: {
+        text: i18nService.t('continueGeneratingPrompt'),
+        clear: false,
+      },
+    }));
+  }, []);
   const handleImageClick = useCallback((image: ImagePreviewSource) => {
     reportConversationMessageAction({
       actionType: 'open_message_image',
@@ -178,6 +194,24 @@ const AssistantMessageItem: React.FC<{
               forceExpanded={forceSearchExpanded}
               onImageClick={handleImageClick}
             />
+            {isTruncated && (
+              <div className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2.5 text-xs text-amber-800 dark:border-amber-400/20 dark:bg-amber-400/5 dark:text-amber-300">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <ExclamationTriangleIcon className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                    <span className="font-medium truncate">{i18nService.t('coworkOutputTruncatedNotice')}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleContinueGenerating}
+                    className="inline-flex shrink-0 items-center gap-1 rounded-md bg-amber-500/15 hover:bg-amber-500/25 px-2.5 py-1 text-xs font-semibold text-amber-900 transition-colors dark:text-amber-200 dark:hover:bg-amber-400/20"
+                  >
+                    <ArrowPathIcon className="h-3.5 w-3.5" />
+                    <span>{i18nService.t('continueGenerating')}</span>
+                  </button>
+                </div>
+              </div>
+            )}
             {showCopyButton && (
               <div
                 className={messageMetaClassName(metaVisible)}
