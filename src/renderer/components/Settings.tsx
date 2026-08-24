@@ -97,7 +97,6 @@ import ModelSettingsSection, { DeleteProviderConfirmDialog, ModelEditorDialog } 
 import { resolveSettingsEscapeAction, SettingsEscapeAction } from './settings/settingsEscape';
 import EmailSkillConfig from './skills/EmailSkillConfig';
 import SkinPresentationScope from './skin/SkinPresentationScope';
-import SkinSettingsSection from './skin/SkinSettingsSection';
 import ThemedSelect from './ui/ThemedSelect';
 
 type TabType = 'general' | 'appearance' | 'coworkAgentEngine' | 'model' | 'browserWebAccess' | 'coworkMemory' | 'coworkDreaming' | 'shortcuts' | 'im' | 'email' | 'plugins' | 'experimental' | 'about';
@@ -1374,7 +1373,7 @@ const SettingsNumberInputRow: React.FC<{
 
 const Settings: React.FC<SettingsProps> = ({
   onClose,
-  onStartAiSkin,
+  onStartAiSkin: _onStartAiSkin,
   initialTab,
   initialTabRequestId,
   notice,
@@ -4796,8 +4795,6 @@ const Settings: React.FC<SettingsProps> = ({
             </>
           );
         })()}
-
-        <SkinSettingsSection onStartAiSkin={onStartAiSkin} />
 
         <div className="mt-5 divide-y divide-border rounded-xl border border-border bg-surface">
           <div className="px-4 py-3">
