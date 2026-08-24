@@ -7,7 +7,18 @@ import type {
 export interface AccountPlanPresentation {
   label: string;
   expiresAt: string | null;
+  canUpgrade: boolean;
 }
+
+const EXCELLENT_PLAN_LABEL_PATTERN = /(?:卓越|excellent)/i;
+
+const formatPlanLabel = (label: string, isEnglish: boolean): string => {
+  const trimmedLabel = label.trim();
+  if (!trimmedLabel || isEnglish || trimmedLabel.endsWith('套餐')) {
+    return trimmedLabel;
+  }
+  return `${trimmedLabel}套餐`;
+};
 
 export function getAccountPlanPresentation(
   creditItems: CreditItem[],
@@ -17,10 +28,12 @@ export function getAccountPlanPresentation(
   if (!subscription) return null;
 
   return {
-    label: isEnglish
-      ? subscription.labelEn || subscription.label
-      : subscription.label,
+    label: formatPlanLabel(
+      isEnglish ? subscription.labelEn || subscription.label : subscription.label,
+      isEnglish,
+    ),
     expiresAt: subscription.expiresAt,
+    canUpgrade: !EXCELLENT_PLAN_LABEL_PATTERN.test(`${subscription.label} ${subscription.labelEn}`),
   };
 }
 

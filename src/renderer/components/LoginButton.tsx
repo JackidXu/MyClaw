@@ -20,6 +20,7 @@ import {
   getPortalCreditsDetailUrl,
   getPortalCreditsResetActivityUrl,
   getPortalInvitationUrl,
+  getPortalPricingUrl,
   getPortalProfileUrl,
   getPortalRechargeUrl,
 } from '../services/endpoints';
@@ -59,10 +60,9 @@ const reportAccountMenuAction = (
 
 const formatDate = (dateStr: string | null): string => {
   if (!dateStr) return '';
-  // Format "2026-03-29" to "26.03.29"
-  const parts = dateStr.split('-');
-  if (parts.length !== 3) return dateStr;
-  return `${parts[0].slice(2)}.${parts[1]}.${parts[2]}`;
+  const dateMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!dateMatch) return dateStr;
+  return `${dateMatch[1]}.${dateMatch[2]}.${dateMatch[3]}`;
 };
 
 const formatCredits = (n: number): string => {
@@ -109,6 +109,57 @@ const AccountMenuAction: React.FC<AccountMenuActionProps> = ({
     <span className="min-w-0 flex-1 truncate">{label}</span>
     {trailing}
   </button>
+);
+
+const DiamondSparkleIcon: React.FC = () => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="3 3 18 18"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.4"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className="h-4 w-4 shrink-0 text-[#111111] dark:text-white"
+    aria-hidden="true"
+  >
+    <path d="M12 4.75 14.15 9.85 19.25 12 14.15 14.15 12 19.25 9.85 14.15 4.75 12 9.85 9.85 12 4.75Z" />
+  </svg>
+);
+
+interface AccountPlanActionProps {
+  label: string;
+  expiresAt: string | null;
+  canUpgrade: boolean;
+  onUpgrade: () => void | Promise<void>;
+}
+
+const AccountPlanAction: React.FC<AccountPlanActionProps> = ({
+  label,
+  expiresAt,
+  canUpgrade,
+  onUpgrade,
+}) => (
+  <div className="flex w-full items-center gap-1.5 px-4 py-2 text-left text-[13px] text-foreground">
+    <DiamondSparkleIcon />
+    <span className={expiresAt ? 'max-w-[64px] shrink-0 truncate' : 'min-w-0 flex-1 truncate'}>
+      {label}
+    </span>
+    {expiresAt && (
+      <span className="shrink-0 whitespace-nowrap text-[9px] leading-4 text-secondary">
+        {i18nService.t('authPlanExpiresAt').replace('{date}', formatDate(expiresAt))}
+      </span>
+    )}
+    {canUpgrade && (
+      <button
+        type="button"
+        onClick={() => void onUpgrade()}
+        className="ml-auto h-5 shrink-0 rounded-md bg-[#111111] px-1.5 text-[10px] font-medium leading-none text-white transition-colors hover:bg-[#2a2a2a] dark:bg-white dark:text-black dark:hover:bg-white/85"
+      >
+        {i18nService.t('authUpgradePlan')}
+      </button>
+    )}
+  </div>
 );
 
 const PortalMenuIcon: React.FC<{ src: string; darkInvert?: boolean }> = ({
@@ -234,6 +285,30 @@ const UserMenu: React.FC<UserMenuProps> = ({
     }
   };
 
+  const handleUpgradePlan = async () => {
+    try {
+      console.debug('[LoginButton] opening plan pricing portal', {
+        accountMode: user?.accountMode,
+        creditItemCount: creditItems.length,
+        hasCredits,
+      });
+      await openPortalUrl(getPortalPricingUrl());
+      reportAccountMenuAction('open_plan_upgrade', {
+        creditItemCount: creditItems.length,
+        hasCredits,
+        result: 'success',
+      });
+    } catch (error) {
+      console.warn('[LoginButton] failed to open plan pricing portal', error);
+      reportAccountMenuAction('open_plan_upgrade', {
+        creditItemCount: creditItems.length,
+        hasCredits,
+        result: 'failed',
+      });
+      throw error;
+    }
+  };
+
   const handleInvite = async () => {
     try {
       await openPortalUrl(getPortalInvitationUrl());
@@ -289,6 +364,12 @@ const UserMenu: React.FC<UserMenuProps> = ({
     || user?.nickname
     || (phoneSuffix ? `****${phoneSuffix}` : i18nService.t('myAccount'));
   const accountPlan = getAccountPlanPresentation(creditItems, isEn);
+  const visibleAccountPlan = user?.accountMode === 'enterprise' ? null : accountPlan;
+  const shouldShowPlanLearnAction = (
+    user?.accountMode !== 'enterprise'
+    && profileSummary !== null
+    && visibleAccountPlan === null
+  );
   const availableResetCount = profileSummary?.availableResetCount ?? 0;
   const availablePromoSubscriptionCount = profileSummary?.availablePromoSubscriptionCount ?? 0;
   const campaignActionLabel = availableResetCount > 0
@@ -305,25 +386,26 @@ const UserMenu: React.FC<UserMenuProps> = ({
         <div className="truncate text-sm font-medium text-foreground">
           {accountName}
         </div>
-        {accountPlan && (
-          <div className="mt-1 flex min-w-0 items-center gap-1.5">
-            <span className="inline-flex max-w-[112px] shrink-0 items-center truncate rounded bg-[#EDF4FF] px-1.5 py-0.5 text-[10px] font-medium leading-none text-[#4D73E8] dark:bg-[#26334F] dark:text-[#9CB5FF]">
-              {accountPlan.label}
-            </span>
-            {accountPlan.expiresAt && (
-              <span className="truncate text-[10px] text-secondary">
-                {i18nService.t('authPlanExpiresAt').replace(
-                  '{date}',
-                  formatDate(accountPlan.expiresAt),
-                )}
-              </span>
-            )}
-          </div>
-        )}
       </div>
 
       {/* Account destinations */}
       <div className="border-b border-border py-1">
+        {visibleAccountPlan && (
+          <AccountPlanAction
+            label={visibleAccountPlan.label}
+            expiresAt={visibleAccountPlan.expiresAt}
+            canUpgrade={visibleAccountPlan.canUpgrade}
+            onUpgrade={handleUpgradePlan}
+          />
+        )}
+        {shouldShowPlanLearnAction && (
+          <AccountPlanAction
+            label={i18nService.t('authBasicBenefits')}
+            expiresAt={null}
+            canUpgrade
+            onUpgrade={handleUpgradePlan}
+          />
+        )}
         <AccountMenuAction
           icon={<PointsStackIcon />}
           label={i18nService.t('authCreditsRemaining')}
