@@ -1,4 +1,3 @@
-import { BUNDLED_SKILL_DISPLAY_NAMES } from '../components/skills/bundledSkillNames';
 import { LocalizedText, LocalSkillInfo, MarketplaceSkill, MarketTag, Skill } from '../types/skill';
 import { i18nService } from './i18n';
 import { LogReporterAction, reportYdAnalyzer } from './logReporter';
@@ -472,7 +471,7 @@ class SkillService {
 
   /**
    * Resolve a human-friendly skill title. Order of preference:
-   * server `displayName` (local → marketplace → kit) → bundled name map →
+   * server `displayName` (local → marketplace → kit) →
    * prettified raw name (`canvas-design` → `Canvas Design`).
    */
   getLocalizedSkillName(skillOrId: string | { id: string; name: string }, skillName?: string): string {
@@ -488,9 +487,6 @@ class SkillService {
       const mp = this.marketplaceCache.skills.find(s => s.id === id);
       if (mp && mp.name) return mp.name;
     }
-
-    const bundled = BUNDLED_SKILL_DISPLAY_NAMES[id];
-    if (bundled) return resolveLocalizedText(bundled);
 
     return prettifySkillName(name);
   }
