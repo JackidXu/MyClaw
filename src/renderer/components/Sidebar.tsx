@@ -207,11 +207,13 @@ const Sidebar: React.FC<SidebarProps> = ({
   const isWindows = window.electron.platform === 'win32';
   const showHeaderRow = !isWindows;
   const showLoginPromo = !hideLogin && !isAuthLoading && !isLoggedIn;
-  const showRechargeButton = !enterpriseAccountContext
+  const showRechargeButton = showLoginPromo && (
+    !enterpriseAccountContext
     || (
       enterpriseAccountContext.role === EnterpriseMemberRole.SuperAdmin
       && enterpriseAccountContext.permissions.rechargeEnterprise
-    );
+    )
+  );
   const batchSelectableKeySet = useMemo(
     () => new Set(batchSelectableItems.map((item) => item.key)),
     [batchSelectableItems],
@@ -868,7 +870,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             <button
               type="button"
               onClick={() => onShowSettings()}
-              className={`inline-flex h-8 min-w-0 items-center justify-center gap-1 rounded-md px-0.5 text-sm font-normal text-foreground transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.04] ${hideLogin && !showRechargeButton ? 'w-full' : 'flex-1'}`}
+              className={`inline-flex h-8 min-w-0 items-center justify-center gap-1 rounded-md px-1.5 text-sm font-normal text-foreground transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.04] ${showRechargeButton ? 'flex-1 px-0.5' : hideLogin ? 'w-full' : 'shrink-0'}`}
               aria-label={i18nService.t('settings')}
             >
               <Cog6ToothIcon className="h-4 w-4 shrink-0" />
