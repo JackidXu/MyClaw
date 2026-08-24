@@ -11,18 +11,7 @@ description: >
   约束：按「冲突仲裁顺序」六级执行；终稿强制附打磨报告。
 
   范围：只支持简体中文；繁體不自动处理。
-agent_created: true
-compatibility: workbuddy
-allowed-tools:
-  - Read
-  - Write
-  - Edit
-  - Grep
-  - Glob
-  - Bash
-  - WebSearch
-  - WebFetch
-disable-model-invocation: false
+compatibility: heyclaw
 ---
 
 # 文案人味润色（qu-ai-wei）：去除中文 AI 写作痕迹

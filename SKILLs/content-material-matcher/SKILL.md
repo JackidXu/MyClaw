@@ -2,8 +2,7 @@
 name: 素材参谋
 version: 1.0.0
 description: 素材参谋（content-material-matcher）—— 选题卡进来，从素材库索引表匹配可用素材，标记缺口并给出补拍方向。做行业/场景相关性校验、不硬凑匹配、推荐前验证文件实际存在。当用户说「素材匹配」「这个选题用什么素材」「素材够不够」「缺什么素材怎么补」时使用；是 content-marketing-strategy-map（营销战略地图·规划中枢）素材匹配环节的大脑。
-agent_created: true
-compatibility: workbuddy
+compatibility: heyclaw
 ---
 
 # 素材参谋（content-material-matcher）— 选题素材匹配

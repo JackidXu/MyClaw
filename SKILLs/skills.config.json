@@ -58,6 +58,14 @@
       "order": 14,
       "enabled": true
     },
+    "content-performance-review": {
+      "order": 15,
+      "enabled": true
+    },
+    "paid-traffic-operator": {
+      "order": 16,
+      "enabled": true
+    },
     "short-form-video": {
       "order": 21,
       "enabled": true

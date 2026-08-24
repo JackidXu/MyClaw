@@ -2,8 +2,7 @@
 name: 营销战略地图
 version: 1.0.0
 description: 营销战略地图（content-marketing-strategy-map）—— IP内容规划的"作战中枢"：根据客户所处阶段与目标，分流到 起盘（委托30而立IP起盘）/ 战略大盘（年季目标拆解）/ 营销日历（月周行程驱动）三种规划，并在置顶三条视频处指向"三维定调系统"一对一服务。Marketing strategy-map planning hub.
-agent_created: true
-compatibility: workbuddy
+compatibility: heyclaw
 ---
 
 # content-marketing-strategy-map — 营销战略地图
@@ -83,7 +82,7 @@ IP内容规划 = 定位底盘（L0，恒定）
 | **客户行程** | 文字粘贴 / 截图上传 | 模式C 驱动——事件→内容机会（读图不清处追问确认） |
 | **已生产内容** | 素材库 / 主页 | 避免重复、补缺口、一鱼多吃 |
 | **业务目标 / 推广产品** | 客户提供 | 对齐内容与业务 |
-| **行业热点** | WebSearch / 客户 | 规划热点解读 |
+| **行业热点** | 联网搜索工具（`browser` / `web-search`） / 客户 | 规划热点解读 |
 
 > **没有IP档案时**：不能规划。先回去用 content-ip-manager 建档。没有档案就没有定位底盘，排出来的内容就是乱拍。
 

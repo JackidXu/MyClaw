@@ -2,8 +2,7 @@
 name: 素材库管家
 version: 1.0.0
 description: 素材库管家（content-material-library）—— 帮客户建立和管理结构化素材库：素材分类、标注、入库、增量更新，并生成索引表（_索引表.csv）作为 AI 检索唯一入口。被 content-video-cutter（切片入库）和 content-material-matcher（选题匹配）调用。当用户说「素材整理」「素材分类」「素材入库」「帮我整理这些素材」「我的素材库」时使用。
-agent_created: true
-compatibility: workbuddy
+compatibility: heyclaw
 ---
 
 # 素材库管家（content-material-library）— 素材库管理
@@ -276,9 +275,24 @@ compatibility: workbuddy
 7. 如果已有素材库，增量入库——只整理新素材，不重复已有素材
 
 **⚠️ 视频素材质量预检**（在标注之前快速筛一遍）：
-- 用 ffmpeg 提取每视频第5帧（如 `ffmpeg -i x.mp4 -vf "select=eq(n\,5)" -vframes 1 /tmp/preview.jpg`）作为快速预览
+
+> **环境准备**：质量预检依赖 ffmpeg 提取视频关键帧。处理流程：
+> 1. **先检测**：`which ffmpeg` 或 `ffmpeg -version` 检查是否已安装
+> 2. **未安装则引导安装**：
+>    - macOS：`brew install ffmpeg`
+>    - Windows：`winget install ffmpeg` 或 `choco install ffmpeg`
+>    - Linux：`sudo apt install ffmpeg`（Debian/Ubuntu）或 `sudo yum install ffmpeg`（RHEL/CentOS）
+> 3. **安装后继续**：ffmpeg 装好后，用以下命令提取预览帧
+> 4. **安装失败才降级**：若用户无法安装 ffmpeg，跳过此步骤，改由用户描述视频内容
+
+**ffmpeg 可用时**：
+- 用 ffmpeg 提取每视频第5帧（如 `ffmpeg -i x.mp4 -vf "select=eq(n\,5)" -vframes 1 preview.jpg`）作为快速预览
 - 如果预览帧是纯灰色/纯黑/纯白/只有水印 → 标记为"损坏/低质量"，归入`99_损坏废弃`子文件夹，不入库
 - 损坏文件不删除，保留原文件名+损坏原因，等待用户重新录制或删除决定
+
+**ffmpeg 不可用时（降级）**：
+- 跳过视频质量预检，由用户确认视频是否正常可用
+- 若用户不确定，建议安装 ffmpeg 后重试
 
 **追问规则**：
 - 最多追问1轮（老板模式）/ 3轮（编导模式）

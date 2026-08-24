@@ -2,8 +2,7 @@
 name: IP定位推演师
 version: 1.0.0
 description: IP定位推演师（content-ip-manager）—— 通过多轮对话式问诊完成 IP 档案采集、商业策略推演、稀缺性识别与定位定调输出，替代传统 1 对 1 视频咨询。IP positioning & strategy-inference skill.
-agent_created: true
-compatibility: workbuddy
+compatibility: heyclaw
 ---
 
 # content-ip-manager — IP定位推演师
@@ -688,7 +687,7 @@ IP类型（获客型/凭证型/感召型/圈层型）回答"IP干什么"，IP四
 **网上补漏机制**（当客户提供的资料不足时，AI主动上网搜索公开信息补全业务资料库）：
 - **可搜索的信息**：公司/品牌官网、公开产品页、行业报告、媒体报道、竞品公开信息、监管/政策公开文件
 - **搜索顺序**：① 公司官网/公众号 → ② 产品/服务公开介绍页 → ③ 行业对比/竞品分析 → ④ 相关政策/监管要求
-- **使用WebSearch + WebFetch工具执行搜索**
+- **使用 联网搜索工具（`browser` / `web-search`） 与 `web_fetch` 工具执行搜索**
 - **补漏后必须向客户确认**：
   > "我在网上搜了一些你业务的公开信息，初步了解到……，这些对不对？有没有需要纠正或补充的？"
 - **纪律**：
@@ -1196,8 +1195,8 @@ IP不只是内容，还有从内容到收钱的完整链路。定位和置顶定
    - 红线清单（最关键的 2-3 条）
    - 故事弹药索引（仅列编号 + 主题，不展开）
 3. **写入位置**：
-   - 单 IP 自用（IP 就是用户本人）→ 写**用户级记忆** `~/.workbuddy/MEMORY.md`（跨工作区都认得你）
-   - 多 IP / 服务客户 → 写**工作区级记忆** `<workspace>/.workbuddy/memory/MEMORY.md`（每个客户一个项目夹，互不污染）
+   - 单 IP 自用（IP 就是用户本人）→ 写**用户级记忆** `~/Library/Application Support/HeyClaw/openclaw/state/workspace-main/MEMORY.md`（跨工作区都认得你）
+   - 多 IP / 服务客户 → 写**工作区级记忆** `<workspace>/MEMORY.md`（每个客户一个项目夹，互不污染）
 4. **同步纪律**：IP档案每次更新（阶段6 重跑 / 补信息）→ 必须同步重生成这份摘要，禁止记忆与文件脱节。
 5. **下游用法**：记忆摘要 = AI 的「随身速记」（ambient awareness，随口对话用）；完整 IP档案文件 = 流水线按字段读取的「燃料」（L0 定位底盘，规划/选题/脚本用）。**两者互补，记忆不替代文件**。
 

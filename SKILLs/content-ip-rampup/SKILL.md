@@ -2,8 +2,7 @@
 name: 30而立IP起盘
 version: 1.0.0
 description: 30而立IP起盘（content-ip-rampup）—— IP从0到1的内容起盘方法论：默认90天30条内容，按IP象限/客户阶段/IP类型/行业适配配比与三阶段递进（立骨架→建信任→促转化）；客户觉得多/少时按方法论增减。被营销战略地图 模式A 调用，也可独立使用。IP launch (90-day/30-content) skill.
-agent_created: true
-compatibility: workbuddy
+compatibility: heyclaw
 ---
 
 # content-ip-rampup — 30而立IP起盘
@@ -61,7 +60,7 @@ compatibility: workbuddy
 | 已生产内容 | 素材库 | 避免重复、补缺口 |
 | 公司季度业务目标 | 老板 | 对齐内容目标 |
 | 推广产品/服务 | 老板 | 内容植入重点 |
-| 行业热点 | WebSearch | 热点解读规划 |
+| 行业热点 | 联网搜索工具（`browser` / `web-search`） | 热点解读规划 |
 
 > **没有IP档案时**：先回去建档（content-ip-manager）。
 
