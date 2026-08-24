@@ -6,6 +6,7 @@ import { i18nService } from '../../services/i18n';
 import Modal from '../common/Modal';
 import {
   getIMSessionDisplayTitle,
+  getIMSessionPlatformIconClassName,
   getIMSessionPlatformLabel,
   getIMSessionPlatformLogo,
 } from '../cowork/imSessionDisplay';
@@ -89,6 +90,7 @@ const AgentTaskRow: React.FC<AgentTaskRowProps> = ({
   const displayTitle = task.isScheduledTask ? baseDisplayTitle : imDisplayTitle;
   const imPlatformLogo = task.isScheduledTask ? null : getIMSessionPlatformLogo(task.imPlatform);
   const imPlatformLabel = task.isScheduledTask ? null : getIMSessionPlatformLabel(task.imPlatform);
+  const imPlatformIconClassName = task.isScheduledTask ? null : getIMSessionPlatformIconClassName(task.imPlatform);
   // Keep a legacy prefix visible while editing so users can deliberately retain
   // or remove the heuristic marker. Persisted markers do not depend on the title.
   const editableTitle = task.isScheduledTask && hasLegacyScheduledTaskTitle(task.title)
@@ -363,7 +365,7 @@ const AgentTaskRow: React.FC<AgentTaskRowProps> = ({
               <img
                 src={imPlatformLogo}
                 alt=""
-                className="h-3.5 w-3.5 rounded-sm object-contain"
+                className={imPlatformIconClassName ?? undefined}
                 draggable={false}
               />
             </span>

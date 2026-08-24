@@ -9,6 +9,8 @@ interface IMDisplayTitleResult {
   strippedPrefix: boolean;
 }
 
+const DEFAULT_ICON_CLASS_NAME = 'h-4 w-4 rounded-sm object-contain';
+
 const IM_TITLE_PREFIXES: Record<Platform, readonly string[]> = {
   weixin: ['[微信]', '[WeChat]'],
   dingtalk: ['[钉钉]', '[DingTalk]'],
@@ -21,6 +23,14 @@ const IM_TITLE_PREFIXES: Record<Platform, readonly string[]> = {
   telegram: ['[TG]', '[Telegram]'],
   discord: ['[Discord]'],
   email: ['[龙虾邮箱]', '[clawEmail]', '[邮件]', '[Email]'],
+};
+
+const IM_SESSION_ICON_SCALE_CLASS_NAMES: Partial<Record<Platform, string>> = {
+  weixin: 'scale-90',
+  dingtalk: 'scale-110',
+  feishu: 'scale-[1.15]',
+  wecom: 'scale-110',
+  popo: 'scale-110',
 };
 
 const knownIMPlatforms = new Set<string>(PlatformRegistry.platforms);
@@ -61,6 +71,16 @@ export function getIMSessionPlatformLogo(platform?: Platform | string | null): s
   const normalizedPlatform = normalizeIMSessionPlatform(platform);
   if (!normalizedPlatform) return null;
   return PlatformRegistry.logo(normalizedPlatform);
+}
+
+export function getIMSessionPlatformIconClassName(platform?: Platform | string | null): string {
+  const normalizedPlatform = normalizeIMSessionPlatform(platform);
+  const scaleClassName = normalizedPlatform
+    ? IM_SESSION_ICON_SCALE_CLASS_NAMES[normalizedPlatform]
+    : null;
+  return scaleClassName
+    ? `${DEFAULT_ICON_CLASS_NAME} ${scaleClassName}`
+    : DEFAULT_ICON_CLASS_NAME;
 }
 
 export function getIMSessionPlatformLabel(platform?: Platform | string | null): string | null {

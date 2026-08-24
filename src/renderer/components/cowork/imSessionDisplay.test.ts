@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from 'vitest';
 
 import {
   getIMSessionDisplayTitle,
+  getIMSessionPlatformIconClassName,
   getIMSessionPlatformLogo,
 } from './imSessionDisplay';
 
@@ -40,6 +41,20 @@ describe('getIMSessionDisplayTitle', () => {
       title: 'inbox:user',
       strippedPrefix: true,
     });
+  });
+
+  test('uses the shared platform registry logos', () => {
+    expect(getIMSessionPlatformLogo('weixin')).toBe('weixin.png');
+    expect(getIMSessionPlatformLogo('discord')).toBe('discord.svg');
+  });
+
+  test('applies session-list visual size tuning for uneven source assets', () => {
+    expect(getIMSessionPlatformIconClassName('weixin')).toBe('h-4 w-4 rounded-sm object-contain scale-90');
+    expect(getIMSessionPlatformIconClassName('dingtalk')).toBe('h-4 w-4 rounded-sm object-contain scale-110');
+    expect(getIMSessionPlatformIconClassName('feishu')).toBe('h-4 w-4 rounded-sm object-contain scale-[1.15]');
+    expect(getIMSessionPlatformIconClassName('wecom')).toBe('h-4 w-4 rounded-sm object-contain scale-110');
+    expect(getIMSessionPlatformIconClassName('popo')).toBe('h-4 w-4 rounded-sm object-contain scale-110');
+    expect(getIMSessionPlatformIconClassName('qq')).toBe('h-4 w-4 rounded-sm object-contain');
   });
 
   test('ignores and logs unknown platforms without throwing', () => {

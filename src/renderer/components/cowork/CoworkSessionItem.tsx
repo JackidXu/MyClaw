@@ -14,6 +14,7 @@ import PushPinIcon from '../icons/PushPinIcon';
 import TrashIcon from '../icons/TrashIcon';
 import {
   getIMSessionDisplayTitle,
+  getIMSessionPlatformIconClassName,
   getIMSessionPlatformLabel,
   getIMSessionPlatformLogo,
 } from './imSessionDisplay';
@@ -106,6 +107,7 @@ const CoworkSessionItem: React.FC<CoworkSessionItemProps> = ({
   const displayTitle = getIMSessionDisplayTitle(baseDisplayTitle, session.imPlatform).title;
   const imPlatformLogo = getIMSessionPlatformLogo(session.imPlatform);
   const imPlatformLabel = getIMSessionPlatformLabel(session.imPlatform);
+  const imPlatformIconClassName = getIMSessionPlatformIconClassName(session.imPlatform);
   const [showConfirmDelete, setShowConfirmDelete] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(displayTitle);
@@ -364,7 +366,7 @@ const CoworkSessionItem: React.FC<CoworkSessionItemProps> = ({
                     <img
                       src={imPlatformLogo}
                       alt=""
-                      className="h-3.5 w-3.5 rounded-sm object-contain"
+                      className={imPlatformIconClassName}
                       draggable={false}
                     />
                   </span>
