@@ -1837,7 +1837,6 @@ const App: React.FC = () => {
                 isSidebarCollapsed={isSidebarCollapsed}
                 onToggleSidebar={handleToggleSidebar}
                 onOpenSession={handleOpenLibrarySession}
-                onShowLogin={handleShowLogin}
                 sitesHidden={enterpriseConfig?.ui?.sites === 'hide'}
                 sitesReadOnly={enterpriseConfig?.ui?.sites === 'readonly'}
                 updateBadge={collapsedHeaderUpdateBadge}

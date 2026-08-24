@@ -34,7 +34,10 @@ import {
 } from '@shared/htmlShare/constants';
 import { LibraryNavigationEvent } from '@shared/library/constants';
 import type { LocalWebService } from '@shared/localWebServices/constants';
-import type { PublishingQuotaErrorData } from '@shared/publishing/constants';
+import {
+  type PublishingQuotaErrorData,
+  PublishingResourceKind,
+} from '@shared/publishing/constants';
 import {
   ShareDeploymentCandidateSource,
   ShareDeploymentFailureCode,
@@ -150,7 +153,20 @@ import NodeDeploymentPersistenceOperationStatus, {
   NodeDeploymentPersistenceOperationPhase,
   type NodeDeploymentPersistenceOperationState,
 } from './NodeDeploymentPersistenceOperationStatus';
+import {
+  createPublishingAnalyticsAttempt,
+  getPublishingErrorCategory,
+  type PublishingAnalyticsAttemptContext,
+  PublishingAnalyticsErrorCategory,
+  PublishingAnalyticsOperationType,
+  PublishingAnalyticsResult,
+  reportPublishingEntryAction,
+  reportPublishingOperationResult,
+  updatePublishingAnalyticsAttempt,
+} from './publishingAnalytics';
 import PublishingQuotaLimitDialog from './PublishingQuotaLimitDialog';
+import PublishingTrialNoticeDialog from './PublishingTrialNoticeDialog';
+import { shouldShowPublishingTrialNotice } from './publishingTrialNoticePolicy';
 import {
   PublishingTrialStatus,
   usePublishingTrialStatus,
@@ -335,6 +351,27 @@ interface NodeDeploymentLaunchContext {
   localService: LocalWebService;
   projectDirectory?: string;
   projectCandidates?: ShareDeploymentProjectCandidate[];
+  source?: ArtifactPreviewActionSource;
+  entryPoint?: ArtifactPublishEntryPoint;
+}
+
+interface NodeDeploymentTrialNoticeState {
+  localService: LocalWebService;
+  projectDirectory: string;
+  quota: PublishingQuotaErrorData;
+}
+
+function getSiteDeploymentQuotaErrorData(
+  quota: SiteDeploymentQuota,
+): PublishingQuotaErrorData {
+  return {
+    resourceKind: quota.resourceKind,
+    identityType: quota.identityType,
+    countMode: quota.countMode,
+    used: quota.usage.used,
+    limit: quota.usage.limit,
+    canReleaseByClosing: quota.canReleaseByClosing,
+  };
 }
 
 function isNodeDeploymentDialogForLocalService(
@@ -808,6 +845,8 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
   const [isNodeDeploymentAccessUpdating, setIsNodeDeploymentAccessUpdating] = useState(false);
   const [publishingQuotaDialog, setPublishingQuotaDialog] =
     useState<PublishingQuotaErrorData | null>(null);
+  const [nodeDeploymentTrialNotice, setNodeDeploymentTrialNotice] =
+    useState<NodeDeploymentTrialNoticeState | null>(null);
   const [isHtmlShareStatusUpdating, setIsHtmlShareStatusUpdating] = useState(false);
   const [htmlShareCopyStatus, setHtmlShareCopyStatus] =
     useState<HtmlShareCopyStatus>(HtmlShareCopyStatus.Idle);
@@ -828,6 +867,8 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
   const nodeDeploymentActionRunIdRef = useRef(0);
   const nodeDeploymentAccessRunIdRef = useRef(0);
   const nodeDeploymentPersistenceOperationRunIdRef = useRef(0);
+  const publishingAnalyticsAttemptRef =
+    useRef<PublishingAnalyticsAttemptContext | null>(null);
   const handledLocalServiceDeploymentRequestIdRef = useRef<number | null>(null);
   const publishingAccountGenerationRef = useRef(authState.accountGeneration);
   publishingAccountGenerationRef.current = authState.accountGeneration;
@@ -1288,6 +1329,7 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
     setHtmlSharePhase(HtmlSharePhase.Idle);
     setSubscriptionPrompt(null);
     setPublishingQuotaDialog(null);
+    setNodeDeploymentTrialNotice(null);
     setNodeDeploymentLookup(null);
     setNodeDeploymentDialog(null);
     setNodeDeploymentPersistenceOperations({});
@@ -1756,8 +1798,12 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
   ]);
 
   const openSubscriptionPage = useCallback(() => {
+    const analyticsAttempt = publishingAnalyticsAttemptRef.current;
+    const keyfrom = analyticsAttempt?.feature === ArtifactSubscriptionFeature.Deployment
+      ? PortalPricingKeyfrom.SiteDeployment
+      : PortalPricingKeyfrom.HtmlShare;
     void window.electron?.shell?.openExternal(
-      getPortalPricingUrl(PortalPricingKeyfrom.HtmlShare),
+      getPortalPricingUrl(keyfrom, { traceId: analyticsAttempt?.attemptId }),
     );
     closeSubscriptionPrompt();
   }, [closeSubscriptionPrompt]);
@@ -2150,6 +2196,8 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
       localService,
       projectDirectory: contextProjectDirectory,
       projectCandidates = [],
+      source = ArtifactPreviewActionSource.ArtifactPanel,
+      entryPoint = ArtifactPublishEntryPoint.ArtifactToolbar,
     } = launchContext;
     if (
       isHtmlSharing ||
@@ -2158,6 +2206,20 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
     ) {
       return;
     }
+    const analyticsAttempt = createPublishingAnalyticsAttempt({
+      feature: ArtifactSubscriptionFeature.Deployment,
+      resourceKind: PublishingResourceKind.Site,
+      operationType: nodeDeploymentDialog?.deployment
+        ? PublishingAnalyticsOperationType.Manage
+        : PublishingAnalyticsOperationType.Unknown,
+      source,
+      entryPoint,
+      hasExistingResource: nodeDeploymentDialog
+        ? Boolean(nodeDeploymentDialog.deployment)
+        : undefined,
+    });
+    publishingAnalyticsAttemptRef.current = analyticsAttempt;
+    reportPublishingEntryAction(analyticsAttempt);
     if (
       nodeDeploymentDialog &&
       (isNodeDeploymentBusy ||
@@ -2168,6 +2230,7 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
     }
     const runId = nodeDeploymentActionRunIdRef.current + 1;
     nodeDeploymentActionRunIdRef.current = runId;
+    setNodeDeploymentTrialNotice(null);
     setIsNodeDeploymentLookupPending(true);
 
     try {
@@ -2221,6 +2284,15 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
         existingDeployment = existing.deployment ?? null;
         rememberNodeDeployment(lookupKey, existingDeployment);
       }
+      publishingAnalyticsAttemptRef.current = updatePublishingAnalyticsAttempt(
+        analyticsAttempt,
+        {
+          operationType: existingDeployment
+            ? PublishingAnalyticsOperationType.Manage
+            : PublishingAnalyticsOperationType.Create,
+          hasExistingResource: Boolean(existingDeployment),
+        },
+      );
       const quota = await fetchSiteDeploymentQuota(
         existingDeployment?.shareId,
       );
@@ -2239,11 +2311,34 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
         return;
       }
 
+      if (shouldShowPublishingTrialNotice({
+        allowed: quota.allowed,
+        identityType: quota.identityType,
+        hasExistingResource: false,
+      })) {
+        clearNodeDeploymentLookupDialogTimer();
+        setNodeDeploymentDialog(null);
+        setIsNodeDeploymentDialogOpen(false);
+        setNodeDeploymentTrialNotice({
+          localService,
+          projectDirectory,
+          quota: getSiteDeploymentQuotaErrorData(quota),
+        });
+        return;
+      }
+
       clearNodeDeploymentLookupDialogTimer();
       setIsNodeDeploymentDialogOpen(true);
       openNodeDeploymentCreateDialog(localService, projectDirectory);
     } catch (error) {
       if (nodeDeploymentActionRunIdRef.current !== runId) return;
+      reportPublishingOperationResult(
+        publishingAnalyticsAttemptRef.current ?? analyticsAttempt,
+        {
+          result: PublishingAnalyticsResult.Failure,
+          errorCategory: getPublishingErrorCategory(error),
+        },
+      );
       clearNodeDeploymentLookupDialogTimer();
       setIsNodeDeploymentDialogOpen(true);
       setNodeDeploymentDialog({
@@ -2334,6 +2429,8 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
       localService,
       projectDirectory,
       projectCandidates,
+      source: ArtifactPreviewActionSource.ArtifactBrowser,
+      entryPoint: ArtifactPublishEntryPoint.BrowserToolbar,
     });
   }, [
     browserAddress,
@@ -2389,6 +2486,8 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
         localService,
         projectDirectory: request.projectDirectory,
         projectCandidates: request.projectCandidates,
+        source: ArtifactPreviewActionSource.ConversationArtifactCard,
+        entryPoint: ArtifactPublishEntryPoint.PreviewCard,
       });
     }, 0);
 
@@ -2886,10 +2985,24 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
       snapshot.deployment,
       selectedPermission,
     );
+    const analyticsAttempt =
+      publishingAnalyticsAttemptRef.current?.feature === ArtifactSubscriptionFeature.Deployment
+        ? updatePublishingAnalyticsAttempt(publishingAnalyticsAttemptRef.current, {
+            operationType: PublishingAnalyticsOperationType.UpdatePermission,
+            hasExistingResource: true,
+          })
+        : null;
+    if (analyticsAttempt) publishingAnalyticsAttemptRef.current = analyticsAttempt;
 
     const api = window.electron?.htmlShare;
     const shareId = snapshot.deployment.shareId;
     if (!api || !shareId) {
+      if (analyticsAttempt) {
+        reportPublishingOperationResult(analyticsAttempt, {
+          result: PublishingAnalyticsResult.Failure,
+          errorCategory: PublishingAnalyticsErrorCategory.ApiUnavailable,
+        });
+      }
       setNodeDeploymentDialog(previous => previous
         ? {
             ...previous,
@@ -2983,8 +3096,19 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
             }
           : previous,
       );
+      if (analyticsAttempt) {
+        reportPublishingOperationResult(analyticsAttempt, {
+          result: PublishingAnalyticsResult.Success,
+        });
+      }
     } catch (error) {
       if (nodeDeploymentAccessRunIdRef.current !== runId) return;
+      if (analyticsAttempt) {
+        reportPublishingOperationResult(analyticsAttempt, {
+          result: PublishingAnalyticsResult.Failure,
+          errorCategory: getPublishingErrorCategory(error),
+        });
+      }
       let authoritativeDeployment = confirmedDeployment;
       if (snapshot.localService) {
         try {
@@ -3175,6 +3299,40 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
     onLocalServiceDeploymentRequestConsumed,
   ]);
 
+  const closeNodeDeploymentTrialNotice = useCallback(() => {
+    nodeDeploymentActionRunIdRef.current += 1;
+    clearNodeDeploymentLookupDialogTimer();
+    setNodeDeploymentTrialNotice(null);
+    setIsNodeDeploymentLookupPending(false);
+    if (localServiceDeploymentRequest?.requestId) {
+      onLocalServiceDeploymentRequestConsumed?.(localServiceDeploymentRequest.requestId);
+    }
+  }, [
+    clearNodeDeploymentLookupDialogTimer,
+    localServiceDeploymentRequest?.requestId,
+    onLocalServiceDeploymentRequestConsumed,
+  ]);
+
+  const continueNodeDeploymentTrial = useCallback(() => {
+    const pending = nodeDeploymentTrialNotice;
+    if (!pending) return;
+    setNodeDeploymentTrialNotice(null);
+    setIsNodeDeploymentDialogOpen(true);
+    openNodeDeploymentCreateDialog(
+      pending.localService,
+      pending.projectDirectory,
+    );
+  }, [nodeDeploymentTrialNotice, openNodeDeploymentCreateDialog]);
+
+  const openNodeDeploymentTrialSubscriptionPage = useCallback(() => {
+    void window.electron?.shell?.openExternal(
+      getPortalPricingUrl(PortalPricingKeyfrom.SiteDeployment, {
+        traceId: publishingAnalyticsAttemptRef.current?.attemptId,
+      }),
+    );
+    closeNodeDeploymentTrialNotice();
+  }, [closeNodeDeploymentTrialNotice]);
+
   const submitNodeDeployment = useCallback(async () => {
     const currentDialog = nodeDeploymentDialog;
     if (
@@ -3221,11 +3379,27 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
     ) {
       return;
     }
+    const analyticsAttempt =
+      publishingAnalyticsAttemptRef.current?.feature === ArtifactSubscriptionFeature.Deployment
+        ? updatePublishingAnalyticsAttempt(publishingAnalyticsAttemptRef.current, {
+            operationType: currentDialog.deployment
+              ? PublishingAnalyticsOperationType.Redeploy
+              : PublishingAnalyticsOperationType.Create,
+            hasExistingResource: Boolean(currentDialog.deployment),
+          })
+        : null;
+    if (analyticsAttempt) publishingAnalyticsAttemptRef.current = analyticsAttempt;
 
     const runId = nodeDeploymentActionRunIdRef.current + 1;
     nodeDeploymentActionRunIdRef.current = runId;
     const port = Number(currentDialog.port);
     if (!Number.isInteger(port) || port <= 0 || port > 65535) {
+      if (analyticsAttempt) {
+        reportPublishingOperationResult(analyticsAttempt, {
+          result: PublishingAnalyticsResult.Failure,
+          errorCategory: PublishingAnalyticsErrorCategory.InvalidSource,
+        });
+      }
       setNodeDeploymentDialog(previous => previous
         ? { ...previous, error: t('nodeDeploymentInvalidPort') }
         : previous);
@@ -3271,6 +3445,12 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
       });
       if (!reservation?.success || !reservation.data?.reservationId) {
         if (reservation?.code === SiteErrorCode.DeploymentQuotaExceeded) {
+          if (analyticsAttempt) {
+            reportPublishingOperationResult(analyticsAttempt, {
+              result: PublishingAnalyticsResult.Failure,
+              errorCategory: PublishingAnalyticsErrorCategory.Quota,
+            });
+          }
           if (showPublishingQuotaDialog(reservation.quota)) return;
           await fetchSiteDeploymentQuota(
             currentDialog.deployment?.shareId,
@@ -3323,6 +3503,12 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
       if (nodeDeploymentActionRunIdRef.current !== runId) return;
       if (!result?.success || !result.deployment) {
         if (result?.code === SiteErrorCode.DeploymentQuotaExceeded) {
+          if (analyticsAttempt) {
+            reportPublishingOperationResult(analyticsAttempt, {
+              result: PublishingAnalyticsResult.Failure,
+              errorCategory: PublishingAnalyticsErrorCategory.Quota,
+            });
+          }
           await fetchSiteDeploymentQuota(
             currentDialog.deployment?.shareId,
           );
@@ -3369,8 +3555,19 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
         accessSyncError: accessStatusError,
       }, true);
       setNodeDeploymentPersistenceRefreshVersion(version => version + 1);
+      if (analyticsAttempt) {
+        reportPublishingOperationResult(analyticsAttempt, {
+          result: PublishingAnalyticsResult.Success,
+        });
+      }
     } catch (error) {
       if (nodeDeploymentActionRunIdRef.current !== runId) return;
+      if (analyticsAttempt) {
+        reportPublishingOperationResult(analyticsAttempt, {
+          result: PublishingAnalyticsResult.Failure,
+          errorCategory: getPublishingErrorCategory(error),
+        });
+      }
       setNodeDeploymentDialog(previous => previous
         ? {
             ...previous,
@@ -5024,6 +5221,12 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
           onCancel={closeSubscriptionPrompt}
           onLogin={openLoginPage}
           onSubscribe={openSubscriptionPage}
+          onLearnBenefits={openSubscriptionPage}
+          analyticsAttempt={
+            publishingAnalyticsAttemptRef.current?.feature === subscriptionPrompt.feature
+              ? publishingAnalyticsAttemptRef.current
+              : null
+          }
         />
       )}
       {publishingQuotaDialog && (
@@ -5031,10 +5234,27 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
           quota={publishingQuotaDialog}
           onClose={() => setPublishingQuotaDialog(null)}
           onSubscribe={openSubscriptionPage}
+          onLearnBenefits={openSubscriptionPage}
+          analyticsAttempt={
+            publishingAnalyticsAttemptRef.current?.resourceKind ===
+              publishingQuotaDialog.resourceKind
+              ? publishingAnalyticsAttemptRef.current
+              : null
+          }
           onManage={() => {
             setPublishingQuotaDialog(null);
             window.dispatchEvent(new Event(LibraryNavigationEvent.OpenCloud));
           }}
+        />
+      )}
+      {nodeDeploymentTrialNotice && (
+        <PublishingTrialNoticeDialog
+          feature={ArtifactSubscriptionFeature.Deployment}
+          quota={nodeDeploymentTrialNotice.quota}
+          onCancel={closeNodeDeploymentTrialNotice}
+          onContinue={continueNodeDeploymentTrial}
+          onSubscribe={openNodeDeploymentTrialSubscriptionPage}
+          analyticsAttempt={publishingAnalyticsAttemptRef.current}
         />
       )}
       {nodeDeploymentDialog && isNodeDeploymentDialogOpen &&

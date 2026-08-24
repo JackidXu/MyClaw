@@ -8,7 +8,10 @@ import {
   type HtmlShareStatus as HtmlShareStatusValue,
 } from '@shared/htmlShare/constants';
 import { LibraryNavigationEvent } from '@shared/library/constants';
-import type { PublishingQuotaErrorData } from '@shared/publishing/constants';
+import {
+  type PublishingQuotaErrorData,
+  PublishingResourceKind,
+} from '@shared/publishing/constants';
 import {
   createContext,
   type ReactNode,
@@ -70,7 +73,20 @@ import {
   resolveArtifactSubscriptionDecision,
 } from './artifactSubscriptionGate';
 import ArtifactSubscriptionPromptDialog from './ArtifactSubscriptionPromptDialog';
+import {
+  createPublishingAnalyticsAttempt,
+  getPublishingErrorCategory,
+  type PublishingAnalyticsAttemptContext,
+  PublishingAnalyticsErrorCategory,
+  PublishingAnalyticsOperationType,
+  PublishingAnalyticsResult,
+  reportPublishingEntryAction,
+  reportPublishingOperationResult,
+  updatePublishingAnalyticsAttempt,
+} from './publishingAnalytics';
 import PublishingQuotaLimitDialog from './PublishingQuotaLimitDialog';
+import PublishingTrialNoticeDialog from './PublishingTrialNoticeDialog';
+import { shouldShowPublishingTrialNotice } from './publishingTrialNoticePolicy';
 
 const t = (key: string) => i18nService.t(key);
 
@@ -99,6 +115,12 @@ interface ArtifactFileShareDialogState {
 
 interface PreparedArtifactFileShare {
   share?: ArtifactFileShareRecord;
+}
+
+interface ArtifactFileShareTrialNoticeState {
+  artifact: Artifact;
+  request: ArtifactFileShareRequest;
+  quota: PublishingQuotaErrorData;
 }
 
 interface ArtifactFileShareControllerValue {
@@ -312,6 +334,8 @@ export function ArtifactFileShareProvider({ sessionId, children }: ArtifactFileS
     useState<ArtifactSubscriptionPromptState | null>(null);
   const [publishingQuota, setPublishingQuota] =
     useState<PublishingQuotaErrorData | null>(null);
+  const [trialNotice, setTrialNotice] =
+    useState<ArtifactFileShareTrialNoticeState | null>(null);
   const [copyStatus, setCopyStatus] = useState<ArtifactFileShareCopyStatus>(
     ArtifactFileShareCopyStatus.Idle,
   );
@@ -324,6 +348,7 @@ export function ArtifactFileShareProvider({ sessionId, children }: ArtifactFileS
   const feedbackTimerRef = useRef<number | undefined>(undefined);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
+  const analyticsAttemptRef = useRef<PublishingAnalyticsAttemptContext | null>(null);
 
   const clearFeedbackTimer = useCallback(() => {
     if (feedbackTimerRef.current !== undefined) {
@@ -345,6 +370,7 @@ export function ArtifactFileShareProvider({ sessionId, children }: ArtifactFileS
     setDialog(null);
     setSubscriptionPrompt(null);
     setPublishingQuota(null);
+    setTrialNotice(null);
     resetFeedback();
   }, [
     authState.accountGeneration,
@@ -364,6 +390,11 @@ export function ArtifactFileShareProvider({ sessionId, children }: ArtifactFileS
   const closeSubscriptionPrompt = useCallback(() => {
     generationRef.current += 1;
     setSubscriptionPrompt(null);
+  }, []);
+
+  const closeTrialNotice = useCallback(() => {
+    generationRef.current += 1;
+    setTrialNotice(null);
   }, []);
 
   const showPublishingQuota = useCallback((error: unknown): boolean => {
@@ -536,6 +567,7 @@ export function ArtifactFileShareProvider({ sessionId, children }: ArtifactFileS
       setDialog(null);
       setSubscriptionPrompt(null);
       setPublishingQuota(null);
+      setTrialNotice(null);
 
       try {
         const subscriptionDecision = await getSubscriptionDecision();
@@ -562,6 +594,45 @@ export function ArtifactFileShareProvider({ sessionId, children }: ArtifactFileS
 
         const prepared = await loadShare(api, request);
         if (generationRef.current !== runId) return;
+        if (analyticsAttemptRef.current) {
+          analyticsAttemptRef.current = updatePublishingAnalyticsAttempt(
+            analyticsAttemptRef.current,
+            {
+              operationType: prepared.share
+                ? PublishingAnalyticsOperationType.Manage
+                : PublishingAnalyticsOperationType.Create,
+              hasExistingResource: Boolean(prepared.share),
+            },
+          );
+        }
+        if (!prepared.share) {
+          const quotaResult = await api.getQuota();
+          if (generationRef.current !== runId) return;
+          if (!quotaResult?.success || !quotaResult.data) {
+            throw new ArtifactFileShareRequestError(
+              quotaResult?.error || t('htmlShareQuotaLoadFailed'),
+              quotaResult?.code,
+            );
+          }
+          if (!quotaResult.data.allowed) {
+            setDialog(null);
+            setPublishingQuota(quotaResult.data);
+            return;
+          }
+          if (shouldShowPublishingTrialNotice({
+            allowed: quotaResult.data.allowed,
+            identityType: quotaResult.data.identityType,
+            hasExistingResource: false,
+          })) {
+            setDialog(null);
+            setTrialNotice({
+              artifact,
+              request,
+              quota: quotaResult.data,
+            });
+            return;
+          }
+        }
         const intent = prepared.share
           ? ArtifactFileShareIntent.Manage
           : ArtifactFileShareIntent.Create;
@@ -586,6 +657,12 @@ export function ArtifactFileShareProvider({ sessionId, children }: ArtifactFileS
           });
           return;
         }
+        if (analyticsAttemptRef.current) {
+          reportPublishingOperationResult(analyticsAttemptRef.current, {
+            result: PublishingAnalyticsResult.Failure,
+            errorCategory: getPublishingErrorCategory(error),
+          });
+        }
         const message = error instanceof Error ? error.message : t('htmlShareFailed');
         logShare('warn', `Failed to prepare share for artifact ${request.artifactId}: ${message}`);
         setDialog({
@@ -600,12 +677,34 @@ export function ArtifactFileShareProvider({ sessionId, children }: ArtifactFileS
     [getSubscriptionDecision, loadShare, resetFeedback],
   );
 
+  const continueTrialShare = useCallback(() => {
+    const pending = trialNotice;
+    if (!pending) return;
+    setTrialNotice(null);
+    setDialog({
+      artifact: pending.artifact,
+      request: pending.request,
+      phase: ArtifactFileSharePhase.Ready,
+      intent: ArtifactFileShareIntent.Create,
+      selectedPermission: ArtifactFileSharePermission.Code,
+    });
+  }, [trialNotice]);
+
   const openShare = useCallback(
     async (
       artifact: Artifact,
       context: ArtifactFileShareOpenContext,
     ): Promise<void> => {
       const sourceType = getArtifactFileShareSourceType(artifact);
+      const analyticsAttempt = createPublishingAnalyticsAttempt({
+        feature: ArtifactSubscriptionFeature.Share,
+        resourceKind: PublishingResourceKind.File,
+        operationType: PublishingAnalyticsOperationType.Unknown,
+        source: context.source,
+        entryPoint: context.entryPoint,
+      });
+      analyticsAttemptRef.current = analyticsAttempt;
+      reportPublishingEntryAction(analyticsAttempt);
       reportArtifactPreviewAction({
         actionType: 'share_html_click',
         source: context.source,
@@ -620,6 +719,10 @@ export function ArtifactFileShareProvider({ sessionId, children }: ArtifactFileS
         ? buildArtifactFileShareRequest(artifact, sessionId, t('htmlShare'))
         : null;
       if (!request) {
+        reportPublishingOperationResult(analyticsAttempt, {
+          result: PublishingAnalyticsResult.Failure,
+          errorCategory: PublishingAnalyticsErrorCategory.InvalidSource,
+        });
         generationRef.current += 1;
         setDialog({
           artifact,
@@ -730,8 +833,28 @@ export function ArtifactFileShareProvider({ sessionId, children }: ArtifactFileS
         'debug',
         `Created ${snapshot.request.sourceType} share for artifact ${snapshot.request.artifactId}.`,
       );
+      if (analyticsAttemptRef.current) {
+        reportPublishingOperationResult(analyticsAttemptRef.current, {
+          result: PublishingAnalyticsResult.Success,
+          operationType: PublishingAnalyticsOperationType.Create,
+        });
+        analyticsAttemptRef.current = updatePublishingAnalyticsAttempt(
+          analyticsAttemptRef.current,
+          {
+            operationType: PublishingAnalyticsOperationType.Manage,
+            hasExistingResource: true,
+          },
+        );
+      }
     } catch (error) {
       if (generationRef.current !== runId) return;
+      if (analyticsAttemptRef.current) {
+        reportPublishingOperationResult(analyticsAttemptRef.current, {
+          result: PublishingAnalyticsResult.Failure,
+          operationType: PublishingAnalyticsOperationType.Create,
+          errorCategory: getPublishingErrorCategory(error),
+        });
+      }
       if (isSubscriptionRequiredError(error)) {
         setDialog(null);
         setSubscriptionPrompt({
@@ -847,8 +970,21 @@ export function ArtifactFileShareProvider({ sessionId, children }: ArtifactFileS
             }
           : previous,
       );
+      if (analyticsAttemptRef.current) {
+        reportPublishingOperationResult(analyticsAttemptRef.current, {
+          result: PublishingAnalyticsResult.Success,
+          operationType: PublishingAnalyticsOperationType.UpdatePermission,
+        });
+      }
     } catch (error) {
       if (generationRef.current !== runId) return;
+      if (analyticsAttemptRef.current) {
+        reportPublishingOperationResult(analyticsAttemptRef.current, {
+          result: PublishingAnalyticsResult.Failure,
+          operationType: PublishingAnalyticsOperationType.UpdatePermission,
+          errorCategory: getPublishingErrorCategory(error),
+        });
+      }
       if (isSubscriptionRequiredError(error)) {
         setDialog(null);
         setSubscriptionPrompt({
@@ -944,8 +1080,21 @@ export function ArtifactFileShareProvider({ sessionId, children }: ArtifactFileS
           : previous,
       );
       showTimedUpdateSuccess();
+      if (analyticsAttemptRef.current) {
+        reportPublishingOperationResult(analyticsAttemptRef.current, {
+          result: PublishingAnalyticsResult.Success,
+          operationType: PublishingAnalyticsOperationType.UpdateContent,
+        });
+      }
     } catch (error) {
       if (generationRef.current !== runId) return;
+      if (analyticsAttemptRef.current) {
+        reportPublishingOperationResult(analyticsAttemptRef.current, {
+          result: PublishingAnalyticsResult.Failure,
+          operationType: PublishingAnalyticsOperationType.UpdateContent,
+          errorCategory: getPublishingErrorCategory(error),
+        });
+      }
       if (isSubscriptionRequiredError(error)) {
         setDialog(null);
         setSubscriptionPrompt({
@@ -1003,7 +1152,10 @@ export function ArtifactFileShareProvider({ sessionId, children }: ArtifactFileS
   }, [dialog, showTimedCopyStatus]);
 
   const openSubscriptionPage = useCallback(() => {
-    void window.electron?.shell?.openExternal(getPortalPricingUrl(PortalPricingKeyfrom.HtmlShare));
+    void window.electron?.shell?.openExternal(getPortalPricingUrl(
+      PortalPricingKeyfrom.HtmlShare,
+      { traceId: analyticsAttemptRef.current?.attemptId },
+    ));
     closeSubscriptionPrompt();
   }, [closeSubscriptionPrompt]);
 
@@ -1012,12 +1164,24 @@ export function ArtifactFileShareProvider({ sessionId, children }: ArtifactFileS
     void authService.login();
   }, [closeSubscriptionPrompt]);
 
+  const openTrialSubscriptionPage = useCallback(() => {
+    void window.electron?.shell?.openExternal(getPortalPricingUrl(
+      PortalPricingKeyfrom.HtmlShare,
+      { traceId: analyticsAttemptRef.current?.attemptId },
+    ));
+    closeTrialNotice();
+  }, [closeTrialNotice]);
+
   const contextValue = useMemo<ArtifactFileShareControllerValue>(
     () => ({
-      isOverlayOpen: isDialogOpen || Boolean(subscriptionPrompt) || Boolean(publishingQuota),
+      isOverlayOpen:
+        isDialogOpen ||
+        Boolean(subscriptionPrompt) ||
+        Boolean(publishingQuota) ||
+        Boolean(trialNotice),
       openShare,
     }),
-    [isDialogOpen, openShare, publishingQuota, subscriptionPrompt],
+    [isDialogOpen, openShare, publishingQuota, subscriptionPrompt, trialNotice],
   );
 
   const share = dialog?.share;
@@ -1150,6 +1314,8 @@ export function ArtifactFileShareProvider({ sessionId, children }: ArtifactFileS
       onCancel={closeSubscriptionPrompt}
       onLogin={openLoginPage}
       onSubscribe={openSubscriptionPage}
+      onLearnBenefits={openSubscriptionPage}
+      analyticsAttempt={analyticsAttemptRef.current}
     />
   ) : null;
 
@@ -1158,10 +1324,23 @@ export function ArtifactFileShareProvider({ sessionId, children }: ArtifactFileS
       quota={publishingQuota}
       onClose={() => setPublishingQuota(null)}
       onSubscribe={openSubscriptionPage}
+      onLearnBenefits={openSubscriptionPage}
+      analyticsAttempt={analyticsAttemptRef.current}
       onManage={() => {
         setPublishingQuota(null);
         window.dispatchEvent(new Event(LibraryNavigationEvent.OpenCloud));
       }}
+    />
+  ) : null;
+
+  const trialNoticePortal = trialNotice ? (
+    <PublishingTrialNoticeDialog
+      feature={ArtifactSubscriptionFeature.Share}
+      quota={trialNotice.quota}
+      onCancel={closeTrialNotice}
+      onContinue={continueTrialShare}
+      onSubscribe={openTrialSubscriptionPage}
+      analyticsAttempt={analyticsAttemptRef.current}
     />
   ) : null;
 
@@ -1171,6 +1350,7 @@ export function ArtifactFileShareProvider({ sessionId, children }: ArtifactFileS
       {dialogPortal}
       {subscriptionPromptPortal}
       {publishingQuotaPortal}
+      {trialNoticePortal}
     </ArtifactFileShareContext.Provider>
   );
 }

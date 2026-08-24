@@ -711,6 +711,18 @@ const translations: Record<LanguageType, Record<string, string>> = {
       '分享和部署是订阅用户的专属权益，普通用户登录后可按当前体验额度使用。',
     publishingTrialLimitFallbackMessage:
       '当前普通用户体验额度已用完，订阅后可继续使用。',
+    publishingTrialNoticeMessage:
+      '{feature}是订阅用户的专属权益。当前账号可累计免费体验{limit}个，本次创建的{resource}有效期为{duration}。到期后将无法访问，关闭、过期或删除均不会返还体验名额。',
+    publishingTrialNoticeFallbackMessage:
+      '{feature}是订阅用户的专属权益。当前账号可累计免费体验{limit}个，本次创建将按当前体验规则提供限时访问。',
+    publishingTrialResourceShareLink: '分享链接',
+    publishingTrialResourceWebsite: '网站',
+    publishingTrialDurationHours: '{hours}小时',
+    publishingTrialDurationHoursMinutes: '{hours}小时{minutes}分钟',
+    publishingTrialDurationMinutes: '{minutes}分钟',
+    publishingTrialUsageAfterCreate: '本次使用后',
+    publishingTrialContinueShare: '继续分享',
+    publishingTrialContinueSite: '继续部署',
     publishingTrialLoginAction: '去登录',
     publishingTrialLearnBenefits: '了解订阅权益',
     publishingTrialBadge: '限时体验',
@@ -720,6 +732,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     publishingTrialLinkExpiryLessThanMinute: '链接有效期：不足1分钟',
     publishingTrialLinkExpired: '链接已过期',
     htmlShareUnavailableInProduction: '分享功能暂不可用。',
+    htmlShareQuotaLoadFailed: '无法获取分享额度，请稍后重试。',
     nodeDeploymentShare: '分享',
     nodeDeploymentPreparing: '正在准备...',
     nodeDeploymentPreparingMessage: '正在准备服务部署。',
@@ -4341,6 +4354,18 @@ const translations: Record<LanguageType, Record<string, string>> = {
       'Sharing and deployment are subscriber benefits. Log in to use the current free trial allowance.',
     publishingTrialLimitFallbackMessage:
       'The free trial allowance has been used. Subscribe to continue.',
+    publishingTrialNoticeMessage:
+      '{feature} is a subscriber benefit. This account can try up to {limit} items in total. The {resource} created now will remain available for {duration}. Closing, expiration, or deletion does not restore the trial allowance.',
+    publishingTrialNoticeFallbackMessage:
+      '{feature} is a subscriber benefit. This account can try up to {limit} items in total. This item will receive time-limited access under the current trial policy.',
+    publishingTrialResourceShareLink: 'share link',
+    publishingTrialResourceWebsite: 'website',
+    publishingTrialDurationHours: '{hours} hr',
+    publishingTrialDurationHoursMinutes: '{hours} hr {minutes} min',
+    publishingTrialDurationMinutes: '{minutes} min',
+    publishingTrialUsageAfterCreate: 'Usage after this action',
+    publishingTrialContinueShare: 'Continue sharing',
+    publishingTrialContinueSite: 'Continue deployment',
     publishingTrialLoginAction: 'Log in',
     publishingTrialLearnBenefits: 'Learn about subscription benefits',
     publishingTrialBadge: 'Limited-time trial',
@@ -4350,6 +4375,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     publishingTrialLinkExpiryLessThanMinute: 'Link valid for less than 1 min',
     publishingTrialLinkExpired: 'Link expired',
     htmlShareUnavailableInProduction: 'Sharing is currently unavailable.',
+    htmlShareQuotaLoadFailed: 'Could not load the sharing allowance. Try again later.',
     nodeDeploymentShare: 'Share',
     nodeDeploymentPreparing: 'Preparing...',
     nodeDeploymentPreparingMessage: 'Preparing the service deployment.',

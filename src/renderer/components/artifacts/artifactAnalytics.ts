@@ -19,6 +19,7 @@ export const ArtifactPublishEntryPoint = {
   ArtifactToolbar: 'artifact_toolbar',
   BrowserToolbar: 'browser_toolbar',
   LibraryMenu: 'library_menu',
+  LibrarySettings: 'library_settings',
   LibraryToolbar: 'library_toolbar',
 } as const;
 

@@ -5,10 +5,20 @@ import {
   type PublishingQuotaErrorData,
   PublishingResourceKind,
 } from '@shared/publishing/constants';
-import React, { useId, useRef } from 'react';
+import React, { useCallback, useEffect, useId, useMemo, useRef } from 'react';
 
 import { i18nService } from '@/services/i18n';
 
+import {
+  createPublishingAnalyticsDialog,
+  getPublishingDialogTypeForQuota,
+  PublishingAnalyticsActionType,
+  type PublishingAnalyticsAttemptContext,
+  PublishingAnalyticsCtaId,
+  PublishingAnalyticsTarget,
+  reportPublishingDialogAction,
+  reportPublishingDialogExposure,
+} from './publishingAnalytics';
 import PublishingRestrictionDialogShell from './PublishingRestrictionDialogShell';
 
 interface PublishingQuotaLimitDialogProps {
@@ -16,6 +26,8 @@ interface PublishingQuotaLimitDialogProps {
   onClose: () => void;
   onManage: () => void;
   onSubscribe: () => void;
+  onLearnBenefits?: () => void;
+  analyticsAttempt?: PublishingAnalyticsAttemptContext | null;
 }
 
 const t = (key: string): string => i18nService.t(key);
@@ -25,6 +37,8 @@ const PublishingQuotaLimitDialog: React.FC<PublishingQuotaLimitDialogProps> = ({
   onClose,
   onManage,
   onSubscribe,
+  onLearnBenefits = onSubscribe,
+  analyticsAttempt,
 }) => {
   const titleId = useId();
   const descriptionId = useId();
@@ -40,6 +54,38 @@ const PublishingQuotaLimitDialog: React.FC<PublishingQuotaLimitDialogProps> = ({
   const message = t(messageKey)
     .replace(/\{resource\}/g, resourceLabel)
     .replace(/\{limit\}/g, String(quota.limit));
+  const analyticsDialog = useMemo(() => (
+    analyticsAttempt
+      ? createPublishingAnalyticsDialog(
+          analyticsAttempt,
+          getPublishingDialogTypeForQuota(quota),
+          quota,
+        )
+      : null
+  ), [analyticsAttempt, quota]);
+
+  useEffect(() => {
+    if (analyticsDialog) reportPublishingDialogExposure(analyticsDialog);
+  }, [analyticsDialog]);
+
+  const reportAction = useCallback((
+    actionType: PublishingAnalyticsActionType,
+    ctaId: PublishingAnalyticsCtaId,
+    target: PublishingAnalyticsTarget,
+  ) => {
+    if (analyticsDialog) {
+      reportPublishingDialogAction(analyticsDialog, { actionType, ctaId, target });
+    }
+  }, [analyticsDialog]);
+
+  const handleClose = useCallback(() => {
+    reportAction(
+      PublishingAnalyticsActionType.Close,
+      PublishingAnalyticsCtaId.Close,
+      PublishingAnalyticsTarget.Dismiss,
+    );
+    onClose();
+  }, [onClose, reportAction]);
 
   if (isFreeTrialLimit) {
     const trialFeatureLabel = t(isFile
@@ -52,7 +98,7 @@ const PublishingQuotaLimitDialog: React.FC<PublishingQuotaLimitDialogProps> = ({
       <PublishingRestrictionDialogShell
         titleId={titleId}
         descriptionId={descriptionId}
-        onClose={onClose}
+        onClose={handleClose}
         initialFocusRef={initialButtonRef}
       >
         <div className="px-8 py-9">
@@ -69,14 +115,28 @@ const PublishingQuotaLimitDialog: React.FC<PublishingQuotaLimitDialogProps> = ({
             <button
               ref={initialButtonRef}
               type="button"
-              onClick={onSubscribe}
+              onClick={() => {
+                reportAction(
+                  PublishingAnalyticsActionType.Click,
+                  PublishingAnalyticsCtaId.Primary,
+                  PublishingAnalyticsTarget.Pricing,
+                );
+                onSubscribe();
+              }}
               className="h-11 rounded-lg bg-primary px-5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
             >
               {t('subscriptionGateOpenAction')}
             </button>
             <button
               type="button"
-              onClick={onSubscribe}
+              onClick={() => {
+                reportAction(
+                  PublishingAnalyticsActionType.Click,
+                  PublishingAnalyticsCtaId.Secondary,
+                  PublishingAnalyticsTarget.LearnBenefits,
+                );
+                onLearnBenefits();
+              }}
               className="self-center text-sm text-muted transition-colors hover:text-foreground"
             >
               {t('publishingTrialLearnBenefits')}
@@ -91,7 +151,7 @@ const PublishingQuotaLimitDialog: React.FC<PublishingQuotaLimitDialogProps> = ({
     <PublishingRestrictionDialogShell
       titleId={titleId}
       descriptionId={descriptionId}
-      onClose={onClose}
+      onClose={handleClose}
       initialFocusRef={initialButtonRef}
       maxWidthClassName="max-w-[480px]"
     >
@@ -120,7 +180,7 @@ const PublishingQuotaLimitDialog: React.FC<PublishingQuotaLimitDialogProps> = ({
         <div className="mt-6 flex justify-end gap-3">
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleClose}
             className="h-9 rounded-lg border border-border px-4 text-sm text-secondary hover:bg-surface"
           >
             {t('cancel')}
@@ -128,7 +188,14 @@ const PublishingQuotaLimitDialog: React.FC<PublishingQuotaLimitDialogProps> = ({
           <button
             ref={initialButtonRef}
             type="button"
-            onClick={onManage}
+            onClick={() => {
+              reportAction(
+                PublishingAnalyticsActionType.Click,
+                PublishingAnalyticsCtaId.Primary,
+                PublishingAnalyticsTarget.ManageCloud,
+              );
+              onManage();
+            }}
             className="h-9 rounded-lg bg-primary px-5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
           >
             {t('publishingQuotaManage')}

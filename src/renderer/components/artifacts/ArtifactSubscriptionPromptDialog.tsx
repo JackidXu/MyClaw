@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 
 import { i18nService } from '@/services/i18n';
 
@@ -8,6 +8,16 @@ import {
   ArtifactSubscriptionFeature,
   getArtifactSubscriptionPromptCopyKeys,
 } from './artifactSubscriptionGate';
+import {
+  createPublishingAnalyticsDialog,
+  getPublishingDialogTypeForSubscriptionReason,
+  PublishingAnalyticsActionType,
+  type PublishingAnalyticsAttemptContext,
+  PublishingAnalyticsCtaId,
+  PublishingAnalyticsTarget,
+  reportPublishingDialogAction,
+  reportPublishingDialogExposure,
+} from './publishingAnalytics';
 import PublishingRestrictionDialogShell from './PublishingRestrictionDialogShell';
 
 interface ArtifactSubscriptionPromptDialogProps {
@@ -16,6 +26,8 @@ interface ArtifactSubscriptionPromptDialogProps {
   onCancel: () => void;
   onLogin: () => void;
   onSubscribe: () => void;
+  onLearnBenefits?: () => void;
+  analyticsAttempt?: PublishingAnalyticsAttemptContext | null;
 }
 
 const ArtifactSubscriptionPromptDialog = ({
@@ -24,6 +36,8 @@ const ArtifactSubscriptionPromptDialog = ({
   onCancel,
   onLogin,
   onSubscribe,
+  onLearnBenefits = onSubscribe,
+  analyticsAttempt,
 }: ArtifactSubscriptionPromptDialogProps) => {
   const initialButtonRef = useRef<HTMLButtonElement>(null);
   const [trialPolicy, setTrialPolicy] = useState<PublishingTrialPolicy | null>(null);
@@ -37,6 +51,37 @@ const ArtifactSubscriptionPromptDialog = ({
   const resourcePolicy = feature === ArtifactSubscriptionFeature.Share
     ? trialPolicy?.file
     : trialPolicy?.site;
+  const analyticsDialog = useMemo(() => (
+    analyticsAttempt
+      ? createPublishingAnalyticsDialog(
+          analyticsAttempt,
+          getPublishingDialogTypeForSubscriptionReason(reason),
+        )
+      : null
+  ), [analyticsAttempt, reason]);
+
+  useEffect(() => {
+    if (analyticsDialog) reportPublishingDialogExposure(analyticsDialog);
+  }, [analyticsDialog]);
+
+  const reportAction = useCallback((
+    actionType: PublishingAnalyticsActionType,
+    ctaId: PublishingAnalyticsCtaId,
+    target: PublishingAnalyticsTarget,
+  ) => {
+    if (analyticsDialog) {
+      reportPublishingDialogAction(analyticsDialog, { actionType, ctaId, target });
+    }
+  }, [analyticsDialog]);
+
+  const handleClose = useCallback(() => {
+    reportAction(
+      PublishingAnalyticsActionType.Close,
+      PublishingAnalyticsCtaId.Close,
+      PublishingAnalyticsTarget.Dismiss,
+    );
+    onCancel();
+  }, [onCancel, reportAction]);
 
   useEffect(() => {
     if (!isLoginRequired) return undefined;
@@ -84,7 +129,7 @@ const ArtifactSubscriptionPromptDialog = ({
     <PublishingRestrictionDialogShell
       titleId={titleId}
       descriptionId={descriptionId}
-      onClose={onCancel}
+      onClose={handleClose}
       initialFocusRef={initialButtonRef}
       maxWidthClassName={!isLoginRequired ? 'max-w-[420px]' : 'max-w-[448px]'}
       overlayClassName="fixed inset-0 z-[10000] flex items-center justify-center bg-black/35 p-4"
@@ -105,7 +150,7 @@ const ArtifactSubscriptionPromptDialog = ({
               <button
                 ref={initialButtonRef}
                 type="button"
-                onClick={onCancel}
+                onClick={handleClose}
                 className="rounded-md border border-border px-3 py-1.5 text-sm text-secondary transition-colors hover:bg-surface hover:text-foreground"
               >
                 {i18nService.t('cancel')}
@@ -113,7 +158,14 @@ const ArtifactSubscriptionPromptDialog = ({
               {!isEnterpriseUnavailable && (
                 <button
                   type="button"
-                  onClick={onSubscribe}
+                  onClick={() => {
+                    reportAction(
+                      PublishingAnalyticsActionType.Click,
+                      PublishingAnalyticsCtaId.Primary,
+                      PublishingAnalyticsTarget.Pricing,
+                    );
+                    onSubscribe();
+                  }}
                   className="ml-2 rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground transition-colors hover:bg-primary/90"
                 >
                   {i18nService.t('subscriptionGateOpenAction')}
@@ -137,14 +189,28 @@ const ArtifactSubscriptionPromptDialog = ({
               <button
                 ref={initialButtonRef}
                 type="button"
-                onClick={onLogin}
+                onClick={() => {
+                  reportAction(
+                    PublishingAnalyticsActionType.Click,
+                    PublishingAnalyticsCtaId.Primary,
+                    PublishingAnalyticsTarget.Login,
+                  );
+                  onLogin();
+                }}
                 className="h-11 rounded-lg bg-primary px-5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
               >
                 {i18nService.t('publishingTrialLoginAction')}
               </button>
               <button
                 type="button"
-                onClick={onSubscribe}
+                onClick={() => {
+                  reportAction(
+                    PublishingAnalyticsActionType.Click,
+                    PublishingAnalyticsCtaId.Secondary,
+                    PublishingAnalyticsTarget.LearnBenefits,
+                  );
+                  onLearnBenefits();
+                }}
                 className="self-center text-sm text-muted transition-colors hover:text-foreground"
               >
                 {i18nService.t('publishingTrialLearnBenefits')}

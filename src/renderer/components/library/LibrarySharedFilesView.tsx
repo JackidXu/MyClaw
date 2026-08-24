@@ -12,7 +12,7 @@ import {
   XMarkIcon,
 } from '@heroicons/react/24/outline';
 import { StarIcon as StarSolidIcon } from '@heroicons/react/24/solid';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   HtmlShareAccessMode,
@@ -39,12 +39,19 @@ import type {
   LibrarySessionRef,
   SharedFileItem,
 } from '../../../shared/library/types';
-import type { PublishingQuotaErrorData } from '../../../shared/publishing/constants';
+import {
+  type PublishingQuotaErrorData,
+  PublishingResourceKind,
+} from '../../../shared/publishing/constants';
 import type { SiteDetail } from '../../../shared/site/constants';
 import { copyTextToClipboard } from '../../services/clipboard';
 import { getPortalPricingUrl, PortalPricingKeyfrom } from '../../services/endpoints';
 import { i18nService } from '../../services/i18n';
 import { showToast } from '../../utils/localFileActions';
+import {
+  ArtifactPreviewActionSource,
+  ArtifactPublishEntryPoint,
+} from '../artifacts/artifactAnalytics';
 import { buildArtifactFileShareCopyText } from '../artifacts/artifactFileShareCopy';
 import type {
   ArtifactFileSharePermission as ArtifactFileSharePermissionValue,
@@ -57,6 +64,17 @@ import {
   deriveArtifactFileSharePermission,
   resolveArtifactFileSharePermissionConfirmation,
 } from '../artifacts/artifactFileSharePermission';
+import { ArtifactSubscriptionFeature } from '../artifacts/artifactSubscriptionGate';
+import {
+  createPublishingAnalyticsAttempt,
+  getPublishingErrorCategory,
+  type PublishingAnalyticsAttemptContext,
+  PublishingAnalyticsErrorCategory,
+  PublishingAnalyticsOperationType,
+  PublishingAnalyticsResult,
+  reportPublishingEntryAction,
+  reportPublishingOperationResult,
+} from '../artifacts/publishingAnalytics';
 import PublishingQuotaLimitDialog from '../artifacts/PublishingQuotaLimitDialog';
 import { getPublishingRemainingMinutes } from '../artifacts/PublishingTrialStatus';
 import CardOverflowMenu, { type CardOverflowMenuItem } from '../common/CardOverflowMenu';
@@ -115,7 +133,6 @@ interface LibraryCloudViewProps {
   onKeywordClear: () => void;
   onRefresh: () => void;
   onDetailOpen: () => void;
-  onShowLogin: () => void;
   onOpenSession: (session: LibrarySessionRef) => void;
   onItemUpdated: (item: LibraryCloudItem) => void;
   onItemDeleted: (item: LibraryCloudItem) => void;
@@ -459,6 +476,8 @@ const LibraryShareSettingsView: React.FC<{
   );
   const [publishingQuota, setPublishingQuota] =
     useState<PublishingQuotaErrorData | null>(null);
+  const publishingAnalyticsAttemptRef =
+    useRef<PublishingAnalyticsAttemptContext | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -466,6 +485,7 @@ const LibraryShareSettingsView: React.FC<{
     setSelectedPermission(deriveArtifactFileSharePermission(initialItem));
     setConfirmationKind(undefined);
     setPublishingQuota(null);
+    publishingAnalyticsAttemptRef.current = null;
     setDetailView(LibraryShareDetailView.Settings);
     void loadLatestSharedFileItem(initialItem).then(item => {
       if (!active) return;
@@ -555,8 +575,20 @@ const LibraryShareSettingsView: React.FC<{
       return;
     }
 
+    const analyticsAttempt = createPublishingAnalyticsAttempt({
+      feature: ArtifactSubscriptionFeature.Share,
+      resourceKind: PublishingResourceKind.File,
+      operationType: PublishingAnalyticsOperationType.UpdatePermission,
+      source: ArtifactPreviewActionSource.LibraryPreview,
+      entryPoint: ArtifactPublishEntryPoint.LibrarySettings,
+      hasExistingResource: true,
+    });
+    publishingAnalyticsAttemptRef.current = analyticsAttempt;
+    reportPublishingEntryAction(analyticsAttempt);
+
     setState(current => ({ ...current, saving: true, error: undefined }));
     let workingItem = item;
+    let analyticsResultReported = false;
     try {
       for (const step of plan) {
         if (step.action === ArtifactFileSharePermissionChangeAction.UpdateAccess) {
@@ -565,7 +597,14 @@ const LibraryShareSettingsView: React.FC<{
             accessMode: step.accessMode,
           });
           if (!result.success) {
-            if (result.quota) setPublishingQuota(result.quota);
+            if (result.quota) {
+              setPublishingQuota(result.quota);
+              reportPublishingOperationResult(analyticsAttempt, {
+                result: PublishingAnalyticsResult.Failure,
+                errorCategory: PublishingAnalyticsErrorCategory.Quota,
+              });
+              analyticsResultReported = true;
+            }
             throw new Error(result.error ?? i18nService.t('htmlShareAccessModeUpdateFailed'));
           }
           workingItem = clearEffectiveAccessProjection(mergeShareDetail({
@@ -578,7 +617,14 @@ const LibraryShareSettingsView: React.FC<{
             status: step.status,
           });
           if (!result.success) {
-            if (result.quota) setPublishingQuota(result.quota);
+            if (result.quota) {
+              setPublishingQuota(result.quota);
+              reportPublishingOperationResult(analyticsAttempt, {
+                result: PublishingAnalyticsResult.Failure,
+                errorCategory: PublishingAnalyticsErrorCategory.Quota,
+              });
+              analyticsResultReported = true;
+            }
             throw new Error(result.error ?? i18nService.t('htmlShareStatusUpdateFailed'));
           }
           workingItem = clearEffectiveAccessProjection(mergeShareDetail({
@@ -599,7 +645,16 @@ const LibraryShareSettingsView: React.FC<{
       setConfirmationKind(undefined);
       onItemUpdated(committedItem);
       showToast(i18nService.t('artifactFileSharePermissionUpdated'));
+      reportPublishingOperationResult(analyticsAttempt, {
+        result: PublishingAnalyticsResult.Success,
+      });
     } catch (error) {
+      if (!analyticsResultReported) {
+        reportPublishingOperationResult(analyticsAttempt, {
+          result: PublishingAnalyticsResult.Failure,
+          errorCategory: getPublishingErrorCategory(error),
+        });
+      }
       const reconciledItem = await loadLatestSharedFileItem(workingItem);
       setState({
         item: reconciledItem,
@@ -971,11 +1026,14 @@ const LibraryShareSettingsView: React.FC<{
         {publishingQuota && (
           <PublishingQuotaLimitDialog
             quota={publishingQuota}
+            analyticsAttempt={publishingAnalyticsAttemptRef.current}
             onClose={() => setPublishingQuota(null)}
             onSubscribe={() => {
               setPublishingQuota(null);
               void window.electron?.shell?.openExternal(
-                getPortalPricingUrl(PortalPricingKeyfrom.HtmlShare),
+                getPortalPricingUrl(PortalPricingKeyfrom.HtmlShare, {
+                  traceId: publishingAnalyticsAttemptRef.current?.attemptId,
+                }),
               );
             }}
             onManage={() => {
@@ -1007,7 +1065,6 @@ const LibraryCloudView: React.FC<LibraryCloudViewProps> = ({
   onKeywordClear,
   onRefresh,
   onDetailOpen,
-  onShowLogin,
   onOpenSession,
   onItemUpdated,
   onItemDeleted,
@@ -1258,9 +1315,6 @@ const LibraryCloudView: React.FC<LibraryCloudViewProps> = ({
       {!isAuthenticated ? (
         <div className="mt-8 rounded-xl border border-border bg-surface px-4 py-8 text-center text-xs">
           <p className="text-secondary">{i18nService.t('libraryLoginForCloud')}</p>
-          <button type="button" onClick={onShowLogin} className="mt-3 font-medium text-primary">
-            {i18nService.t('login')}
-          </button>
         </div>
       ) : loading ? (
         <div className="mt-6 border-y border-border">
