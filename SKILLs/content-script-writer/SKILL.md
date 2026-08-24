@@ -2,8 +2,7 @@
 name: 内容脚本路由器
 version: 1.0.0
 description: 内容脚本路由器（content-script-writer）—— 选题卡进来，写钩子、出标题、生成可拍摄的完整脚本。事实标注让每句话经得起检验，补录提示让拍摄不漏料。当用户说「写脚本」「出口播稿」「写旁白」「写朋友圈」「写公众号」时调用。
-agent_created: true
-compatibility: workbuddy
+compatibility: heyclaw
 ---
 
 # content-script-writer — 内容脚本路由器

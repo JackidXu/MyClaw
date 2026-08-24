@@ -2,8 +2,7 @@
 name: 质量守门员
 version: 1.0.0
 description: 质量守门员（content-quality-guard）—— 内容发布前的最后一道关。合规拦截、事实核验、信任配比、方法论校验、风险扫描、信任完整度——六维审查，只抓真问题，不搞形式主义。当用户说「审查一下」「检查一下这个脚本」「合规检查」「看看能不能发」时调用。
-agent_created: true
-compatibility: workbuddy
+compatibility: heyclaw
 ---
 
 # content-quality-guard — 质量守门员

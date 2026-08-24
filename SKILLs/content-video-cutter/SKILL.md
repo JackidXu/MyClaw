@@ -2,14 +2,15 @@
 name: 内容切片法
 version: 1.0.0
 description: 内容切片法（content-video-cutter）—— 把客户丢来的长视频按内容自然断点切成多段可用素材，每段独立分类标注入库。区别于按时长傻切，强调按内容理解切。切片完成后调用 content-material-library 的标注体系和入库流程入库。当用户说「把这个长视频切一下」「视频切片」「帮我把这段口播拆成片段」时使用。
-agent_created: true
-compatibility: workbuddy
+compatibility: heyclaw
 ---
 
 # 内容切片法（content-video-cutter）— 长视频切片
 
 > 客户丢过来一个长视频，AI理解内容后按自然断点切成多段可用素材，每段独立标注入库。
 > 切片完成后，调用 content-material-library（素材库管理）将切片标注入库。
+
+> **⚠️ 环境依赖**：本 skill 依赖 ffmpeg（视频切片）和 whisper（音频转录）两个工具。首次使用时会自动检测环境，若未安装会引导用户安装。详见下方"环境准备"。
 
 ---
 
@@ -70,32 +71,73 @@ compatibility: workbuddy
 
 **技术实现**（按可用工具选择路径）：
 
-> **环境准备（ffmpeg安装）**：系统通常没有预装ffmpeg。通过Python包安装最方便：
+> **环境准备（ffmpeg 安装）**：ffmpeg 是本 skill 的核心工具依赖。使用前先检测环境：
+>
 > ```
-> pip install imageio-ffmpeg
+# 检测 ffmpeg 是否可用
+which ffmpeg || echo "ffmpeg 未安装"
+```
+>
+> 若未安装，引导用户安装：
+>
+> **macOS 用户**（推荐 Homebrew）：
 > ```
-> 安装后ffmpeg二进制路径：`[Python site-packages]/imageio_ffmpeg/binaries/ffmpeg-macos-aarch64-v7.1`
-> 设为变量：`FFMPEG="[上述路径]"`
-> whisper转录需要ffmpeg在PATH中：`cp "$FFMPEG" /tmp/ffmpeg && PATH="/tmp:$PATH"`
+brew install ffmpeg
+```
+>
+> **Windows 用户**：
+> ```
+# 方式1：下载官方编译包 https://ffmpeg.org/download.html
+# 方式2：用 winget（Win10+）
+winget install ffmpeg
+# 方式3：用 choco
+choco install ffmpeg
+```
+>
+> **Linux 用户**：
+> ```
+# Ubuntu/Debian
+sudo apt install ffmpeg
+# CentOS/RHEL
+sudo yum install ffmpeg
+# Arch
+sudo pacman -S ffmpeg
+```
+>
+> **备选方案（Python pip）**：
+> ```
+pip install imageio-ffmpeg
+# 安装后找到二进制：python -c "import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())"
+```
+>
+> **whisper 安装**（音频转录需要）：
+> ```
+pip install openai-whisper
+# 或更快的替代：
+pip install faster-whisper
+```
+>
+> ffmpeg 安装后设为变量：`FFMPEG=$(which ffmpeg)`
+> whisper 转录需要 ffmpeg 在 PATH 中（通常安装后自动在 PATH 中，无需额外操作）。
 
 **路径A：有视频文件 + ffmpeg可用**
 1. 获取视频基本信息（时长/分辨率/编码）：
    ```
-   $FFMPEG -i [视频文件] 2>&1 | grep -E "Duration|Stream|Video|Audio"
+   ffmpeg -i [视频文件] 2>&1 | grep -E "Duration|Stream|Video|Audio"
    ```
 2. 用ffmpeg提取关键帧：每隔5-15秒提取一帧画面（短视频用5秒间隔，长视频用10-15秒）
    ```
-   $FFMPEG -y -i [视频文件] -vf "fps=1/5,scale=480:-1" -q:v 2 keyframe_%03d.jpg
+   ffmpeg -y -i [视频文件] -vf "fps=1/5,scale=480:-1" -q:v 2 keyframe_%03d.jpg
    ```
    - `scale=480:-1` 缩小到480px宽，便于AI快速查看
 3. AI逐帧查看关键帧图片，理解视觉内容变化（场景切换/动作变化/展示内容变化）
 4. 如果视频有音频，提取音频并用whisper转录文字：
    ```
    # 提取音频为16kHz单声道WAV（whisper所需格式）
-   $FFMPEG -y -i [视频文件] -vn -acodec pcm_s16le -ar 16000 -ac 1 audio.wav
+   ffmpeg -y -i [视频文件] -vn -acodec pcm_s16le -ar 16000 -ac 1 audio.wav
    
    # 用whisper转录（tiny模型速度快，base/medium模型更准确）
-   PATH="/tmp:$PATH" python3 -m whisper audio.wav --language Chinese --model tiny --output_dir [输出目录] --output_format json
+   python3 -m whisper audio.wav --language Chinese --model tiny --output_dir [输出目录] --output_format json
    ```
 5. whisper输出JSON包含每段文字的start/end时间戳，用于精确定位内容断点
 6. 综合关键帧画面 + 音频转录（如有），建立视频内容时间线
@@ -164,15 +206,15 @@ compatibility: workbuddy
 **技术实现**（有视频文件 + ffmpeg可用时）：
 ```
 # 按时间段提取片段（-c copy速度快，直接复制不重编码）
-$FFMPEG -y -i [源视频] -ss [起始时间] -to [结束时间] -c copy [输出文件名].mp4
+ffmpeg -y -i [源视频] -ss [起始时间] -to [结束时间] -c copy [输出文件名].mp4
 
 # 示例：提取00:00-00:25
-$FFMPEG -y -i input.mp4 -ss 00:00:00 -to 00:00:25 -c copy output_C01_0000-0025.mp4
+ffmpeg -y -i input.mp4 -ss 00:00:00 -to 00:00:25 -c copy output_C01_0000-0025.mp4
 ```
 
 > **切片后验证**：用ffmpeg检查每个切片的时长是否正确
 > ```
-> $FFMPEG -i [切片文件] 2>&1 | grep "Duration"
+> ffmpeg -i [切片文件] 2>&1 | grep "Duration"
 > ```
 
 **文件命名规则**：

@@ -2,8 +2,7 @@
 name: 制作策划
 version: 1.0.0
 description: 制作策划（content-production-planner）—— 把脚本翻译成可执行的拍摄方案：每段旁白对应拍什么画面、哪些素材已有、拍摄顺序怎么排最高效、现场该问IP什么问题。Production planner.
-agent_created: true
-compatibility: workbuddy
+compatibility: heyclaw
 ---
 
 # content-production-planner — 制作策划

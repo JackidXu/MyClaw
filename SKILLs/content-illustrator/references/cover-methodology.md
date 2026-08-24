@@ -232,12 +232,12 @@ aspect: "1:1"
 每张封面出图前，把最终完整提示词写入 `prompts/01-cover-{slug}.md`（模板见 prompt-templates.md §10）。含封面文字的提示词**必加 CJK 零乱码句**（§5.5）。
 
 流程顺序（content-illustrator §5）：
-1. 解析后端（本地 ImageGen 为默认）。
+1. 解析后端（本地 heyclaw_image_generate 为默认）。
 2. 写提示词文件（硬要求）。
 3. 确认后生成（§5.3）。
 4. 失败重试一次。
 
-> 多张封面（如首图+分享卡）出图后**核对路径**：并行调用可能不分别采用 `output_dir`（实测 ImageGen 已知行为），统一目录后移动或顺序调用（§5.4）。
+> 多张封面（如首图+分享卡）出图后**核对路径**：并行调用可能不分别采用 `output_dir`（实测 heyclaw_image_generate 已知行为），统一目录后移动或顺序调用（§5.4）。
 
 ---
 

@@ -2,8 +2,7 @@
 name: 朋友圈双轨规划
 version: 1.0.0
 description: 朋友圈双轨规划（content-moments-planner）—— 私域朋友圈运营规划：与公域短视频共享弹药库的一鱼多吃、Phase三阶段排期、四柱映射、行业适配与7条运营纪律。被营销战略地图 模式C（月/周规划）调用，也可独立使用。Moments (private-domain) dual-track planning skill.
-agent_created: true
-compatibility: workbuddy
+compatibility: heyclaw
 ---
 
 # content-moments-planner — 朋友圈双轨规划
