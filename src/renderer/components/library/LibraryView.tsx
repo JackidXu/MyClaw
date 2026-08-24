@@ -100,7 +100,6 @@ interface LibraryViewProps {
   isSidebarCollapsed: boolean;
   onToggleSidebar: () => void;
   onOpenSession: (session: LibrarySessionRef) => void;
-  onShowLogin: () => void;
   sitesHidden?: boolean;
   sitesReadOnly?: boolean;
   updateBadge?: React.ReactNode;
@@ -357,7 +356,6 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
   isSidebarCollapsed,
   onToggleSidebar,
   onOpenSession,
-  onShowLogin,
   sitesHidden = false,
   sitesReadOnly = false,
   updateBadge,
@@ -1015,7 +1013,6 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
               onKeywordClear={clearKeyword}
               onRefresh={() => void loadData(false)}
               onDetailOpen={() => scrollContainerRef.current?.scrollTo({ top: 0 })}
-              onShowLogin={onShowLogin}
               onOpenSession={onOpenSession}
               onItemUpdated={updateCloudItem}
               onItemDeleted={deleteCloudItem}
@@ -1105,9 +1102,8 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
           )}
 
           {!isAuthenticated && wantsCloud && (
-            <div className="mt-4 flex items-center justify-between rounded-xl border border-border bg-surface px-4 py-3 text-xs">
+            <div className="mt-4 rounded-xl border border-border bg-surface px-4 py-3 text-xs">
               <span className="text-secondary">{i18nService.t('libraryLoginForCloud')}</span>
-              <button type="button" onClick={onShowLogin} className="font-medium text-primary">{i18nService.t('login')}</button>
             </div>
           )}
 
