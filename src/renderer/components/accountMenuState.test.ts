@@ -45,8 +45,22 @@ describe('accountMenuState', () => {
     ], false);
 
     expect(plan).toEqual({
-      label: '标准',
+      label: '标准套餐',
       expiresAt: '2026-08-06',
+      canUpgrade: true,
+    });
+  });
+
+  test('hides the upgrade action for the highest excellent plan', () => {
+    expect(getAccountPlanPresentation([
+      creditItem({
+        type: 'subscription',
+        label: '卓越套餐',
+        labelEn: 'Excellent',
+      }),
+    ], false)).toMatchObject({
+      label: '卓越套餐',
+      canUpgrade: false,
     });
   });
 
@@ -59,6 +73,16 @@ describe('accountMenuState', () => {
       }),
     ], true)?.label).toBe('Standard');
     expect(getAccountPlanPresentation([creditItem()], false)).toBeNull();
+  });
+
+  test('does not duplicate the plan suffix for Chinese subscription labels', () => {
+    expect(getAccountPlanPresentation([
+      creditItem({
+        type: 'subscription',
+        label: '进阶套餐',
+        labelEn: 'Advanced',
+      }),
+    ], false)?.label).toBe('进阶套餐');
   });
 
   test('returns every available final reward ordered by claim deadline', () => {

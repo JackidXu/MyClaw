@@ -1,10 +1,19 @@
-import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import {
+  CurrencyYenIcon,
+  ExclamationTriangleIcon,
+} from '@heroicons/react/24/outline';
 import { AgentId } from '@shared/agent';
+import { EnterpriseMemberRole } from '@shared/enterpriseAccount/constants';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSelector } from 'react-redux';
 
+import { selectEnterpriseAccountContext } from '../features/enterpriseAccount/selectors';
 import { agentService } from '../services/agent';
 import { coworkService } from '../services/cowork';
+import {
+  getEnterpriseRechargeUrl,
+  getPortalRechargeUrl,
+} from '../services/endpoints';
 import { i18nService } from '../services/i18n';
 import { LogReporterAction, reportYdAnalyzer } from '../services/logReporter';
 import { RootState } from '../store';
@@ -174,6 +183,9 @@ const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const currentAgentId = useSelector((state: RootState) => state.agent.currentAgentId);
   const agents = useSelector((state: RootState) => state.agent.agents);
+  const isLoggedIn = useSelector((state: RootState) => state.auth.isLoggedIn);
+  const isAuthLoading = useSelector((state: RootState) => state.auth.isLoading);
+  const enterpriseAccountContext = useSelector(selectEnterpriseAccountContext);
   const sessions = useSelector(selectCoworkSessions);
   const currentSessionId = useSelector(selectCurrentSessionId);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -194,6 +206,14 @@ const Sidebar: React.FC<SidebarProps> = ({
   const agentScrollContainerRef = useRef<HTMLDivElement>(null);
   const isWindows = window.electron.platform === 'win32';
   const showHeaderRow = !isWindows;
+  const showLoginPromo = !hideLogin && !isAuthLoading && !isLoggedIn;
+  const showRechargeButton = showLoginPromo && (
+    !enterpriseAccountContext
+    || (
+      enterpriseAccountContext.role === EnterpriseMemberRole.SuperAdmin
+      && enterpriseAccountContext.permissions.rechargeEnterprise
+    )
+  );
   const batchSelectableKeySet = useMemo(
     () => new Set(batchSelectableItems.map((item) => item.key)),
     [batchSelectableItems],
@@ -478,6 +498,34 @@ const Sidebar: React.FC<SidebarProps> = ({
     selectedKeys,
     handleExitBatchMode,
   ]);
+
+  const handleRechargeClick = useCallback(async () => {
+    const rechargeTarget = enterpriseAccountContext ? 'enterprise' : 'personal';
+    reportSidebarAction('open_recharge', {
+      activeView,
+      isCollapsed,
+      isCurrentSession: Boolean(currentSessionId),
+    });
+
+    const rechargeUrl = enterpriseAccountContext
+      ? getEnterpriseRechargeUrl(enterpriseAccountContext.enterpriseId)
+      : getPortalRechargeUrl();
+
+    try {
+      const message = `opening ${rechargeTarget} recharge portal`;
+      console.debug(`[Sidebar] ${message}`);
+      window.electron?.log?.fromRenderer?.('debug', 'Sidebar', message);
+      await window.electron.shell.openExternal(rechargeUrl);
+    } catch (error) {
+      console.warn('[Sidebar] failed to open recharge portal:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      window.electron?.log?.fromRenderer?.(
+        'warn',
+        'Sidebar',
+        `failed to open ${rechargeTarget} recharge portal: ${errorMessage}`,
+      );
+    }
+  }, [activeView, currentSessionId, enterpriseAccountContext, isCollapsed]);
 
   const handleResizeStart = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     if (isCollapsed) return;
@@ -783,21 +831,50 @@ const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </div>
       ) : (
-        <div className="pb-2 pt-2">
-          <div className="flex items-center gap-1 pl-3 pr-2 pt-1">
+        <div className={`pb-2.5 ${showLoginPromo ? 'pt-3.5' : 'pt-2'}`}>
+          <div className="flex items-end justify-between gap-1.5 px-2 pt-1">
             {!hideLogin && (
-              <div className="flex-1 min-w-0">
-                <LoginButton contentLeftOffset={isCollapsed ? 0 : sidebarWidth} />
+              <div className={`relative shrink-0 ${showLoginPromo ? 'pt-9' : ''}`}>
+                {showLoginPromo && (
+                  <div
+                    className="pointer-events-none absolute left-0 top-0 z-10 inline-flex h-7 w-max max-w-[10.5rem] items-center rounded-lg rounded-bl-[3px] bg-[#ff3f67] px-3 text-[13px] font-semibold leading-none text-white shadow-[0_5px_14px_rgba(255,63,103,0.24)]"
+                    aria-hidden="true"
+                  >
+                    <span className="min-w-0 whitespace-nowrap">
+                      {i18nService.t('sidebarLoginFreeToken')}
+                    </span>
+                    <span className="ml-1.5 flex shrink-0 items-center gap-0.5">
+                      <span className="h-2 w-2 rotate-45 rounded-[1px] bg-[#ffd83d] shadow-[0_0_5px_rgba(255,216,61,0.85)]" />
+                      <span className="mt-2 h-1.5 w-1.5 rotate-45 rounded-[1px] bg-[#ffe769] shadow-[0_0_4px_rgba(255,231,105,0.85)]" />
+                    </span>
+                    <span className="absolute -bottom-1 left-8 h-2.5 w-3 rotate-45 rounded-[2px] bg-[#ff3f67]" />
+                  </div>
+                )}
+                <LoginButton
+                  contentLeftOffset={isCollapsed ? 0 : sidebarWidth}
+                  loggedOutVariant="sidebarPromo"
+                />
               </div>
+            )}
+            {showRechargeButton && (
+              <button
+                type="button"
+                onClick={() => void handleRechargeClick()}
+                className="inline-flex h-8 min-w-0 flex-1 items-center justify-center gap-1 rounded-md px-0.5 text-sm font-normal text-foreground transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
+                aria-label={i18nService.t('authTopUp')}
+              >
+                <CurrencyYenIcon className="h-4 w-4 shrink-0" strokeWidth={2} />
+                <span className="min-w-0 truncate">{i18nService.t('authTopUp')}</span>
+              </button>
             )}
             <button
               type="button"
               onClick={() => onShowSettings()}
-              className={`inline-flex h-7 items-center justify-start gap-1.5 rounded-md px-1.5 text-sm font-normal text-foreground transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.04] ${hideLogin ? 'w-full' : 'shrink-0'}`}
+              className={`inline-flex h-8 min-w-0 items-center justify-center gap-1 rounded-md px-1.5 text-sm font-normal text-foreground transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.04] ${showRechargeButton ? 'flex-1 px-0.5' : hideLogin ? 'w-full' : 'shrink-0'}`}
               aria-label={i18nService.t('settings')}
             >
               <Cog6ToothIcon className="h-4 w-4 shrink-0" />
-              {i18nService.t('settings')}
+              <span className="min-w-0 truncate">{i18nService.t('settings')}</span>
             </button>
           </div>
         </div>
