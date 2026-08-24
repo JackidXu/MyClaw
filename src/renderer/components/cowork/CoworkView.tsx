@@ -989,39 +989,37 @@ const CoworkView: React.FC<CoworkViewProps> = ({
 
           {/* Main content */}
           <div className="relative z-10 flex-1 overflow-y-auto min-h-0">
-            <div className="relative flex min-h-full w-full min-w-[320px] flex-col items-center px-4 py-8">
-              {/* Flexible spacers (2:3) keep the welcome block at the optical
-                  center on tall windows; min-h preserves breathing room before
-                  the page starts scrolling on short windows. */}
-              <div aria-hidden="true" className="w-full min-h-[56px] flex-[2_0_0px]" />
+            <div className="relative flex min-h-full w-full min-w-[320px] flex-col items-center px-4 pt-2 pb-6">
+              {/* Flexible spacers keep the welcome block compact and visible without clipping */}
+              <div aria-hidden="true" className="w-full min-h-[8px] flex-[0.3_0_0px]" />
               {/* Welcome Section - staggered entrance animation */}
               <div data-skin-home-copy="true" className="w-full max-w-3xl text-center">
                 {activeExpert ? (
                   <div className="flex flex-col items-center animate-fade-in-up">
                     <AgentAvatarIcon
                       avatar={activeExpert.avatar}
-                      className="mx-auto h-16 w-16 rounded-full shadow-md mb-3 ring-2 ring-background ring-offset-2"
+                      className="mx-auto h-14 w-14 rounded-full shadow-md mb-2.5 ring-2 ring-background ring-offset-2"
                     />
                     <h2 className="text-2xl font-bold tracking-tight text-foreground">
                       {activeExpert.name}
                     </h2>
-                    <p className="mt-2 text-sm text-secondary max-w-xl mx-auto line-clamp-2 leading-relaxed">
+                    <p className="mt-1.5 text-sm text-secondary max-w-xl mx-auto line-clamp-2 leading-relaxed">
                       {activeExpert.description}
                     </p>
                   </div>
                 ) : (
                   <>
                     <HomeSkinEmblem
-                      className="mx-auto h-12 w-12 animate-fade-in-up"
+                      className="mx-auto h-11 w-11 animate-fade-in-up"
                     />
                     <h2
-                      className="mt-4 text-2xl font-semibold leading-[var(--lobster-leading-2xl)] tracking-normal text-foreground animate-fade-in-up"
+                      className="mt-3 text-2xl font-semibold leading-[var(--lobster-leading-2xl)] tracking-normal text-foreground animate-fade-in-up"
                       style={{ animationDelay: '70ms', animationFillMode: 'both' }}
                     >
                       {i18nService.t(resolveHomeGreetingKey())}
                     </h2>
                     <p
-                      className="mt-2 text-[length:var(--lobster-text-promptLarge)] font-normal leading-[var(--lobster-leading-promptLarge)] text-secondary animate-fade-in-up"
+                      className="mt-1.5 text-[length:var(--lobster-text-promptLarge)] font-normal leading-[var(--lobster-leading-promptLarge)] text-secondary animate-fade-in-up"
                       style={{ animationDelay: '120ms', animationFillMode: 'both' }}
                     >
                       {i18nService.t('coworkHomeTagline')}
@@ -1032,7 +1030,7 @@ const CoworkView: React.FC<CoworkViewProps> = ({
 
               {/* Quick Actions / Recommendations (位于标语和输入框之间) */}
               <div
-                className="relative z-20 mt-6 w-full max-w-3xl animate-fade-in-up"
+                className="relative z-20 mt-4 w-full max-w-3xl animate-fade-in-up"
                 style={{ animationDelay: '150ms', animationFillMode: 'both' }}
               >
                 <QuickActionBar
@@ -1047,7 +1045,7 @@ const CoworkView: React.FC<CoworkViewProps> = ({
 
               {/* Prompt Input Area - Large version with folder selector */}
               <div
-                className="relative z-30 mt-6 w-full max-w-3xl animate-fade-in-up"
+                className="relative z-30 mt-4 w-full max-w-3xl animate-fade-in-up"
                 style={{ animationDelay: '200ms', animationFillMode: 'both' }}
               >
                 <CoworkPromptInput
@@ -1077,11 +1075,11 @@ const CoworkView: React.FC<CoworkViewProps> = ({
               </div>
 
               {/* Floating Campaign Entry */}
-              <div className="relative z-0 mt-4 flex w-full max-w-3xl flex-col items-center">
+              <div className="relative z-0 mt-3 flex w-full max-w-3xl flex-col items-center">
                 <CreditsResetCampaignFloat />
               </div>
 
-              <div aria-hidden="true" className="w-full min-h-[24px] flex-[3_0_0px]" />
+              <div aria-hidden="true" className="w-full min-h-[12px] flex-[1_0_0px]" />
             </div>
           </div>
         </>

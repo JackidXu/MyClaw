@@ -246,17 +246,22 @@ const Sidebar: React.FC<SidebarProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 渲染头像辅助函数
+  const isImageAvatar = (avatarValue?: string) => {
+    if (!avatarValue) return false;
+    return avatarValue.startsWith('data:image/') || avatarValue.startsWith('http://') || avatarValue.startsWith('https://') || avatarValue.startsWith('blob:');
+  };
+
   const renderAvatar = (avatarValue: string, nickname: string) => {
-    if (avatarValue && avatarValue.startsWith('data:image/')) {
+    if (isImageAvatar(avatarValue)) {
       return (
         <img 
           src={avatarValue} 
           alt={nickname} 
-          className="w-full h-full object-cover rounded-full" 
+          className="w-full h-full object-cover" 
         />
       );
     }
-    return <span className="select-none text-lg">{avatarValue || '🐱'}</span>;
+    return <span className="select-none text-lg leading-none">{avatarValue || '🐱'}</span>;
   };
 
   // 上传图片处理函数
@@ -1066,7 +1071,11 @@ const Sidebar: React.FC<SidebarProps> = ({
           >
             {/* 头像 */}
             <div 
-              className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-sm select-none shrink-0 overflow-hidden"
+              className={`w-8 h-8 rounded-lg flex items-center justify-center shadow-xs select-none shrink-0 overflow-hidden ${
+                isImageAvatar(userAvatar)
+                  ? 'bg-transparent border border-border/40'
+                  : 'bg-surface-raised border border-border/40'
+              }`}
             >
               {renderAvatar(userAvatar, userNickname)}
             </div>
@@ -1085,7 +1094,13 @@ const Sidebar: React.FC<SidebarProps> = ({
             <div className="absolute bottom-[calc(100%+8px)] left-2 right-2 z-50 rounded-2xl border border-border/80 bg-surface shadow-2xl overflow-hidden flex flex-col animate-fade-in text-[13px]">
               {/* Profile Head: 头像、昵称与算力点数 */}
               <div className="flex items-center gap-2.5 p-3.5 border-b border-border/50">
-                <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-sm select-none shrink-0 overflow-hidden text-white font-bold text-sm">
+                <div 
+                  className={`w-9 h-9 rounded-lg flex items-center justify-center shadow-xs select-none shrink-0 overflow-hidden text-sm font-bold ${
+                    isImageAvatar(userAvatar)
+                      ? 'bg-transparent border border-border/40'
+                      : 'bg-surface-raised border border-border/40'
+                  }`}
+                >
                   {renderAvatar(userAvatar, userNickname)}
                 </div>
                 <div className="flex-1 min-w-0">
@@ -1321,7 +1336,11 @@ const Sidebar: React.FC<SidebarProps> = ({
               <div className="flex flex-col items-center space-y-2">
                 <div 
                   onClick={() => fileInputRef.current?.click()}
-                  className="w-16 h-16 rounded-full bg-gradient-to-br from-primary to-violet-600 flex items-center justify-center shadow-md overflow-hidden text-2xl cursor-pointer hover:opacity-90 transition-opacity"
+                  className={`w-16 h-16 rounded-xl flex items-center justify-center shadow-sm overflow-hidden text-2xl cursor-pointer hover:opacity-90 transition-opacity border border-border ${
+                    isImageAvatar(editAvatar)
+                      ? 'bg-transparent'
+                      : 'bg-surface-raised'
+                  }`}
                   title="点击上传头像"
                 >
                   {renderAvatar(editAvatar, editNickname)}
