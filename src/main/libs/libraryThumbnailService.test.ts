@@ -13,6 +13,21 @@ const flushTasks = (): Promise<void> => new Promise(resolve => {
 });
 
 describe('LibraryThumbnailService', () => {
+  test('uses a fixed cross-platform 16:9 thumbnail size', async () => {
+    let receivedSize: { width: number; height: number } | undefined;
+    const service = new LibraryThumbnailService({
+      statFile: async () => createStat(100),
+      createThumbnail: async (_filePath, size) => {
+        receivedSize = size;
+        return Buffer.from('thumbnail');
+      },
+    });
+
+    await service.generate('/tmp/library-fixed-size.png');
+
+    expect(receivedSize).toEqual({ width: 480, height: 270 });
+  });
+
   test('caches by resolved path, mtime and size', async () => {
     let mtimeMs = 100;
     let createCount = 0;

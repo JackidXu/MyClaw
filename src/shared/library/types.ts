@@ -57,6 +57,7 @@ export interface LibraryItemBase {
 
 export interface LocalArtifactItem extends LibraryItemBase {
   itemKind: 'local_artifact';
+  latestSession: LibrarySessionRef;
   filePath: string;
   artifactType: LibraryArtifactType;
   extension: string;
@@ -167,6 +168,7 @@ export interface LibraryCloudListData {
   counts: LibraryCloudCounts;
   sharedStatusCounts: LibrarySharedStatusCounts;
   serverNow?: number;
+  recoveryPending?: boolean;
 }
 
 export interface LibraryArtifactCandidate {

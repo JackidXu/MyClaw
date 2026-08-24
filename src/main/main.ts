@@ -364,6 +364,7 @@ import {
   buildHtmlShareClientSourceKey,
 } from './libs/htmlShare/htmlShareSourceKey';
 import { getKeyfromAttribution, initializeKeyfromAttribution } from './libs/keyfromAttribution';
+import { LibraryThumbnailRenderer } from './libs/libraryThumbnailRenderer';
 import { LibraryThumbnailService } from './libs/libraryThumbnailService';
 import { exportLogsZip } from './libs/logExport';
 import { MainLogReporter } from './libs/mainLogReporter';
@@ -12039,11 +12040,31 @@ if (!gotTheLock) {
     },
   );
 
+  const libraryThumbnailRenderer = new LibraryThumbnailRenderer({
+    developmentServerUrl: isDev ? DEV_SERVER_URL : undefined,
+    productionHtmlPath: path.join(__dirname, '../dist/library-thumbnail.html'),
+  });
   const libraryThumbnailService = new LibraryThumbnailService({
     createThumbnail: async (filePath, size) => {
-      const image = await nativeImage.createThumbnailFromPath(filePath, size);
-      if (image.isEmpty()) throw new Error('Thumbnail is empty');
-      return image.toPNG();
+      try {
+        return await libraryThumbnailRenderer.render(filePath, size);
+      } catch (rendererError) {
+        try {
+          const image = await nativeImage.createThumbnailFromPath(filePath, size);
+          if (image.isEmpty()) throw new Error('Thumbnail is empty');
+          return image.toPNG();
+        } catch (nativeError) {
+          const rendererMessage = rendererError instanceof Error
+            ? rendererError.message
+            : 'Unknown renderer error';
+          const nativeMessage = nativeError instanceof Error
+            ? nativeError.message
+            : 'Unknown native thumbnail error';
+          throw new Error(
+            `Failed to generate thumbnail (renderer: ${rendererMessage}; native: ${nativeMessage})`,
+          );
+        }
+      }
     },
     getCacheDirectory: () => path.join(app.getPath('userData'), 'library', 'thumbnails'),
     maxConcurrency: 3,
@@ -12058,9 +12079,6 @@ if (!gotTheLock) {
       try {
         if (typeof filePath !== 'string' || !filePath.trim()) {
           return { success: false, error: 'Missing file path' };
-        }
-        if (process.platform !== 'darwin') {
-          return { success: false, error: 'Thumbnail generation only supported on macOS' };
         }
         const dataUrl = await libraryThumbnailService.generate(filePath);
         return { success: true, dataUrl };
@@ -13382,6 +13400,7 @@ if (!gotTheLock) {
 
     sqliteBackupManager?.stopPeriodicBackupLoop();
     libraryIndexService?.stop();
+    libraryThumbnailRenderer.dispose();
 
     // Close the SQLite database to flush the WAL and release the file lock.
     try {

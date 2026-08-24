@@ -14,6 +14,7 @@ import {
   hideLibraryLocalItems,
   matchesLibrarySharedStatus,
   restoreLibraryFavoriteState,
+  sanitizeLibraryLocalListData,
   shouldReloadLibraryAfterChange,
 } from './libraryListState';
 
@@ -25,6 +26,12 @@ const makeLocalItem = (itemId: string, isFavorite: boolean): LocalArtifactItem =
   sortTime: 1,
   createdAt: 1,
   isFavorite,
+  latestSession: {
+    sessionId: 'session-1',
+    title: 'Task',
+    agentId: 'main',
+    lastRelatedAt: 1,
+  },
   filePath: `/tmp/${itemId}.pdf`,
   artifactType: 'document',
   extension: '.pdf',
@@ -72,6 +79,24 @@ describe('library list state', () => {
       hasMore: false,
       counts: { total: 12, available: 10, missing: 2 },
     });
+  });
+
+  test('defensively ignores malformed local items without a valid task relation', () => {
+    const valid = makeLocalItem('valid', false);
+    const missingTask = {
+      ...makeLocalItem('missing-task', false),
+      latestSession: undefined,
+      relatedSessionCount: 0,
+    } as unknown as LocalArtifactItem;
+    const result = sanitizeLibraryLocalListData({
+      list: [valid, missingTask],
+      hasMore: false,
+      counts: { total: 2, available: 2, missing: 0 },
+    });
+
+    expect(result.ignoredCount).toBe(1);
+    expect(result.data.list).toEqual([valid]);
+    expect(result.data.counts.total).toBe(2);
   });
 
   test('hides cloud items without clearing share and site counts', () => {

@@ -32,6 +32,7 @@ const response = (
   list: Array<ReturnType<typeof cloudItem> | ReturnType<typeof siteItem>>,
   nextCursor?: string,
   serverNow = 1_000,
+  recoveryPending = false,
 ) => new Response(JSON.stringify({
   code: 0,
   message: 'success',
@@ -42,6 +43,7 @@ const response = (
     counts: { sharedFile: 3, deployedSite: 0 },
     sharedStatusCounts: { all: 3, live: 2, disabled: 1 },
     serverNow,
+    recoveryPending,
   },
 }), { status: 200, headers: { 'content-type': 'application/json' } });
 
@@ -223,7 +225,7 @@ describe('listLibraryCloudItems', () => {
 
   test('walks bounded server pages to find locally favorited cloud items', async () => {
     const fetchWithAuth = vi.fn()
-      .mockResolvedValueOnce(response([cloudItem('share-1', 300)], 'next-1'))
+      .mockResolvedValueOnce(response([cloudItem('share-1', 300)], 'next-1', 1_000, true))
       .mockResolvedValueOnce(response([cloudItem('share-2', 200)], 'next-2'))
       .mockResolvedValueOnce(response([cloudItem('share-3', 100)]));
 
@@ -239,6 +241,7 @@ describe('listLibraryCloudItems', () => {
       success: true,
       data: {
         hasMore: false,
+        recoveryPending: true,
         list: [{ itemId: 'share-2', isFavorite: true }],
       },
     });

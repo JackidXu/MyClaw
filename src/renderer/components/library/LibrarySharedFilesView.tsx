@@ -43,7 +43,7 @@ import {
   type PublishingQuotaErrorData,
   PublishingResourceKind,
 } from '../../../shared/publishing/constants';
-import type { SiteDetail } from '../../../shared/site/constants';
+import { type SiteDetail, SiteKind, SiteStatus } from '../../../shared/site/constants';
 import { copyTextToClipboard } from '../../services/clipboard';
 import { getPortalPricingUrl, PortalPricingKeyfrom } from '../../services/endpoints';
 import { i18nService } from '../../services/i18n';
@@ -314,6 +314,9 @@ const CloudAvailabilityLabel: React.FC<{
     LibraryCloudAvailabilityFilter.Available,
     now,
   );
+  const requiresNodeRedeploy = item.itemKind === LibraryItemKind.DeployedSite
+    && item.siteKind === SiteKind.NodeService
+    && item.siteStatus === SiteStatus.RedeployRequired;
   const expiryLabel = item.accessExpiresAt === undefined
     ? undefined
     : item.accessExpiresAt <= now
@@ -341,13 +344,15 @@ const CloudAvailabilityLabel: React.FC<{
       <span className={`${textClassName} ${
         isAvailable ? 'text-emerald-600 dark:text-emerald-400' : 'text-secondary'
       }`}>
-        {i18nService.t(`libraryCloudAvailability_${
-          isAvailable
-            ? LibraryCloudAvailabilityFilter.Available
-            : LibraryCloudAvailabilityFilter.Unavailable
-        }`)}
+        {requiresNodeRedeploy
+          ? i18nService.t('sitesStatus_redeploy_required')
+          : i18nService.t(`libraryCloudAvailability_${
+              isAvailable
+                ? LibraryCloudAvailabilityFilter.Available
+                : LibraryCloudAvailabilityFilter.Unavailable
+            }`)}
       </span>
-      {expiryLabel && (
+      {expiryLabel && !requiresNodeRedeploy && (
         <div className="mt-0.5 whitespace-nowrap text-[11px] leading-4 text-muted">
           {expiryLabel}
         </div>

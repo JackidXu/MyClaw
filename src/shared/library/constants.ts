@@ -171,6 +171,8 @@ export const LibraryLimits = {
   MissingRetentionMs: 7 * 24 * 60 * 60_000,
 } as const;
 
+export const LIBRARY_INDEX_POLICY_VERSION = 2;
+
 export const LibraryFavoriteScope = {
   LocalDevice: 'device',
   CloudPrefix: 'cloud:',
@@ -222,8 +224,7 @@ export const getLibraryArtifactTypeForExtension = (
     SLIDE_EXTENSIONS.has(normalized)
     || normalized === '.docx'
     || normalized === '.pdf'
-    || normalized === '.xls'
-    || normalized === '.xlsx'
+    || SPREADSHEET_EXTENSIONS.has(normalized)
   ) {
     return LibraryArtifactType.Document;
   }

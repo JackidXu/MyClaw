@@ -106,7 +106,7 @@ describe('library item action policy', () => {
     const item = {
       ...makeItem(LibraryItemKind.SharedFile),
       latestSession: undefined,
-    };
+    } as LibraryItem;
     expect(getLibraryCardActionIds(item)).not.toContain(LibraryItemAction.RelatedSessions);
   });
 });

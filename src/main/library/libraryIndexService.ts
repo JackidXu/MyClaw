@@ -8,6 +8,7 @@ import {
 import {
   getLibraryArtifactTypeForExtension,
   getLibraryCategoryForExtension,
+  LIBRARY_INDEX_POLICY_VERSION,
   LibraryArtifactType,
   LibraryAvailability,
   LibraryIndexPhase,
@@ -52,7 +53,6 @@ const LibraryIndexMetadataKey = {
   LastReconcileAt: 'library.index.lastReconcileAt',
 } as const;
 
-const LIBRARY_INDEX_POLICY_VERSION = 1;
 const RETRY_DELAYS_MS = [250, 1_000, 3_000, 10_000, 15_000] as const;
 const RECONCILE_CONCURRENCY = 8;
 
@@ -160,7 +160,9 @@ export class LibraryIndexService {
         const item = await this.indexCandidate(candidate);
         if (!item) {
           ignored += 1;
-          this.scheduleCandidateRetry(candidate, 0);
+          if (this.store.sessionExists(candidate.sessionId)) {
+            this.scheduleCandidateRetry(candidate, 0);
+          }
           continue;
         }
         recorded += 1;
@@ -194,9 +196,10 @@ export class LibraryIndexService {
           ignoredPaths.push(filePath);
           continue;
         }
-        const item = this.store.upsertFile(indexed);
-        items.push(item);
-        this.addWatch(item.itemId, item.filePath);
+        const storedItem = this.store.upsertFile(indexed);
+        this.addWatch(storedItem.itemId, storedItem.filePath);
+        const visibleItem = this.store.getVisibleItem(storedItem.itemId);
+        if (visibleItem) items.push(visibleItem);
       } catch {
         ignoredPaths.push(filePath);
       }
@@ -297,6 +300,7 @@ export class LibraryIndexService {
     );
     if (!indexed) return null;
     const item = this.store.upsertFile(indexed, candidate);
+    if (!item) return null;
     this.addWatch(item.itemId, item.filePath);
     return item;
   }
