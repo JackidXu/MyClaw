@@ -7160,8 +7160,13 @@ if (!gotTheLock) {
         return { success: false, error: body.message || 'Failed to load pricing catalog.' };
       }
       const textModels = Array.isArray(body.data?.textModels) ? body.data.textModels : [];
-      console.log(`[Auth:getPricingCatalog] loaded ${textModels.length} public text models.`);
-      return { success: true, textModels };
+      const imageModels = Array.isArray(body.data?.imageModels) ? body.data.imageModels : [];
+      const videoModels = Array.isArray(body.data?.videoModels) ? body.data.videoModels : [];
+      console.log(
+        '[Auth:getPricingCatalog] loaded public pricing catalog: '
+        + `${textModels.length} text, ${imageModels.length} image, ${videoModels.length} video models.`,
+      );
+      return { success: true, textModels, imageModels, videoModels };
     } catch (error) {
       console.error('[Auth:getPricingCatalog] pricing catalog request failed:', error);
       return {

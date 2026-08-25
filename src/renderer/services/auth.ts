@@ -57,12 +57,16 @@ interface AuthQuotaCheckResult {
   enterpriseQuotaAvailable: boolean;
 }
 
-export interface PricingCatalogTextModel {
+export interface PricingCatalogBaseModel {
   modelId?: string;
   modelName?: string;
   provider?: string;
   providerLabel?: string;
   description?: string;
+  capabilities?: string | null;
+}
+
+export interface PricingCatalogTextModel extends PricingCatalogBaseModel {
   supportsImage?: boolean;
   supportsThinking?: boolean;
   thinkingConfig?: ModelThinkingConfig;
@@ -70,10 +74,19 @@ export interface PricingCatalogTextModel {
   costMultiplier?: number;
 }
 
+export interface PricingCatalogMediaModel extends PricingCatalogBaseModel {
+  mediaType?: string;
+  billingUnit?: string;
+  unitLabel?: string;
+  unitCredits?: number;
+  unitPriceYuan?: number;
+  pricingDescription?: string | null;
+}
+
 export interface PricingCatalogResponse {
   textModels?: PricingCatalogTextModel[];
-  imageModels?: unknown[];
-  videoModels?: unknown[];
+  imageModels?: PricingCatalogMediaModel[];
+  videoModels?: PricingCatalogMediaModel[];
 }
 
 export interface AvailableServerModelEntry {

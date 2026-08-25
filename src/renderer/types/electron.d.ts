@@ -1877,6 +1877,34 @@ interface IElectronAPI {
         contextWindow?: number | null;
         costMultiplier?: number;
       }>;
+      imageModels?: Array<{
+        modelId: string;
+        modelName: string;
+        provider?: string;
+        providerLabel?: string;
+        mediaType?: string;
+        description?: string;
+        capabilities?: string | null;
+        billingUnit?: string;
+        unitLabel?: string;
+        unitCredits?: number;
+        unitPriceYuan?: number;
+        pricingDescription?: string | null;
+      }>;
+      videoModels?: Array<{
+        modelId: string;
+        modelName: string;
+        provider?: string;
+        providerLabel?: string;
+        mediaType?: string;
+        description?: string;
+        capabilities?: string | null;
+        billingUnit?: string;
+        unitLabel?: string;
+        unitCredits?: number;
+        unitPriceYuan?: number;
+        pricingDescription?: string | null;
+      }>;
       error?: string;
     }>;
     getProfileSummary: () => Promise<{ success: boolean; data?: ProfileSummaryData }>;
