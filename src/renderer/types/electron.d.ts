@@ -82,6 +82,8 @@ import type {
   LibraryCloudListData,
   LibraryCloudListOptions,
   LibraryFavoriteInput,
+  LibraryGetLocalItemsData,
+  LibraryGetLocalItemsInput,
   LibraryIndexStatus,
   LibraryLocalDetailData,
   LibraryLocalListData,
@@ -1409,6 +1411,9 @@ interface IElectronAPI {
     listCloud: (
       options?: LibraryCloudListOptions,
     ) => Promise<LibraryResult<LibraryCloudListData>>;
+    getLocalItems: (
+      input: LibraryGetLocalItemsInput,
+    ) => Promise<LibraryResult<LibraryGetLocalItemsData>>;
     getLocalDetail: (itemId: string) => Promise<LibraryResult<LibraryLocalDetailData>>;
     recordCandidates: (
       candidates: LibraryArtifactCandidate[],

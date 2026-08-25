@@ -140,6 +140,7 @@ export type LibraryChangeReason =
 export const LibraryIpc = {
   ListLocal: 'library:listLocal',
   ListCloud: 'library:listCloud',
+  GetLocalItems: 'library:getLocalItems',
   GetLocalDetail: 'library:getLocalDetail',
   RecordCandidates: 'library:recordCandidates',
   AddLocalFiles: 'library:addLocalFiles',
@@ -157,6 +158,7 @@ export type LibraryIpc = typeof LibraryIpc[keyof typeof LibraryIpc];
 export const LibraryLimits = {
   DefaultPageSize: 24,
   MaxPageSize: 100,
+  MaxTargetItemIds: 100,
   MaxKeywordLength: 100,
   MaxCandidateBatchSize: 100,
   MaxCandidateStringLength: 4096,

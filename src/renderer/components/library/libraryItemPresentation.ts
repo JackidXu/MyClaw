@@ -27,6 +27,10 @@ export const getLibrarySourceLabel = (item: LibraryItem): string => {
   return i18nService.t('libraryDeployedSite');
 };
 
+export const isLibraryWebsiteItem = (
+  item: Pick<LibraryItem, 'itemKind'>,
+): boolean => item.itemKind === LibraryItemKind.DeployedSite;
+
 export const getLibraryItemStatus = (item: LibraryItem): string => {
   if (item.itemKind === LibraryItemKind.LocalArtifact) {
     return i18nService.t(`libraryAvailability_${item.availability}`);

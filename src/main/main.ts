@@ -139,7 +139,7 @@ import type {
   ResolvedKitCapabilities,
 } from '../shared/kit/constants';
 import { KitStoreKey } from '../shared/kit/constants';
-import { LibraryIpc } from '../shared/library/constants';
+import { LibraryChangeReason, LibraryIpc } from '../shared/library/constants';
 import type { LibraryChangedPayload } from '../shared/library/types';
 import {
   type ListLocalWebServicesOptions,
@@ -9280,8 +9280,13 @@ if (!gotTheLock) {
     try {
       getCoworkEngineRouter().stopSession(sessionId);
       const coworkStoreInstance = getCoworkStore();
-      coworkStoreInstance.deleteSession(sessionId);
-      libraryIndexService?.notifyChange({ reason: 'session_deleted' });
+      const affectedArtifactIds = coworkStoreInstance.deleteSession(sessionId);
+      if (affectedArtifactIds.length > 0) {
+        libraryIndexService?.notifyChange({
+          reason: LibraryChangeReason.SessionDeleted,
+          itemIds: affectedArtifactIds,
+        });
+      }
       mediaSelectionBySession.delete(sessionId);
       mediaTurnAccountScopeBySession.delete(sessionId);
       skinRuntimeController?.handleSessionDeleted(sessionId);
@@ -9323,8 +9328,13 @@ if (!gotTheLock) {
         runtime.stopSession(sessionId);
       });
       const coworkStoreInstance = getCoworkStore();
-      coworkStoreInstance.deleteSessions(sessionIds);
-      libraryIndexService?.notifyChange({ reason: 'session_deleted' });
+      const affectedArtifactIds = coworkStoreInstance.deleteSessions(sessionIds);
+      if (affectedArtifactIds.length > 0) {
+        libraryIndexService?.notifyChange({
+          reason: LibraryChangeReason.SessionDeleted,
+          itemIds: affectedArtifactIds,
+        });
+      }
       const router = getCoworkEngineRouter();
       for (const sessionId of sessionIds) {
         skinRuntimeController?.handleSessionDeleted(sessionId);

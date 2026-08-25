@@ -15,7 +15,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 
 import {
   LibraryAvailability,
-  LibraryCategory,
   LibraryItemKind,
 } from '../../../shared/library/constants';
 import type {
@@ -63,6 +62,7 @@ import {
 import {
   formatLibraryTime,
   getLibraryDisplayFileName,
+  isLibraryWebsiteItem,
 } from './libraryItemPresentation';
 
 interface LibraryPreviewModalProps {
@@ -81,11 +81,10 @@ interface LibraryPreviewModalProps {
 }
 
 const HeaderIcon: React.FC<{ item: LibraryItem }> = ({ item }) => {
-  const isWeb = item.itemKind === LibraryItemKind.DeployedSite
-    || item.category === LibraryCategory.Web;
+  const isWebsite = isLibraryWebsiteItem(item);
   return (
     <div className="flex h-8 w-8 shrink-0 items-center justify-center">
-      {isWeb ? (
+      {isWebsite ? (
         <GlobeAltIcon className="h-[18px] w-[18px] text-primary" aria-hidden="true" />
       ) : (
         <FileTypeIcon

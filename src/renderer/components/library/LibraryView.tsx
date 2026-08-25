@@ -13,14 +13,23 @@ import {
   XMarkIcon,
 } from '@heroicons/react/24/outline';
 import { StarIcon as StarSolidIcon } from '@heroicons/react/24/solid';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useSelector } from 'react-redux';
 
 import {
   LibraryCategory,
+  LibraryChangeReason,
   LibraryCloudAvailabilityFilter,
   LibraryCloudKind,
   LibraryItemKind,
+  LibraryLimits,
   LibrarySourceFilter,
   LibraryViewMode,
 } from '../../../shared/library/constants';
@@ -89,6 +98,7 @@ import {
   getLibraryDisplayFileName,
   getLibraryItemStatus,
   getLibrarySourceLabel,
+  isLibraryWebsiteItem,
 } from './libraryItemPresentation';
 import {
   applyLibraryFavoriteState,
@@ -96,9 +106,18 @@ import {
   hideLibraryLocalItems,
   restoreLibraryFavoriteState,
   sanitizeLibraryLocalListData,
-  shouldReloadLibraryAfterChange,
 } from './libraryListState';
+import {
+  applyLibraryLocalItemChanges,
+  LibraryLoadIntent,
+  LibraryLoadPhase,
+  shouldShowLibraryInitialSkeleton,
+} from './libraryLocalQueryState';
 import LibraryPreviewModal from './LibraryPreviewModal';
+import {
+  type LibraryRefreshBatch,
+  LibraryRefreshCoordinator,
+} from './libraryRefreshCoordinator';
 import LibraryCloudView from './LibrarySharedFilesView';
 import {
   createLibraryThumbnailCacheKey,
@@ -242,11 +261,7 @@ const LibraryThumbnail: React.FC<{ item: LibraryItem }> = ({ item }) => {
     return () => { active = false; };
   }, [cacheKey, isNearViewport, localItem]);
 
-  const Icon = item.itemKind === LibraryItemKind.DeployedSite
-    ? GlobeAltIcon
-    : item.category === LibraryCategory.Web
-      ? GlobeAltIcon
-      : DocumentIcon;
+  const isWebsite = isLibraryWebsiteItem(item);
   return (
     <div ref={containerRef} className="h-full w-full">
       {dataUrl ? (
@@ -257,7 +272,16 @@ const LibraryThumbnail: React.FC<{ item: LibraryItem }> = ({ item }) => {
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center bg-surface-raised text-secondary">
-          <Icon className="h-6 w-6" aria-hidden="true" />
+          {isWebsite ? (
+            <GlobeAltIcon className="h-6 w-6 text-primary" aria-hidden="true" />
+          ) : item.category === LibraryCategory.Web ? (
+            <FileTypeIcon
+              fileName={getLibraryDisplayFileName(item)}
+              className="h-6 w-6"
+            />
+          ) : (
+            <DocumentIcon className="h-6 w-6" aria-hidden="true" />
+          )}
         </div>
       )}
     </div>
@@ -283,11 +307,10 @@ const SourceTab: React.FC<{
 );
 
 const LibraryListItemIcon: React.FC<{ item: LibraryItem }> = ({ item }) => {
-  const isWeb = item.itemKind === LibraryItemKind.DeployedSite
-    || item.category === LibraryCategory.Web;
+  const isWebsite = isLibraryWebsiteItem(item);
   return (
     <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface-raised">
-      {isWeb ? (
+      {isWebsite ? (
         <GlobeAltIcon className="h-[18px] w-[18px] text-primary" aria-hidden="true" />
       ) : (
         <FileTypeIcon fileName={getLibraryDisplayFileName(item)} className="h-[18px] w-[18px]" />
@@ -307,6 +330,7 @@ const LibraryItemCard: React.FC<{
   if (list) {
     return (
       <article
+        data-library-item-key={`${item.itemKind}:${item.itemId}`}
         role="button"
         tabIndex={0}
         onClick={onOpen}
@@ -333,6 +357,7 @@ const LibraryItemCard: React.FC<{
 
   return (
     <article
+      data-library-item-key={`${item.itemKind}:${item.itemId}`}
       role="button"
       tabIndex={0}
       onClick={onOpen}
@@ -395,8 +420,8 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
   const [viewMode, setViewMode] = useState<LibraryViewMode>(LibraryViewMode.List);
   const [localData, setLocalData] = useState<LibraryLocalListData>(EMPTY_LOCAL);
   const [cloudData, setCloudData] = useState<LibraryCloudListData>(EMPTY_CLOUD);
-  const [loading, setLoading] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadPhase, setLoadPhase] = useState<LibraryLoadPhase>(LibraryLoadPhase.Initial);
+  const [resolvedQueryKey, setResolvedQueryKey] = useState('');
   const [error, setError] = useState<string>();
   const [cloudError, setCloudError] = useState<string>();
   const [activeItem, setActiveItem] = useState<LibraryItem>();
@@ -404,6 +429,18 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
   const [detailLoading, setDetailLoading] = useState(false);
   const [cardDetailStates, setCardDetailStates] = useState<Record<string, CardDetailLoadState>>({});
   const requestIdRef = useRef(0);
+  const mountedRef = useRef(true);
+  const localDataRef = useRef(localData);
+  const localQueryKeyRef = useRef('');
+  const currentQueryKeyRef = useRef('');
+  const pendingScrollAnchorRef = useRef<{
+    candidates: Array<{ itemKey: string; offsetTop: number }>;
+  } | undefined>(undefined);
+  const refreshCoordinatorRef = useRef<LibraryRefreshCoordinator | undefined>(undefined);
+  const refreshBatchHandlerRef = useRef<(batch: LibraryRefreshBatch) => Promise<void>>(
+    async () => undefined,
+  );
+  const refreshLocalWindowRef = useRef<() => Promise<void>>(async () => undefined);
   const cardDetailRequestIdsRef = useRef(new Set<string>());
   const scrollContainerRef = useRef<HTMLElement>(null);
   const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
@@ -417,6 +454,10 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
   const lastReportedKeywordRef = useRef('');
 
   useEffect(() => {
+    localDataRef.current = localData;
+  }, [localData]);
+
+  useEffect(() => {
     const timer = window.setTimeout(() => setKeyword(keywordInput.trim()), 300);
     return () => window.clearTimeout(timer);
   }, [keywordInput]);
@@ -426,6 +467,75 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
   const hasActiveLocalFilter = category !== LibraryCategory.All
     || keyword.length > 0
     || favoritesOnly;
+  const localQueryKey = useMemo(() => JSON.stringify({
+    category,
+    keyword,
+    favoritesOnly,
+  }), [category, favoritesOnly, keyword]);
+  const queryKey = useMemo(() => JSON.stringify({
+    source,
+    localQueryKey,
+    cloudAvailability,
+    favoriteOwnerScope,
+    isAuthenticated,
+    sitesHidden,
+  }), [
+    cloudAvailability,
+    favoriteOwnerScope,
+    isAuthenticated,
+    localQueryKey,
+    sitesHidden,
+    source,
+  ]);
+  localQueryKeyRef.current = localQueryKey;
+  currentQueryKeyRef.current = queryKey;
+  const loading = shouldShowLibraryInitialSkeleton(
+    loadPhase,
+    resolvedQueryKey === queryKey,
+  );
+  const loadingMore = loadPhase === LibraryLoadPhase.Appending;
+
+  const captureScrollAnchor = useCallback((): void => {
+    const root = scrollContainerRef.current;
+    if (!root) return;
+    const rootTop = root.getBoundingClientRect().top;
+    const candidates: Array<{ itemKey: string; offsetTop: number }> = [];
+    for (const element of root.querySelectorAll<HTMLElement>('[data-library-item-key]')) {
+      const rect = element.getBoundingClientRect();
+      if (rect.bottom < rootTop || !element.dataset.libraryItemKey) continue;
+      candidates.push({
+        itemKey: element.dataset.libraryItemKey,
+        offsetTop: rect.top - rootTop,
+      });
+      if (candidates.length >= 8) break;
+    }
+    if (candidates.length === 0) return;
+    pendingScrollAnchorRef.current = {
+      candidates,
+    };
+  }, []);
+
+  useLayoutEffect(() => {
+    const anchor = pendingScrollAnchorRef.current;
+    const root = scrollContainerRef.current;
+    if (!anchor || !root) return;
+    pendingScrollAnchorRef.current = undefined;
+    const elementsByKey = new Map(
+      [...root.querySelectorAll<HTMLElement>('[data-library-item-key]')]
+        .flatMap(element => element.dataset.libraryItemKey
+          ? [[element.dataset.libraryItemKey, element] as const]
+          : []),
+    );
+    const survivingAnchor = anchor.candidates.find(candidate => (
+      elementsByKey.has(candidate.itemKey)
+    ));
+    if (!survivingAnchor) return;
+    const anchoredElement = elementsByKey.get(survivingAnchor.itemKey);
+    if (!anchoredElement) return;
+    const nextOffset = anchoredElement.getBoundingClientRect().top
+      - root.getBoundingClientRect().top;
+    root.scrollTop += nextOffset - survivingAnchor.offsetTop;
+  }, [localData.list]);
   const analyticsContext = useMemo<LibraryAnalyticsContext>(() => ({
     pageViewId: analyticsPageViewId,
     librarySource: source,
@@ -569,10 +679,17 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
     }
   }, [category, sitesHidden]);
 
-  const loadData = useCallback(async (append = false) => {
+  const loadData = useCallback(async (
+    intent: LibraryLoadIntent = LibraryLoadIntent.Initial,
+  ) => {
+    const append = intent === LibraryLoadIntent.Append;
     const requestId = ++requestIdRef.current;
-    if (append) setLoadingMore(true);
-    else setLoading(true);
+    const requestQueryKey = queryKey;
+    setLoadPhase(append
+      ? LibraryLoadPhase.Appending
+      : intent === LibraryLoadIntent.Refresh
+        ? LibraryLoadPhase.Refreshing
+        : LibraryLoadPhase.Initial);
     if (!append) {
       setError(undefined);
       setCloudError(undefined);
@@ -590,7 +707,7 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
           category,
           keyword,
           favoritesOnly,
-          pageSize: 24,
+          pageSize: LibraryLimits.DefaultPageSize,
           ...(append && localData.nextCursor ? { cursor: localData.nextCursor } : {}),
         })
       : Promise.resolve(null);
@@ -605,7 +722,7 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
           favoritesOnly,
           favoriteOwnerScope,
           availability: cloudAvailability,
-          pageSize: 24,
+          pageSize: LibraryLimits.DefaultPageSize,
           ...(append && cloudData.nextCursor ? { cursor: cloudData.nextCursor } : {}),
         })
       : Promise.resolve(null);
@@ -649,10 +766,6 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
         if (requestId === requestIdRef.current) {
           if (!append) reportListResult(LibraryAnalyticsResult.Failure);
           setError(loadError instanceof Error ? loadError.message : i18nService.t('unknownError'));
-        }
-      } finally {
-        if (!append && wantsLocal && loadLocalPage && requestId === requestIdRef.current) {
-          setLoading(false);
         }
       }
     };
@@ -701,8 +814,8 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
     };
     await Promise.all([applyLocalResult(), applyCloudResult()]);
     if (requestId !== requestIdRef.current) return;
-    setLoading(false);
-    setLoadingMore(false);
+    if (intent === LibraryLoadIntent.Initial) setResolvedQueryKey(requestQueryKey);
+    setLoadPhase(LibraryLoadPhase.Settled);
   }, [
     category,
     cloudData.hasMore,
@@ -714,21 +827,122 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
     localData.hasMore,
     localData.nextCursor,
     cloudAvailability,
+    queryKey,
     reportListResult,
     sitesHidden,
     wantsCloud,
     wantsLocal,
   ]);
 
+  const refreshLocalWindow = useCallback(async (): Promise<void> => {
+    if (!mountedRef.current) return;
+    const requestId = ++requestIdRef.current;
+    const requestQueryKey = queryKey;
+    const desiredItemCount = Math.max(
+      localDataRef.current.list.length,
+      LibraryLimits.DefaultPageSize,
+    );
+    setLoadPhase(LibraryLoadPhase.Refreshing);
+    setError(undefined);
+    try {
+      let cursor: string | undefined;
+      let hasMore = true;
+      let counts = localDataRef.current.counts;
+      let list: LocalArtifactItem[] = [];
+      do {
+        const result = await window.electron.library.listLocal({
+          category,
+          keyword,
+          favoritesOnly,
+          pageSize: Math.min(
+            LibraryLimits.MaxPageSize,
+            Math.max(1, desiredItemCount - list.length),
+          ),
+          ...(cursor ? { cursor } : {}),
+        });
+        if (
+          requestId !== requestIdRef.current
+          || !mountedRef.current
+          || requestQueryKey !== currentQueryKeyRef.current
+        ) {
+          return;
+        }
+        if (!result.success) throw new Error(result.error);
+        const sanitizedResult = sanitizeLibraryLocalListData(result.data);
+        if (sanitizedResult.ignoredCount > 0) {
+          console.warn(
+            '[Library] Ignored local artifacts without a valid task relation.',
+            { count: sanitizedResult.ignoredCount },
+          );
+        }
+        list = appendUniqueItems(list, sanitizedResult.data.list);
+        counts = sanitizedResult.data.counts;
+        hasMore = sanitizedResult.data.hasMore;
+        cursor = sanitizedResult.data.nextCursor;
+      } while (hasMore && cursor && list.length < desiredItemCount);
+
+      const nextData: LibraryLocalListData = {
+        list,
+        counts,
+        hasMore,
+        ...(hasMore && cursor ? { nextCursor: cursor } : {}),
+      };
+      captureScrollAnchor();
+      localDataRef.current = nextData;
+      setLocalData(nextData);
+      setResolvedQueryKey(requestQueryKey);
+      reportListResult(LibraryAnalyticsResult.Success, list.length, hasMore);
+    } catch (refreshError) {
+      if (
+        requestId === requestIdRef.current
+        && mountedRef.current
+        && requestQueryKey === currentQueryKeyRef.current
+      ) {
+        reportListResult(LibraryAnalyticsResult.Failure);
+        setError(
+          refreshError instanceof Error
+            ? refreshError.message
+            : i18nService.t('unknownError'),
+        );
+      }
+    } finally {
+      if (
+        requestId === requestIdRef.current
+        && mountedRef.current
+        && requestQueryKey === currentQueryKeyRef.current
+      ) {
+        setLoadPhase(LibraryLoadPhase.Settled);
+      }
+    }
+  }, [
+    captureScrollAnchor,
+    category,
+    favoritesOnly,
+    keyword,
+    queryKey,
+    reportListResult,
+  ]);
+  refreshLocalWindowRef.current = refreshLocalWindow;
+
   const handleRefresh = useCallback((): void => {
     reportLibraryAction(analyticsContext, {
       actionType: LibraryAnalyticsActionType.Refresh,
     });
-    void loadData(false);
-  }, [analyticsContext, loadData]);
+    if (wantsLocal) {
+      const coordinator = refreshCoordinatorRef.current;
+      if (coordinator) {
+        coordinator.enqueue({ reason: LibraryChangeReason.Repair });
+        coordinator.flushNow();
+      } else {
+        void refreshLocalWindow();
+      }
+      return;
+    }
+    void loadData(LibraryLoadIntent.Refresh);
+  }, [analyticsContext, loadData, refreshLocalWindow, wantsLocal]);
 
   useEffect(() => {
-    cloudRecoveryLoadRef.current = () => loadData(false);
+    cloudRecoveryLoadRef.current = () => loadData(LibraryLoadIntent.Refresh);
   }, [loadData]);
 
   useEffect(() => {
@@ -766,7 +980,7 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
   }, [cloudData, favoriteOwnerScope, isAuthenticated, wantsCloud]);
 
   useEffect(() => {
-    void loadData(false);
+    void loadData(LibraryLoadIntent.Initial);
   // Cursor changes are outputs of this request and must not trigger a new first page.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -779,13 +993,99 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
     source,
   ]);
 
+  refreshBatchHandlerRef.current = async batch => {
+    if (!mountedRef.current) return;
+    if (batch.requiresAuthoritativeRefresh || batch.itemIds.length === 0) {
+      await refreshLocalWindowRef.current();
+      return;
+    }
+    const requestQueryKey = currentQueryKeyRef.current;
+    const requestLocalQueryKey = localQueryKeyRef.current;
+    setLoadPhase(LibraryLoadPhase.Refreshing);
+    try {
+      const items: LocalArtifactItem[] = [];
+      const unavailableItemIds: string[] = [];
+      for (
+        let index = 0;
+        index < batch.itemIds.length;
+        index += LibraryLimits.MaxTargetItemIds
+      ) {
+        const result = await window.electron.library.getLocalItems({
+          itemIds: batch.itemIds.slice(index, index + LibraryLimits.MaxTargetItemIds),
+        });
+        if (!result.success) throw new Error(result.error);
+        items.push(...result.data.items);
+        unavailableItemIds.push(...result.data.unavailableItemIds);
+      }
+      if (
+        requestQueryKey !== currentQueryKeyRef.current
+        || !mountedRef.current
+        || requestLocalQueryKey !== localQueryKeyRef.current
+      ) {
+        return;
+      }
+      const applied = applyLibraryLocalItemChanges(
+        localDataRef.current,
+        { items, unavailableItemIds },
+        { category, keyword, favoritesOnly },
+      );
+      captureScrollAnchor();
+      localDataRef.current = applied.data;
+      setLocalData(applied.data);
+      setActiveItem(current => {
+        if (current?.itemKind !== LibraryItemKind.LocalArtifact) return current;
+        return items.find(item => item.itemId === current.itemId) ?? current;
+      });
+      if (applied.requiresAuthoritativeRefresh) {
+        console.warn('[LibraryRefresh] Targeted merge exceeded the local window; revalidating.');
+        await refreshLocalWindowRef.current();
+      }
+    } catch (refreshError) {
+      console.warn(
+        '[LibraryRefresh] Targeted refresh failed; revalidating the loaded window.',
+        refreshError,
+      );
+      await refreshLocalWindowRef.current();
+    } finally {
+      if (
+        mountedRef.current
+        && requestQueryKey === currentQueryKeyRef.current
+      ) {
+        setLoadPhase(LibraryLoadPhase.Settled);
+      }
+    }
+  };
+
+  useEffect(() => {
+    mountedRef.current = true;
+    const coordinator = new LibraryRefreshCoordinator({
+      onFlush: batch => refreshBatchHandlerRef.current(batch),
+      onError: refreshError => {
+        console.warn('[LibraryRefresh] Refresh coordinator failed.', refreshError);
+      },
+    });
+    refreshCoordinatorRef.current = coordinator;
+    const unsubscribe = window.electron.library.onChanged(payload => coordinator.enqueue(payload));
+    return () => {
+      mountedRef.current = false;
+      requestIdRef.current += 1;
+      unsubscribe();
+      coordinator.dispose();
+      if (refreshCoordinatorRef.current === coordinator) {
+        refreshCoordinatorRef.current = undefined;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    refreshCoordinatorRef.current?.setActive(
+      wantsLocal && loadPhase === LibraryLoadPhase.Settled,
+    );
+  }, [loadPhase, wantsLocal]);
+
   useEffect(() => {
     void startLibraryBackfill();
-    return window.electron.library.onChanged(payload => {
-      if (!shouldReloadLibraryAfterChange(payload)) return;
-      void loadData(false);
-    });
-  }, [loadData]);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -1178,7 +1478,7 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
       if (requested || !entries.some(entry => entry.isIntersecting)) return;
       requested = true;
       observer.disconnect();
-      void loadData(true);
+      void loadData(LibraryLoadIntent.Append);
     }, {
       root,
       rootMargin: '0px 0px 320px 0px',

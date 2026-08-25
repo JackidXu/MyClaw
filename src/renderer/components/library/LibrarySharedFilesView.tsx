@@ -95,6 +95,7 @@ import {
   formatLibraryTime,
   getLibraryAccessModeLabel,
   getLibraryDisplayFileName,
+  isLibraryWebsiteItem,
 } from './libraryItemPresentation';
 import LibraryShareAnalyticsView from './LibraryShareAnalyticsView';
 import LibraryShareConfirmDialog from './LibraryShareConfirmDialog';
@@ -1374,7 +1375,7 @@ const LibraryCloudView: React.FC<LibraryCloudViewProps> = ({
             >
               <div className="flex min-w-0 items-center gap-3">
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface-raised">
-                  {item.itemKind === LibraryItemKind.DeployedSite ? (
+                  {isLibraryWebsiteItem(item) ? (
                     <GlobeAltIcon className="h-[18px] w-[18px] text-primary" />
                   ) : (
                     <FileTypeIcon fileName={getLibraryDisplayFileName(item)} className="h-[18px] w-[18px]" />

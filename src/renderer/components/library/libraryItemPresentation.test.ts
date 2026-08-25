@@ -3,7 +3,10 @@ import { describe, expect, test } from 'vitest';
 import { HtmlShareAccessMode, HtmlShareSourceType, HtmlShareStatus } from '../../../shared/htmlShare/constants';
 import { LibraryItemKind } from '../../../shared/library/constants';
 import type { SharedFileItem } from '../../../shared/library/types';
-import { getLibraryDisplayFileName } from './libraryItemPresentation';
+import {
+  getLibraryDisplayFileName,
+  isLibraryWebsiteItem,
+} from './libraryItemPresentation';
 
 const makeSharedFile = (overrides: Partial<SharedFileItem> = {}): SharedFileItem => ({
   itemKind: LibraryItemKind.SharedFile,
@@ -22,6 +25,12 @@ const makeSharedFile = (overrides: Partial<SharedFileItem> = {}): SharedFileItem
 });
 
 describe('library item presentation', () => {
+  test('reserves the website icon for deployed sites', () => {
+    expect(isLibraryWebsiteItem({ itemKind: LibraryItemKind.DeployedSite })).toBe(true);
+    expect(isLibraryWebsiteItem({ itemKind: LibraryItemKind.LocalArtifact })).toBe(false);
+    expect(isLibraryWebsiteItem({ itemKind: LibraryItemKind.SharedFile })).toBe(false);
+  });
+
   test('restores the original Unicode title for legacy sanitized cloud entries', () => {
     const item = makeSharedFile({
       title: '员工信息表.xlsx',

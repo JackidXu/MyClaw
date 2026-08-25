@@ -137,6 +137,15 @@ export interface LibraryLocalListData {
   counts: LibraryLocalCounts;
 }
 
+export interface LibraryGetLocalItemsInput {
+  itemIds: string[];
+}
+
+export interface LibraryGetLocalItemsData {
+  items: LocalArtifactItem[];
+  unavailableItemIds: string[];
+}
+
 export interface LibraryCloudListOptions {
   kind?: LibraryCloudKind;
   category?: LibraryCategory;
