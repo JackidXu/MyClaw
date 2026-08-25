@@ -1,6 +1,7 @@
 import { configureStore } from '@reduxjs/toolkit';
 
 import enterpriseAccountReducer from '../features/enterpriseAccount/enterpriseAccountSlice';
+import { libraryArtifactListener } from './libraryArtifactListener';
 import agentReducer from './slices/agentSlice';
 import artifactReducer from './slices/artifactSlice';
 import asrQuotaReducer from './slices/asrQuotaSlice';
@@ -30,6 +31,9 @@ export const store = configureStore({
     artifact: artifactReducer,
     kit: kitReducer,
   },
+  middleware: getDefaultMiddleware => (
+    getDefaultMiddleware().prepend(libraryArtifactListener.middleware)
+  ),
 });
 
 export type RootState = ReturnType<typeof store.getState>;
