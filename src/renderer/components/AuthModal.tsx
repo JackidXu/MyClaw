@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 
 import { configService } from '../services/config';
+import { getServerApiBaseUrl } from '../services/endpoints';
 import { fetchAndFilterOneApiChatModels } from '../services/oneapiModels';
 import { vipService } from '../services/vipService';
 
@@ -46,7 +47,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
         console.warn('Failed to clear browser cookies on submit:', cookieErr);
       }
 
-      const adminBaseUrl = 'https://admin.claw.chaohui.ai';
+      const adminBaseUrl = getServerApiBaseUrl();
 
       if (!isLogin) {
         // 1. 注册逻辑

@@ -6,6 +6,7 @@ import { useSelector } from 'react-redux';
 import { agentService } from '../services/agent';
 import { configService } from '../services/config';
 import { coworkService } from '../services/cowork';
+import { getUserProfileUrl } from '../services/endpoints';
 import { i18nService } from '../services/i18n';
 import { LogReporterAction, reportYdAnalyzer } from '../services/logReporter';
 import { fetchCognitionStats } from '../services/secondBrainApi';
@@ -317,30 +318,21 @@ const Sidebar: React.FC<SidebarProps> = ({
       let remainQuota = 0;
 
       const fetchPromise = (async () => {
-        const currentConfig = configService.getConfig();
-        const oneapiConfig = (currentConfig.providers?.['oneapi'] || {}) as any;
-        const oneapiBaseUrl = oneapiConfig.baseUrl || 'https://token.chaohui.ai';
-        
-        // 自动剥离末尾的 /v1 或 /v1/ 以匹配管理自查接口
-        const cleanBaseUrl = oneapiBaseUrl.replace(/\/v1\/?$/, '').replace(/\/+$/, '');
-        const targetUrl = `${cleanBaseUrl}/api/user/self`;
-        const headers = {
-          'Cookie': session,
-          'New-Api-User': String(userId)
-        };
+        const targetUrl = getUserProfileUrl(userId);
 
-        // 客户端直接直连 New API 查询个人余额和信息
+        // 统一通过管理后台后端代理查询用户最新配额与昵称
         const selfResp = await window.electron.api.fetch({
           url: targetUrl,
           method: 'GET',
-          headers: headers
+          headers: {
+            'Content-Type': 'application/json'
+          }
         }) as { ok: boolean; status?: number; data?: any };
 
         if (selfResp.ok && selfResp.data && selfResp.data.success) {
           const userProfile = selfResp.data.data;
-          // 根据 New API 官方定义，用户的当前可用剩余配额即为 quota 字段
-          remainQuota = Number(userProfile.quota || 0);
-          const dispName = userProfile.display_name || userProfile.username || 'HeyClaw 用户';
+          remainQuota = Number(userProfile?.quota || 0);
+          const dispName = userProfile?.displayName || userProfile?.username || 'HeyClaw 用户';
           const savedName = localStorage.getItem('heyclaw_user_name');
           if (!savedName) {
             localStorage.setItem('heyclaw_user_name', dispName);
@@ -348,19 +340,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             setEditNickname(dispName);
           }
         } else {
-          // 提取错误原因 (安全获取 message，避免 TypeError)
-          const errorMsg = selfResp.data?.message || 
-                           (typeof selfResp.data?.error === 'string' ? selfResp.data.error : selfResp.data?.error?.message) || 
-                           '请求未成功';
-
-          // 仅在明确返回 401 身份校验失效，或返回明确的未授权信息时才清空凭证并重新登录
-          const isUnauthorized = selfResp.status === 401 || errorMsg.includes('Unauthorized') || errorMsg.includes('对话令牌');
-          if (isUnauthorized) {
-            localStorage.removeItem('heyclaw_api_key');
-            localStorage.removeItem('heyclaw_user_id');
-            localStorage.removeItem('heyclaw_session');
-            onShowLoginRef.current?.();
-          }
+          const errorMsg = selfResp.data?.error || selfResp.data?.message || '获取用户信息失败';
           throw new Error(errorMsg);
         }
       })();
