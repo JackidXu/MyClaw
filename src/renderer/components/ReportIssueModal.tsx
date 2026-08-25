@@ -60,14 +60,14 @@ const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ onClose }) => {
 
   // 上传文件至 OSS
   const uploadFile = async (file: File): Promise<string | null> => {
-    const token = localStorage.getItem('heyclaw_session') || '';
+    const apiKey = localStorage.getItem('heyclaw_api_key') || '';
     const targetUrl = getUploadUrl('feedback', file.name);
 
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open('POST', targetUrl, true);
-      if (token) {
-        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      if (apiKey) {
+        xhr.setRequestHeader('Authorization', `Bearer ${apiKey}`);
       }
 
       xhr.onload = () => {
@@ -169,7 +169,7 @@ const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ onClose }) => {
 
     setSubmitting(true);
     try {
-      const session = localStorage.getItem('heyclaw_session') || '';
+      const apiKey = localStorage.getItem('heyclaw_api_key') || '';
       const userId = localStorage.getItem('heyclaw_user_id') || '';
       const nickname =
         localStorage.getItem('heyclaw_user_name') ||
@@ -190,7 +190,7 @@ const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ onClose }) => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(session ? { Authorization: `Bearer ${session}` } : {}),
+          ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
         },
         body: JSON.stringify(payload),
       });

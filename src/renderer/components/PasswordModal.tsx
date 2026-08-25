@@ -53,11 +53,11 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({ isOpen, onClose, o
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
-          userId: Number(userId),
           oldPassword: oldPassword.trim(),
-          newPassword: newPassword.trim()
+          newPassword: newPassword.trim(),
         }),
       }) as any;
 

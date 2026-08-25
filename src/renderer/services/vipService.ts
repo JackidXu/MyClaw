@@ -68,9 +68,9 @@ class VipService {
 
   public async refreshStatus(): Promise<VipStatusState> {
     const userIdStr = localStorage.getItem('heyclaw_user_id');
-    const session = localStorage.getItem('heyclaw_session');
+    const apiKey = localStorage.getItem('heyclaw_api_key');
 
-    if (!userIdStr || !session) {
+    if (!userIdStr || !apiKey) {
       this.state = {
         authorized: false,
         subscriptions: [],
@@ -106,13 +106,14 @@ class VipService {
       const res = (await window.electron.api.fetch({
         url: `${adminBaseUrl}/api/vip/status`,
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
         body: JSON.stringify({
-          userId,
           deviceId: deviceInfo.deviceId,
           platform: deviceInfo.platform,
           hostname: deviceInfo.hostname,
-          session,
         }),
       })) as any;
 

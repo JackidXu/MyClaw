@@ -307,9 +307,8 @@ const Sidebar: React.FC<SidebarProps> = ({
     const minDelayPromise = new Promise((resolve) => setTimeout(resolve, 800));
     try {
       const apiKey = localStorage.getItem('heyclaw_api_key');
-      const session = localStorage.getItem('heyclaw_session');
       const userId = localStorage.getItem('heyclaw_user_id');
-      if (!apiKey || !session || !userId) {
+      if (!apiKey || !userId) {
         await minDelayPromise;
         onShowLoginRef.current?.();
         return;
@@ -318,14 +317,15 @@ const Sidebar: React.FC<SidebarProps> = ({
       let remainQuota = 0;
 
       const fetchPromise = (async () => {
-        const targetUrl = getUserProfileUrl(userId);
+        const targetUrl = getUserProfileUrl();
 
-        // 统一通过管理后台后端代理查询用户最新配额与昵称
+        // 统一通过管理后台后端代理查询用户最新配额与昵称（携带 sk- 凭据防越权）
         const selfResp = await window.electron.api.fetch({
           url: targetUrl,
           method: 'GET',
           headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
           }
         }) as { ok: boolean; status?: number; data?: any };
 
@@ -366,9 +366,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   // 从 localStorage 加载配置
   useEffect(() => {
     const apiKey = localStorage.getItem('heyclaw_api_key');
-    const session = localStorage.getItem('heyclaw_session');
     const userId = localStorage.getItem('heyclaw_user_id');
-    if (!apiKey || !session || !userId) {
+    if (!apiKey || !userId) {
       onShowLoginRef.current?.();
       const currentConfig = configService.getConfig();
       const currentOneapi = (currentConfig.providers?.['oneapi'] || {}) as any;

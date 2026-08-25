@@ -40,13 +40,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
         throw new Error('注册需要输入有效的激活码');
       }
 
-      // 无论登录还是注册，先清空浏览器原存的 Cookie 缓存，防止旧账号 Session 凭证干扰
-      try {
-        await window.electron.artifact.clearBrowserCookies();
-      } catch (cookieErr) {
-        console.warn('Failed to clear browser cookies on submit:', cookieErr);
-      }
-
       const adminBaseUrl = getServerApiBaseUrl();
 
       if (!isLogin) {
@@ -84,15 +77,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
 
       const userId = loginRes.data.data?.id;
       const apiKey = loginRes.data.data?.token; // 后端已代管生成好的完整明文 sk- 令牌
-      const session = loginRes.data.data?.session; // 后端返回的会话 Cookie
+      const session = loginRes.data.data?.session || '';
 
-      if (!userId || !apiKey || !session) {
-        throw new Error('登录成功，但未解析到有效的对话令牌或会话凭证');
+      if (!userId || !apiKey) {
+        throw new Error('登录成功，但未解析到有效的对话令牌');
       }
 
-      // 保存用户 ID、会话凭证和最权威的对话令牌 heyclaw_api_key
+      // 保存用户 ID 与对话令牌 heyclaw_api_key
       localStorage.setItem('heyclaw_user_id', String(userId));
-      localStorage.setItem('heyclaw_session', session);
+      if (session) {
+        localStorage.setItem('heyclaw_session', session);
+      }
       
       const formattedKey = apiKey.startsWith('sk-') ? apiKey : `sk-${apiKey}`;
       localStorage.setItem('heyclaw_api_key', formattedKey);

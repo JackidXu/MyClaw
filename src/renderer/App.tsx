@@ -521,10 +521,9 @@ const App: React.FC = () => {
       let oneapiBaseUrl = oneapiConfig?.baseUrl?.trim() || 'https://token.chaohui.ai/v1';
 
       const apiKey = localStorage.getItem('heyclaw_api_key');
-      const session = localStorage.getItem('heyclaw_session');
       const userId = localStorage.getItem('heyclaw_user_id');
-      // 与运行时 Sidebar 的判断逻辑保持一致：三个凭证必须同时存在才视为已登录
-      let activated = !!(apiKey && session && userId);
+      // 基于核心凭证 apiKey 与 userId 判定登录态
+      let activated = !!(apiKey && userId);
 
       if (activated && oneapiKey) {
         try {

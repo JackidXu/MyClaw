@@ -29,9 +29,9 @@ export const getKitStoreUrl = () => `${getServerApiBaseUrl()}/api/kits`;
 // 快速发问
 export const getQuickActionsUrl = () => `${getServerApiBaseUrl()}/api/quick-actions`;
 
-// 用户个人信息与余额
-export const getUserProfileUrl = (userId: string | number) =>
-  `${getServerApiBaseUrl()}/api/client/user-profile?userId=${encodeURIComponent(String(userId))}`;
+// 用户个人信息与余额 (基于 Bearer 令牌鉴权)
+export const getUserProfileUrl = () =>
+  `${getServerApiBaseUrl()}/api/client/user-profile`;
 
 // 修改密码
 export const getChangePasswordUrl = () =>
