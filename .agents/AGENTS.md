@@ -136,4 +136,16 @@ HeyClaw 采用双后端支撑体系：
   - **方案更替彻底清理**：方案迭代或更换时，必须第一时间彻底清理上一个方案留下的所有非相关废代码与临时字段，不留历史债。
   - **真实严谨解决问题**：所有的功能设计与 Bug 修复必须基于确定性规范与确凿证据，严禁在未排查真实病因前凭空盲猜或采用硬编码/篡改产物等反模式手段。
 
+### 2.13 现成公共封装优先复用与公用逻辑下沉准则 (Reusability & Common Module Priority)
+- **公共能力优先检索与复用**：
+  在编写任何新功能或修复问题前，**必须先检索项目中是否已有现成的公共封装与工具层**，严禁在业务组件中重新手写底层逻辑或重复造轮子：
+  - **网络与文件上传**：优先复用 `src/renderer/services/httpClient.ts`（统一支持通用请求、文件上传与全局 401/10001 拦截）；
+  - **业务 API 端点**：优先在 `src/renderer/services/endpoints.ts` 与 `src/main/libs/endpoints.ts` 统一声明与获取；
+  - **应用配置读写**：优先复用 `src/renderer/services/config.ts` 中的 `configService`；
+  - **管理与独立页面排版规范**：优先复用 `src/renderer/components/common/managementTypography.ts`（`MANAGEMENT_PAGE_TITLE_TEXT`、`MANAGEMENT_BODY_TEXT` 等）；
+  - **弹窗与通用 UI 部件**：优先复用 `src/renderer/components/common/Modal.tsx` 等通用组件。
+- **公用逻辑及时抽取与下沉（Extract Once, Reuse Everywhere）**：
+  - 当在不同业务组件、页面或服务中发现存在 **2 处及以上相似的逻辑**（如同一类业务的 API 请求、数据格式化、轮询定时器、弹窗模版等），**必须第一时间将其抽取下沉至对应的 Service / Helper / Component 公共层**，禁止多处复制粘贴；
+  - 遇到需要新增领域能力时，严格遵循 `UI Component -> Domain Service (如 billingService / tradeService) -> httpClient` 的分层架构，保持每一层纯粹透明。
+
 
