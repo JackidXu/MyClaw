@@ -9,7 +9,7 @@
  *   - Authorization: Bearer <session> (取 localStorage.heyclaw_session)
  */
 
-import { handleUnauthorized } from './httpClient';
+import { httpClient } from './httpClient';
 
 /** 动态获取接口基础域名（import.meta.env.DEV 在开发环境为 true，打包后为 false） */
 const getBaseUrl = () =>
@@ -145,14 +145,6 @@ export const MATERIAL_TAB_TYPE: Record<string, string> = {
   '对话': 'chat',
 };
 
-/** 读取认证请求头，从 localStorage 取长效用户访问令牌 */
-function buildAuthHeaders(): Record<string, string> {
-  const session = localStorage.getItem('heyclaw_session') ?? '';
-  return {
-    'Authorization': `Bearer ${session}`,
-  };
-}
-
 /** 构建完整 URL */
 function buildUrl(path: string): string {
   const base = getBaseUrl().replace(/\/+$/, '');
@@ -167,36 +159,15 @@ function buildUrl(path: string): string {
  */
 async function get<T>(path: string): Promise<T> {
   const url = buildUrl(path);
-  const headers = buildAuthHeaders();
-
-  const resp = await (window.electron.api.fetch as (opts: {
-    url: string;
-    method: string;
-    headers: Record<string, string>;
-  }) => Promise<{ ok: boolean; status: number; data: unknown }>)({
-    url,
-    method: 'GET',
-    headers,
-  });
+  const resp = await httpClient.get<SecondBrainResponse<T>>(url);
 
   if (!resp.ok) {
-    if (resp.status === 401 || resp.status === 403) {
-      handleUnauthorized();
-    }
     throw new Error(`[SecondBrainApi] 请求失败 ${resp.status}: ${url}`);
   }
 
-  const body = resp.data as SecondBrainResponse<T>;
-  if (body.status !== 'success' || body.code !== 1) {
-    if (
-      body.code === 10001 ||
-      body.code === 401 ||
-      body.message?.includes('认证失败') ||
-      body.message?.includes('未登录')
-    ) {
-      handleUnauthorized();
-    }
-    throw new Error(`[SecondBrainApi] 业务错误: ${body.message ?? '未知错误'}`);
+  const body = resp.data;
+  if (!body || body.status !== 'success' || body.code !== 1) {
+    throw new Error(`[SecondBrainApi] 业务错误: ${body?.message ?? '未知错误'}`);
   }
 
   return body.data;
@@ -207,41 +178,15 @@ async function get<T>(path: string): Promise<T> {
  */
 async function post<T>(path: string, payload?: unknown): Promise<T> {
   const url = buildUrl(path);
-  const headers: Record<string, string> = {
-    ...buildAuthHeaders(),
-    'Content-Type': 'application/json',
-  };
-
-  const resp = await (window.electron.api.fetch as (opts: {
-    url: string;
-    method: string;
-    headers: Record<string, string>;
-    body?: string;
-  }) => Promise<{ ok: boolean; status: number; data: unknown }>)({
-    url,
-    method: 'POST',
-    headers,
-    body: payload !== undefined ? JSON.stringify(payload) : undefined,
-  });
+  const resp = await httpClient.post<SecondBrainResponse<T>>(url, payload);
 
   if (!resp.ok) {
-    if (resp.status === 401 || resp.status === 403) {
-      handleUnauthorized();
-    }
     throw new Error(`[SecondBrainApi] 请求失败 ${resp.status}: ${url}`);
   }
 
-  const body = resp.data as SecondBrainResponse<T>;
-  if (body.status !== 'success' || body.code !== 1) {
-    if (
-      body.code === 10001 ||
-      body.code === 401 ||
-      body.message?.includes('认证失败') ||
-      body.message?.includes('未登录')
-    ) {
-      handleUnauthorized();
-    }
-    throw new Error(`[SecondBrainApi] 业务错误: ${body.message ?? '未知错误'}`);
+  const body = resp.data;
+  if (!body || body.status !== 'success' || body.code !== 1) {
+    throw new Error(`[SecondBrainApi] 业务错误: ${body?.message ?? '未知错误'}`);
   }
 
   return body.data;

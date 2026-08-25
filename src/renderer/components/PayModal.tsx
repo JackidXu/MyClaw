@@ -1,8 +1,8 @@
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import React, { useEffect, useRef, useState } from 'react';
 
-import { handleUnauthorized } from '../services/httpClient';
 import { i18nService } from '../services/i18n';
+import { createPayOrder, fetchRechargeSpecs, queryPayStatus, RechargeSpecItem } from '../services/tradeService';
 import Modal from './common/Modal';
 
 // 局部的简易双语函数，避免污染全局 i18n
@@ -15,19 +15,12 @@ interface PayModalProps {
   onSuccess: () => void;
 }
 
-interface SpecItem {
-  version_id: number;
-  name: string;
-  amount: number;
-  [key: string]: any;
-}
-
 const PayModal: React.FC<PayModalProps> = ({ onClose, onSuccess }) => {
-  const [specs, setSpecs] = useState<SpecItem[]>([]);
-  const [selectedSpec, setSelectedSpec] = useState<SpecItem | null>(null);
-  const payChannel = 2; // 当前仅支持支付宝
+  const [specs, setSpecs] = useState<RechargeSpecItem[]>([]);
+  const [selectedSpec, setSelectedSpec] = useState<RechargeSpecItem | null>(null);
+  const payChannel: 1 | 2 = 2; // 2: 支付宝
   
-  const [loadingSpecs, setLoadingSpecs] = useState(false);
+  const [loadingSpecs, setLoadingSpecs] = useState(true);
   const [loadingQRCode, setLoadingQRCode] = useState(false);
   const [qrcodeUrl, setQrcodeUrl] = useState<string | null>(null);
   const [orderId, setOrderId] = useState<number | string | null>(null);
@@ -36,27 +29,19 @@ const PayModal: React.FC<PayModalProps> = ({ onClose, onSuccess }) => {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const checkStatusIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-
-  const fetchSpecs = async () => {
+  // 1. 获取规格列表
+  const loadSpecs = async () => {
     setLoadingSpecs(true);
     setErrorMessage(null);
     try {
-      const res = await window.electron.api.fetch({
-        url: 'https://zhike.banchengyun.com/api/chaohuixie/claw/trade/versionList',
-        method: 'GET',
-        headers: {},
-      }) as { ok: boolean; data?: any };
-
-      if (res.ok && res.data && res.data.code === 1) {
-        const specList: SpecItem[] = res.data.data || [];
-        setSpecs(specList);
-        if (specList.length > 0) {
-          setSelectedSpec(specList[0]);
-        }
+      const res = await fetchRechargeSpecs();
+      if (res.success && res.data.length > 0) {
+        setSpecs(res.data);
+        setSelectedSpec(res.data[0]);
       } else {
-        setErrorMessage(res.data?.message || t('获取充值规格失败', 'Failed to fetch recharge specs'));
+        setErrorMessage(res.error || t('获取充值规格失败', 'Failed to fetch recharge specs'));
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error('[PayModal] fetchSpecs error:', e);
       setErrorMessage(t('网络请求失败，请检查网络连接', 'Network error, please check connection'));
     } finally {
@@ -65,10 +50,9 @@ const PayModal: React.FC<PayModalProps> = ({ onClose, onSuccess }) => {
   };
 
   // 2. 发起下单请求
-  const handlePay = async (specId: number, channel: 1 | 2) => {
+  const handlePay = async (specId: number, payChannel: 1 | 2) => {
     const userId = localStorage.getItem('heyclaw_user_id');
     if (!userId) {
-      handleUnauthorized();
       setErrorMessage(t('未检测到登录凭证，请重新登录', 'Login credentials missing, please login again'));
       return;
     }
@@ -85,33 +69,19 @@ const PayModal: React.FC<PayModalProps> = ({ onClose, onSuccess }) => {
     }
 
     try {
-      const res = await window.electron.api.fetch({
-        url: 'https://zhike.banchengyun.com/api/chaohuixie/claw/trade/pay',
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          versionId: specId,
-          payChannel: channel,
-          goodsAttach: Number(userId),
-        }),
-      }) as { ok: boolean; data?: any };
+      const res = await createPayOrder({
+        versionId: specId,
+        payChannel,
+        userId,
+      });
 
-      if (res.ok && res.data && res.data.code === 1) {
-        const payData = res.data.data || {};
-        const url = payData.qrcode_url;
-        const id = payData.order_id;
-
-        setQrcodeUrl(url);
-        setOrderId(id);
+      if (res.success && res.data) {
+        setQrcodeUrl(res.data.qrcode_url);
+        setOrderId(res.data.order_id);
       } else {
-        if (res.data?.code === 10001 || res.data?.message?.includes('未登录') || res.data?.message?.includes('认证失败')) {
-          handleUnauthorized();
-        }
-        setErrorMessage(res.data?.message || t('获取付款码失败，请重试', 'Failed to get payment code, please retry'));
+        setErrorMessage(res.error || t('获取付款码失败，请重试', 'Failed to get payment code, please retry'));
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error('[PayModal] handlePay error:', e);
       setErrorMessage(t('下单失败，请检查网络', 'Failed to create order, please check network'));
     } finally {
@@ -127,34 +97,26 @@ const PayModal: React.FC<PayModalProps> = ({ onClose, onSuccess }) => {
 
     const checkStatus = async () => {
       try {
-        const query = new URLSearchParams({ orderId: String(id) }).toString();
-        const res = await window.electron.api.fetch({
-          url: `https://zhike.banchengyun.com/api/chaohuixie/claw/trade/payState?${query}`,
-          method: 'GET',
-          headers: {},
-        }) as { ok: boolean; data?: any };
-
-        if (res.ok && res.data && res.data.code === 1) {
-          const statusData = res.data.data || {};
-          const status = statusData.payment_status;
-          
-          if (status === 1) {
-            // 支付成功
-            if (checkStatusIntervalRef.current) {
-              clearInterval(checkStatusIntervalRef.current);
-            }
-            window.dispatchEvent(new CustomEvent('app:showToast', {
-              detail: t('🎉 充值成功！点数已自动刷新。', '🎉 Recharge successful! Balance refreshed.'),
-            }));
-            onSuccess();
-            onClose();
+        const res = await queryPayStatus(id);
+        if (res.success && res.paymentStatus === 1) {
+          // 支付成功
+          if (checkStatusIntervalRef.current) {
+            clearInterval(checkStatusIntervalRef.current);
           }
+          window.dispatchEvent(
+            new CustomEvent('app:showToast', {
+              detail: t('🎉 充值成功！点数已自动刷新。', '🎉 Recharge successful! Balance refreshed.'),
+            }),
+          );
+          onSuccess();
+          onClose();
         }
       } catch (e) {
-        console.error('[PayModal] Poll pay state error:', e);
+        console.error('[PayModal] polling status error:', e);
       }
     };
 
+    checkStatus();
     // 2.5 秒轮询一次
     checkStatusIntervalRef.current = setInterval(checkStatus, 2500);
   };
@@ -186,7 +148,7 @@ const PayModal: React.FC<PayModalProps> = ({ onClose, onSuccess }) => {
 
   // 组件挂载时获取规格列表
   useEffect(() => {
-    void fetchSpecs();
+    void loadSpecs();
     return () => {
       if (checkStatusIntervalRef.current) {
         clearInterval(checkStatusIntervalRef.current);
@@ -195,7 +157,7 @@ const PayModal: React.FC<PayModalProps> = ({ onClose, onSuccess }) => {
   }, []);
 
   // 切换规格或渠道时自动下单
-  const handleSpecSelect = (spec: SpecItem) => {
+  const handleSpecSelect = (spec: RechargeSpecItem) => {
     setSelectedSpec(spec);
     void handlePay(spec.version_id, payChannel);
   };

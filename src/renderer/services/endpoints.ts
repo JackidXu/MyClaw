@@ -6,7 +6,7 @@
 import { configService } from './config';
 
 export const isTestModeEnabled = () => {
-  return configService.getConfig().app?.testMode === true;
+  return import.meta.env.DEV || configService.getConfig().app?.testMode === true;
 };
 
 // 自动更新

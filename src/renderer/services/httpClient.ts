@@ -52,9 +52,13 @@ export class HttpClient {
     const { url, method = 'GET', headers = {}, body, skipAuth = false, skip401Handler = false } = options;
 
     const finalHeaders: Record<string, string> = {
-      'Content-Type': 'application/json',
       ...headers,
     };
+
+    // 若非 GET 请求且有 body 且未显式指定 Content-Type，默认为 JSON
+    if (method !== 'GET' && body !== undefined && !finalHeaders['Content-Type'] && !finalHeaders['content-type']) {
+      finalHeaders['Content-Type'] = 'application/json';
+    }
 
     if (!skipAuth && !finalHeaders['Authorization'] && !finalHeaders['authorization']) {
       const session = localStorage.getItem('heyclaw_session');
@@ -78,14 +82,15 @@ export class HttpClient {
 
       const status = resp.status || (resp.ok ? 200 : 500);
 
-      // 401 / 403 及业务未授权包体拦截处理
+      // 全局未授权识别：401/403 状态码、PHP 业务状态码 10001、或包体明确提示未授权/未登录
       const data = resp.data;
       const isAuthErrorBody =
         data &&
         typeof data === 'object' &&
         ((data.success === false && (data.error?.includes('未授权') || data.error?.includes('请先登录') || data.message?.includes('未授权') || data.message?.includes('请先登录'))) ||
           data.code === 10001 ||
-          data.code === 401);
+          data.code === 401 ||
+          (typeof data.message === 'string' && (data.message.includes('认证失败') || data.message.includes('未登录'))));
 
       if ((status === 401 || status === 403 || isAuthErrorBody) && !skip401Handler) {
         handleUnauthorized();
@@ -120,6 +125,79 @@ export class HttpClient {
 
   public delete<T = any>(url: string, headers?: Record<string, string>): Promise<ApiResponse<T>> {
     return this.request<T>({ url, method: 'DELETE', headers });
+  }
+
+  /**
+   * 通用二进制/文件上传方法 (支持附带用户凭据及自动未授权拦截)
+   */
+  public async uploadFile<T = any>(
+    url: string,
+    file: File | Blob,
+    options?: {
+      headers?: Record<string, string>;
+      skipAuth?: boolean;
+    },
+  ): Promise<ApiResponse<T>> {
+    return new Promise((resolve) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', url, true);
+
+      const headers: Record<string, string> = {
+        'Content-Type': file.type || 'application/octet-stream',
+        ...(options?.headers || {}),
+      };
+
+      if (!options?.skipAuth && !headers['Authorization']) {
+        const session = localStorage.getItem('heyclaw_session');
+        if (session) {
+          headers['Authorization'] = `Bearer ${session}`;
+        }
+      }
+
+      Object.entries(headers).forEach(([k, v]) => {
+        xhr.setRequestHeader(k, v);
+      });
+
+      xhr.onload = () => {
+        let parsedData: any = null;
+        try {
+          parsedData = JSON.parse(xhr.responseText);
+        } catch {
+          parsedData = xhr.responseText;
+        }
+
+        const isSuccess = xhr.status >= 200 && xhr.status < 300;
+        const isAuthError =
+          xhr.status === 401 ||
+          xhr.status === 403 ||
+          (parsedData &&
+            typeof parsedData === 'object' &&
+            (parsedData.code === 10001 ||
+              parsedData.code === 401 ||
+              parsedData.error?.includes('未授权') ||
+              parsedData.error?.includes('请先登录')));
+
+        if (isAuthError) {
+          handleUnauthorized();
+        }
+
+        resolve({
+          ok: isSuccess,
+          status: xhr.status,
+          data: parsedData,
+        });
+      };
+
+      xhr.onerror = () => {
+        resolve({
+          ok: false,
+          status: 0,
+          data: { success: false, error: '网络请求异常，请检查网络连接' } as any,
+        });
+      };
+
+      xhr.send(file);
+    });
   }
 }
 
