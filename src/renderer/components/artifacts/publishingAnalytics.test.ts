@@ -36,6 +36,8 @@ describe('publishing analytics', () => {
       operationType: PublishingAnalyticsOperationType.Create,
       source: ArtifactPreviewActionSource.LibraryList,
       entryPoint: ArtifactPublishEntryPoint.LibraryMenu,
+      surface: 'my_files',
+      pageViewId: 'page-view-1',
       hasExistingResource: false,
     });
     const dialog = createPublishingAnalyticsDialog(
@@ -64,6 +66,8 @@ describe('publishing analytics', () => {
     expect(calls[0][0]).toMatchObject({
       attemptId: attempt.attemptId,
       exposureId: dialog.exposureId,
+      surface: 'my_files',
+      pageViewId: 'page-view-1',
       quotaUsed: 2,
       quotaLimit: 10,
       trialAccessTtlSeconds: 7200,
@@ -72,6 +76,7 @@ describe('publishing analytics', () => {
       attemptId: attempt.attemptId,
       exposureId: dialog.exposureId,
       target: PublishingAnalyticsTarget.Continue,
+      dialogVisibleMs: expect.any(Number),
     });
     expect(JSON.stringify(calls)).not.toContain('filePath');
     expect(JSON.stringify(calls)).not.toContain('shareCode');

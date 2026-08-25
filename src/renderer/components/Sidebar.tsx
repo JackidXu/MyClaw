@@ -34,7 +34,6 @@ import ComposeIcon from './icons/ComposeIcon';
 import SidebarAutomationIcon from './icons/SidebarAutomationIcon';
 import SidebarKitsIcon from './icons/SidebarKitsIcon';
 import SidebarLibraryIcon from './icons/SidebarLibraryIcon';
-import SidebarSitesIcon from './icons/SidebarSitesIcon';
 import SidebarToggleIcon from './icons/SidebarToggleIcon';
 import SkillIcon from './icons/SkillIcon';
 import TrashIcon from './icons/TrashIcon';
@@ -44,13 +43,12 @@ import SidebarExperienceSlot from './SidebarExperienceSlot';
 interface SidebarProps {
   onShowSettings: () => void;
   onShowLogin?: () => void;
-  activeView: 'cowork' | 'skills' | 'scheduledTasks' | 'kits' | 'mcp' | 'library' | 'sites';
+  activeView: 'cowork' | 'skills' | 'scheduledTasks' | 'kits' | 'mcp' | 'library';
   onShowSkills: () => void;
   onShowCowork: () => void;
   onShowScheduledTasks: () => void;
   onShowKits: () => void;
   onShowLibrary: () => void;
-  onShowSites: () => void;
   onNewChat: () => void;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
@@ -64,7 +62,6 @@ interface SidebarProps {
    * promo banner while preserving it for a smooth return after collapse. */
   hideAdBanner?: boolean;
   hideLogin?: boolean;
-  hideSites?: boolean;
 }
 
 const DEFAULT_SIDEBAR_WIDTH = 244;
@@ -161,7 +158,6 @@ const Sidebar: React.FC<SidebarProps> = ({
   onShowScheduledTasks,
   onShowKits,
   onShowLibrary,
-  onShowSites,
   onNewChat,
   isCollapsed,
   onToggleCollapse,
@@ -173,7 +169,6 @@ const Sidebar: React.FC<SidebarProps> = ({
   updateNotice,
   hideAdBanner,
   hideLogin,
-  hideSites,
 }) => {
   const currentAgentId = useSelector((state: RootState) => state.agent.currentAgentId);
   const agents = useSelector((state: RootState) => state.agent.agents);
@@ -668,21 +663,6 @@ const Sidebar: React.FC<SidebarProps> = ({
             <SidebarLibraryIcon className="h-4 w-4 shrink-0" />
             <span className="min-w-0 truncate">{i18nService.t('librarySidebarTitle')}</span>
           </button>
-          {!hideSites && (
-            <button
-              type="button"
-              onClick={() => {
-                reportSidebarAction('open_sites', { activeView, isCollapsed });
-                setIsSearchOpen(false);
-                onShowSites();
-              }}
-              className={activeView === 'sites' ? activeSidebarNavItemClassName : sidebarNavItemClassName}
-              aria-current={activeView === 'sites' ? 'page' : undefined}
-            >
-              <SidebarSitesIcon className="h-4 w-4 shrink-0" />
-              {i18nService.t('sitesTitle')}
-            </button>
-          )}
         </div>
       </div>
       <div className="relative min-h-0 flex-1">

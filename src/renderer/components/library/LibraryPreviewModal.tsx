@@ -53,6 +53,7 @@ import FileTypeIcon from '../icons/fileTypes/FileTypeIcon';
 import ShareUploadIcon from '../icons/ShareUploadIcon';
 import Tooltip, { TooltipAlign, TooltipPosition } from '../ui/Tooltip';
 import { LIBRARY_ACTION_MENU_WIDTH_PX } from './libraryActionMenuPresentation';
+import { LibraryAnalyticsSurface } from './libraryAnalytics';
 import { createLibraryArtifactCandidate } from './libraryArtifactCandidate';
 import {
   getLibraryPreviewActionIds,
@@ -66,6 +67,7 @@ import {
 
 interface LibraryPreviewModalProps {
   item: LibraryItem;
+  analyticsPageViewId: string;
   detail: LibraryLocalDetailData | null;
   detailLoading: boolean;
   onClose: () => void;
@@ -169,6 +171,7 @@ const PreviewHeaderAction: React.FC<PreviewHeaderActionProps> = ({
 
 const LibraryPreviewModalContent: React.FC<LibraryPreviewModalProps> = ({
   item,
+  analyticsPageViewId,
   detail,
   detailLoading,
   onClose,
@@ -245,6 +248,8 @@ const LibraryPreviewModalContent: React.FC<LibraryPreviewModalProps> = ({
     void artifactFileShare.openShare(artifact, {
       source: ArtifactPreviewActionSource.LibraryPreview,
       entryPoint: ArtifactPublishEntryPoint.LibraryToolbar,
+      surface: LibraryAnalyticsSurface.MyFiles,
+      pageViewId: analyticsPageViewId,
     });
   };
 
@@ -314,7 +319,9 @@ const LibraryPreviewModalContent: React.FC<LibraryPreviewModalProps> = ({
                 : i18nService.t('libraryAddFavorite')}
               onClick={onToggleFavorite}
               aria-pressed={item.isFavorite}
-              className={item.isFavorite ? 'text-amber-500 hover:text-amber-500' : ''}
+              className={item.isFavorite
+                ? 'bg-amber-500/10 !text-amber-500 hover:bg-amber-500/15 hover:!text-amber-500'
+                : ''}
             >
               {item.isFavorite
                 ? <StarSolidIcon className="h-4 w-4" />

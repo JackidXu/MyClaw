@@ -134,6 +134,8 @@ interface ArtifactFileShareControllerValue {
 interface ArtifactFileShareOpenContext {
   source: ArtifactPreviewActionSourceValue;
   entryPoint: ArtifactPublishEntryPointValue;
+  surface?: string;
+  pageViewId?: string;
 }
 
 interface ArtifactFileShareProviderProps {
@@ -702,6 +704,8 @@ export function ArtifactFileShareProvider({ sessionId, children }: ArtifactFileS
         operationType: PublishingAnalyticsOperationType.Unknown,
         source: context.source,
         entryPoint: context.entryPoint,
+        surface: context.surface,
+        pageViewId: context.pageViewId,
       });
       analyticsAttemptRef.current = analyticsAttempt;
       reportPublishingEntryAction(analyticsAttempt);

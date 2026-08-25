@@ -36,6 +36,7 @@ import { decryptSecret, decryptWithPassword, EncryptedPayload, encryptWithPasswo
 import { i18nService, LanguageType } from '../services/i18n';
 import { imService } from '../services/im';
 import { LogReporterAction, reportYdAnalyzer } from '../services/logReporter';
+import { clearPendingPublishingConversionAttribution } from '../services/publishingConversionAttribution';
 import { formatShortcutForDisplay, getShortcutConflictSignature, isTextEditingSafeShortcut, matchesShortcut } from '../services/shortcuts';
 import {
   type ThemeDefaultChangedDetail,
@@ -3467,6 +3468,10 @@ const Settings: React.FC<SettingsProps> = ({
           testMode,
         },
       });
+
+      if (!usageAnalyticsEnabled) {
+        clearPendingPublishingConversionAttribution();
+      }
 
       if (previousArtifactAutoPreviewEnabled !== artifactAutoPreviewEnabled) {
         console.log(

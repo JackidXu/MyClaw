@@ -5,6 +5,7 @@ import {
 } from '@shared/publishing/constants';
 
 import { LogReporterAction, reportYdAnalyzer } from '@/services/logReporter';
+import { rememberPublishingConversionAttribution } from '@/services/publishingConversionAttribution';
 
 import {
   type ArtifactPreviewActionSource,
@@ -99,6 +100,8 @@ export interface PublishingAnalyticsAttemptContext {
   operationType: PublishingAnalyticsOperationType;
   source: ArtifactPreviewActionSource;
   entryPoint: ArtifactPublishEntryPoint;
+  surface?: string;
+  pageViewId?: string;
   hasExistingResource?: boolean;
 }
 
@@ -106,6 +109,7 @@ export interface PublishingAnalyticsDialogContext {
   attempt: PublishingAnalyticsAttemptContext;
   dialogType: PublishingAnalyticsDialogType;
   exposureId: string;
+  openedAt: number;
   quota?: PublishingQuotaErrorData;
   trialAccessTtlSeconds?: number;
 }
@@ -139,6 +143,7 @@ export const createPublishingAnalyticsDialog = (
   attempt,
   dialogType,
   exposureId: createId(),
+  openedAt: Date.now(),
   quota,
   trialAccessTtlSeconds,
 });
@@ -173,6 +178,8 @@ const getAttemptParams = (
   operationType: attempt.operationType,
   source: attempt.source,
   entryPoint: attempt.entryPoint,
+  surface: attempt.surface,
+  pageViewId: attempt.pageViewId,
   hasExistingResource: attempt.hasExistingResource,
 });
 
@@ -221,10 +228,43 @@ export const reportPublishingDialogAction = (
   context: PublishingAnalyticsDialogContext,
   options: ReportPublishingDialogActionOptions,
 ): void => {
+  const dialogVisibleMs = Math.max(0, Date.now() - context.openedAt);
+  if (
+    options.actionType === PublishingAnalyticsActionType.Click
+    && (
+      options.target === PublishingAnalyticsTarget.Login
+      || options.target === PublishingAnalyticsTarget.Pricing
+      || options.target === PublishingAnalyticsTarget.LearnBenefits
+    )
+  ) {
+    rememberPublishingConversionAttribution({
+      attemptId: context.attempt.attemptId,
+      feature: context.attempt.feature,
+      resourceKind: context.attempt.resourceKind,
+      operationType: context.attempt.operationType,
+      source: context.attempt.source,
+      entryPoint: context.attempt.entryPoint,
+      surface: context.attempt.surface,
+      pageViewId: context.attempt.pageViewId,
+      hasExistingResource: context.attempt.hasExistingResource,
+      dialogType: context.dialogType,
+      exposureId: context.exposureId,
+      identityType: context.quota?.identityType,
+      countMode: context.quota?.countMode,
+      quotaUsed: context.quota?.used,
+      quotaLimit: context.quota?.limit,
+      canReleaseByClosing: context.quota?.canReleaseByClosing,
+      trialAccessTtlSeconds: context.trialAccessTtlSeconds,
+      ctaId: options.ctaId,
+      target: options.target,
+      dialogVisibleMs,
+    });
+  }
   void reportYdAnalyzer({
     action: LogReporterAction.PublishingDialogAction,
     ...getDialogParams(context),
     ...options,
+    dialogVisibleMs,
   });
 };
 
