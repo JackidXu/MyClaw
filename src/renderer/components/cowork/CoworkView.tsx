@@ -525,8 +525,7 @@ const CoworkView: React.FC<CoworkViewProps> = ({
         fmpTools: fmpTools && fmpTools.length > 0 ? fmpTools : undefined,
         fmpAuthHeaders: fmpTools && fmpTools.length > 0
           ? {
-            claw_cookie: localStorage.getItem('heyclaw_session') ?? '',
-            claw_uid: localStorage.getItem('heyclaw_user_id') ?? '',
+            Authorization: `Bearer ${localStorage.getItem('heyclaw_session') ?? ''}`,
           }
           : undefined,
       });
@@ -659,8 +658,7 @@ const CoworkView: React.FC<CoworkViewProps> = ({
         selectedTextSnippets,
         browserAnnotations,
         fmpAuthHeaders: {
-          claw_cookie: localStorage.getItem('heyclaw_session') ?? '',
-          claw_uid: localStorage.getItem('heyclaw_user_id') ?? '',
+          Authorization: `Bearer ${localStorage.getItem('heyclaw_session') ?? ''}`,
         },
       });
 

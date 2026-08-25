@@ -1,6 +1,7 @@
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import React, { useEffect, useRef, useState } from 'react';
 
+import { handleUnauthorized } from '../services/httpClient';
 import { i18nService } from '../services/i18n';
 import Modal from './common/Modal';
 
@@ -67,6 +68,7 @@ const PayModal: React.FC<PayModalProps> = ({ onClose, onSuccess }) => {
   const handlePay = async (specId: number, channel: 1 | 2) => {
     const userId = localStorage.getItem('heyclaw_user_id');
     if (!userId) {
+      handleUnauthorized();
       setErrorMessage(t('未检测到登录凭证，请重新登录', 'Login credentials missing, please login again'));
       return;
     }
@@ -104,6 +106,9 @@ const PayModal: React.FC<PayModalProps> = ({ onClose, onSuccess }) => {
         setQrcodeUrl(url);
         setOrderId(id);
       } else {
+        if (res.data?.code === 10001 || res.data?.message?.includes('未登录') || res.data?.message?.includes('认证失败')) {
+          handleUnauthorized();
+        }
         setErrorMessage(res.data?.message || t('获取付款码失败，请重试', 'Failed to get payment code, please retry'));
       }
     } catch (e) {

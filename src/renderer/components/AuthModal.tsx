@@ -83,10 +83,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
         throw new Error('登录成功，但未解析到有效的对话令牌');
       }
 
-      // 保存用户 ID 与对话令牌 heyclaw_api_key
+      // 保存用户 ID、长效用户访问令牌 heyclaw_session、大模型 heyclaw_api_key
       localStorage.setItem('heyclaw_user_id', String(userId));
       if (session) {
         localStorage.setItem('heyclaw_session', session);
+        void window.electron.auth.syncUserSession(session);
       }
       
       const formattedKey = apiKey.startsWith('sk-') ? apiKey : `sk-${apiKey}`;

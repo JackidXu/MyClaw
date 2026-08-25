@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 
 import { getChangePasswordUrl } from '../services/endpoints';
+import { httpClient } from '../services/httpClient';
 
 interface PasswordModalProps {
   isOpen: boolean;
@@ -37,29 +38,24 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({ isOpen, onClose, o
     }
 
     setLoading(true);
-    const apiKey = localStorage.getItem('heyclaw_api_key');
-    const userId = localStorage.getItem('heyclaw_user_id');
+    const session = localStorage.getItem('heyclaw_session');
 
     try {
-      if (!apiKey || !userId) {
+      if (!session) {
         throw new Error('未检测到您的登录凭证，请重新登录');
       }
 
       // 通过管理后台代理修改密码
       const targetUrl = getChangePasswordUrl();
 
-      const res = await window.electron.api.fetch({
-        url: targetUrl,
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          oldPassword: oldPassword.trim(),
-          newPassword: newPassword.trim(),
-        }),
-      }) as any;
+      const res = await httpClient.post<{
+        success: boolean;
+        message?: string;
+        error?: string;
+      }>(targetUrl, {
+        oldPassword: oldPassword.trim(),
+        newPassword: newPassword.trim(),
+      });
 
       if (!res.ok || !res.data || !res.data.success) {
         throw new Error(res.data?.error || res.data?.message || '修改密码失败，请检查原密码或格式');
@@ -70,6 +66,7 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({ isOpen, onClose, o
       localStorage.removeItem('heyclaw_api_key');
       localStorage.removeItem('heyclaw_session');
       localStorage.removeItem('heyclaw_user_balance');
+      void window.electron.auth.syncUserSession('');
 
       onSuccess();
     } catch (err: any) {

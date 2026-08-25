@@ -85,13 +85,16 @@ HeyClaw 采用双后端支撑体系：
 - **中转站架构**：本项目底层媒体（图片/视频生成）、模型调用聚合中转站统一基于 **NewAPI**（代码中历史命名的 `oneapi` 相关变量和配置均指代 NewAPI 中转服务）。
 - **开发与调试认知**：在涉及多模态生成（如 Seedance、Seedream、HappyHorse 等）或模型中转接口的开发、排查、接口改造与协议适配时，直接基于 NewAPI 的接口协议与中转透传规范进行设计与对接，严禁反复向用户询问中转站类型。
 
-### 2.5 客户端鉴权与后端请求规范 (Auth & Request Headers)
-- **客户端 Session 与 UID 存储**：
-  - 会话 Token：`localStorage.getItem('heyclaw_session')`
-  - 用户 ID：`localStorage.getItem('heyclaw_user_id')`
-- **双后端的鉴权传参约定**：
-  - **Node 后端（admin-claw）**：通过 Bearer Token（`Authorization: Bearer <session>`）或请求体携带 `{ session, userId }` 进行认证。
-  - **PHP 业务后端（第二大脑/充值）**：需在 Headers 中携带 `claw_cookie: <session>` 与 `claw_uid: <userId>`。
+### 2.5 客户端长效鉴权与后端请求规范 (Auth & Request Headers)
+- **核心凭证存储规范**：
+  - **长效用户访问令牌 (User Access Token)**：`localStorage.getItem('heyclaw_session')`（由登录时向 PHP 换票接口 `POST /api/chaohuixie/claw/token/accessToken` 置换得到，作为客户端与 **Node 后端（admin-claw）** 及 **PHP 业务后端（第二大脑 / 充值）** 全业务接口的**全局唯一长期鉴权凭证**）。
+  - **大模型对话令牌 (Model API Key)**：`localStorage.getItem('heyclaw_api_key')`（即 `sk-xxxx`，专供 OpenClaw 与底层 NewAPI `/v1` 大模型对话推理）。
+  - **用户 ID**：`localStorage.getItem('heyclaw_user_id')`。
+- **全站统一鉴权传参约定**：
+  - **Node 后端（admin-claw）**：所有业务接口请求头统一携带 `Authorization: Bearer <user_access_token>`（从 `heyclaw_session` 获取）。由 Node 后端原生直连 NewAPI `/api/user/self` 实时校验用户身份，天然防 IDOR 越权与过期失效。
+  - **PHP 业务后端**：
+    - **第二大脑全量接口 (`/api/chaohuixie/claw/fmp/***` 等)**：请求头统一携带 `Authorization: Bearer <user_access_token>`（由 PHP 维护表进行持久校验，彻底杜绝 15 分钟掉线问题）。
+    - **换票接口 (`/api/chaohuixie/claw/token/accessToken`)**：由 Node 服务端在登录时调用换取长效访问令牌。
 
 ### 2.6 本地数据存储与迁移规范 (SQLite & Data Persistence)
 - **数据库路径**：位于 `userData/lobsterai.sqlite`。

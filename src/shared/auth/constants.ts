@@ -17,6 +17,7 @@ export const AuthIpcChannel = {
   QuotaChanged: 'auth:quotaChanged',
   RefreshToken: 'auth:refreshToken',
   SessionChanged: 'auth:sessionChanged',
+  SyncUserSession: 'auth:sync-user-session',
 } as const;
 
 export type AuthIpcChannel = typeof AuthIpcChannel[keyof typeof AuthIpcChannel];

@@ -4,8 +4,8 @@ import * as https from 'https';
 import * as nodeUrl from 'url';
 
 export interface FmpAuthHeaders {
-  claw_cookie: string;
-  claw_uid: string;
+  Authorization?: string;
+  authorization?: string;
 }
 
 export interface FmpRetrieveNodeItem {
@@ -54,7 +54,7 @@ export interface FmpToolDefinition {
 }
 
 // 存储全局或 session 维度的认证头与工具定义
-let latestAuthHeaders: FmpAuthHeaders = { claw_cookie: '', claw_uid: '' };
+let latestAuthHeaders: FmpAuthHeaders = {};
 const authHeadersBySessionKey = new Map<string, FmpAuthHeaders>();
 let latestToolDefinition: FmpToolDefinition | null = null;
 
@@ -72,7 +72,7 @@ export function getSecondBrainToolDefinition(): FmpToolDefinition | null {
 }
 
 export function updateSecondBrainAuthHeaders(sessionKey: string | null, headers: FmpAuthHeaders): void {
-  if (headers.claw_cookie || headers.claw_uid) {
+  if (headers.Authorization || headers.authorization) {
     latestAuthHeaders = { ...headers };
     if (sessionKey) {
       authHeadersBySessionKey.set(sessionKey, { ...headers });
@@ -131,37 +131,58 @@ export function formatRetrieveResultToDocument(data: FmpRetrievePayload): string
   return sections.join('\n\n');
 }
 
-/** 执行 /fmp/retrieve 接口调用 */
+/** 执行 /fmp/retrieve 接口调用（供 MCP bridge server 使用） */
 export async function executeSecondBrainRetrieve(options: {
   query: string;
   topK?: number;
   sessionKey?: string;
 }): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
-  const { query, topK, sessionKey } = options;
-  const auth = getSecondBrainAuthHeaders(sessionKey);
+  return callPhpSecondBrainRetrieve(options.query, options.topK ?? 3, options.sessionKey) as Promise<{
+    content: Array<{ type: 'text'; text: string }>;
+    isError?: boolean;
+  }>;
+}
 
-  const baseUrl = getRetrieveBaseUrl();
-  const apiPath = '/api/chaohuixie/claw/fmp/retrieve';
-  const body = JSON.stringify({ query, ...(typeof topK === 'number' ? { topK } : {}) });
-  const parsedUrl = nodeUrl.parse(baseUrl);
+/**
+ * 直接调用 PHP 第二大脑 RAG 检索接口
+ * 供 OpenClaw retrieve_fmp / retrieve-fmp 工具在沙箱内通过 IPC 代理调用
+ */
+export async function callPhpSecondBrainRetrieve(
+  query: string,
+  topK: number = 3,
+  sessionKey?: string
+): Promise<{ content: Array<{ type: string; text: string }>; isError?: boolean }> {
+  const phpBaseUrl = getRetrieveBaseUrl();
+  const apiPath = '/api/chaohuixie/claw/brain/fmp/retrieve';
+  const fullUrl = `${phpBaseUrl}${apiPath}`;
+
+  const auth = getSecondBrainAuthHeaders(sessionKey);
+  const parsedUrl = nodeUrl.parse(fullUrl);
   const isHttps = parsedUrl.protocol === 'https:';
+  const body = JSON.stringify({ query, topK });
+
   const hostname = parsedUrl.hostname ?? '';
   const port = parsedUrl.port
     ? parseInt(parsedUrl.port, 10)
     : (isHttps ? 443 : 80);
 
   return new Promise((resolve) => {
+    const reqHeaders: Record<string, string | number> = {
+      'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(body),
+    };
+
+    const authVal = auth.Authorization || auth.authorization;
+    if (authVal) {
+      reqHeaders['Authorization'] = authVal;
+    }
+
     const reqOptions: http.RequestOptions = {
       hostname,
       port,
       path: apiPath,
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(body),
-        'claw_cookie': auth.claw_cookie,
-        'claw_uid': auth.claw_uid,
-      },
+      headers: reqHeaders,
     };
 
     const requester = isHttps ? https : http;

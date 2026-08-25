@@ -5700,11 +5700,20 @@ if (!gotTheLock) {
         if (clothClassStr) queryParams.set('clothClass', clothClassStr);
 
         const serverBaseUrl = getServerApiBaseUrl();
+        const sqliteStore = getStore();
+        const userSession = sqliteStore?.get<string>('user_access_token');
+        if (!userSession) {
+          throw new Error('未检测到有效的用户登录凭证，请先登录');
+        }
+
         // 直接将 buffer 以二进制流 POST 到分割接口，由后端调用阿里云视觉智能并写入 OSS
         const segmentResp = await fetch(`${serverBaseUrl}/api/image/segment?${queryParams}`, {
           method: 'POST',
           body: new Uint8Array(imageBuffer),
-          headers: { 'content-type': 'application/octet-stream' },
+          headers: {
+            'content-type': 'application/octet-stream',
+            'Authorization': `Bearer ${userSession}`,
+          },
         });
 
         if (!segmentResp.ok) {
@@ -7194,6 +7203,16 @@ if (!gotTheLock) {
         activeAuthExchangeIntent = null;
       }
     }
+  });
+
+  ipcMain.handle(AuthIpcChannel.SyncUserSession, async (_event, { session }: { session: string }) => {
+    const store = getStore();
+    if (session) {
+      store?.set('user_access_token', session);
+    } else {
+      store?.delete('user_access_token');
+    }
+    return { success: true };
   });
 
   ipcMain.handle(AuthIpcChannel.GetUser, async () => {
@@ -8932,7 +8951,7 @@ if (!gotTheLock) {
         /** 第二大脑工具定义列表 */
         fmpTools?: Array<{ type: 'function'; function: { name: string; description: string; parameters: unknown } }>;
         /** 第二大脑认证头 */
-        fmpAuthHeaders?: { claw_cookie: string; claw_uid: string };
+        fmpAuthHeaders?: { Authorization?: string };
       },
     ) => {
       try {
@@ -9195,7 +9214,7 @@ if (!gotTheLock) {
         selectedTextSnippets?: CoworkSelectedTextSnippet[];
         browserAnnotations?: CoworkBrowserAnnotationMessageBatch[];
         /** 第二大脑认证头 */
-        fmpAuthHeaders?: { claw_cookie: string; claw_uid: string };
+        fmpAuthHeaders?: { Authorization?: string };
       },
     ) => {
       try {

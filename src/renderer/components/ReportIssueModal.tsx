@@ -2,6 +2,7 @@ import { ArrowPathIcon, CheckIcon, PaperClipIcon, TrashIcon, XMarkIcon } from '@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import { getFeedbackUrl, getUploadUrl } from '../services/endpoints';
+import { handleUnauthorized, httpClient } from '../services/httpClient';
 import Modal from './common/Modal';
 
 interface ReportIssueModalProps {
@@ -60,14 +61,14 @@ const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ onClose }) => {
 
   // 上传文件至 OSS
   const uploadFile = async (file: File): Promise<string | null> => {
-    const apiKey = localStorage.getItem('heyclaw_api_key') || '';
+    const session = localStorage.getItem('heyclaw_session') || '';
     const targetUrl = getUploadUrl('feedback', file.name);
 
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open('POST', targetUrl, true);
-      if (apiKey) {
-        xhr.setRequestHeader('Authorization', `Bearer ${apiKey}`);
+      if (session) {
+        xhr.setRequestHeader('Authorization', `Bearer ${session}`);
       }
 
       xhr.onload = () => {
@@ -77,12 +78,18 @@ const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ onClose }) => {
             if (data.success && data.url) {
               resolve(data.url);
             } else {
+              if (data.error?.includes('未授权') || data.error?.includes('请先登录')) {
+                handleUnauthorized();
+              }
               reject(new Error(data.error || '上传失败'));
             }
           } catch {
             reject(new Error('响应解析错误'));
           }
         } else {
+          if (xhr.status === 401 || xhr.status === 403) {
+            handleUnauthorized();
+          }
           reject(new Error(`上传请求失败 [HTTP ${xhr.status}]`));
         }
       };
@@ -169,7 +176,6 @@ const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ onClose }) => {
 
     setSubmitting(true);
     try {
-      const apiKey = localStorage.getItem('heyclaw_api_key') || '';
       const userId = localStorage.getItem('heyclaw_user_id') || '';
       const nickname =
         localStorage.getItem('heyclaw_user_name') ||
@@ -186,27 +192,21 @@ const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ onClose }) => {
         diagnostics: includeDiagnostics ? diagnosticsData : {},
       };
 
-      const resp = await fetch(getFeedbackUrl(), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-        },
-        body: JSON.stringify(payload),
-      });
+      const res = await httpClient.post<{ success: boolean; id?: number; message?: string; error?: string }>(
+        getFeedbackUrl(),
+        payload,
+      );
 
-      const resData = await resp.json();
-      if (resData.success) {
+      if (res.ok && res.data?.success) {
         window.dispatchEvent(
-          new CustomEvent('app:showToast', {
-            detail: '反馈已提交，感谢您的反馈！我们会尽快排查。',
-          }),
+          new CustomEvent('app:showToast', { detail: '反馈已提交，感谢您的反馈！' }),
         );
         onClose();
       } else {
-        throw new Error(resData.error || '提交失败');
+        throw new Error(res.data?.error || '提交失败，请重试');
       }
     } catch (err: any) {
+      console.error('[ReportIssueModal] Submit feedback error:', err);
       window.dispatchEvent(
         new CustomEvent('app:showToast', {
           detail: `提交失败: ${err?.message || '网络连接超时'}`,
