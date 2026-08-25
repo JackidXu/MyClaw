@@ -522,6 +522,10 @@ const App: React.FC = () => {
 
       const apiKey = localStorage.getItem('heyclaw_api_key');
       const userId = localStorage.getItem('heyclaw_user_id');
+      const session = localStorage.getItem('heyclaw_session');
+      if (session) {
+        void window.electron.auth.syncUserSession(session);
+      }
       // 基于核心凭证 apiKey 与 userId 判定登录态
       let activated = !!(apiKey && userId);
 
@@ -658,6 +662,17 @@ const App: React.FC = () => {
       void authService.fetchProfileSummary();
     }
   }, [authUser]);
+
+  // 监听 401 未授权/Token 过期事件，自动唤起登录框
+  useEffect(() => {
+    const handleUnauthorizedEvent = () => {
+      setIsActivated(false);
+    };
+    window.addEventListener('app:unauthorized', handleUnauthorizedEvent);
+    return () => {
+      window.removeEventListener('app:unauthorized', handleUnauthorizedEvent);
+    };
+  }, []);
 
   // Listen for Copilot token auto-refresh events from the main process
   useEffect(() => {

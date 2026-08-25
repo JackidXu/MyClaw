@@ -6,9 +6,10 @@
  *   - 正式打包：https://zhike.banchengyun.com
  *
  * 认证头：
- *   - claw_cookie  取 localStorage.heyclaw_session
- *   - claw_uid     取 localStorage.heyclaw_user_id
+ *   - Authorization: Bearer <session> (取 localStorage.heyclaw_session)
  */
+
+import { handleUnauthorized } from './httpClient';
 
 /** 动态获取接口基础域名（import.meta.env.DEV 在开发环境为 true，打包后为 false） */
 const getBaseUrl = () =>
@@ -144,13 +145,11 @@ export const MATERIAL_TAB_TYPE: Record<string, string> = {
   '对话': 'chat',
 };
 
-/** 读取认证请求头，从 localStorage 取值 */
+/** 读取认证请求头，从 localStorage 取长效用户访问令牌 */
 function buildAuthHeaders(): Record<string, string> {
   const session = localStorage.getItem('heyclaw_session') ?? '';
-  const userId = localStorage.getItem('heyclaw_user_id') ?? '';
   return {
-    'claw_cookie': session,
-    'claw_uid': userId,
+    'Authorization': `Bearer ${session}`,
   };
 }
 
@@ -181,11 +180,22 @@ async function get<T>(path: string): Promise<T> {
   });
 
   if (!resp.ok) {
+    if (resp.status === 401 || resp.status === 403) {
+      handleUnauthorized();
+    }
     throw new Error(`[SecondBrainApi] 请求失败 ${resp.status}: ${url}`);
   }
 
   const body = resp.data as SecondBrainResponse<T>;
   if (body.status !== 'success' || body.code !== 1) {
+    if (
+      body.code === 10001 ||
+      body.code === 401 ||
+      body.message?.includes('认证失败') ||
+      body.message?.includes('未登录')
+    ) {
+      handleUnauthorized();
+    }
     throw new Error(`[SecondBrainApi] 业务错误: ${body.message ?? '未知错误'}`);
   }
 
@@ -215,11 +225,22 @@ async function post<T>(path: string, payload?: unknown): Promise<T> {
   });
 
   if (!resp.ok) {
+    if (resp.status === 401 || resp.status === 403) {
+      handleUnauthorized();
+    }
     throw new Error(`[SecondBrainApi] 请求失败 ${resp.status}: ${url}`);
   }
 
   const body = resp.data as SecondBrainResponse<T>;
   if (body.status !== 'success' || body.code !== 1) {
+    if (
+      body.code === 10001 ||
+      body.code === 401 ||
+      body.message?.includes('认证失败') ||
+      body.message?.includes('未登录')
+    ) {
+      handleUnauthorized();
+    }
     throw new Error(`[SecondBrainApi] 业务错误: ${body.message ?? '未知错误'}`);
   }
 

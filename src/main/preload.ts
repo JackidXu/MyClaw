@@ -465,7 +465,7 @@ contextBridge.exposeInMainWorld('electron', {
       /** 第二大脑工具定义列表 */
       fmpTools?: Array<{ type: 'function'; function: { name: string; description: string; parameters: unknown } }>;
       /** 第二大脑认证头，供主进程调用 retrieve 接口 */
-      fmpAuthHeaders?: { claw_cookie: string; claw_uid: string };
+      fmpAuthHeaders?: { Authorization?: string };
     }) => ipcRenderer.invoke('cowork:session:start', options),
 
     continueSession: (options: {
@@ -493,7 +493,7 @@ contextBridge.exposeInMainWorld('electron', {
         dataUrl?: string; role?: string;
       }>;
       /** 第二大脑认证头，供主进程调用 retrieve 接口 */
-      fmpAuthHeaders?: { claw_cookie: string; claw_uid: string };
+      fmpAuthHeaders?: { Authorization?: string };
     }) => ipcRenderer.invoke('cowork:session:continue', options),
 
     submitBtw: (options: CoworkBtwSubmitRequest): Promise<CoworkBtwSubmitResponse> =>
@@ -1208,6 +1208,8 @@ contextBridge.exposeInMainWorld('electron', {
     logout: () => ipcRenderer.invoke(AuthIpcChannel.Logout),
     refreshToken: () => ipcRenderer.invoke(AuthIpcChannel.RefreshToken),
     getAccessToken: () => ipcRenderer.invoke(AuthIpcChannel.GetAccessToken),
+    syncUserSession: (session: string) =>
+      ipcRenderer.invoke(AuthIpcChannel.SyncUserSession, { session }),
     getModels: () => ipcRenderer.invoke(AuthIpcChannel.GetModels),
     getPricingCatalog: () => ipcRenderer.invoke(AuthIpcChannel.GetPricingCatalog),
     getProfileSummary: () => ipcRenderer.invoke(AuthIpcChannel.GetProfileSummary),

@@ -880,7 +880,7 @@ interface IElectronAPI {
       imageAttachments?: Array<{ name: string; mimeType: string; base64Data: string; sizeBytes?: number; localPath?: string; previewMimeType?: string; previewBase64Data?: string }>;
       mediaSelection?: { mode: string; modelId?: string; modelName?: string; imageModelId?: string; videoModelId?: string };
       mediaReferences?: Array<{ token: string; mediaType: string; index: number; fileId: string; fileName: string; mimeType: string; localPath?: string; remoteUrl?: string; dataUrl?: string; role?: string }>;
-      fmpAuthHeaders?: { claw_cookie: string; claw_uid: string };
+      fmpAuthHeaders?: { Authorization?: string };
       fmpTools?: Array<{ type: 'function'; function: { name: string; description: string; parameters: unknown } }>;
     }) => Promise<{
       success: boolean;
@@ -903,7 +903,7 @@ interface IElectronAPI {
       imageAttachments?: Array<{ name: string; mimeType: string; base64Data: string; sizeBytes?: number; localPath?: string; previewMimeType?: string; previewBase64Data?: string }>;
       mediaSelection?: { mode: string; modelId?: string; modelName?: string; imageModelId?: string; videoModelId?: string };
       mediaReferences?: Array<{ token: string; mediaType: string; index: number; fileId: string; fileName: string; mimeType: string; localPath?: string; remoteUrl?: string; dataUrl?: string; role?: string }>;
-      fmpAuthHeaders?: { claw_cookie: string; claw_uid: string };
+      fmpAuthHeaders?: { Authorization?: string };
       fmpTools?: Array<{ type: 'function'; function: { name: string; description: string; parameters: unknown } }>;
     }) => Promise<{
       success: boolean;
@@ -1860,6 +1860,7 @@ interface IElectronAPI {
       outcome?: AuthRefreshOutcome;
     }>;
     getAccessToken: () => Promise<string | null>;
+    syncUserSession: (session: string) => Promise<void>;
     getModels: () => Promise<{
       success: boolean;
       models?: Array<{

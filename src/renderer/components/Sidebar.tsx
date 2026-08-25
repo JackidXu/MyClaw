@@ -7,6 +7,7 @@ import { agentService } from '../services/agent';
 import { configService } from '../services/config';
 import { coworkService } from '../services/cowork';
 import { getUserProfileUrl } from '../services/endpoints';
+import { httpClient } from '../services/httpClient';
 import { i18nService } from '../services/i18n';
 import { LogReporterAction, reportYdAnalyzer } from '../services/logReporter';
 import { fetchCognitionStats } from '../services/secondBrainApi';
@@ -306,9 +307,8 @@ const Sidebar: React.FC<SidebarProps> = ({
     setBalanceLoading(true);
     const minDelayPromise = new Promise((resolve) => setTimeout(resolve, 800));
     try {
-      const apiKey = localStorage.getItem('heyclaw_api_key');
-      const userId = localStorage.getItem('heyclaw_user_id');
-      if (!apiKey || !userId) {
+      const session = localStorage.getItem('heyclaw_session');
+      if (!session) {
         await minDelayPromise;
         onShowLoginRef.current?.();
         return;
@@ -319,15 +319,18 @@ const Sidebar: React.FC<SidebarProps> = ({
       const fetchPromise = (async () => {
         const targetUrl = getUserProfileUrl();
 
-        // 统一通过管理后台后端代理查询用户最新配额与昵称（携带 sk- 凭据防越权）
-        const selfResp = await window.electron.api.fetch({
-          url: targetUrl,
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`
-          }
-        }) as { ok: boolean; status?: number; data?: any };
+        // 统一通过管理后台后端代理查询用户最新配额与昵称 (携带用户访问令牌)
+        const selfResp = await httpClient.get<{
+          success: boolean;
+          data?: {
+            id: number;
+            username: string;
+            displayName: string;
+            quota: number;
+            usedQuota: number;
+          };
+          error?: string;
+        }>(targetUrl);
 
         if (selfResp.ok && selfResp.data && selfResp.data.success) {
           const userProfile = selfResp.data.data;
@@ -340,7 +343,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             setEditNickname(dispName);
           }
         } else {
-          const errorMsg = selfResp.data?.error || selfResp.data?.message || '获取用户信息失败';
+          const errorMsg = selfResp.data?.error || '获取用户信息失败';
           throw new Error(errorMsg);
         }
       })();

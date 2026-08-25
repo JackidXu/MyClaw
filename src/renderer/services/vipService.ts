@@ -3,6 +3,7 @@ import { agentService } from './agent';
 import { coworkService } from './cowork';
 import { getServerApiBaseUrl } from './endpoints';
 import { expertService } from './expertService';
+import { httpClient } from './httpClient';
 
 export interface VipSubscription {
   expertId: string;
@@ -67,22 +68,9 @@ class VipService {
   }
 
   public async refreshStatus(): Promise<VipStatusState> {
-    const userIdStr = localStorage.getItem('heyclaw_user_id');
-    const apiKey = localStorage.getItem('heyclaw_api_key');
+    const session = localStorage.getItem('heyclaw_session');
 
-    if (!userIdStr || !apiKey) {
-      this.state = {
-        authorized: false,
-        subscriptions: [],
-        loading: false,
-        lastUpdated: Date.now(),
-      };
-      this.notify();
-      return this.state;
-    }
-
-    const userId = parseInt(userIdStr, 10);
-    if (isNaN(userId)) {
+    if (!session) {
       this.state = {
         authorized: false,
         subscriptions: [],
@@ -103,19 +91,15 @@ class VipService {
       // 获取 admin-claw 统一服务地址
       const adminBaseUrl = getServerApiBaseUrl();
 
-      const res = (await window.electron.api.fetch({
-        url: `${adminBaseUrl}/api/vip/status`,
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`
-        },
-        body: JSON.stringify({
-          deviceId: deviceInfo.deviceId,
-          platform: deviceInfo.platform,
-          hostname: deviceInfo.hostname,
-        }),
-      })) as any;
+      const res = await httpClient.post<{
+        authorized?: boolean;
+        reason?: string;
+        subscriptions?: VipSubscriptionItem[];
+      }>(`${adminBaseUrl}/api/vip/status`, {
+        deviceId: deviceInfo.deviceId,
+        platform: deviceInfo.platform,
+        hostname: deviceInfo.hostname,
+      });
 
       if (res.ok && res.data) {
         const data = res.data;
@@ -137,13 +121,13 @@ class VipService {
 
           if (data.reason === 'device_limit') {
             console.warn('[VipService] 设备注册数量已达上限 (5台)');
-          } else if (data.reason === 'session_expired') {
-            console.warn('[VipService] 用户 Session 已失效');
           }
         }
       } else {
         this.state = {
           ...this.state,
+          authorized: false,
+          subscriptions: [],
           loading: false,
           lastUpdated: Date.now(),
         };

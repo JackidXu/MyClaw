@@ -2,6 +2,7 @@ import { XMarkIcon } from '@heroicons/react/24/outline';
 import React, { useCallback, useEffect, useState } from 'react';
 
 import { configService } from '../services/config';
+import { handleUnauthorized } from '../services/httpClient';
 import Modal from './common/Modal';
 
 interface BillingModalProps {
@@ -86,9 +87,15 @@ const BillingModal: React.FC<BillingModalProps> = ({ onClose }) => {
           setLogs(resp.data.data || []);
           setPage(1); // 重新加载后重置到第1页
         } else {
+          if (resp.data.message?.includes('未登录') || resp.data.message?.includes('无权') || resp.data.message?.includes('token 无效')) {
+            handleUnauthorized();
+          }
           setErrorMsg(resp.data.message || '获取账单流水失败');
         }
       } else {
+        if (resp.error?.includes('401') || resp.error?.includes('403')) {
+          handleUnauthorized();
+        }
         setErrorMsg(resp.error || '请求网络错误，请稍后重试');
       }
     } catch (e) {
