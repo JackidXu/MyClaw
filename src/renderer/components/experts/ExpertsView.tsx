@@ -15,18 +15,6 @@ import ComposeIcon from '../icons/ComposeIcon';
 import SidebarToggleIcon from '../icons/SidebarToggleIcon';
 import SkillsView from '../skills/SkillsView';
 
-// 原型中多成员头像的渐变色调色板（按索引循环）
-const MEMBER_GRADIENTS = [
-  'linear-gradient(135deg,#f5a623,#ff9500)', // 橙黄
-  'linear-gradient(135deg,#ee5253,#ff6b6b)', // 红
-  'linear-gradient(135deg,#9b59b6,#8e44ad)', // 紫
-  'linear-gradient(135deg,#4a90e2,#2e86de)', // 蓝
-  'linear-gradient(135deg,#00b894,#00cec9)', // 青绿
-  'linear-gradient(135deg,#576574,#8395a7)', // 灰蓝
-  'linear-gradient(135deg,#feca57,#ff9f43)', // 暖黄
-  'linear-gradient(135deg,#1dd1a1,#10ac84)', // 翠绿
-];
-
 interface PresetAgent {
   id: string;
   name: string;
@@ -460,6 +448,7 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
                     <HeroTeamCard
                       key={team.id}
                       team={team}
+                      presetExperts={presets}
                       hiringId={hiringId}
                       onStartWork={handleStartWork}
                       onClick={() => setSelectedTeamDetail(team)}
@@ -628,42 +617,44 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
               </div>
             )}
 
-            {/* 2. 团队成员（参考原型后展示） */}
-            {selectedTeamDetail.members && selectedTeamDetail.members.length > 0 && (
-              <div>
-                <div className="text-xs font-bold text-foreground flex items-center gap-1.5 mb-2.5">
-                  <span>👥 团队协作成员</span>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                  {selectedTeamDetail.members.map((m, idx) => {
-                    const bgGradient = MEMBER_GRADIENTS[idx % MEMBER_GRADIENTS.length];
-                    const firstChar = m.name?.trim() ? m.name.trim().charAt(0) : '专';
-                    return (
+            {/* 2. 团队协同专家阵容 */}
+            {(() => {
+              const teamMembers = (selectedTeamDetail.subagentAllowAgentIds || [])
+                .map((id) => presets.find((e) => e.id === id))
+                .filter(Boolean) as PresetAgent[];
+              if (teamMembers.length === 0) return null;
+              return (
+                <div>
+                  <div className="text-xs font-bold text-foreground flex items-center gap-1.5 mb-2.5">
+                    <span>👥 团队协同专家阵容</span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                    {teamMembers.map((member, idx) => (
                       <div
-                        key={idx}
-                        className="flex items-center gap-2.5 p-2 rounded-xl bg-surface-raised border border-border/60"
+                        key={member.id}
+                        className="flex items-center gap-2.5 p-2.5 rounded-xl bg-surface-raised border border-border/60"
                       >
-                        <div
-                          className="w-8 h-8 rounded-full text-white font-bold text-xs flex items-center justify-center shadow-xs shrink-0"
-                          style={{ background: bgGradient }}
-                        >
-                          {firstChar}
-                        </div>
+                        <AgentAvatarIcon
+                          avatar={member.avatar}
+                          className="w-8 h-8 rounded-full shadow-xs shrink-0"
+                        />
                         <div className="min-w-0 flex-1">
                           <div className="text-xs font-semibold text-foreground truncate flex items-center gap-1">
-                            <span>{m.name}</span>
-                            {m.lead && (
+                            <span>{member.name}</span>
+                            {idx === 0 && (
                               <span className="text-[9px] bg-amber-500 text-white px-1 py-0.2 rounded-xs font-normal">主理</span>
                             )}
                           </div>
-                          <div className="text-[10px] text-secondary truncate">{m.role}</div>
+                          <div className="text-[10px] text-secondary truncate">
+                            {member.department || '内置专家'}
+                          </div>
                         </div>
                       </div>
-                    );
-                  })}
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
           </div>
         </Modal>
       )}
@@ -734,13 +725,17 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
 
 const HeroTeamCard: React.FC<{
   team: ExpertTeam;
+  presetExperts: PresetAgent[];
   hiringId: string | null;
   onStartWork: (team: ExpertTeam) => void;
   onClick: () => void;
-}> = ({ team, hiringId, onStartWork, onClick }) => {
-  const members = team.members || [];
-  const memberCount = members.length || (team.subagentAllowAgentIds ? team.subagentAllowAgentIds.length : 0);
-  const previewMembers = members.slice(0, 4);
+}> = ({ team, presetExperts, hiringId, onStartWork, onClick }) => {
+  const allowAgentIds = team.subagentAllowAgentIds || [];
+  const teamMembers = allowAgentIds
+    .map((agentId) => presetExperts.find((e) => e.id === agentId))
+    .filter(Boolean) as PresetAgent[];
+  const memberCount = teamMembers.length || allowAgentIds.length;
+  const previewMembers = teamMembers.slice(0, 4);
 
   return (
     <div
@@ -787,23 +782,17 @@ const HeroTeamCard: React.FC<{
         <div className="flex items-center gap-2">
           {previewMembers.length > 0 && (
             <div className="flex -space-x-1.5 overflow-hidden">
-              {previewMembers.map((m, i) => {
-                const firstChar = m.name?.trim() ? m.name.trim().charAt(0) : '专';
-                const bgGradient = MEMBER_GRADIENTS[i % MEMBER_GRADIENTS.length];
-                return (
-                  <span
-                    key={i}
-                    className="w-5 h-5 rounded-full border-2 border-surface text-[10px] font-bold text-white flex items-center justify-center shadow-xs"
-                    style={{ background: bgGradient }}
-                  >
-                    {firstChar}
-                  </span>
-                );
-              })}
+              {previewMembers.map((m, i) => (
+                <AgentAvatarIcon
+                  key={m.id || i}
+                  avatar={m.avatar}
+                  className="w-5 h-5 rounded-full border border-surface shadow-xs"
+                />
+              ))}
             </div>
           )}
           {memberCount > 0 && (
-            <span className="font-semibold text-foreground">{memberCount} 位成员</span>
+            <span className="font-semibold text-foreground">{memberCount} 位协同专家</span>
           )}
         </div>
         {team.usesCount && <span>{team.usesCount}次使用</span>}
