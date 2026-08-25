@@ -37,6 +37,14 @@ export const getUserProfileUrl = (userId: string | number) =>
 export const getChangePasswordUrl = () =>
   `${getServerApiBaseUrl()}/api/client/change-password`;
 
+// 问题反馈
+export const getFeedbackUrl = () =>
+  `${getServerApiBaseUrl()}/api/feedback`;
+
+// 文件上传
+export const getUploadUrl = (folder = 'feedback', filename = '') =>
+  `${getServerApiBaseUrl()}/api/upload?folder=${encodeURIComponent(folder)}&filename=${encodeURIComponent(filename)}`;
+
 // 登录地址
 export const getLoginOvermindUrl = () => isTestModeEnabled()
   ? 'https://api-overmind.heyclaw.com/openapi/get/luna/hardware/lobsterai/test/login-url'
