@@ -63,30 +63,37 @@ const PublishingTrialNoticeDialog: React.FC<PublishingTrialNoticeDialogProps> = 
   const [isTrialPolicyLoading, setIsTrialPolicyLoading] = useState(true);
   const isShare = feature === ArtifactSubscriptionFeature.Share;
   const resourcePolicy = isShare ? trialPolicy?.file : trialPolicy?.site;
-  const analyticsDialog = useMemo(() => (
-    analyticsAttempt && !isTrialPolicyLoading
+  const exposureAnalyticsDialog = useMemo(() => (
+    analyticsAttempt
       ? createPublishingAnalyticsDialog(
           analyticsAttempt,
           PublishingAnalyticsDialogType.TrialNotice,
           quota,
-          resourcePolicy?.accessTtlSeconds,
         )
       : null
-  ), [analyticsAttempt, isTrialPolicyLoading, quota, resourcePolicy?.accessTtlSeconds]);
+  ), [analyticsAttempt, quota]);
+  const actionAnalyticsDialog = useMemo(() => (
+    exposureAnalyticsDialog
+      ? {
+          ...exposureAnalyticsDialog,
+          trialAccessTtlSeconds: resourcePolicy?.accessTtlSeconds,
+        }
+      : null
+  ), [exposureAnalyticsDialog, resourcePolicy?.accessTtlSeconds]);
 
   useEffect(() => {
-    if (analyticsDialog) reportPublishingDialogExposure(analyticsDialog);
-  }, [analyticsDialog]);
+    if (exposureAnalyticsDialog) reportPublishingDialogExposure(exposureAnalyticsDialog);
+  }, [exposureAnalyticsDialog]);
 
   const reportAction = useCallback((
     actionType: PublishingAnalyticsActionType,
     ctaId: PublishingAnalyticsCtaId,
     target: PublishingAnalyticsTarget,
   ) => {
-    if (analyticsDialog) {
-      reportPublishingDialogAction(analyticsDialog, { actionType, ctaId, target });
+    if (actionAnalyticsDialog) {
+      reportPublishingDialogAction(actionAnalyticsDialog, { actionType, ctaId, target });
     }
-  }, [analyticsDialog]);
+  }, [actionAnalyticsDialog]);
 
   const handleClose = useCallback(() => {
     reportAction(

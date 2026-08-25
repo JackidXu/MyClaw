@@ -88,6 +88,7 @@ import FileTypeIcon from '../icons/fileTypes/FileTypeIcon';
 import { SitesView } from '../sites';
 import Tooltip, { TooltipAlign, TooltipPosition } from '../ui/Tooltip';
 import { LIBRARY_ACTION_MENU_WIDTH_PX } from './libraryActionMenuPresentation';
+import { LibraryAnalyticsSurface } from './libraryAnalytics';
 import LibraryAvailabilityDropdown from './LibraryAvailabilityDropdown';
 import LibraryCategoryDropdown from './LibraryCategoryDropdown';
 import {
@@ -116,6 +117,7 @@ const STATUS_FILTERS = [
 ] as const;
 
 interface LibraryCloudViewProps {
+  analyticsPageViewId: string;
   data: LibraryCloudListData;
   loading: boolean;
   loadingMore: boolean;
@@ -132,7 +134,7 @@ interface LibraryCloudViewProps {
   onKeywordInputChange: (keyword: string) => void;
   onKeywordClear: () => void;
   onRefresh: () => void;
-  onDetailOpen: () => void;
+  onDetailOpen: (item: LibraryCloudItem) => void;
   onOpenSession: (session: LibrarySessionRef) => void;
   onItemUpdated: (item: LibraryCloudItem) => void;
   onItemDeleted: (item: LibraryCloudItem) => void;
@@ -460,13 +462,22 @@ type LibraryShareDetailView =
   (typeof LibraryShareDetailView)[keyof typeof LibraryShareDetailView];
 
 const LibraryShareSettingsView: React.FC<{
+  analyticsPageViewId: string;
   initialItem: SharedFileItem;
   now: number;
   onBack: () => void;
   onItemUpdated: (item: SharedFileItem) => void;
   onOpenSession: (session: LibrarySessionRef) => void;
   onToggleFavorite: (item: SharedFileItem) => void;
-}> = ({ initialItem, now, onBack, onItemUpdated, onOpenSession, onToggleFavorite }) => {
+}> = ({
+  analyticsPageViewId,
+  initialItem,
+  now,
+  onBack,
+  onItemUpdated,
+  onOpenSession,
+  onToggleFavorite,
+}) => {
   const [state, setState] = useState<ShareDetailState>({
     item: initialItem,
     loading: true,
@@ -586,6 +597,8 @@ const LibraryShareSettingsView: React.FC<{
       operationType: PublishingAnalyticsOperationType.UpdatePermission,
       source: ArtifactPreviewActionSource.LibraryPreview,
       entryPoint: ArtifactPublishEntryPoint.LibrarySettings,
+      surface: LibraryAnalyticsSurface.MyFiles,
+      pageViewId: analyticsPageViewId,
       hasExistingResource: true,
     });
     publishingAnalyticsAttemptRef.current = analyticsAttempt;
@@ -1053,6 +1066,7 @@ const LibraryShareSettingsView: React.FC<{
 };
 
 const LibraryCloudView: React.FC<LibraryCloudViewProps> = ({
+  analyticsPageViewId,
   data,
   loading,
   loadingMore,
@@ -1098,6 +1112,7 @@ const LibraryCloudView: React.FC<LibraryCloudViewProps> = ({
   if (activeItem) {
     return (
       <LibraryShareSettingsView
+        analyticsPageViewId={analyticsPageViewId}
         initialItem={activeItem}
         now={effectiveNow}
         onBack={() => setActiveItem(undefined)}
@@ -1173,7 +1188,7 @@ const LibraryCloudView: React.FC<LibraryCloudViewProps> = ({
   };
 
   const openItem = (item: LibraryCloudItem): void => {
-    onDetailOpen();
+    onDetailOpen(item);
     if (item.itemKind === LibraryItemKind.SharedFile) {
       setActiveItem(item);
     } else {

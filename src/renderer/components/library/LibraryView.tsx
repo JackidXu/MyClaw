@@ -60,6 +60,16 @@ import SidebarToggleIcon from '../icons/SidebarToggleIcon';
 import Tooltip, { TooltipAlign, TooltipPosition } from '../ui/Tooltip';
 import { LIBRARY_ACTION_MENU_WIDTH_PX } from './libraryActionMenuPresentation';
 import {
+  createLibraryAnalyticsPageViewId,
+  getLibraryLoadedItemCountBucket,
+  LibraryAnalyticsActionType,
+  type LibraryAnalyticsContext,
+  LibraryAnalyticsControl,
+  LibraryAnalyticsResult,
+  LibraryAnalyticsSurface,
+  reportLibraryAction,
+} from './libraryAnalytics';
+import {
   canShareLibraryArtifact,
   createLibraryArtifactCandidate,
 } from './libraryArtifactCandidate';
@@ -373,6 +383,7 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
   const artifactFileShare = useOptionalArtifactFileShare();
   const ownerAccountKey = useSelector((state: RootState) => state.auth.ownerAccountKey);
   const favoriteOwnerScope = ownerAccountKey ?? undefined;
+  const [analyticsPageViewId] = useState(createLibraryAnalyticsPageViewId);
   const [source, setSource] = useState<LibrarySourceFilter>(requestedSource);
   const [category, setCategory] = useState<LibraryCategory>(LibraryCategory.All);
   const [keywordInput, setKeywordInput] = useState('');
@@ -401,6 +412,9 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
   const cloudRecoveryAttemptRef = useRef(0);
   const cloudRecoveryContextRef = useRef('');
   const cloudRecoveryLoadRef = useRef<() => Promise<void>>(async () => undefined);
+  const pageExposureReportedRef = useRef(false);
+  const lastListResultSignatureRef = useRef('');
+  const lastReportedKeywordRef = useRef('');
 
   useEffect(() => {
     const timer = window.setTimeout(() => setKeyword(keywordInput.trim()), 300);
@@ -412,6 +426,70 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
   const hasActiveLocalFilter = category !== LibraryCategory.All
     || keyword.length > 0
     || favoritesOnly;
+  const analyticsContext = useMemo<LibraryAnalyticsContext>(() => ({
+    pageViewId: analyticsPageViewId,
+    librarySource: source,
+    category,
+    ...(wantsCloud ? { availability: cloudAvailability } : {}),
+    favoritesOnly,
+    keyword,
+    viewMode: wantsCloud ? LibraryViewMode.List : viewMode,
+    isAuthenticated,
+  }), [
+    analyticsPageViewId,
+    category,
+    cloudAvailability,
+    favoritesOnly,
+    isAuthenticated,
+    keyword,
+    source,
+    viewMode,
+    wantsCloud,
+  ]);
+
+  useEffect(() => {
+    if (pageExposureReportedRef.current) return;
+    pageExposureReportedRef.current = true;
+    reportLibraryAction(analyticsContext, {
+      actionType: LibraryAnalyticsActionType.PageExposure,
+    });
+  }, [analyticsContext]);
+
+  useEffect(() => {
+    if (lastReportedKeywordRef.current === keyword) return;
+    lastReportedKeywordRef.current = keyword;
+    reportLibraryAction(analyticsContext, {
+      actionType: keyword
+        ? LibraryAnalyticsActionType.SearchApplied
+        : LibraryAnalyticsActionType.SearchCleared,
+      control: LibraryAnalyticsControl.Search,
+    });
+  }, [analyticsContext, keyword]);
+
+  const reportListResult = useCallback((
+    result: LibraryAnalyticsResult,
+    resultCount?: number,
+    hasMore?: boolean,
+  ): void => {
+    const signature = JSON.stringify({
+      librarySource: analyticsContext.librarySource,
+      category: analyticsContext.category,
+      availability: analyticsContext.availability,
+      favoritesOnly: analyticsContext.favoritesOnly,
+      hasSearch: analyticsContext.keyword.trim().length > 0,
+      result,
+      loadedItemCountBucket: getLibraryLoadedItemCountBucket(resultCount),
+      hasMore,
+    });
+    if (lastListResultSignatureRef.current === signature) return;
+    lastListResultSignatureRef.current = signature;
+    reportLibraryAction(analyticsContext, {
+      actionType: LibraryAnalyticsActionType.ListResult,
+      result,
+      loadedItemCount: resultCount,
+      hasMore,
+    });
+  }, [analyticsContext]);
 
   const clearKeyword = useCallback(() => {
     setKeywordInput('');
@@ -420,12 +498,60 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
 
   const handleSourceChange = (nextSource: LibrarySourceFilter): void => {
     if (nextSource === source) return;
+    reportLibraryAction(analyticsContext, {
+      actionType: LibraryAnalyticsActionType.SourceChange,
+      control: LibraryAnalyticsControl.Source,
+      targetValue: nextSource,
+    });
     setActiveItem(undefined);
     setCategory(LibraryCategory.All);
     setKeywordInput('');
     setKeyword('');
     setSource(nextSource);
     scrollContainerRef.current?.scrollTo({ top: 0 });
+  };
+
+  const handleCategoryChange = (nextCategory: LibraryCategory): void => {
+    if (nextCategory === category) return;
+    reportLibraryAction(analyticsContext, {
+      actionType: LibraryAnalyticsActionType.FilterChange,
+      control: LibraryAnalyticsControl.Category,
+      targetValue: nextCategory,
+    });
+    setCategory(nextCategory);
+  };
+
+  const handleAvailabilityChange = (
+    nextAvailability: LibraryCloudAvailabilityFilter,
+  ): void => {
+    if (nextAvailability === cloudAvailability) return;
+    reportLibraryAction(analyticsContext, {
+      actionType: LibraryAnalyticsActionType.FilterChange,
+      control: LibraryAnalyticsControl.Availability,
+      targetValue: nextAvailability,
+    });
+    setCloudAvailability(nextAvailability);
+    scrollContainerRef.current?.scrollTo({ top: 0 });
+  };
+
+  const handleFavoritesOnlyToggle = (): void => {
+    const nextFavoritesOnly = !favoritesOnly;
+    reportLibraryAction(analyticsContext, {
+      actionType: LibraryAnalyticsActionType.FilterChange,
+      control: LibraryAnalyticsControl.Favorites,
+      targetValue: nextFavoritesOnly,
+    });
+    setFavoritesOnly(nextFavoritesOnly);
+  };
+
+  const handleViewModeChange = (nextViewMode: LibraryViewMode): void => {
+    if (nextViewMode === viewMode) return;
+    reportLibraryAction(analyticsContext, {
+      actionType: LibraryAnalyticsActionType.ViewModeChange,
+      control: LibraryAnalyticsControl.ViewMode,
+      targetValue: nextViewMode,
+    });
+    setViewMode(nextViewMode);
   };
 
   useEffect(() => {
@@ -489,6 +615,13 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
         if (requestId !== requestIdRef.current) return;
         if (localResult?.success) {
           const sanitizedResult = sanitizeLibraryLocalListData(localResult.data);
+          if (!append) {
+            reportListResult(
+              LibraryAnalyticsResult.Success,
+              sanitizedResult.data.list.length,
+              sanitizedResult.data.hasMore,
+            );
+          }
           if (sanitizedResult.ignoredCount > 0) {
             console.warn(
               '[Library] Ignored local artifacts without a valid task relation.',
@@ -507,12 +640,14 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
               : hideLibraryLocalItems(sanitizedResult.data);
           });
         } else if (localResult) {
+          if (!append) reportListResult(LibraryAnalyticsResult.Failure);
           setError(localResult.error);
         } else if (!append) {
           setLocalData(current => hideLibraryLocalItems(current));
         }
       } catch (loadError) {
         if (requestId === requestIdRef.current) {
+          if (!append) reportListResult(LibraryAnalyticsResult.Failure);
           setError(loadError instanceof Error ? loadError.message : i18nService.t('unknownError'));
         }
       } finally {
@@ -526,6 +661,13 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
         const cloudResult = await cloudPromise;
         if (requestId !== requestIdRef.current) return;
         if (cloudResult?.success) {
+          if (!append) {
+            reportListResult(
+              LibraryAnalyticsResult.Success,
+              cloudResult.data.list.length,
+              cloudResult.data.hasMore,
+            );
+          }
           setCloudData(current => {
             if (append) {
               return {
@@ -540,12 +682,17 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
               : hideLibraryCloudItems(cloudResult.data);
           });
         } else if (cloudResult) {
+          if (!append) reportListResult(LibraryAnalyticsResult.Failure);
           setCloudError(cloudResult.error);
         } else if (!append) {
+          if (wantsCloud && (!isAuthenticated || !favoriteOwnerScope)) {
+            reportListResult(LibraryAnalyticsResult.AuthRequired);
+          }
           setCloudData(current => hideLibraryCloudItems(current));
         }
       } catch (loadError) {
         if (requestId === requestIdRef.current) {
+          if (!append) reportListResult(LibraryAnalyticsResult.Failure);
           setCloudError(
             loadError instanceof Error ? loadError.message : i18nService.t('unknownError'),
           );
@@ -567,10 +714,18 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
     localData.hasMore,
     localData.nextCursor,
     cloudAvailability,
+    reportListResult,
     sitesHidden,
     wantsCloud,
     wantsLocal,
   ]);
+
+  const handleRefresh = useCallback((): void => {
+    reportLibraryAction(analyticsContext, {
+      actionType: LibraryAnalyticsActionType.Refresh,
+    });
+    void loadData(false);
+  }, [analyticsContext, loadData]);
 
   useEffect(() => {
     cloudRecoveryLoadRef.current = () => loadData(false);
@@ -696,6 +851,12 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
 
   const updateFavorite = async (item: LibraryItem): Promise<void> => {
     const next = !item.isFavorite;
+    reportLibraryAction(analyticsContext, {
+      actionType: LibraryAnalyticsActionType.FavoriteChange,
+      itemKind: item.itemKind,
+      itemCategory: item.category,
+      favorite: next,
+    });
     if (item.itemKind === LibraryItemKind.LocalArtifact) {
       setLocalData(current => ({
         ...current,
@@ -758,7 +919,21 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
   }, []);
 
   const openItem = (item: LibraryItem): void => {
+    reportLibraryAction(analyticsContext, {
+      actionType: LibraryAnalyticsActionType.ItemPreviewOpen,
+      itemKind: item.itemKind,
+      itemCategory: item.category,
+    });
     setActiveItem(item);
+  };
+
+  const handleCloudDetailOpen = (item: LibraryCloudItem): void => {
+    reportLibraryAction(analyticsContext, {
+      actionType: LibraryAnalyticsActionType.ItemPreviewOpen,
+      itemKind: item.itemKind,
+      itemCategory: item.category,
+    });
+    scrollContainerRef.current?.scrollTo({ top: 0 });
   };
 
   const openLocalWithApp = (item: LocalArtifactItem): void => {
@@ -838,6 +1013,8 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
       await artifactFileShare.openShare(artifact, {
         source: ArtifactPreviewActionSource.LibraryList,
         entryPoint: ArtifactPublishEntryPoint.LibraryMenu,
+        surface: LibraryAnalyticsSurface.MyFiles,
+        pageViewId: analyticsPageViewId,
       });
     } catch (shareError) {
       const message = shareError instanceof Error
@@ -1049,6 +1226,7 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
       >
           {wantsCloud ? (
             <LibraryCloudView
+              analyticsPageViewId={analyticsPageViewId}
               data={cloudData}
               loading={loading}
               loadingMore={loadingMore}
@@ -1059,16 +1237,13 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
               favoritesOnly={favoritesOnly}
               keywordInput={keywordInput}
               loadMoreSentinelRef={loadMoreSentinelRef}
-              onCategoryChange={setCategory}
-              onStatusChange={nextStatus => {
-                setCloudAvailability(nextStatus);
-                scrollContainerRef.current?.scrollTo({ top: 0 });
-              }}
-              onToggleFavoritesOnly={() => setFavoritesOnly(value => !value)}
+              onCategoryChange={handleCategoryChange}
+              onStatusChange={handleAvailabilityChange}
+              onToggleFavoritesOnly={handleFavoritesOnlyToggle}
               onKeywordInputChange={setKeywordInput}
               onKeywordClear={clearKeyword}
-              onRefresh={() => void loadData(false)}
-              onDetailOpen={() => scrollContainerRef.current?.scrollTo({ top: 0 })}
+              onRefresh={handleRefresh}
+              onDetailOpen={handleCloudDetailOpen}
               onOpenSession={onOpenSession}
               onItemUpdated={updateCloudItem}
               onItemDeleted={deleteCloudItem}
@@ -1085,7 +1260,7 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
             <LibraryCategoryDropdown
               value={category}
               options={CATEGORY_FILTERS}
-              onChange={setCategory}
+              onChange={handleCategoryChange}
               grouped
             />
             <div className="ml-auto flex min-w-0 flex-[1_1_240px] items-center justify-end gap-2">
@@ -1126,7 +1301,7 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
                 position={TooltipPosition.Bottom}
                 delay={250}
               >
-                <button type="button" onClick={() => setFavoritesOnly(value => !value)} aria-pressed={favoritesOnly} aria-label={i18nService.t('libraryFavorites')} className={`inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border ${favoritesOnly ? 'bg-amber-500/10 text-amber-500' : 'text-secondary hover:bg-surface-raised'}`}>
+                <button type="button" onClick={handleFavoritesOnlyToggle} aria-pressed={favoritesOnly} aria-label={i18nService.t('libraryFavorites')} className={`inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border ${favoritesOnly ? 'bg-amber-500/10 text-amber-500' : 'text-secondary hover:bg-surface-raised'}`}>
                   {favoritesOnly ? <StarSolidIcon className="h-4 w-4" /> : <StarIcon className="h-4 w-4" />}
                 </button>
               </Tooltip>
@@ -1136,7 +1311,7 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
                   position={TooltipPosition.Bottom}
                   delay={250}
                 >
-                  <button type="button" onClick={() => setViewMode(LibraryViewMode.Grid)} aria-label={i18nService.t('libraryGridView')} className={`inline-flex h-8 w-8 items-center justify-center rounded-md ${viewMode === LibraryViewMode.Grid ? 'bg-surface-raised text-foreground' : 'text-secondary'}`}><Squares2X2Icon className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => handleViewModeChange(LibraryViewMode.Grid)} aria-label={i18nService.t('libraryGridView')} className={`inline-flex h-8 w-8 items-center justify-center rounded-md ${viewMode === LibraryViewMode.Grid ? 'bg-surface-raised text-foreground' : 'text-secondary'}`}><Squares2X2Icon className="h-4 w-4" /></button>
                 </Tooltip>
                 <Tooltip
                   content={i18nService.t('libraryListView')}
@@ -1144,7 +1319,7 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
                   align={TooltipAlign.End}
                   delay={250}
                 >
-                  <button type="button" onClick={() => setViewMode(LibraryViewMode.List)} aria-label={i18nService.t('libraryListView')} className={`inline-flex h-8 w-8 items-center justify-center rounded-md ${viewMode === LibraryViewMode.List ? 'bg-surface-raised text-foreground' : 'text-secondary'}`}><ListBulletIcon className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => handleViewModeChange(LibraryViewMode.List)} aria-label={i18nService.t('libraryListView')} className={`inline-flex h-8 w-8 items-center justify-center rounded-md ${viewMode === LibraryViewMode.List ? 'bg-surface-raised text-foreground' : 'text-secondary'}`}><ListBulletIcon className="h-4 w-4" /></button>
                 </Tooltip>
               </div>
             </div>
@@ -1153,7 +1328,7 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
           {(error || cloudError) && (
             <div className="mt-4 flex items-center justify-between rounded-lg border border-amber-500/25 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
               <span>{error || i18nService.t('libraryCloudUnavailable')}</span>
-              <button type="button" onClick={() => void loadData(false)} className="ml-3 inline-flex items-center gap-1"><ArrowPathIcon className="h-3.5 w-3.5" />{i18nService.t('retry')}</button>
+              <button type="button" onClick={handleRefresh} className="ml-3 inline-flex items-center gap-1"><ArrowPathIcon className="h-3.5 w-3.5" />{i18nService.t('retry')}</button>
             </div>
           )}
 
@@ -1288,6 +1463,7 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
       {wantsLocal && activeItem && (
         <LibraryPreviewModal
           item={activeItem}
+          analyticsPageViewId={analyticsPageViewId}
           detail={localDetail}
           detailLoading={detailLoading}
           onClose={() => setActiveItem(undefined)}
