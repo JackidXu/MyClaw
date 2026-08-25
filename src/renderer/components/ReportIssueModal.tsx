@@ -1,7 +1,7 @@
 import { ArrowPathIcon, CheckIcon, PaperClipIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
-import { configService } from '../services/config';
+import { getFeedbackUrl, getUploadUrl } from '../services/endpoints';
 import Modal from './common/Modal';
 
 interface ReportIssueModalProps {
@@ -30,13 +30,6 @@ interface UploadedAttachment {
   size?: number;
   type: 'image' | 'video' | 'file';
 }
-
-const getAdminApiBase = (): string => {
-  const currentConfig = configService.getConfig();
-  const customBase = (currentConfig as any)?.adminApiBase;
-  if (customBase) return customBase.replace(/\/+$/, '');
-  return process.env.NODE_ENV === 'development' ? 'http://localhost:8082' : 'https://admin.claw.chaohui.ai';
-};
 
 const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ onClose }) => {
   const [issueType, setIssueType] = useState<IssueType>('bug');
@@ -67,9 +60,8 @@ const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ onClose }) => {
 
   // 上传文件至 OSS
   const uploadFile = async (file: File): Promise<string | null> => {
-    const apiBase = getAdminApiBase();
     const token = localStorage.getItem('heyclaw_session') || '';
-    const targetUrl = `${apiBase}/api/upload?folder=feedback&filename=${encodeURIComponent(file.name)}`;
+    const targetUrl = getUploadUrl('feedback', file.name);
 
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
@@ -177,7 +169,6 @@ const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ onClose }) => {
 
     setSubmitting(true);
     try {
-      const apiBase = getAdminApiBase();
       const session = localStorage.getItem('heyclaw_session') || '';
       const userId = localStorage.getItem('heyclaw_user_id') || '';
       const nickname =
@@ -195,7 +186,7 @@ const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ onClose }) => {
         diagnostics: includeDiagnostics ? diagnosticsData : {},
       };
 
-      const resp = await fetch(`${apiBase}/api/feedback`, {
+      const resp = await fetch(getFeedbackUrl(), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
