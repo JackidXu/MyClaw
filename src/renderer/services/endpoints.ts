@@ -29,6 +29,14 @@ export const getKitStoreUrl = () => `${getServerApiBaseUrl()}/api/kits`;
 // 快速发问
 export const getQuickActionsUrl = () => `${getServerApiBaseUrl()}/api/quick-actions`;
 
+// 用户个人信息与余额
+export const getUserProfileUrl = (userId: string | number) =>
+  `${getServerApiBaseUrl()}/api/client/user-profile?userId=${encodeURIComponent(String(userId))}`;
+
+// 修改密码
+export const getChangePasswordUrl = () =>
+  `${getServerApiBaseUrl()}/api/client/change-password`;
+
 // 登录地址
 export const getLoginOvermindUrl = () => isTestModeEnabled()
   ? 'https://api-overmind.heyclaw.com/openapi/get/luna/hardware/lobsterai/test/login-url'

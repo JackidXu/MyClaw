@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-import { configService } from '../services/config';
+import { getChangePasswordUrl } from '../services/endpoints';
 
 interface PasswordModalProps {
   isOpen: boolean;
@@ -38,37 +38,31 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({ isOpen, onClose, o
 
     setLoading(true);
     const apiKey = localStorage.getItem('heyclaw_api_key');
-    const session = localStorage.getItem('heyclaw_session');
     const userId = localStorage.getItem('heyclaw_user_id');
 
     try {
-      if (!apiKey || !session || !userId) {
+      if (!apiKey || !userId) {
         throw new Error('未检测到您的登录凭证，请重新登录');
       }
 
-      // 客户端直连 New API 修改密码 (使用 PUT /api/user/self，零越权风险)
-      const currentConfig = configService.getConfig();
-      const oneapiConfig = (currentConfig.providers?.['oneapi'] || {}) as any;
-      const oneapiBaseUrl = oneapiConfig.baseUrl || 'https://token.chaohui.ai';
-      const cleanBaseUrl = oneapiBaseUrl.replace(/\/v1\/?$/, '').replace(/\/+$/, '');
-      const targetUrl = `${cleanBaseUrl}/api/user/self`;
+      // 通过管理后台代理修改密码
+      const targetUrl = getChangePasswordUrl();
 
       const res = await window.electron.api.fetch({
         url: targetUrl,
-        method: 'PUT',
+        method: 'POST',
         headers: {
-          'Cookie': session,
-          'New-Api-User': String(userId),
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          password: newPassword,
-          original_password: oldPassword.trim()
+          userId: Number(userId),
+          oldPassword: oldPassword.trim(),
+          newPassword: newPassword.trim()
         }),
       }) as any;
 
       if (!res.ok || !res.data || !res.data.success) {
-        throw new Error(res.data?.message || res.data?.error || '修改密码失败，请检查原密码或格式');
+        throw new Error(res.data?.error || res.data?.message || '修改密码失败，请检查原密码或格式');
       }
 
       // 修改成功后的处理：清除缓存并引导退出登录
