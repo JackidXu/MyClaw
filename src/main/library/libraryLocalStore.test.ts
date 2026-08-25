@@ -133,6 +133,22 @@ describe('LibraryLocalStore', () => {
     expect(store.resolvePath(item.itemId)).toBe('/workspace/report.pdf');
   });
 
+  test('batch reads visible items and reports hidden or unknown identifiers', () => {
+    insertSession('session-1', 'Visible task', 100);
+    const visible = upsertLinkedFile();
+    const hidden = store.upsertFile({
+      ...indexedFile(200, LibraryOrigin.Manual),
+      pathKey: '/workspace/hidden.pdf',
+      filePath: '/workspace/hidden.pdf',
+      fileName: 'hidden.pdf',
+    });
+
+    expect(store.getVisibleItems([visible.itemId, hidden.itemId, 'unknown'])).toEqual({
+      items: [expect.objectContaining({ itemId: visible.itemId })],
+      unavailableItemIds: [hidden.itemId, 'unknown'],
+    });
+  });
+
   test('restores the same indexed artifact and favorite when a new task links the file', () => {
     insertSession('session-1', 'Deleted task', 100);
     const item = upsertLinkedFile();

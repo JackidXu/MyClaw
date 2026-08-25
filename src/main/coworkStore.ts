@@ -1528,13 +1528,20 @@ export class CoworkStore {
     return rows.map(row => row.id);
   }
 
-  private deleteSessionRows(ids: string[]): void {
-    if (ids.length === 0) return;
+  private deleteSessionRows(ids: string[]): string[] {
+    if (ids.length === 0) return [];
     const placeholders = ids.map(() => '?').join(',');
+    const affectedArtifactRows = this.getAll<{ artifact_id: string }>(
+      `SELECT DISTINCT artifact_id
+       FROM library_artifact_sessions
+       WHERE session_id IN (${placeholders})`,
+      ids,
+    );
     this.db.prepare(`DELETE FROM library_artifact_sessions WHERE session_id IN (${placeholders})`).run(...ids);
     this.db.prepare(`DELETE FROM cowork_session_capsules WHERE session_id IN (${placeholders})`).run(...ids);
     this.db.prepare(`DELETE FROM cowork_messages WHERE session_id IN (${placeholders})`).run(...ids);
     this.db.prepare(`DELETE FROM cowork_sessions WHERE id IN (${placeholders})`).run(...ids);
+    return affectedArtifactRows.map(row => row.artifact_id);
   }
 
   private deleteSessionsForAgent(agentId: string): string[] {
@@ -1546,27 +1553,29 @@ export class CoworkStore {
     return sessionIds;
   }
 
-  deleteSession(id: string): void {
+  deleteSession(id: string): string[] {
     const deleteSession = this.db.transaction((sessionId: string) => {
       this.markMemorySourcesInactiveBySession(sessionId);
-      this.deleteSessionRows([sessionId]);
+      return this.deleteSessionRows([sessionId]);
     });
-    deleteSession(id);
+    const affectedArtifactIds = deleteSession(id);
     this.markOrphanImplicitMemoriesStale();
+    return affectedArtifactIds;
   }
 
-  deleteSessions(ids: string[]): void {
+  deleteSessions(ids: string[]): string[] {
     const uniqueIds = Array.from(new Set(ids.filter(Boolean)));
-    if (uniqueIds.length === 0) return;
+    if (uniqueIds.length === 0) return [];
 
     const deleteSessions = this.db.transaction((sessionIds: string[]) => {
       for (const id of sessionIds) {
         this.markMemorySourcesInactiveBySession(id);
       }
-      this.deleteSessionRows(sessionIds);
+      return this.deleteSessionRows(sessionIds);
     });
-    deleteSessions(uniqueIds);
+    const affectedArtifactIds = deleteSessions(uniqueIds);
     this.markOrphanImplicitMemoriesStale();
+    return affectedArtifactIds;
   }
 
   setSessionPinned(id: string, pinned: boolean): number | null {

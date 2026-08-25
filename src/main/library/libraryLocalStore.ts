@@ -14,6 +14,7 @@ import {
 import type {
   LibraryArtifactCandidate,
   LibraryFavoriteInput,
+  LibraryGetLocalItemsData,
   LibraryLocalCounts,
   LibraryLocalDetailData,
   LibraryLocalListData,
@@ -232,6 +233,24 @@ export class LibraryLocalStore {
     `).get(itemId, LibraryAvailability.Missing) as LocalArtifactRow | undefined;
     if (!row) return null;
     return this.hydrateVisibleRows([row])[0] ?? null;
+  }
+
+  getVisibleItems(itemIds: string[]): LibraryGetLocalItemsData {
+    if (itemIds.length === 0) return { items: [], unavailableItemIds: [] };
+    const placeholders = itemIds.map(() => '?').join(',');
+    const rows = this.db.prepare(`
+      SELECT a.*
+      FROM library_local_artifacts a
+      WHERE a.id IN (${placeholders})
+        AND a.availability <> ?
+        AND ${VISIBLE_TASK_RELATION_PREDICATE}
+    `).all(...itemIds, LibraryAvailability.Missing) as LocalArtifactRow[];
+    const items = this.hydrateVisibleRows(rows);
+    const visibleItemIds = new Set(items.map(item => item.itemId));
+    return {
+      items,
+      unavailableItemIds: itemIds.filter(itemId => !visibleItemIds.has(itemId)),
+    };
   }
 
   getItem(itemId: string): LibraryStoredLocalArtifact | null {

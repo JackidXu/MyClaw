@@ -970,7 +970,7 @@ test('deleteSession removes messages without relying on foreign key cascade', ()
     INSERT INTO library_artifact_sessions (artifact_id, session_id) VALUES (?, ?)
   `).run('artifact-delete-hard', sid);
 
-  store.deleteSession(sid);
+  const affectedArtifactIds = store.deleteSession(sid);
 
   expect(store.getSession(sid)).toBeNull();
   const messageCount = db
@@ -981,6 +981,7 @@ test('deleteSession removes messages without relying on foreign key cascade', ()
     .prepare('SELECT COUNT(*) AS count FROM library_artifact_sessions WHERE session_id = ?')
     .get(sid) as { count: number };
   expect(relationCount.count).toBe(0);
+  expect(affectedArtifactIds).toEqual(['artifact-delete-hard']);
 });
 
 test('forkSession copies stable history and records fork metadata', () => {

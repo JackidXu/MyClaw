@@ -63,6 +63,7 @@ import type {
   LibraryChangedPayload,
   LibraryCloudListOptions,
   LibraryFavoriteInput,
+  LibraryGetLocalItemsInput,
   LibraryLocalListOptions,
 } from '../shared/library/types';
 import {
@@ -886,6 +887,8 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.invoke(LibraryIpc.ListLocal, options),
     listCloud: (options: LibraryCloudListOptions = {}) =>
       ipcRenderer.invoke(LibraryIpc.ListCloud, options),
+    getLocalItems: (input: LibraryGetLocalItemsInput) =>
+      ipcRenderer.invoke(LibraryIpc.GetLocalItems, input),
     getLocalDetail: (itemId: string) =>
       ipcRenderer.invoke(LibraryIpc.GetLocalDetail, itemId),
     recordCandidates: (candidates: LibraryArtifactCandidate[]) =>

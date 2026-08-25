@@ -23,6 +23,7 @@ import type {
   LibraryBackfillState,
   LibraryCloudListOptions,
   LibraryFavoriteInput,
+  LibraryGetLocalItemsInput,
   LibraryLocalListOptions,
   LibraryResult,
 } from '../../shared/library/types';
@@ -56,6 +57,21 @@ const requireItemId = (value: unknown): string => {
     throw new Error('Invalid library item identifier.');
   }
   return value.trim();
+};
+
+export const normalizeLibraryTargetItemIds = (value: unknown): string[] => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Invalid library item request.');
+  }
+  const input = value as Partial<LibraryGetLocalItemsInput>;
+  if (
+    !Array.isArray(input.itemIds)
+    || input.itemIds.length < 1
+    || input.itemIds.length > LibraryLimits.MaxTargetItemIds
+  ) {
+    throw new Error('Invalid library item identifiers.');
+  }
+  return [...new Set(input.itemIds.map(requireItemId))];
 };
 
 const normalizeLocalListOptions = (value: unknown): LibraryLocalListOptions => {
@@ -235,6 +251,17 @@ export const registerLibraryIpcHandlers = ({
       return failure(
         LibraryErrorCode.InvalidInput,
         error instanceof Error ? error.message : 'Invalid cloud library request.',
+      );
+    }
+  });
+
+  ipcMain.handle(LibraryIpc.GetLocalItems, (_event, input: unknown) => {
+    try {
+      return success(localStore.getVisibleItems(normalizeLibraryTargetItemIds(input)));
+    } catch (error) {
+      return failure(
+        LibraryErrorCode.InvalidInput,
+        error instanceof Error ? error.message : 'Invalid library item request.',
       );
     }
   });
