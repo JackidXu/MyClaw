@@ -2,6 +2,7 @@ export interface ExpertTeamMember {
   name: string;
   role: string;
   lead?: boolean;
+  avatar?: string;
 }
 
 // 专家团数据类型（与 main 进程 expertStore.ts 中的 ExpertTeam 接口对齐）
