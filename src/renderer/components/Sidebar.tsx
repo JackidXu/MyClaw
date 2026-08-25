@@ -78,6 +78,8 @@ const DEFAULT_SIDEBAR_WIDTH = 244;
 const MIN_SIDEBAR_WIDTH = 220;
 const MAX_SIDEBAR_WIDTH = 420;
 const SIDEBAR_COLLAPSE_TRANSITION_MS = 200;
+const SIDEBAR_LOGIN_PROMO_TIP_DURATION_MS = 5000;
+const SIDEBAR_LOGIN_PROMO_TIP_FADE_MS = 220;
 const normalizeAgentId = (agentId?: string | null) => agentId?.trim() || AgentId.Main;
 const SidebarNewFeatureBadge = {
   KitsDismissedVersionKey: 'sidebar.kitsNewFeatureBadge.dismissedVersion',
@@ -146,6 +148,19 @@ const reportSidebarAction = (
   });
 };
 
+const writeSidebarRendererLog = (
+  level: 'debug' | 'warn',
+  message: string,
+  error?: unknown,
+): void => {
+  try {
+    window.electron?.log?.fromRenderer?.(level, 'Sidebar', message);
+  } catch (logError) {
+    const logErrorMessage = logError instanceof Error ? logError.message : String(logError);
+    console.debug(`[Sidebar] renderer log unavailable: ${logErrorMessage}`, error);
+  }
+};
+
 const logTaskSearchRequest = (
   source: CoworkTaskSearchRequestSource,
   activeView: SidebarProps['activeView'],
@@ -153,7 +168,7 @@ const logTaskSearchRequest = (
   try {
     const message = `task search requested source=${source} activeView=${activeView} platform=${window.electron?.platform ?? 'unknown'}`;
     console.debug(`[Sidebar] ${message}`);
-    window.electron?.log?.fromRenderer?.('debug', 'Sidebar', message);
+    writeSidebarRendererLog('debug', message);
   } catch (error) {
     // Task search must remain available when renderer diagnostic logging fails.
     console.debug('[Sidebar] task search diagnostic logging unavailable:', error);
@@ -200,6 +215,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   const [agentScrollEdges, setAgentScrollEdges] = useState({ top: false, bottom: false });
   const [isSidebarBannerVisible, setIsSidebarBannerVisible] = useState(false);
   const [showKitsNewBadge, setShowKitsNewBadge] = useState(false);
+  const [showLoginPromoTip, setShowLoginPromoTip] = useState(true);
+  const [isLoginPromoTipFading, setIsLoginPromoTipFading] = useState(false);
   const isResizingRef = useRef(false);
   const resizeStartXRef = useRef(0);
   const resizeStartWidthRef = useRef(DEFAULT_SIDEBAR_WIDTH);
@@ -207,6 +224,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   const isWindows = window.electron.platform === 'win32';
   const showHeaderRow = !isWindows;
   const showLoginPromo = !hideLogin && !isAuthLoading && !isLoggedIn;
+  const shouldShowLoginPromoTip = showLoginPromo && showLoginPromoTip;
+  const shouldReserveLoginPromoTipSpace = shouldShowLoginPromoTip;
   const showRechargeButton = showLoginPromo && (
     !enterpriseAccountContext
     || (
@@ -266,6 +285,31 @@ const Sidebar: React.FC<SidebarProps> = ({
       isCurrent = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!showLoginPromo) {
+      setShowLoginPromoTip(true);
+      setIsLoginPromoTipFading(false);
+      return undefined;
+    }
+
+    const hideTimer = window.setTimeout(() => {
+      const message = 'auto hiding login promo tip';
+      console.debug(`[Sidebar] ${message}`);
+      writeSidebarRendererLog('debug', message);
+      setIsLoginPromoTipFading(true);
+    }, SIDEBAR_LOGIN_PROMO_TIP_DURATION_MS);
+
+    const removeTimer = window.setTimeout(() => {
+      setShowLoginPromoTip(false);
+      setIsLoginPromoTipFading(false);
+    }, SIDEBAR_LOGIN_PROMO_TIP_DURATION_MS + SIDEBAR_LOGIN_PROMO_TIP_FADE_MS);
+
+    return () => {
+      window.clearTimeout(hideTimer);
+      window.clearTimeout(removeTimer);
+    };
+  }, [showLoginPromo]);
 
   const dismissKitsNewBadge = useCallback(() => {
     if (!showKitsNewBadge) return;
@@ -514,15 +558,15 @@ const Sidebar: React.FC<SidebarProps> = ({
     try {
       const message = `opening ${rechargeTarget} recharge portal`;
       console.debug(`[Sidebar] ${message}`);
-      window.electron?.log?.fromRenderer?.('debug', 'Sidebar', message);
+      writeSidebarRendererLog('debug', message);
       await window.electron.shell.openExternal(rechargeUrl);
     } catch (error) {
       console.warn('[Sidebar] failed to open recharge portal:', error);
       const errorMessage = error instanceof Error ? error.message : String(error);
-      window.electron?.log?.fromRenderer?.(
+      writeSidebarRendererLog(
         'warn',
-        'Sidebar',
         `failed to open ${rechargeTarget} recharge portal: ${errorMessage}`,
+        error,
       );
     }
   }, [activeView, currentSessionId, enterpriseAccountContext, isCollapsed]);
@@ -831,13 +875,23 @@ const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </div>
       ) : (
-        <div className={`pb-2.5 ${showLoginPromo ? 'pt-3.5' : 'pt-2'}`}>
+        <div
+          className={`pb-2.5 transition-[padding-top] duration-200 ease-out ${
+            shouldReserveLoginPromoTipSpace ? 'pt-3.5' : 'pt-2'
+          }`}
+        >
           <div className="flex items-end justify-between gap-1.5 px-2 pt-1">
             {!hideLogin && (
-              <div className={`relative shrink-0 ${showLoginPromo ? 'pt-9' : ''}`}>
-                {showLoginPromo && (
+              <div
+                className={`relative shrink-0 transition-[padding-top] duration-200 ease-out ${
+                  shouldReserveLoginPromoTipSpace ? 'pt-9' : ''
+                }`}
+              >
+                {shouldShowLoginPromoTip && (
                   <div
-                    className="pointer-events-none absolute left-0 top-0 z-10 inline-flex h-7 w-max max-w-[10.5rem] items-center rounded-lg rounded-bl-[3px] bg-[#ff3f67] px-3 text-[13px] font-semibold leading-none text-white shadow-[0_5px_14px_rgba(255,63,103,0.24)]"
+                    className={`pointer-events-none absolute left-0 top-0 z-10 inline-flex h-7 w-max max-w-[10.5rem] items-center rounded-lg rounded-bl-[3px] bg-[#ff3f67] px-3 text-[13px] font-semibold leading-none text-white shadow-[0_5px_14px_rgba(255,63,103,0.24)] transition-all duration-[220ms] ease-out ${
+                      isLoginPromoTipFading ? 'translate-y-1 opacity-0' : 'translate-y-0 opacity-100'
+                    }`}
                     aria-hidden="true"
                   >
                     <span className="min-w-0 whitespace-nowrap">
