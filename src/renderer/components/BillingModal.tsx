@@ -1,3 +1,6 @@
+import { XMarkIcon } from '@heroicons/react/24/outline';
+import React, { useCallback, useEffect, useState } from 'react';
+
 import { BillingLogItem, fetchBillingLogs } from '../services/billingService';
 import Modal from './common/Modal';
 

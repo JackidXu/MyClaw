@@ -94,7 +94,7 @@ class VipService {
       const res = await httpClient.post<{
         authorized?: boolean;
         reason?: string;
-        subscriptions?: VipSubscriptionItem[];
+        subscriptions?: VipSubscription[];
       }>(`${adminBaseUrl}/api/vip/status`, {
         deviceId: deviceInfo.deviceId,
         platform: deviceInfo.platform,

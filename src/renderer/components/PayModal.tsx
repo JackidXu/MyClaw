@@ -212,7 +212,7 @@ const PayModal: React.FC<PayModalProps> = ({ onClose, onSuccess }) => {
           <div className="py-8 flex flex-col items-center justify-center text-center space-y-2">
             <div className="text-sm font-medium text-red-500">{errorMessage}</div>
             <button
-              onClick={fetchSpecs}
+              onClick={loadSpecs}
               className="text-xs text-primary hover:underline font-medium"
             >
               {t('重新加载', 'Reload')}
