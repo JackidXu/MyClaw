@@ -2,7 +2,7 @@ import { ArrowPathIcon, CheckIcon, PaperClipIcon, TrashIcon, XMarkIcon } from '@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import { getFeedbackUrl, getUploadUrl } from '../services/endpoints';
-import { handleUnauthorized, httpClient } from '../services/httpClient';
+import { httpClient } from '../services/httpClient';
 import Modal from './common/Modal';
 
 interface ReportIssueModalProps {
@@ -61,42 +61,12 @@ const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ onClose }) => {
 
   // 上传文件至 OSS
   const uploadFile = async (file: File): Promise<string | null> => {
-    const session = localStorage.getItem('heyclaw_session') || '';
     const targetUrl = getUploadUrl('feedback', file.name);
-
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', targetUrl, true);
-      if (session) {
-        xhr.setRequestHeader('Authorization', `Bearer ${session}`);
-      }
-
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          try {
-            const data = JSON.parse(xhr.responseText);
-            if (data.success && data.url) {
-              resolve(data.url);
-            } else {
-              if (data.error?.includes('未授权') || data.error?.includes('请先登录')) {
-                handleUnauthorized();
-              }
-              reject(new Error(data.error || '上传失败'));
-            }
-          } catch {
-            reject(new Error('响应解析错误'));
-          }
-        } else {
-          if (xhr.status === 401 || xhr.status === 403) {
-            handleUnauthorized();
-          }
-          reject(new Error(`上传请求失败 [HTTP ${xhr.status}]`));
-        }
-      };
-
-      xhr.onerror = () => reject(new Error('网络请求异常，请检查网络或后端连接'));
-      xhr.send(file);
-    });
+    const resp = await httpClient.uploadFile<{ success: boolean; url?: string; error?: string }>(targetUrl, file);
+    if (resp.ok && resp.data && resp.data.success && resp.data.url) {
+      return resp.data.url;
+    }
+    throw new Error(resp.data?.error || `上传失败 [HTTP ${resp.status}]`);
   };
 
   // 处理文件添加

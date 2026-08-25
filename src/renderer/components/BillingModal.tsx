@@ -1,21 +1,8 @@
-import { XMarkIcon } from '@heroicons/react/24/outline';
-import React, { useCallback, useEffect, useState } from 'react';
-
-import { configService } from '../services/config';
-import { handleUnauthorized } from '../services/httpClient';
+import { BillingLogItem, fetchBillingLogs } from '../services/billingService';
 import Modal from './common/Modal';
 
 interface BillingModalProps {
   onClose: () => void;
-}
-
-interface LogItem {
-  id: number;
-  type: number; // 1=充值, 2=消费, 3=管理, 4=错误, 5=系统
-  content: string;
-  model_name: string;
-  quota: number;
-  created_at: number;
 }
 
 const getTodayStr = () => {
@@ -30,7 +17,7 @@ const getThirtyDaysAgoStr = () => {
 };
 
 const BillingModal: React.FC<BillingModalProps> = ({ onClose }) => {
-  const [logs, setLogs] = useState<LogItem[]>([]);
+  const [logs, setLogs] = useState<BillingLogItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   
@@ -45,60 +32,18 @@ const BillingModal: React.FC<BillingModalProps> = ({ onClose }) => {
   const [startDate, setStartDate] = useState<string>(getThirtyDaysAgoStr());
   const [endDate, setEndDate] = useState<string>(getTodayStr());
 
-  const fetchBillingLogs = useCallback(async () => {
+  const loadLogs = useCallback(async () => {
     setLoading(true);
     setErrorMsg(null);
     try {
-      const config = configService.getConfig();
-      const oneapiConfig = config.providers?.['oneapi'];
-      const apiKey = oneapiConfig?.apiKey?.trim();
-      const baseUrl = oneapiConfig?.baseUrl?.trim() || 'https://token.chaohui.ai/v1';
-
-      if (!apiKey) {
-        setErrorMsg('未激活系统，请先输入激活码');
-        setLoading(false);
-        return;
-      }
-
-      // 提取 New-API 根路径的鲁棒写法
-      let apiRoot = baseUrl.trim().replace(/\/+$/, '');
-      try {
-        if (!/^https?:\/\//i.test(apiRoot)) {
-          apiRoot = `http://${apiRoot}`;
-        }
-        apiRoot = new URL(apiRoot).origin;
-      } catch {
-        apiRoot = apiRoot.replace(/\/v1$/, '');
-      }
-
-      // 一次性拉取较多条目（例如最多200条），在前端做精确的过滤和满页分页
-      const url = `${apiRoot}/api/log/token?key=${apiKey}&page_size=200`;
-
-      const resp = await window.electron.api.fetch({
-        url,
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-        },
-      }) as { ok: boolean; data?: any; error?: string };
-
-      if (resp.data && typeof resp.data === 'object') {
-        if (resp.data.success) {
-          setLogs(resp.data.data || []);
-          setPage(1); // 重新加载后重置到第1页
-        } else {
-          if (resp.data.message?.includes('未登录') || resp.data.message?.includes('无权') || resp.data.message?.includes('token 无效')) {
-            handleUnauthorized();
-          }
-          setErrorMsg(resp.data.message || '获取账单流水失败');
-        }
+      const res = await fetchBillingLogs();
+      if (res.success) {
+        setLogs(res.logs);
+        setPage(1);
       } else {
-        if (resp.error?.includes('401') || resp.error?.includes('403')) {
-          handleUnauthorized();
-        }
-        setErrorMsg(resp.error || '请求网络错误，请稍后重试');
+        setErrorMsg(res.error || '获取账单流水失败');
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error('[BillingModal] Fetch logs error:', e);
       setErrorMsg('网络请求异常，请检查网络连接');
     } finally {
@@ -108,8 +53,8 @@ const BillingModal: React.FC<BillingModalProps> = ({ onClose }) => {
 
   // 挂载时拉取一次数据
   useEffect(() => {
-    fetchBillingLogs();
-  }, [fetchBillingLogs]);
+    void loadLogs();
+  }, [loadLogs]);
 
   // 将 quota 转换为虚拟点数
   const formatPoints = (quota: number) => {
