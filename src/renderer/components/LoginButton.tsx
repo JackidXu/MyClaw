@@ -648,7 +648,7 @@ const LoginButton: React.FC<LoginButtonProps> = ({
         onClick={handleClick}
         className={
           useSidebarPromoLogin
-            ? 'inline-flex h-8 w-[5.5rem] shrink-0 items-center justify-center rounded-lg bg-black px-3 text-sm font-medium text-white shadow-sm transition-colors hover:bg-black/85 dark:bg-white dark:text-black dark:hover:bg-white/85 cursor-pointer'
+            ? 'inline-flex h-7 w-[5.25rem] shrink-0 items-center justify-center rounded-md bg-black px-2.5 text-[13px] font-medium text-white shadow-sm transition-colors hover:bg-black/85 dark:bg-white dark:text-black dark:hover:bg-white/85 cursor-pointer'
             : 'inline-flex h-7 items-center justify-start gap-2 rounded-md px-1.5 text-sm font-normal text-foreground/80 transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.04] cursor-pointer'
         }
       >
