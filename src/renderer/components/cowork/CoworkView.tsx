@@ -24,7 +24,7 @@ import { buildCoworkCapabilitySelection } from '../../services/coworkCapabilityS
 import { expertService } from '../../services/expertService';
 import { i18nService } from '../../services/i18n';
 import { quickActionService } from '../../services/quickAction';
-import type { FmpTool } from '../../services/secondBrainApi';
+import { fetchCognitionInjection, type FmpTool } from '../../services/secondBrainApi';
 import { RootState } from '../../store';
 import {
   selectCoworkConfig,
@@ -490,13 +490,29 @@ const CoworkView: React.FC<CoworkViewProps> = ({
       dispatch(setDraftKitIds({ draftKey: '__home__', kitIds: [] }));
       dispatch(setDraftSkillIds({ draftKey: '__home__', skillIds: [] }));
       dispatch(clearSelection());
+      let finalSkillPrompt = skillPrompt;
+      let effectiveFmpTools: FmpTool[] | undefined = fmpTools && fmpTools.length > 0 ? fmpTools : undefined;
+      // 认知注入只在 Session 首次创建（新会话第一条消息）时触发，避免多轮对话 systemPrompt 频繁变化破坏 Prompt Cache
+      if (homeDraftSecondBrainEnabled) {
+        try {
+          const injection = await fetchCognitionInjection();
+          if (injection.prompt?.trim()) {
+            finalSkillPrompt = [skillPrompt, injection.prompt.trim()].filter(Boolean).join('\n\n');
+          }
+          if (injection.tools && injection.tools.length > 0) {
+            effectiveFmpTools = injection.tools;
+          }
+        } catch (err) {
+          console.warn('[CoworkView] fetchCognitionInjection failed during startSession:', err);
+        }
+      }
 
       // Combine skill prompt with system prompt.
       // OpenClaw loads skills natively via skills.load.extraDirs, so skip the
       // auto-routing prompt to avoid injecting Claude SDK tool-calling instructions
       // that confuse non-Claude models (e.g. kimi-k2.5 falls back to text-based
       // tool calls, producing empty tool names and err=true failures).
-      const combinedSystemPrompt = buildCoworkSystemPrompt(skillPrompt, config.systemPrompt);
+      const combinedSystemPrompt = buildCoworkSystemPrompt(finalSkillPrompt, config.systemPrompt);
 
       // Start the actual session immediately with fallback title
       const sessionModelOverride = currentAgentSelectedModelRef;
@@ -522,8 +538,8 @@ const CoworkView: React.FC<CoworkViewProps> = ({
         mediaReferences,
         selectedTextSnippets,
         browserAnnotations,
-        fmpTools: fmpTools && fmpTools.length > 0 ? fmpTools : undefined,
-        fmpAuthHeaders: fmpTools && fmpTools.length > 0
+        fmpTools: effectiveFmpTools,
+        fmpAuthHeaders: effectiveFmpTools && effectiveFmpTools.length > 0
           ? {
             Authorization: `Bearer ${localStorage.getItem('heyclaw_session') ?? ''}`,
           }

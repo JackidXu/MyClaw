@@ -58,7 +58,7 @@ import {
   LogReporterEntry,
   reportYdAnalyzer,
 } from '../../services/logReporter';
-import { fetchCognitionInjection, type FmpTool } from '../../services/secondBrainApi';
+import type { FmpTool } from '../../services/secondBrainApi';
 import { resolveLocalizedText, skillService } from '../../services/skill';
 import { vipService } from '../../services/vipService';
 import { RootState } from '../../store';
@@ -1872,32 +1872,14 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
       preparedBrowserAnnotations.push({ ...batch, annotations: preparedAnnotations });
     }
 
-    let finalSkillPrompt = skillPrompt;
-    let fmpInjectionTools: FmpTool[] = [];
-    // 认知注入只在 Session 第一条消息时触发，避免多轮对话 systemPrompt 频繁变化破坏 Prompt Cache
-    if (secondBrainEnabled && !sessionHasMessages) {
-      try {
-        const injection = await fetchCognitionInjection();
-        if (injection.prompt?.trim()) {
-          finalSkillPrompt = [skillPrompt, injection.prompt.trim()].filter(Boolean).join('\n\n');
-        }
-        if (injection.tools && injection.tools.length > 0) {
-          fmpInjectionTools = injection.tools;
-        }
-      } catch (err) {
-        console.warn('[CoworkPromptInput] fetchCognitionInjection failed:', err);
-      }
-    }
-
     const result = await onSubmit(
       promptPayload.finalPrompt,
-      finalSkillPrompt,
+      skillPrompt,
       [...(promptPayload.imageAttachments ?? []), ...annotationImages],
       promptPayload.mediaReferences,
       promptPayload.selectedTextSnippets,
       preparedBrowserAnnotations,
       effectiveCollaborationMode,
-      fmpInjectionTools.length > 0 ? fmpInjectionTools : undefined,
     );
 
     if (result === false) {
@@ -1958,7 +1940,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     resetGoalInput(false);
     draftStartedAnalyticsRef.current = false;
     inputSourceOverrideRef.current = null;
-  }, [value, steerInputActive, steerValue, isVoiceRecording, stopVoiceRecordingAndRecognize, goalInputActive, goalInputMode, resetGoalInput, isStreaming, canSteer, remoteManaged, disabled, submitDisabled, isPatchingModel, onSubmit, onGoalCommand, activeSkillIds, skills, activeKitIds, marketplaceKits, installedKits, attachments, browserAnnotationBatches, showFolderSelector, workingDirectory, dispatch, draftKey, selectedTextSnippets, pendingSteers.length, resolveSubmitModelAccessPrompt, isPlanMode, planConfirmation, reportPromptControl, getPromptCapabilityAnalyticsParams, getPromptContextAnalyticsParams, getPromptInputSource, goal, sessionId, preparePromptPayload, modelSupportsImage, queuedMediaSelection, currentAgent?.presetId, currentAgentId, authOwnerAccountKey, authAccountGeneration, secondBrainEnabled, sessionHasMessages]);
+  }, [value, steerInputActive, steerValue, isVoiceRecording, stopVoiceRecordingAndRecognize, goalInputActive, goalInputMode, resetGoalInput, isStreaming, canSteer, remoteManaged, disabled, submitDisabled, isPatchingModel, onSubmit, onGoalCommand, activeSkillIds, skills, activeKitIds, marketplaceKits, installedKits, attachments, browserAnnotationBatches, showFolderSelector, workingDirectory, dispatch, draftKey, selectedTextSnippets, pendingSteers.length, resolveSubmitModelAccessPrompt, isPlanMode, planConfirmation, reportPromptControl, getPromptCapabilityAnalyticsParams, getPromptContextAnalyticsParams, getPromptInputSource, goal, sessionId, preparePromptPayload, modelSupportsImage, queuedMediaSelection, currentAgent?.presetId, currentAgentId, authOwnerAccountKey, authAccountGeneration]);
   handleSubmitRef.current = handleSubmit;
 
   const handleSelectSkill = useCallback((skill: Skill) => {
