@@ -10429,6 +10429,14 @@ if (!gotTheLock) {
 
       const nextConfig = getCoworkStore().getConfig();
       const impactDecision = classifyCoworkConfigChange(previousConfig, nextConfig);
+      if (
+        normalizedConfig.openClawHeartbeatEnabled !== undefined
+        && previousConfig.openClawHeartbeatEnabled !== nextConfig.openClawHeartbeatEnabled
+      ) {
+        console.log(
+          `[Cowork] OpenClaw heartbeat setting changed: enabled=${nextConfig.openClawHeartbeatEnabled}, previous=${previousConfig.openClawHeartbeatEnabled}, impact=${impactDecision.impact}`,
+        );
+      }
       if (impactDecision.impact !== OpenClawConfigImpact.None) {
         const syncResult = await syncOpenClawConfig({
           reason: 'cowork-config-change',
