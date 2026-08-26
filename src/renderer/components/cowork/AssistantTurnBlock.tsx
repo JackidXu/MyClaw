@@ -222,16 +222,60 @@ const isCreditQuotaExhaustedKey = (key: string | null): boolean => (
   || key === CoworkErrorI18nKey.FreeQuotaExhausted
 );
 
+const logCreditQuotaBannerEvent = (
+  level: 'debug' | 'warn',
+  message: string,
+  error?: unknown,
+): void => {
+  if (level === 'warn') {
+    if (error === undefined) {
+      console.warn(`[CreditQuotaBanner] ${message}`);
+    } else {
+      console.warn(`[CreditQuotaBanner] ${message}`, error);
+    }
+  } else {
+    console.debug(`[CreditQuotaBanner] ${message}`);
+  }
+
+  try {
+    const errorSuffix = error instanceof Error ? `: ${error.message}` : '';
+    window.electron?.log?.fromRenderer?.(
+      level,
+      'CreditQuotaBanner',
+      `${message}${errorSuffix}`.slice(0, 500),
+    );
+  } catch {
+    // Renderer diagnostics must never interrupt the conversation UI.
+  }
+};
+
 const CreditQuotaExhaustedBanner: React.FC<{ onDismiss: () => void }> = ({ onDismiss }) => {
-  const handlePurchase = () => {
-    void window.electron.shell.openExternal(getPortalPricingUrl());
+  const handlePurchase = async () => {
+    const pricingUrl = getPortalPricingUrl();
+    logCreditQuotaBannerEvent('debug', 'purchase action clicked');
+    try {
+      const result = await window.electron?.shell?.openExternal(pricingUrl);
+      if (!result?.success) {
+        logCreditQuotaBannerEvent(
+          'warn',
+          `pricing page open failed: ${result?.error ?? 'unknown error'}`,
+        );
+      }
+    } catch (error) {
+      logCreditQuotaBannerEvent('warn', 'pricing page open threw an error', error);
+    }
+  };
+
+  const handleDismiss = () => {
+    logCreditQuotaBannerEvent('debug', 'dismiss action clicked');
+    onDismiss();
   };
 
   return (
     <div className="relative rounded-lg border border-border bg-background px-4 py-3 pr-10 shadow-sm">
       <button
         type="button"
-        onClick={onDismiss}
+        onClick={handleDismiss}
         className="absolute right-2 top-2 inline-flex h-6 w-6 items-center justify-center rounded-full text-secondary transition-colors hover:bg-surface-raised hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
         aria-label={i18nService.t('close')}
         title={i18nService.t('close')}
