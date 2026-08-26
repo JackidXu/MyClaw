@@ -86,7 +86,7 @@ test('defaults hidden OpenClaw session policy to thirty days', () => {
     keepAlive: '30d',
   });
   expect(state.config.skipMissedJobs).toBe(true);
-  expect(state.config.openClawHeartbeatEnabled).toBe(true);
+  expect(state.config.openClawHeartbeatEnabled).toBe(false);
 });
 
 test('clears account-scoped media models and selections together', () => {
