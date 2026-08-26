@@ -148,6 +148,10 @@ import {
   LocalServiceDeploymentPermissionSubmitAction,
   mergeLocalServiceDeploymentShareUpdate,
 } from './localServiceDeploymentModel';
+import {
+  resolvePublishingAccountTransition,
+  shouldCompleteLocalServiceDeploymentRequestForQuota,
+} from './localServiceDeploymentRequestLifecycle';
 import NodeDeploymentPersistenceOperationStatus, {
   NodeDeploymentPersistenceOperationAction,
   NodeDeploymentPersistenceOperationPhase,
@@ -870,9 +874,26 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
   const publishingAnalyticsAttemptRef =
     useRef<PublishingAnalyticsAttemptContext | null>(null);
   const handledLocalServiceDeploymentRequestIdRef = useRef<number | null>(null);
+  const localServiceDeploymentRequestRef = useRef(localServiceDeploymentRequest);
+  const onLocalServiceDeploymentRequestConsumedRef =
+    useRef(onLocalServiceDeploymentRequestConsumed);
+  const publishingAccountContextRef = useRef({
+    accountGeneration: authState.accountGeneration,
+    ownerAccountKey: authState.ownerAccountKey,
+  });
   const publishingAccountGenerationRef = useRef(authState.accountGeneration);
   publishingAccountGenerationRef.current = authState.accountGeneration;
+  localServiceDeploymentRequestRef.current = localServiceDeploymentRequest;
+  onLocalServiceDeploymentRequestConsumedRef.current =
+    onLocalServiceDeploymentRequestConsumed;
   nodeDeploymentLookupRef.current = nodeDeploymentLookup;
+
+  const completeLocalServiceDeploymentRequest = useCallback(() => {
+    const requestId = localServiceDeploymentRequest?.requestId;
+    if (requestId === undefined) return;
+    handledLocalServiceDeploymentRequestIdRef.current = requestId;
+    onLocalServiceDeploymentRequestConsumed?.(requestId);
+  }, [localServiceDeploymentRequest?.requestId, onLocalServiceDeploymentRequestConsumed]);
 
   const previewableArtifacts = artifacts.filter(a => PREVIEWABLE_ARTIFACT_TYPES.has(a.type));
   const artifactsById = useMemo(
@@ -1313,11 +1334,32 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
   }, []);
 
   useEffect(() => {
+    const previousAccountContext = publishingAccountContextRef.current;
+    const currentAccountContext = {
+      accountGeneration: authState.accountGeneration,
+      ownerAccountKey: authState.ownerAccountKey,
+    };
+    const accountTransition = resolvePublishingAccountTransition(
+      previousAccountContext,
+      currentAccountContext,
+      localServiceDeploymentRequestRef.current?.requestId,
+    );
+    publishingAccountContextRef.current = currentAccountContext;
     publishingAccountGenerationRef.current = authState.accountGeneration;
     nodeDeploymentActionRunIdRef.current += 1;
     nodeDeploymentAccessRunIdRef.current += 1;
     nodeDeploymentPersistenceOperationRunIdRef.current += 1;
-    handledLocalServiceDeploymentRequestIdRef.current = null;
+    if (accountTransition.changed) {
+      // Card-triggered deployment requests belong to the account that launched them.
+      // Complete the one-shot request before the new account context can replay it.
+      const staleRequestId = accountTransition.staleLocalServiceDeploymentRequestId;
+      if (staleRequestId !== null) {
+        handledLocalServiceDeploymentRequestIdRef.current = staleRequestId;
+        onLocalServiceDeploymentRequestConsumedRef.current?.(staleRequestId);
+      } else {
+        handledLocalServiceDeploymentRequestIdRef.current = null;
+      }
+    }
     nodeDeploymentLookupRef.current = null;
     if (nodeDeploymentLookupDialogTimerRef.current !== undefined) {
       window.clearTimeout(nodeDeploymentLookupDialogTimerRef.current);
@@ -1785,17 +1827,25 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
     const feature = subscriptionPrompt?.feature;
     setSubscriptionPrompt(null);
     setHtmlSharePendingRequest(null);
-    if (
-      feature === ArtifactSubscriptionFeature.Deployment &&
-      localServiceDeploymentRequest?.requestId
-    ) {
-      onLocalServiceDeploymentRequestConsumed?.(localServiceDeploymentRequest.requestId);
+    if (feature === ArtifactSubscriptionFeature.Deployment) {
+      completeLocalServiceDeploymentRequest();
     }
   }, [
-    localServiceDeploymentRequest?.requestId,
-    onLocalServiceDeploymentRequestConsumed,
+    completeLocalServiceDeploymentRequest,
     subscriptionPrompt?.feature,
   ]);
+
+  const closePublishingQuotaDialog = useCallback(() => {
+    const shouldCompleteDeploymentRequest = publishingQuotaDialog
+      ? shouldCompleteLocalServiceDeploymentRequestForQuota(
+          publishingQuotaDialog.resourceKind,
+        )
+      : false;
+    setPublishingQuotaDialog(null);
+    if (shouldCompleteDeploymentRequest) {
+      completeLocalServiceDeploymentRequest();
+    }
+  }, [completeLocalServiceDeploymentRequest, publishingQuotaDialog]);
 
   const openSubscriptionPage = useCallback(() => {
     const analyticsAttempt = publishingAnalyticsAttemptRef.current;
@@ -1805,8 +1855,12 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
     void window.electron?.shell?.openExternal(
       getPortalPricingUrl(keyfrom, { traceId: analyticsAttempt?.attemptId }),
     );
-    closeSubscriptionPrompt();
-  }, [closeSubscriptionPrompt]);
+    if (publishingQuotaDialog) {
+      closePublishingQuotaDialog();
+    } else {
+      closeSubscriptionPrompt();
+    }
+  }, [closePublishingQuotaDialog, closeSubscriptionPrompt, publishingQuotaDialog]);
 
   const openLoginPage = useCallback(() => {
     closeSubscriptionPrompt();
@@ -3259,9 +3313,7 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
         accessSyncSuccess: undefined,
       };
     });
-    if (localServiceDeploymentRequest?.requestId) {
-      onLocalServiceDeploymentRequestConsumed?.(localServiceDeploymentRequest.requestId);
-    }
+    completeLocalServiceDeploymentRequest();
     nodeDeploymentPersistenceOperationRunIdRef.current += 1;
     const deploymentId = nodeDeploymentDialog?.deployment?.deploymentId;
     if (deploymentId) {
@@ -3291,12 +3343,11 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
     );
   }, [
     clearNodeDeploymentLookupDialogTimer,
+    completeLocalServiceDeploymentRequest,
     isNodeDeploymentAccessUpdating,
-    localServiceDeploymentRequest?.requestId,
     nodeDeploymentDialog?.deployment?.deploymentId,
     nodeDeploymentDialog?.kind,
     nodeDeploymentDialog?.phase,
-    onLocalServiceDeploymentRequestConsumed,
   ]);
 
   const closeNodeDeploymentTrialNotice = useCallback(() => {
@@ -3304,13 +3355,10 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
     clearNodeDeploymentLookupDialogTimer();
     setNodeDeploymentTrialNotice(null);
     setIsNodeDeploymentLookupPending(false);
-    if (localServiceDeploymentRequest?.requestId) {
-      onLocalServiceDeploymentRequestConsumed?.(localServiceDeploymentRequest.requestId);
-    }
+    completeLocalServiceDeploymentRequest();
   }, [
     clearNodeDeploymentLookupDialogTimer,
-    localServiceDeploymentRequest?.requestId,
-    onLocalServiceDeploymentRequestConsumed,
+    completeLocalServiceDeploymentRequest,
   ]);
 
   const continueNodeDeploymentTrial = useCallback(() => {
@@ -5232,7 +5280,7 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
       {publishingQuotaDialog && (
         <PublishingQuotaLimitDialog
           quota={publishingQuotaDialog}
-          onClose={() => setPublishingQuotaDialog(null)}
+          onClose={closePublishingQuotaDialog}
           onSubscribe={openSubscriptionPage}
           onLearnBenefits={openSubscriptionPage}
           analyticsAttempt={
@@ -5242,7 +5290,7 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
               : null
           }
           onManage={() => {
-            setPublishingQuotaDialog(null);
+            closePublishingQuotaDialog();
             window.dispatchEvent(new Event(LibraryNavigationEvent.OpenCloud));
           }}
         />

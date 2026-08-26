@@ -104,6 +104,7 @@ import {
   applyLibraryFavoriteState,
   hideLibraryCloudItems,
   hideLibraryLocalItems,
+  removeLibraryCloudItem,
   restoreLibraryFavoriteState,
   sanitizeLibraryLocalListData,
 } from './libraryListState';
@@ -1207,15 +1208,7 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
   }, []);
 
   const deleteCloudItem = useCallback((deletedItem: LibraryCloudItem): void => {
-    setCloudData(current => ({
-      ...current,
-      list: current.list.filter(item => !(
-        item.itemKind === deletedItem.itemKind && item.shareId === deletedItem.shareId
-      )),
-      counts: deletedItem.itemKind === LibraryItemKind.DeployedSite
-        ? { ...current.counts, deployedSite: Math.max(0, current.counts.deployedSite - 1) }
-        : { ...current.counts, sharedFile: Math.max(0, current.counts.sharedFile - 1) },
-    }));
+    setCloudData(current => removeLibraryCloudItem(current, deletedItem));
   }, []);
 
   const openItem = (item: LibraryItem): void => {

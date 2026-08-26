@@ -6,13 +6,14 @@ import {
   LibraryItemKind,
   LibrarySharedStatusFilter,
 } from '../../../shared/library/constants';
-import type { LocalArtifactItem } from '../../../shared/library/types';
+import type { LocalArtifactItem, SharedFileItem } from '../../../shared/library/types';
 import {
   applyLibraryFavoriteState,
   getLibrarySharedStatusCount,
   hideLibraryCloudItems,
   hideLibraryLocalItems,
   matchesLibrarySharedStatus,
+  removeLibraryCloudItem,
   restoreLibraryFavoriteState,
   sanitizeLibraryLocalListData,
   shouldReloadLibraryAfterChange,
@@ -149,5 +150,35 @@ describe('library list state', () => {
     expect(matchesLibrarySharedStatus(disabledItem, LibrarySharedStatusFilter.Live)).toBe(false);
     expect(matchesLibrarySharedStatus(liveItem, LibrarySharedStatusFilter.Disabled)).toBe(false);
     expect(matchesLibrarySharedStatus(disabledItem, LibrarySharedStatusFilter.Disabled)).toBe(true);
+  });
+
+  test('removes a deleted stopped share and updates all cloud count facets', () => {
+    const deletedItem: SharedFileItem = {
+      itemKind: LibraryItemKind.SharedFile,
+      itemId: 'shr_deleted',
+      shareId: 'shr_deleted',
+      title: 'report.pdf',
+      category: 'document',
+      sortTime: 1,
+      createdAt: 1,
+      isFavorite: false,
+      url: 'https://example.test/s/shr_deleted/',
+      sourceType: 'document_file',
+      accessMode: 'public',
+      status: HtmlShareStatus.Disabled,
+    };
+    const data = {
+      list: [deletedItem],
+      hasMore: false,
+      counts: { sharedFile: 10, deployedSite: 2 },
+      sharedStatusCounts: { all: 10, live: 7, disabled: 3 },
+    };
+
+    expect(removeLibraryCloudItem(data, deletedItem)).toEqual({
+      ...data,
+      list: [],
+      counts: { sharedFile: 9, deployedSite: 2 },
+      sharedStatusCounts: { all: 9, live: 7, disabled: 2 },
+    });
   });
 });
