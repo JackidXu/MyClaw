@@ -69,6 +69,7 @@ interface SidebarProps {
    * promo banner while preserving it for a smooth return after collapse. */
   hideAdBanner?: boolean;
   hideLogin?: boolean;
+  isEngineStartupOverlayVisible?: boolean;
 }
 
 const DEFAULT_SIDEBAR_WIDTH = 244;
@@ -261,6 +262,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   updateNotice,
   hideAdBanner,
   hideLogin,
+  isEngineStartupOverlayVisible = false,
 }) => {
   const currentAgentId = useSelector((state: RootState) => state.agent.currentAgentId);
   const agents = useSelector((state: RootState) => state.agent.agents);
@@ -359,6 +361,24 @@ const Sidebar: React.FC<SidebarProps> = ({
       return undefined;
     }
 
+    if (isEngineStartupOverlayVisible) {
+      if (showLoginPromoTip) {
+        const message = 'pausing login promo tip auto-hide while engine startup overlay is visible';
+        console.debug(`[Sidebar] ${message}`);
+        writeSidebarRendererLog('debug', message);
+        setIsLoginPromoTipFading(false);
+      }
+      return undefined;
+    }
+
+    if (!showLoginPromoTip) {
+      return undefined;
+    }
+
+    const startMessage = 'starting login promo tip auto-hide timer';
+    console.debug(`[Sidebar] ${startMessage}`);
+    writeSidebarRendererLog('debug', startMessage);
+
     const hideTimer = window.setTimeout(() => {
       const message = 'auto hiding login promo tip';
       console.debug(`[Sidebar] ${message}`);
@@ -375,7 +395,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       window.clearTimeout(hideTimer);
       window.clearTimeout(removeTimer);
     };
-  }, [showLoginPromo]);
+  }, [isEngineStartupOverlayVisible, showLoginPromo, showLoginPromoTip]);
 
   const dismissKitsNewBadge = useCallback(() => {
     if (!showKitsNewBadge) return;
