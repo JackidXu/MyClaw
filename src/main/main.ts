@@ -348,6 +348,7 @@ import {
   packageArtifactFile,
 } from './libs/htmlShare/artifactFileSharePackager';
 import {
+  deleteHtmlSharePermanently,
   getHtmlShareAnalytics,
   getHtmlShareBySource,
   getHtmlShareQuota,
@@ -7646,6 +7647,23 @@ if (!gotTheLock) {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to disable share',
+      };
+    }
+  });
+
+  ipcMain.handle(HtmlShareIpc.DeletePermanently, async (_event, shareId: unknown) => {
+    try {
+      const id = sanitizeHtmlShareString(shareId, 'shareId', 64);
+      return await deleteHtmlSharePermanently(
+        getServerApiBaseUrl(),
+        fetchWithAuth,
+        id,
+      );
+    } catch (error) {
+      console.error('[HtmlShare] failed to permanently delete shared file:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to delete shared file',
       };
     }
   });

@@ -9,6 +9,7 @@ import {
   GlobeAltIcon,
   MagnifyingGlassIcon,
   StarIcon,
+  TrashIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline';
 import { StarIcon as StarSolidIcon } from '@heroicons/react/24/solid';
@@ -19,6 +20,7 @@ import {
   type HtmlShareAccessMode as HtmlShareAccessModeValue,
   HtmlShareDisabledSource,
   type HtmlShareDisabledSource as HtmlShareDisabledSourceValue,
+  HtmlShareErrorCode,
   HtmlShareStatus,
   type HtmlShareStatus as HtmlShareStatusValue,
 } from '../../../shared/htmlShare/constants';
@@ -99,6 +101,8 @@ import {
 } from './libraryItemPresentation';
 import LibraryShareAnalyticsView from './LibraryShareAnalyticsView';
 import LibraryShareConfirmDialog from './LibraryShareConfirmDialog';
+import LibraryShareDeleteDialog from './LibraryShareDeleteDialog';
+
 const CATEGORY_FILTERS = [
   LibraryCategory.All,
   LibraryCategory.Slides,
@@ -468,6 +472,7 @@ const LibraryShareSettingsView: React.FC<{
   now: number;
   onBack: () => void;
   onItemUpdated: (item: SharedFileItem) => void;
+  onItemDeleted: (item: SharedFileItem) => void;
   onOpenSession: (session: LibrarySessionRef) => void;
   onToggleFavorite: (item: SharedFileItem) => void;
 }> = ({
@@ -476,6 +481,7 @@ const LibraryShareSettingsView: React.FC<{
   now,
   onBack,
   onItemUpdated,
+  onItemDeleted,
   onOpenSession,
   onToggleFavorite,
 }) => {
@@ -491,6 +497,9 @@ const LibraryShareSettingsView: React.FC<{
   const [detailView, setDetailView] = useState<LibraryShareDetailView>(
     LibraryShareDetailView.Settings,
   );
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string>();
   const [publishingQuota, setPublishingQuota] =
     useState<PublishingQuotaErrorData | null>(null);
   const publishingAnalyticsAttemptRef =
@@ -501,6 +510,9 @@ const LibraryShareSettingsView: React.FC<{
     setState({ item: initialItem, loading: true, saving: false });
     setSelectedPermission(deriveArtifactFileSharePermission(initialItem));
     setConfirmationKind(undefined);
+    setDeleteConfirmOpen(false);
+    setDeleting(false);
+    setDeleteError(undefined);
     setPublishingQuota(null);
     publishingAnalyticsAttemptRef.current = null;
     setDetailView(LibraryShareDetailView.Settings);
@@ -524,9 +536,8 @@ const LibraryShareSettingsView: React.FC<{
   }, [initialItem]);
 
   const item = state.item;
-  const lastModifiedAt = readDateMillis(item.contentUpdatedAt)
-    ?? readDateMillis(item.updatedAt)
-    ?? item.sortTime;
+  const contentUpdatedAt = readDateMillis(item.contentUpdatedAt)
+    ?? (Number.isFinite(item.createdAt) ? item.createdAt : item.sortTime);
   const committedPermission = deriveArtifactFileSharePermission(item);
   const hasPendingChanges = selectedPermission !== committedPermission;
   const isAccessExpired = isLibraryCloudAccessExpired(item, now);
@@ -714,6 +725,67 @@ const LibraryShareSettingsView: React.FC<{
     }));
   };
 
+  const requestPermanentDelete = (): void => {
+    if (item.status !== HtmlShareStatus.Disabled) {
+      setState(current => ({
+        ...current,
+        error: i18nService.t('libraryShareDeleteRequiresStopped'),
+      }));
+      return;
+    }
+    setDeleteError(undefined);
+    setDeleteConfirmOpen(true);
+  };
+
+  const deletePermanently = async (): Promise<void> => {
+    if (deleting || item.status !== HtmlShareStatus.Disabled) return;
+    setDeleting(true);
+    setDeleteError(undefined);
+    if (typeof window.electron.htmlShare.deletePermanently !== 'function') {
+      setDeleteError(i18nService.t('libraryShareDeleteUnsupported'));
+      setDeleting(false);
+      return;
+    }
+    const result = await window.electron.htmlShare.deletePermanently(item.shareId).catch(() => null);
+    if (!result) {
+      setDeleteError(i18nService.t('libraryShareDeleteFailed'));
+      setDeleting(false);
+      return;
+    }
+    if (result.success) {
+      onItemDeleted(item);
+      return;
+    }
+    const shouldReconcile = result.code === HtmlShareErrorCode.DeleteRequiresDisabled
+      || result.code === HtmlShareErrorCode.ActionConflict;
+    const deletionUnsupported = result.code === HtmlShareErrorCode.FeatureUnavailable
+      || (result.httpStatus === 404 && result.code === undefined);
+    const message = result.code === HtmlShareErrorCode.DeleteRequiresDisabled
+      ? i18nService.t('libraryShareDeleteRequiresStopped')
+      : result.code === HtmlShareErrorCode.ActionConflict
+        ? i18nService.t('libraryShareDeleteConflict')
+        : deletionUnsupported
+          ? i18nService.t('libraryShareDeleteUnsupported')
+          : result.error ?? i18nService.t('libraryShareDeleteFailed');
+    if (shouldReconcile) {
+      const reconciledItem = await loadLatestSharedFileItem(item);
+      setState(current => ({ ...current, item: reconciledItem, error: message }));
+      setSelectedPermission(deriveArtifactFileSharePermission(reconciledItem));
+      setDeleteConfirmOpen(false);
+      onItemUpdated(reconciledItem);
+      setDeleting(false);
+      return;
+    }
+    if (result.httpStatus === 404) {
+      const reconciledItem = await loadLatestSharedFileItem(item);
+      setState(current => ({ ...current, item: reconciledItem }));
+      setSelectedPermission(deriveArtifactFileSharePermission(reconciledItem));
+      onItemUpdated(reconciledItem);
+    }
+    setDeleteError(message);
+    setDeleting(false);
+  };
+
   const confirmationPresentation = useMemo(() => {
     switch (confirmationKind) {
       case LibraryShareConfirmationKind.MakePublic:
@@ -798,7 +870,7 @@ const LibraryShareSettingsView: React.FC<{
             <div className={`mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 ${MANAGEMENT_META_TEXT} leading-[var(--lobster-leading-xs)] text-secondary`}>
               <span>{i18nService.t('librarySharedFile')}</span>
               <span aria-hidden="true">·</span>
-              <span>{i18nService.t('libraryLastModifiedAt')}: {formatLibraryTime(lastModifiedAt)}</span>
+              <span>{i18nService.t('libraryContentUpdatedAtInline')}: {formatLibraryTime(contentUpdatedAt)}</span>
               <span aria-hidden="true">·</span>
               <CloudAvailabilityLabel
                 item={item}
@@ -874,73 +946,79 @@ const LibraryShareSettingsView: React.FC<{
                 <div className={`${MANAGEMENT_META_TEXT} font-medium leading-[var(--lobster-leading-xs)] text-secondary`}>
                   {i18nService.t('libraryShareAccessAddress')}
                 </div>
-                <div className="mt-2 flex min-w-0 items-center gap-3 rounded-lg bg-surface-raised px-3 py-2.5">
-                  <p className={`min-w-0 flex-1 truncate ${MANAGEMENT_BODY_TEXT} text-secondary`}>
-                    {item.url}
+                <div className="mt-2 overflow-hidden rounded-lg bg-surface-raised">
+                  <div className="flex min-w-0 items-center gap-3 px-3 py-2.5">
+                    <p className={`min-w-0 flex-1 truncate ${MANAGEMENT_BODY_TEXT} text-secondary`}>
+                      {item.url}
+                    </p>
+                    <button
+                      type="button"
+                      disabled={!canCopyShareInformation}
+                      onClick={copyShareInformation}
+                      className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-surface disabled:cursor-not-allowed disabled:text-tertiary"
+                    >
+                      <ClipboardDocumentIcon className="h-4 w-4" />
+                      {item.accessMode === HtmlShareAccessMode.Code
+                        ? i18nService.t('htmlShareCopyLinkAndCode')
+                        : i18nService.t('htmlShareCopyLink')}
+                    </button>
+                  </div>
+                  {item.accessMode === HtmlShareAccessMode.Code && (
+                    <div className="flex items-center gap-2 border-t border-border px-3 py-2.5 text-xs">
+                      <span className="text-tertiary">{i18nService.t('htmlShareCode')}</span>
+                      <span className="font-medium text-foreground">{item.shareCode ?? '—'}</span>
+                    </div>
+                  )}
+                </div>
+                {item.accessMode === HtmlShareAccessMode.Code && !item.shareCode && (
+                  <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+                    {i18nService.t('htmlShareCodeUnavailable')}
                   </p>
-                  <button
-                    type="button"
-                    disabled={!canCopyShareInformation}
-                    onClick={copyShareInformation}
-                    className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-surface disabled:cursor-not-allowed disabled:text-tertiary"
-                  >
-                    <ClipboardDocumentIcon className="h-4 w-4" />
-                    {item.accessMode === HtmlShareAccessMode.Code
-                      ? i18nService.t('htmlShareCopyLinkAndCode')
-                      : i18nService.t('htmlShareCopyLink')}
-                  </button>
-                </div>
+                )}
               </div>
 
-              <div className="mt-4 grid gap-2 sm:grid-cols-3">
-              {LIBRARY_SHARE_PERMISSIONS.map(permission => {
-                const selected = selectedPermission === permission;
-                const label = getLibrarySharePermissionLabel(permission);
-                const hint = permission === ArtifactFileSharePermission.Public
-                  ? i18nService.t('htmlShareAccessModePublicHint')
-                  : permission === ArtifactFileSharePermission.Code
-                    ? i18nService.t('htmlShareAccessModeCodeHint')
-                    : i18nService.t('librarySharePermissionStoppedHint');
-                return (
-                  <button
-                    key={permission}
-                    type="button"
-                    aria-pressed={selected}
-                    disabled={permissionLocked}
-                    onClick={() => setSelectedPermission(permission)}
-                    className={`rounded-xl border p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
-                      selected
-                        ? 'border-primary bg-primary/5'
-                        : 'border-border hover:bg-surface-raised'
-                    }`}
-                  >
-                    <span className={`flex items-center gap-2 ${MANAGEMENT_BODY_TEXT} font-medium text-foreground`}>
-                      <span className={`flex h-4 w-4 items-center justify-center rounded-full border ${
-                        selected ? 'border-primary' : 'border-border'
-                      }`}>
-                        {selected && <span className="h-2 w-2 rounded-full bg-primary" />}
+              <div className="mt-4">
+                <div className={`${MANAGEMENT_META_TEXT} font-medium leading-[var(--lobster-leading-xs)] text-secondary`}>
+                  {i18nService.t('htmlShareAccessMode')}
+                </div>
+                <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                {LIBRARY_SHARE_PERMISSIONS.map(permission => {
+                  const selected = selectedPermission === permission;
+                  const label = getLibrarySharePermissionLabel(permission);
+                  const hint = permission === ArtifactFileSharePermission.Public
+                    ? i18nService.t('htmlShareAccessModePublicHint')
+                    : permission === ArtifactFileSharePermission.Code
+                      ? i18nService.t('htmlShareAccessModeCodeHint')
+                      : i18nService.t('librarySharePermissionStoppedHint');
+                  return (
+                    <button
+                      key={permission}
+                      type="button"
+                      aria-pressed={selected}
+                      disabled={permissionLocked}
+                      onClick={() => setSelectedPermission(permission)}
+                      className={`rounded-xl border p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
+                        selected
+                          ? 'border-primary bg-primary/5'
+                          : 'border-border hover:bg-surface-raised'
+                      }`}
+                    >
+                      <span className={`flex items-center gap-2 ${MANAGEMENT_BODY_TEXT} font-medium text-foreground`}>
+                        <span className={`flex h-4 w-4 items-center justify-center rounded-full border ${
+                          selected ? 'border-primary' : 'border-border'
+                        }`}>
+                          {selected && <span className="h-2 w-2 rounded-full bg-primary" />}
+                        </span>
+                        {label}
                       </span>
-                      {label}
-                    </span>
-                    <span className={`${MANAGEMENT_META_TEXT} mt-2 block leading-[var(--lobster-leading-xs)] text-secondary`}>
-                      {hint}
-                    </span>
-                  </button>
-                );
-              })}
-              </div>
-
-              {item.accessMode === HtmlShareAccessMode.Code && (
-                <div className="mt-3 flex items-center gap-2 rounded-lg bg-surface-raised px-3 py-2.5 text-xs">
-                  <span className="text-tertiary">{i18nService.t('htmlShareCode')}</span>
-                  <span className="font-medium text-foreground">{item.shareCode ?? '—'}</span>
+                      <span className={`${MANAGEMENT_META_TEXT} mt-2 block leading-[var(--lobster-leading-xs)] text-secondary`}>
+                        {hint}
+                      </span>
+                    </button>
+                  );
+                })}
                 </div>
-              )}
-              {item.accessMode === HtmlShareAccessMode.Code && !item.shareCode && (
-                <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
-                  {i18nService.t('htmlShareCodeUnavailable')}
-                </p>
-              )}
+              </div>
               {item.status !== HtmlShareStatus.Live && (
                 <p className="mt-2 text-xs text-secondary">
                   {i18nService.t('libraryShareCopyUnavailableWhileStopped')}
@@ -1019,13 +1097,32 @@ const LibraryShareSettingsView: React.FC<{
                 </div>
                 <div>
                   <dt className={`${MANAGEMENT_META_TEXT} leading-[var(--lobster-leading-xs)] text-tertiary`}>
-                    {i18nService.t('libraryLastModifiedAt')}
+                    {i18nService.t('libraryContentUpdatedAt')}
                   </dt>
                   <dd className={`${MANAGEMENT_BODY_TEXT} mt-1 text-foreground`}>
-                    {formatLibraryTime(lastModifiedAt)}
+                    {formatLibraryTime(contentUpdatedAt)}
                   </dd>
                 </div>
               </dl>
+            </section>
+
+            <section className="flex items-center justify-between gap-6 rounded-xl border border-red-500/25 bg-red-500/[0.025] p-4">
+              <div className="min-w-0">
+                <p className="text-xs leading-5 text-secondary">
+                  {item.status === HtmlShareStatus.Disabled
+                    ? i18nService.t('libraryShareDeleteDescription')
+                    : i18nService.t('libraryShareDeleteRequiresStopped')}
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={item.status !== HtmlShareStatus.Disabled || state.loading || state.saving || deleting}
+                onClick={requestPermanentDelete}
+                className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-red-500/40 px-3 text-sm font-medium text-red-600 transition-colors hover:bg-red-500/5 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <TrashIcon className="h-4 w-4" aria-hidden="true" />
+                {i18nService.t('libraryShareDeleteAction')}
+              </button>
             </section>
           </div>
         )}
@@ -1059,6 +1156,18 @@ const LibraryShareSettingsView: React.FC<{
               setPublishingQuota(null);
               onBack();
             }}
+          />
+        )}
+        {deleteConfirmOpen && (
+          <LibraryShareDeleteDialog
+            fileName={getLibraryDisplayFileName(item)}
+            busy={deleting}
+            error={deleteError}
+            onCancel={() => {
+              setDeleteConfirmOpen(false);
+              setDeleteError(undefined);
+            }}
+            onConfirm={() => void deletePermanently()}
           />
         )}
       </div>
@@ -1110,6 +1219,13 @@ const LibraryCloudView: React.FC<LibraryCloudViewProps> = ({
     && matchesLibraryCloudAvailability(item, status, effectiveNow)
   )), [category, data.list, effectiveNow, hideSites, status]);
 
+  const handleSharedItemDeleted = (item: SharedFileItem): void => {
+    if (item.isFavorite) onToggleFavorite(item);
+    setActiveItem(undefined);
+    onItemDeleted(item);
+    onRefresh();
+  };
+
   if (activeItem) {
     return (
       <LibraryShareSettingsView
@@ -1118,6 +1234,7 @@ const LibraryCloudView: React.FC<LibraryCloudViewProps> = ({
         now={effectiveNow}
         onBack={() => setActiveItem(undefined)}
         onItemUpdated={onItemUpdated}
+        onItemDeleted={handleSharedItemDeleted}
         onOpenSession={onOpenSession}
         onToggleFavorite={onToggleFavorite}
       />

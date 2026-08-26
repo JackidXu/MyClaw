@@ -841,6 +841,8 @@ contextBridge.exposeInMainWorld('electron', {
     updateAccessMode: (options: { shareId: string; accessMode: HtmlShareAccessMode }) =>
       ipcRenderer.invoke(HtmlShareIpc.UpdateAccessMode, options),
     disable: (shareId: string) => ipcRenderer.invoke(HtmlShareIpc.Disable, shareId),
+    deletePermanently: (shareId: string) =>
+      ipcRenderer.invoke(HtmlShareIpc.DeletePermanently, shareId),
     get: (shareId: string) => ipcRenderer.invoke(HtmlShareIpc.Get, shareId),
     getQuota: () => ipcRenderer.invoke(HtmlShareIpc.GetQuota),
     getTrialPolicy: () => ipcRenderer.invoke(HtmlShareIpc.GetTrialPolicy),

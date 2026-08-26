@@ -9,6 +9,7 @@ import {
   ChevronRightIcon,
   ClipboardDocumentIcon,
   GlobeAltIcon,
+  InformationCircleIcon,
   LockClosedIcon,
   MagnifyingGlassIcon,
   PlusIcon,
@@ -1375,14 +1376,36 @@ const SitesView: React.FC<SitesViewProps> = ({
                     </div>
                     <SiteAnalyticsChart trend={analytics.trend} />
                     <section className="rounded-xl border border-border bg-surface p-4">
-                      <h2 className={`${MANAGEMENT_TITLE_TEXT} font-semibold text-foreground`}>
-                        {i18nService.t('sitesPopularPages')}
-                      </h2>
+                      <div className="flex items-center gap-1.5">
+                        <h2 className={`${MANAGEMENT_TITLE_TEXT} font-semibold text-foreground`}>
+                          {i18nService.t('sitesPopularPages')}
+                        </h2>
+                        <Tooltip
+                          content={i18nService.t('sitesPopularPagesDescription')}
+                          position={TooltipPosition.Bottom}
+                          align={TooltipAlign.Start}
+                          delay={200}
+                          maxWidth="20rem"
+                          multiline
+                        >
+                          <button
+                            type="button"
+                            aria-label={i18nService.t('sitesPopularPagesDescription')}
+                            className="inline-flex h-5 w-5 items-center justify-center rounded text-secondary transition-colors hover:bg-surface-raised hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
+                          >
+                            <InformationCircleIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                          </button>
+                        </Tooltip>
+                      </div>
                       <div className="mt-2.5">
                         <div className={`grid grid-cols-[minmax(0,1fr)_96px_96px] border-b border-border pb-2 ${MANAGEMENT_META_TEXT} leading-[var(--lobster-leading-xs)] text-secondary sm:grid-cols-[minmax(0,1fr)_120px_120px]`}>
                           <span>{i18nService.t('sitesPage')}</span>
-                          <span className="text-right">{i18nService.t('sitesPageViews')}</span>
-                          <span className="text-right">{i18nService.t('sitesUniqueVisitors')}</span>
+                          <span className="text-right">
+                            {i18nService.t('sitesPopularPagesViews')}
+                          </span>
+                          <span className="text-right">
+                            {i18nService.t('sitesPopularPagesVisitors')}
+                          </span>
                         </div>
                         {analytics.topPages.length === 0 ? (
                           <p className={`${MANAGEMENT_BODY_TEXT} py-5 text-center text-secondary`}>
@@ -1394,7 +1417,7 @@ const SitesView: React.FC<SitesViewProps> = ({
                               key={item.path}
                               className={`grid grid-cols-[minmax(0,1fr)_96px_96px] border-b border-border/60 py-2.5 ${MANAGEMENT_BODY_TEXT} last:border-0 sm:grid-cols-[minmax(0,1fr)_120px_120px]`}
                             >
-                              <span className="truncate font-mono text-xs text-foreground">
+                              <span className="truncate font-mono text-xs text-foreground" title={item.path}>
                                 {item.path}
                               </span>
                               <span className="text-right text-secondary">{item.pageViews}</span>
