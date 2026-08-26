@@ -4,6 +4,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { ProviderName } from '@shared/providers';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 import { getProviderIcon, ProviderIconId } from '../../providers/uiRegistry';
 import type { PricingCatalogMediaModel, PricingCatalogTextModel } from '../../services/auth';
@@ -11,6 +12,16 @@ import { getPortalPricingUrl } from '../../services/endpoints';
 import { i18nService } from '../../services/i18n';
 
 const MODEL_ICON_CLASS_NAME = 'h-6 w-6';
+const DESCRIPTION_TOOLTIP_MAX_WIDTH = 420;
+const DESCRIPTION_TOOLTIP_MIN_WIDTH = 240;
+const DESCRIPTION_TOOLTIP_MIN_HEIGHT = 120;
+const DESCRIPTION_TOOLTIP_MAX_HEIGHT = 260;
+const DESCRIPTION_TOOLTIP_MAX_HEIGHT_RATIO = 0.42;
+const DESCRIPTION_TOOLTIP_OFFSET = 10;
+const DESCRIPTION_TOOLTIP_VIEWPORT_MARGIN = 12;
+const DESCRIPTION_TOOLTIP_BOTTOM_SAFE_AREA = 80;
+const DESCRIPTION_TOOLTIP_CLOSE_DELAY_MS = 120;
+const DESCRIPTION_TOOLTIP_DATA_ATTR = 'data-plan-model-description-tooltip';
 
 const MODEL_ICON_PROVIDER_HINTS: Array<{ pattern: RegExp; providerName: ProviderName | ProviderIconId }> = [
   { pattern: /doubao|豆包/i, providerName: ProviderIconId.Doubao },
@@ -39,6 +50,17 @@ type PlanModelCategoryFilter = PlanModelCategory;
 type PricingCatalogDisplayModel = (PricingCatalogTextModel | PricingCatalogMediaModel) & {
   category: PlanModelCategory;
 };
+
+type DescriptionTooltipPlacement = 'above' | 'below';
+
+interface DescriptionTooltipState {
+  left: number;
+  top: number;
+  width: number;
+  maxHeight: number;
+  placement: DescriptionTooltipPlacement;
+  text: string;
+}
 
 interface PlanModelGroup {
   key: PlanModelCategory;
@@ -75,6 +97,75 @@ const normalizeCatalogDescription = (description?: string): string => {
     .trim();
 };
 
+const clamp = (value: number, min: number, max: number): number => (
+  Math.min(Math.max(value, min), max)
+);
+
+const getDescriptionTooltipState = (
+  anchorRect: DOMRect,
+  text: string,
+): DescriptionTooltipState => {
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  const viewportBottom = Math.max(
+    DESCRIPTION_TOOLTIP_VIEWPORT_MARGIN + DESCRIPTION_TOOLTIP_MIN_HEIGHT,
+    viewportHeight - DESCRIPTION_TOOLTIP_BOTTOM_SAFE_AREA,
+  );
+  const preferredMaxHeight = Math.min(
+    DESCRIPTION_TOOLTIP_MAX_HEIGHT,
+    Math.max(DESCRIPTION_TOOLTIP_MIN_HEIGHT, Math.floor(viewportHeight * DESCRIPTION_TOOLTIP_MAX_HEIGHT_RATIO)),
+  );
+  const availableWidth = Math.max(
+    0,
+    viewportWidth - (DESCRIPTION_TOOLTIP_VIEWPORT_MARGIN * 2),
+  );
+  const width = Math.min(
+    DESCRIPTION_TOOLTIP_MAX_WIDTH,
+    availableWidth,
+    Math.max(DESCRIPTION_TOOLTIP_MIN_WIDTH, anchorRect.width),
+  );
+  const left = clamp(
+    anchorRect.left,
+    DESCRIPTION_TOOLTIP_VIEWPORT_MARGIN,
+    Math.max(DESCRIPTION_TOOLTIP_VIEWPORT_MARGIN, viewportWidth - width - DESCRIPTION_TOOLTIP_VIEWPORT_MARGIN),
+  );
+  const availableBelow = viewportHeight
+    ? viewportBottom - anchorRect.bottom - DESCRIPTION_TOOLTIP_OFFSET - DESCRIPTION_TOOLTIP_VIEWPORT_MARGIN
+    : 0;
+  const availableAbove = anchorRect.top
+    - DESCRIPTION_TOOLTIP_OFFSET
+    - DESCRIPTION_TOOLTIP_VIEWPORT_MARGIN;
+  const placement: DescriptionTooltipPlacement = availableBelow < preferredMaxHeight && availableAbove > availableBelow
+    ? 'above'
+    : 'below';
+  const top = placement === 'above'
+    ? clamp(
+      anchorRect.top - DESCRIPTION_TOOLTIP_OFFSET,
+      DESCRIPTION_TOOLTIP_VIEWPORT_MARGIN + DESCRIPTION_TOOLTIP_MIN_HEIGHT,
+      Math.max(DESCRIPTION_TOOLTIP_VIEWPORT_MARGIN, viewportHeight - DESCRIPTION_TOOLTIP_VIEWPORT_MARGIN),
+    )
+    : clamp(
+      anchorRect.bottom + DESCRIPTION_TOOLTIP_OFFSET,
+      DESCRIPTION_TOOLTIP_VIEWPORT_MARGIN,
+      Math.max(
+        DESCRIPTION_TOOLTIP_VIEWPORT_MARGIN,
+        viewportBottom - DESCRIPTION_TOOLTIP_VIEWPORT_MARGIN - DESCRIPTION_TOOLTIP_MIN_HEIGHT,
+      ),
+    );
+  const maxHeight = placement === 'above'
+    ? Math.min(preferredMaxHeight, Math.max(DESCRIPTION_TOOLTIP_MIN_HEIGHT, top - DESCRIPTION_TOOLTIP_VIEWPORT_MARGIN))
+    : Math.min(preferredMaxHeight, Math.max(DESCRIPTION_TOOLTIP_MIN_HEIGHT, viewportBottom - top));
+
+  return {
+    left,
+    top,
+    width,
+    maxHeight,
+    placement,
+    text,
+  };
+};
+
 const resolveModelIconProviderKey = (model: PricingCatalogDisplayModel): string => {
   const searchableText = `${model.modelName ?? ''} ${model.modelId ?? ''}`;
   return MODEL_ICON_PROVIDER_HINTS.find(({ pattern }) => pattern.test(searchableText))?.providerName
@@ -94,6 +185,9 @@ const renderModelIcon = (model: PricingCatalogDisplayModel): React.ReactNode => 
 const PlanModelCard: React.FC<{
   model: PricingCatalogDisplayModel;
 }> = ({ model }) => {
+  const descriptionRef = useRef<HTMLParagraphElement>(null);
+  const tooltipCloseTimerRef = useRef<number | null>(null);
+  const [descriptionTooltip, setDescriptionTooltip] = useState<DescriptionTooltipState | null>(null);
   const description = normalizeCatalogDescription(model.description || model.capabilities || undefined);
   const modelName = model.modelName?.trim() || model.modelId?.trim() || i18nService.t('planModelCatalogUnnamedModel');
   const supportsImage = 'supportsImage' in model && Boolean(model.supportsImage);
@@ -104,9 +198,78 @@ const PlanModelCard: React.FC<{
       ? 'planModelCatalogVideoCapability'
       : null;
 
+  const closeDescriptionTooltip = useCallback(() => {
+    if (tooltipCloseTimerRef.current) {
+      window.clearTimeout(tooltipCloseTimerRef.current);
+      tooltipCloseTimerRef.current = null;
+    }
+    setDescriptionTooltip(null);
+  }, []);
+
+  const scheduleDescriptionTooltipClose = useCallback(() => {
+    if (tooltipCloseTimerRef.current) {
+      window.clearTimeout(tooltipCloseTimerRef.current);
+    }
+    tooltipCloseTimerRef.current = window.setTimeout(() => {
+      tooltipCloseTimerRef.current = null;
+      setDescriptionTooltip(null);
+    }, DESCRIPTION_TOOLTIP_CLOSE_DELAY_MS);
+  }, []);
+
+  const cancelDescriptionTooltipClose = useCallback(() => {
+    if (!tooltipCloseTimerRef.current) return;
+    window.clearTimeout(tooltipCloseTimerRef.current);
+    tooltipCloseTimerRef.current = null;
+  }, []);
+
+  const openDescriptionTooltip = useCallback(() => {
+    cancelDescriptionTooltipClose();
+    const descriptionNode = descriptionRef.current;
+    if (!descriptionNode || !description) {
+      closeDescriptionTooltip();
+      return;
+    }
+
+    const isDescriptionTruncated = descriptionNode.scrollHeight > descriptionNode.clientHeight + 1
+      || descriptionNode.scrollWidth > descriptionNode.clientWidth + 1;
+    if (!isDescriptionTruncated) {
+      closeDescriptionTooltip();
+      return;
+    }
+
+    setDescriptionTooltip(getDescriptionTooltipState(
+      descriptionNode.getBoundingClientRect(),
+      description,
+    ));
+  }, [cancelDescriptionTooltipClose, closeDescriptionTooltip, description]);
+
+  useEffect(() => {
+    if (!descriptionTooltip) return undefined;
+
+    const handleScroll = (event: Event) => {
+      if (event.target instanceof Element && event.target.closest(`[${DESCRIPTION_TOOLTIP_DATA_ATTR}="true"]`)) {
+        return;
+      }
+      closeDescriptionTooltip();
+    };
+
+    window.addEventListener('resize', closeDescriptionTooltip);
+    window.addEventListener('scroll', handleScroll, true);
+    return () => {
+      window.removeEventListener('resize', closeDescriptionTooltip);
+      window.removeEventListener('scroll', handleScroll, true);
+    };
+  }, [closeDescriptionTooltip, descriptionTooltip]);
+
+  useEffect(() => () => {
+    if (tooltipCloseTimerRef.current) {
+      window.clearTimeout(tooltipCloseTimerRef.current);
+    }
+  }, []);
+
   return (
     <article
-      className="min-h-[184px] rounded-2xl border border-transparent bg-surface-raised/50 p-5 transition-colors hover:border-border"
+      className="min-h-[184px] min-w-0 rounded-2xl border border-transparent bg-surface-raised/50 p-5 transition-colors hover:border-border"
     >
       <div className="flex items-center justify-between gap-3">
         <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border bg-surface text-primary">
@@ -135,9 +298,36 @@ const PlanModelCard: React.FC<{
         {modelName}
       </h4>
       {description && (
-        <p className="mt-3 line-clamp-4 text-sm leading-6 text-secondary">
-          {description}
-        </p>
+        <>
+          <p
+            ref={descriptionRef}
+            className="mt-3 line-clamp-4 text-sm leading-6 text-secondary"
+            onMouseEnter={openDescriptionTooltip}
+            onMouseLeave={scheduleDescriptionTooltipClose}
+          >
+            {description}
+          </p>
+          {descriptionTooltip && createPortal(
+            <div
+              role="tooltip"
+              data-plan-model-description-tooltip="true"
+              className="fixed z-[10000] overscroll-contain rounded-lg border border-border bg-surface px-3 py-2 text-sm leading-6 text-foreground shadow-xl"
+              onMouseEnter={cancelDescriptionTooltipClose}
+              onMouseLeave={scheduleDescriptionTooltipClose}
+              style={{
+                left: descriptionTooltip.left,
+                top: descriptionTooltip.top,
+                width: descriptionTooltip.width,
+                maxHeight: descriptionTooltip.maxHeight,
+                overflowY: 'auto',
+                transform: descriptionTooltip.placement === 'above' ? 'translateY(-100%)' : undefined,
+              }}
+            >
+              {descriptionTooltip.text}
+            </div>,
+            document.body,
+          )}
+        </>
       )}
     </article>
   );
@@ -316,7 +506,7 @@ const PlanModelSettingsSection: React.FC = () => {
           {i18nService.t('planModelCatalogEmpty')}
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 pt-2 xl:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 pt-2 xl:grid-cols-3">
           {visibleModels.map((model, index) => (
             <PlanModelCard
               key={model.modelId || `${model.modelName}-${index}`}
