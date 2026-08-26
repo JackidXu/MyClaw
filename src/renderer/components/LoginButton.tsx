@@ -34,7 +34,9 @@ import {
   getFinalRewards,
 } from './accountMenuState';
 import CreditsFinalRewardModal from './CreditsFinalRewardModal';
+import { DailyCheckInAccountMenuEntry } from './DailyCheckInActivity';
 import UserAvatarIcon from './icons/UserAvatarIcon';
+import { useStartupCreditCampaignEntry } from './startupCreditCampaignBridge';
 
 const ACCOUNT_MENU_ANALYTICS_SOURCE = 'home_account_menu';
 
@@ -205,6 +207,7 @@ const UserMenu: React.FC<UserMenuProps> = ({
 }) => {
   const user = useSelector((state: RootState) => state.auth.user);
   const profileSummary = useSelector((state: RootState) => state.auth.profileSummary);
+  const startupCreditEntry = useStartupCreditCampaignEntry();
   const isEn = i18nService.getLanguage() === 'en';
   // The menu fetches on mount, so start in the loading state to avoid a
   // one-frame "--" flash before the mount effect runs.
@@ -454,6 +457,12 @@ const UserMenu: React.FC<UserMenuProps> = ({
             onUpgrade={handleUpgradePlan}
           />
         )}
+        <DailyCheckInAccountMenuEntry
+          enabled={startupCreditEntry.resolved
+            && !startupCreditEntry.available}
+          suppressed={!startupCreditEntry.resolved
+            || startupCreditEntry.available}
+        />
         <AccountMenuAction
           icon={<PointsStackIcon />}
           label={i18nService.t('authCreditsRemaining')}
