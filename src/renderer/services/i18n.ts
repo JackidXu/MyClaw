@@ -1948,6 +1948,9 @@ const translations: Record<LanguageType, Record<string, string>> = {
     coworkErrorFreeQuotaExhausted:
       '积分额度已用完，请升级套餐后继续使用。[立即升级/充值](https://lobsterai.youdao.com/portal#/pricing)',
     coworkErrorInsufficientBalance: 'API 余额不足，请充值后重试。',
+    coworkCreditQuotaBannerTitle: '积分已用尽，请及时充值。',
+    coworkCreditQuotaBannerDescription: '已达到使用上限，需购买 token 继续使用。',
+    coworkCreditQuotaBannerAction: '去购买',
     coworkErrorInputTooLong: '输入内容过长，超出模型上下文限制，请缩短对话内容后重试。',
     coworkErrorMessageTooLarge:
       '本次消息过大，请减少附件、压缩图片或拆分提交。（单次整体需小于 30MB）',
@@ -5708,6 +5711,9 @@ const translations: Record<LanguageType, Record<string, string>> = {
     coworkErrorFreeQuotaExhausted:
       'Your credits have been used up. Upgrade your plan to continue.\n\n[Upgrade or recharge](https://lobsterai.youdao.com/portal#/pricing)',
     coworkErrorInsufficientBalance: 'Insufficient API balance. Please top up and try again.',
+    coworkCreditQuotaBannerTitle: 'Credits used up. Please recharge.',
+    coworkCreditQuotaBannerDescription: 'You have reached the usage limit. Purchase tokens to continue.',
+    coworkCreditQuotaBannerAction: 'Buy',
     coworkErrorInputTooLong:
       'Input too long, exceeding model context limit. Please shorten the conversation and try again.',
     coworkErrorMessageTooLarge:
