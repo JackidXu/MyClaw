@@ -15,6 +15,7 @@ import {
   LibrarySourceFilter,
 } from '../shared/library/constants';
 import type { LibrarySessionRef } from '../shared/library/types';
+import { OpenClawEnginePhase } from '../shared/openclawEngine/constants';
 import { ProviderAuthType, ProviderName, ProviderRegistry } from '../shared/providers';
 import { SIDEBAR_TASK_FILTER_ENABLED } from './components/agentSidebar/SidebarTaskFilterButton';
 import { CoworkView } from './components/cowork';
@@ -180,6 +181,9 @@ const App: React.FC = () => {
   const [isTaskFilterActive, setIsTaskFilterActive] = useState(false);
   const [hasUnreadCompletedTasks, setHasUnreadCompletedTasks] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(244);
+  const [isEngineStartupOverlayVisible, setIsEngineStartupOverlayVisible] = useState(
+    () => coworkService.getOpenClawEngineStatusSnapshot()?.phase === OpenClawEnginePhase.Starting,
+  );
   const [appUpdateState, setAppUpdateState] = useState<AppUpdateRuntimeState>({
     status: AppUpdateStatus.Idle,
     source: null,
@@ -231,6 +235,30 @@ const App: React.FC = () => {
     isUserInitiatedUpdateFlowActive,
     appUpdateState.status,
   );
+
+  useEffect(() => {
+    let isCurrent = true;
+    const resolveOverlayVisible = (phase?: string | null) =>
+      phase === OpenClawEnginePhase.Starting;
+
+    coworkService.getOpenClawEngineStatus()
+      .then((status) => {
+        if (!isCurrent) return;
+        setIsEngineStartupOverlayVisible(resolveOverlayVisible(status?.phase));
+      })
+      .catch((error) => {
+        console.debug('[App] failed to refresh OpenClaw engine status for sidebar promo timing:', error);
+      });
+
+    const unsubscribe = coworkService.onOpenClawEngineStatus((status) => {
+      setIsEngineStartupOverlayVisible(resolveOverlayVisible(status.phase));
+    });
+
+    return () => {
+      isCurrent = false;
+      unsubscribe();
+    };
+  }, []);
 
   const waitWithTimeout = useCallback(
     async <T,>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> => {
@@ -1764,6 +1792,7 @@ const App: React.FC = () => {
           updateNotice={!isSidebarCollapsed && !isUpdateInteractionBlocked ? updateCard : null}
           hideAdBanner={isUpdateCardExpanded}
           hideLogin={enterpriseConfig?.ui?.login === 'hide'}
+          isEngineStartupOverlayVisible={isEngineStartupOverlayVisible}
         />
         <div className={`flex-1 min-w-0 transition-[padding] duration-200 ease-out ${isSidebarCollapsed ? 'pl-1.5' : ''}`}>
           <div
