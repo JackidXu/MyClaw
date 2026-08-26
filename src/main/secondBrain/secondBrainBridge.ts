@@ -153,7 +153,7 @@ export async function callPhpSecondBrainRetrieve(
   sessionKey?: string
 ): Promise<{ content: Array<{ type: string; text: string }>; isError?: boolean }> {
   const phpBaseUrl = getRetrieveBaseUrl();
-  const apiPath = '/api/chaohuixie/claw/brain/fmp/retrieve';
+  const apiPath = '/api/chaohuixie/claw/fmp/retrieve';
   const fullUrl = `${phpBaseUrl}${apiPath}`;
 
   const auth = getSecondBrainAuthHeaders(sessionKey);
