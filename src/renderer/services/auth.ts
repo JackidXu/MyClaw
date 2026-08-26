@@ -44,6 +44,10 @@ import {
 } from '../store/slices/modelSlice';
 import { i18nService } from './i18n';
 import { LogReporterAction, reportYdAnalyzer } from './logReporter';
+import {
+  clearPendingPublishingConversionAttribution,
+  reportPendingPublishingSubscriptionObserved,
+} from './publishingConversionAttribution';
 
 interface AuthStateRefreshResult {
   isLoggedIn: boolean;
@@ -331,6 +335,7 @@ class AuthService {
       quota: quota ?? null,
       ownerAccountKey,
     }));
+    void reportPendingPublishingSubscriptionObserved(quota?.subscriptionStatus);
     const context = applyEnterpriseAccountContext(enterpriseContext);
     this.scheduleEnterpriseQuotaBoundary(context);
     if (context) {
@@ -601,6 +606,7 @@ class AuthService {
    * Logout.
    */
   async logout() {
+    clearPendingPublishingConversionAttribution();
     await window.electron.auth.logout();
     await this.applyLoggedOutState(false);
   }
@@ -631,6 +637,7 @@ class AuthService {
       if (result.success) {
         if (result.quota) {
           store.dispatch(updateQuota(result.quota));
+          void reportPendingPublishingSubscriptionObserved(result.quota.subscriptionStatus);
         }
         if (result.enterpriseContext !== undefined) {
           const context = applyEnterpriseAccountContext(result.enterpriseContext);

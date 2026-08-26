@@ -125,9 +125,11 @@ import { resolveEnterpriseQuotaError } from '../shared/enterpriseAccount/quotaEr
 import {
   HtmlShareAccessMode,
   type HtmlShareAccessMode as HtmlShareAccessModeValue,
+  type HtmlShareAnalyticsInput,
   type HtmlShareConfigurableStatus,
   HtmlShareIpc,
   HtmlShareSourceType,
+  type HtmlShareSourceType as HtmlShareSourceTypeValue,
   HtmlShareStatus,
   type HtmlShareStatus as HtmlShareStatusValue,
 } from '../shared/htmlShare/constants';
@@ -137,6 +139,8 @@ import type {
   ResolvedKitCapabilities,
 } from '../shared/kit/constants';
 import { KitStoreKey } from '../shared/kit/constants';
+import { LibraryChangeReason, LibraryIpc } from '../shared/library/constants';
+import type { LibraryChangedPayload } from '../shared/library/types';
 import {
   type ListLocalWebServicesOptions,
   type LocalWebService,
@@ -245,6 +249,9 @@ import {
 import { registerSessionDiagnosticsHandlers } from './ipcHandlers/sessionDiagnostics';
 import { registerSiteIpcHandlers } from './ipcHandlers/site';
 import { registerSkillHandlers } from './ipcHandlers/skills';
+import { LibraryIndexService } from './library/libraryIndexService';
+import { registerLibraryIpcHandlers } from './library/libraryIpc';
+import { LibraryLocalStore } from './library/libraryLocalStore';
 import {
   type CoworkAgentEngine,
   CoworkEngineRouter,
@@ -341,14 +348,24 @@ import {
   packageArtifactFile,
 } from './libs/htmlShare/artifactFileSharePackager';
 import {
+  getHtmlShareAnalytics,
   getHtmlShareBySource,
+  getHtmlShareQuota,
+  getPublishingTrialPolicy,
   updateHtmlShare,
   updateHtmlShareAccessMode,
   updateHtmlShareStatus,
   uploadHtmlShare,
 } from './libs/htmlShare/htmlShareClient';
 import { packageHtmlFile } from './libs/htmlShare/htmlSharePackager';
+import {
+  buildArtifactFileClientSourceKey,
+  buildArtifactIdentityClientSourceKey,
+  buildHtmlShareClientSourceKey,
+} from './libs/htmlShare/htmlShareSourceKey';
 import { getKeyfromAttribution, initializeKeyfromAttribution } from './libs/keyfromAttribution';
+import { LibraryThumbnailRenderer } from './libs/libraryThumbnailRenderer';
+import { LibraryThumbnailService } from './libs/libraryThumbnailService';
 import { exportLogsZip } from './libs/logExport';
 import { MainLogReporter } from './libs/mainLogReporter';
 import { inferImageMimeTypeFromDataUrl, type PersistedGeneratedImageAsset, persistGeneratedImageAssets, type PersistGeneratedImageAssetsResult, persistGeneratedVideoAssets, type RemoteGeneratedMediaAsset } from './libs/mediaAssetPersistence';
@@ -624,6 +641,11 @@ interface HtmlShareGetByArtifactFileInput {
   filePath?: string;
 }
 
+interface HtmlShareGetBySourceInput {
+  sourceType: HtmlShareSourceTypeValue;
+  clientSourceKey: string;
+}
+
 interface HtmlShareUpdateStatusInput {
   shareId: string;
   status: HtmlShareConfigurableStatus;
@@ -632,6 +654,33 @@ interface HtmlShareUpdateStatusInput {
 interface HtmlShareUpdateAccessModeInput {
   shareId: string;
   accessMode: HtmlShareAccessModeValue;
+}
+
+function sanitizeHtmlShareAnalyticsInput(input: unknown): HtmlShareAnalyticsInput {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    throw new Error('Invalid HTML share analytics request.');
+  }
+  const source = input as Record<string, unknown>;
+  const from = sanitizeOptionalHtmlShareString(source.from, 'from', 10);
+  const to = sanitizeOptionalHtmlShareString(source.to, 'to', 10);
+  if (Boolean(from) !== Boolean(to)) {
+    throw new Error('from and to must be provided together.');
+  }
+  for (const [fieldName, value] of [['from', from], ['to', to]] as const) {
+    if (!value) continue;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      throw new Error(`${fieldName} must use YYYY-MM-DD format.`);
+    }
+    const parsed = new Date(`${value}T00:00:00.000Z`);
+    if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) {
+      throw new Error(`${fieldName} must be a valid date.`);
+    }
+  }
+  return {
+    shareId: sanitizeHtmlShareString(source.shareId, 'shareId', 64),
+    ...(from ? { from } : {}),
+    ...(to ? { to } : {}),
+  };
 }
 
 interface ShareDeploymentAnalyzeProjectDirectoryInput {
@@ -825,6 +874,25 @@ function sanitizeGetByArtifactFileInput(input: unknown): HtmlShareGetByArtifactF
     throw new Error('Artifact share lookup source is required.');
   }
   return options;
+}
+
+function sanitizeGetHtmlShareBySourceInput(input: unknown): HtmlShareGetBySourceInput {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    throw new Error('Invalid HTML share source lookup request.');
+  }
+  const source = input as Record<string, unknown>;
+  const sourceType = sanitizeHtmlShareString(source.sourceType, 'sourceType', 32);
+  if (!Object.values(HtmlShareSourceType).includes(sourceType as HtmlShareSourceTypeValue)) {
+    throw new Error('Invalid HTML share source type.');
+  }
+  return {
+    sourceType: sourceType as HtmlShareSourceTypeValue,
+    clientSourceKey: sanitizeHtmlShareString(
+      source.clientSourceKey,
+      'clientSourceKey',
+      128,
+    ),
+  };
 }
 
 function sanitizeUpdateHtmlShareStatusInput(input: unknown): HtmlShareUpdateStatusInput {
@@ -1248,41 +1316,18 @@ function sanitizeShellGetBrowserAppsInput(input: unknown): ShellGetBrowserAppsIn
   };
 }
 
-function normalizeHtmlShareSourceFilePath(filePath: string): string {
-  let normalized = filePath.trim();
-  if (/^file:\/\//i.test(normalized)) {
-    normalized = safeDecodeURIComponent(normalized.replace(/^file:\/\//i, ''));
-  }
-  if (/^\/[A-Za-z]:/.test(normalized)) {
-    normalized = normalized.slice(1);
-  }
-  normalized = path.resolve(normalized).replace(/\\/g, '/');
-  return normalized.toLowerCase();
-}
-
-function buildHtmlShareClientSourceKey(filePath: string): string {
-  const normalizedPath = normalizeHtmlShareSourceFilePath(filePath);
-  return crypto
-    .createHash('sha256')
-    .update(`${HtmlShareSourceType.HtmlFile}:${normalizedPath}`)
-    .digest('hex');
-}
-
 function buildArtifactShareClientSourceKey(options: HtmlShareGetByArtifactFileInput): string {
   if (options.filePath) {
-    const normalizedPath = normalizeHtmlShareSourceFilePath(options.filePath);
-    return crypto
-      .createHash('sha256')
-      .update(`${options.sourceType}:file:${normalizedPath}`)
-      .digest('hex');
+    return buildArtifactFileClientSourceKey(options.sourceType, options.filePath);
   }
   if (!options.sessionId || !options.artifactId) {
     throw new Error('Artifact share source key is missing.');
   }
-  return crypto
-    .createHash('sha256')
-    .update(`${options.sourceType}:artifact:${options.sessionId}:${options.artifactId}`)
-    .digest('hex');
+  return buildArtifactIdentityClientSourceKey(
+    options.sourceType,
+    options.sessionId,
+    options.artifactId,
+  );
 }
 
 const cleanHtmlTitle = (value: string): string =>
@@ -1943,6 +1988,7 @@ let memoryMigrationDone = false;
 let preventSleepBlockerId: number | null = null;
 let appUpdateCoordinator: AppUpdateCoordinator | null = null;
 let mainLogReporter: MainLogReporter | null = null;
+let libraryIndexService: LibraryIndexService | null = null;
 
 function setPreventSleepBlockerEnabled(enabled: boolean): void {
   if (enabled) {
@@ -4270,18 +4316,26 @@ const EDIT_CONTEXT_FORM_CONTROLS = new Set<ContextMenuParams['formControlType']>
 const shouldShowEditContextMenu = (params: ContextMenuParams): boolean =>
   params.isEditable && EDIT_CONTEXT_FORM_CONTROLS.has(params.formControlType);
 
+const hasReadOnlySelection = (params: ContextMenuParams): boolean =>
+  !params.isEditable && params.selectionText.length > 0;
+
+const shouldShowTextContextMenu = (params: ContextMenuParams): boolean =>
+  shouldShowEditContextMenu(params) || hasReadOnlySelection(params);
+
 const installEditContextMenu = (webContents: WebContents) => {
   webContents.on('context-menu', (_event, params) => {
-    if (!shouldShowEditContextMenu(params)) return;
+    if (!shouldShowTextContextMenu(params)) return;
+
+    const isEditContext = shouldShowEditContextMenu(params);
 
     const template: MenuItemConstructorOptions[] = [];
 
     template.push(
-      { label: t('contextMenuCut'), role: 'cut', enabled: params.editFlags.canCut },
-      { label: t('contextMenuCopy'), role: 'copy', enabled: params.editFlags.canCopy },
-      { label: t('contextMenuPaste'), role: 'paste', enabled: params.editFlags.canPaste },
+      { label: t('contextMenuCut'), role: 'cut', enabled: isEditContext && params.editFlags.canCut },
+      { label: t('contextMenuCopy'), role: 'copy', enabled: isEditContext ? params.editFlags.canCopy : true },
+      { label: t('contextMenuPaste'), role: 'paste', enabled: isEditContext && params.editFlags.canPaste },
       { type: 'separator' },
-      { label: t('contextMenuSelectAll'), role: 'selectAll', enabled: params.editFlags.canSelectAll },
+      { label: t('contextMenuSelectAll'), role: 'selectAll', enabled: isEditContext && params.editFlags.canSelectAll },
     );
 
     const targetWindow = BrowserWindow.fromWebContents(webContents);
@@ -7399,6 +7453,25 @@ if (!gotTheLock) {
     }
   });
 
+  ipcMain.handle(HtmlShareIpc.GetBySource, async (_event, input: unknown) => {
+    try {
+      const options = sanitizeGetHtmlShareBySourceInput(input);
+      return await getHtmlShareBySource(
+        getServerApiBaseUrl(),
+        getHtmlSharePublicBaseUrl(),
+        fetchWithAuth,
+        options.sourceType,
+        options.clientSourceKey,
+      );
+    } catch (error) {
+      console.error('[HtmlShare] failed to look up share from source:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to load share',
+      };
+    }
+  });
+
   ipcMain.handle(HtmlShareIpc.UpdateFromArtifactFile, async (_event, input: unknown) => {
     let archivePath: string | undefined;
     try {
@@ -7510,6 +7583,51 @@ if (!gotTheLock) {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to load share',
+      };
+    }
+  });
+
+  ipcMain.handle(HtmlShareIpc.GetQuota, async () => {
+    try {
+      return await getHtmlShareQuota(getServerApiBaseUrl(), fetchWithAuth);
+    } catch (error) {
+      console.error('[HtmlShare] failed to load publishing quota:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to load share quota',
+      };
+    }
+  });
+
+  ipcMain.handle(HtmlShareIpc.GetTrialPolicy, async () => {
+    try {
+      return await getPublishingTrialPolicy(
+        getServerApiBaseUrl(),
+        (url, options) => fetch(url, options),
+      );
+    } catch (error) {
+      console.error('[HtmlShare] failed to load publishing trial policy:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to load publishing trial policy',
+      };
+    }
+  });
+
+  ipcMain.handle(HtmlShareIpc.GetAnalytics, async (_event, input: unknown) => {
+    try {
+      const options = sanitizeHtmlShareAnalyticsInput(input);
+      return await getHtmlShareAnalytics(
+        getServerApiBaseUrl(),
+        fetchWithAuth,
+        options.shareId,
+        options,
+      );
+    } catch (error) {
+      console.error('[HtmlShare] failed to load owner analytics:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to load share analytics',
       };
     }
   });
@@ -9175,7 +9293,13 @@ if (!gotTheLock) {
     try {
       getCoworkEngineRouter().stopSession(sessionId);
       const coworkStoreInstance = getCoworkStore();
-      coworkStoreInstance.deleteSession(sessionId);
+      const affectedArtifactIds = coworkStoreInstance.deleteSession(sessionId);
+      if (affectedArtifactIds.length > 0) {
+        libraryIndexService?.notifyChange({
+          reason: LibraryChangeReason.SessionDeleted,
+          itemIds: affectedArtifactIds,
+        });
+      }
       mediaSelectionBySession.delete(sessionId);
       mediaTurnAccountScopeBySession.delete(sessionId);
       skinRuntimeController?.handleSessionDeleted(sessionId);
@@ -9217,7 +9341,13 @@ if (!gotTheLock) {
         runtime.stopSession(sessionId);
       });
       const coworkStoreInstance = getCoworkStore();
-      coworkStoreInstance.deleteSessions(sessionIds);
+      const affectedArtifactIds = coworkStoreInstance.deleteSessions(sessionIds);
+      if (affectedArtifactIds.length > 0) {
+        libraryIndexService?.notifyChange({
+          reason: LibraryChangeReason.SessionDeleted,
+          itemIds: affectedArtifactIds,
+        });
+      }
       const router = getCoworkEngineRouter();
       for (const sessionId of sessionIds) {
         skinRuntimeController?.handleSessionDeleted(sessionId);
@@ -11933,8 +12063,38 @@ if (!gotTheLock) {
     },
   );
 
+  const libraryThumbnailRenderer = new LibraryThumbnailRenderer({
+    developmentServerUrl: isDev ? DEV_SERVER_URL : undefined,
+    productionHtmlPath: path.join(__dirname, '../dist/library-thumbnail.html'),
+  });
+  const libraryThumbnailService = new LibraryThumbnailService({
+    createThumbnail: async (filePath, size) => {
+      try {
+        return await libraryThumbnailRenderer.render(filePath, size);
+      } catch (rendererError) {
+        try {
+          const image = await nativeImage.createThumbnailFromPath(filePath, size);
+          if (image.isEmpty()) throw new Error('Thumbnail is empty');
+          return image.toPNG();
+        } catch (nativeError) {
+          const rendererMessage = rendererError instanceof Error
+            ? rendererError.message
+            : 'Unknown renderer error';
+          const nativeMessage = nativeError instanceof Error
+            ? nativeError.message
+            : 'Unknown native thumbnail error';
+          throw new Error(
+            `Failed to generate thumbnail (renderer: ${rendererMessage}; native: ${nativeMessage})`,
+          );
+        }
+      }
+    },
+    getCacheDirectory: () => path.join(app.getPath('userData'), 'library', 'thumbnails'),
+    maxConcurrency: 3,
+  });
+
   ipcMain.handle(
-    'dialog:generateThumbnail',
+    DialogIpc.GenerateThumbnail,
     async (
       _event,
       filePath?: string,
@@ -11943,35 +12103,8 @@ if (!gotTheLock) {
         if (typeof filePath !== 'string' || !filePath.trim()) {
           return { success: false, error: 'Missing file path' };
         }
-        const resolvedPath = path.resolve(filePath.trim());
-        const stat = await fs.promises.stat(resolvedPath);
-        if (!stat.isFile()) {
-          return { success: false, error: 'Not a file' };
-        }
-        if (process.platform !== 'darwin') {
-          return { success: false, error: 'Thumbnail generation only supported on macOS' };
-        }
-        const { execFile } = await import('child_process');
-        const { promisify } = await import('util');
-        const execFileAsync = promisify(execFile);
-        const tmpDir = path.join(app.getPath('temp'), 'lobsterai-thumbnails');
-        await fs.promises.mkdir(tmpDir, { recursive: true });
-        const baseName = path.basename(resolvedPath);
-        const outputFile = path.join(tmpDir, `${baseName}.png`);
-        try {
-          await fs.promises.unlink(outputFile);
-        } catch {
-          /* ignore */
-        }
-        await execFileAsync('qlmanage', ['-t', '-s', '1200', '-o', tmpDir, resolvedPath]);
-        const thumbBuffer = await fs.promises.readFile(outputFile);
-        const base64 = thumbBuffer.toString('base64');
-        try {
-          await fs.promises.unlink(outputFile);
-        } catch {
-          /* ignore */
-        }
-        return { success: true, dataUrl: `data:image/png;base64,${base64}` };
+        const dataUrl = await libraryThumbnailService.generate(filePath);
+        return { success: true, dataUrl };
       } catch (error) {
         return {
           success: false,
@@ -13296,6 +13429,8 @@ if (!gotTheLock) {
     }
 
     sqliteBackupManager?.stopPeriodicBackupLoop();
+    libraryIndexService?.stop();
+    libraryThumbnailRenderer.dispose();
 
     // Close the SQLite database to flush the WAL and release the file lock.
     try {
@@ -13393,6 +13528,29 @@ if (!gotTheLock) {
     store = await initStore();
     profiler.measure('initStore');
     console.log('[Main] initApp: store initialized');
+    const libraryLocalStore = new LibraryLocalStore(store.getDatabase());
+    const emitLibraryChanged = (payload: LibraryChangedPayload): void => {
+      for (const window of BrowserWindow.getAllWindows()) {
+        if (!window.isDestroyed()) window.webContents.send(LibraryIpc.Changed, payload);
+      }
+    };
+    libraryIndexService = new LibraryIndexService({
+      store: libraryLocalStore,
+      userDataPath: app.getPath('userData'),
+      onChanged: emitLibraryChanged,
+      getMetadata: key => store?.get(key),
+      setMetadata: (key, value) => store?.set(key, value),
+    });
+    registerLibraryIpcHandlers({
+      localStore: libraryLocalStore,
+      indexService: libraryIndexService,
+      getServerApiBaseUrl,
+      fetchWithAuth: (url, options) => {
+        const { scopedFetch } = capturePublishingRequest();
+        return scopedFetch(url, options);
+      },
+    });
+    libraryIndexService.start();
 
     // Dev/E2E convenience: boot the dsh engine once the app is ready and the
     // store can answer provider queries, so app-level checks can assert

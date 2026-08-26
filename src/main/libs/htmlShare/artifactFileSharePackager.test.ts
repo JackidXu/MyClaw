@@ -59,6 +59,21 @@ describe('artifactFileSharePackager', () => {
     expect(packaged.sourceSha256).toBe(crypto.createHash('sha256').update(content).digest('hex'));
   });
 
+  test('preserves Unicode file names and replaces only unsafe characters', async () => {
+    const content = '# 季度工作汇报\n';
+
+    const packaged = await packageArtifactFile({
+      sourceType: HtmlShareSourceType.MarkdownFile,
+      fileName: '季度工作汇报:最终版?.md',
+      content,
+    });
+    const zip = await loadZip(packaged.archivePath);
+
+    expect(packaged.entryFile).toBe('季度工作汇报_最终版_.md');
+    expect(zip.file('季度工作汇报_最终版_.md')).not.toBeNull();
+    expect(await zip.file('季度工作汇报_最终版_.md')!.async('string')).toBe(content);
+  });
+
   test('packages Markdown with same-directory local images and omits remote images', async () => {
     const root = await createTempRoot();
     const markdownPath = path.join(root, 'README.md');

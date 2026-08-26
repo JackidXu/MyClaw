@@ -42,7 +42,7 @@ import Cog6ToothIcon from './icons/Cog6ToothIcon';
 import ComposeIcon from './icons/ComposeIcon';
 import SidebarAutomationIcon from './icons/SidebarAutomationIcon';
 import SidebarKitsIcon from './icons/SidebarKitsIcon';
-import SidebarSitesIcon from './icons/SidebarSitesIcon';
+import SidebarLibraryIcon from './icons/SidebarLibraryIcon';
 import SidebarToggleIcon from './icons/SidebarToggleIcon';
 import SkillIcon from './icons/SkillIcon';
 import TrashIcon from './icons/TrashIcon';
@@ -52,12 +52,12 @@ import SidebarExperienceSlot from './SidebarExperienceSlot';
 interface SidebarProps {
   onShowSettings: () => void;
   onShowLogin?: () => void;
-  activeView: 'cowork' | 'skills' | 'scheduledTasks' | 'kits' | 'mcp' | 'sites';
+  activeView: 'cowork' | 'skills' | 'scheduledTasks' | 'kits' | 'mcp' | 'library';
   onShowSkills: () => void;
   onShowCowork: () => void;
   onShowScheduledTasks: () => void;
   onShowKits: () => void;
-  onShowSites: () => void;
+  onShowLibrary: () => void;
   onNewChat: () => void;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
@@ -71,7 +71,6 @@ interface SidebarProps {
    * promo banner while preserving it for a smooth return after collapse. */
   hideAdBanner?: boolean;
   hideLogin?: boolean;
-  hideSites?: boolean;
 }
 
 const DEFAULT_SIDEBAR_WIDTH = 244;
@@ -182,7 +181,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onShowCowork,
   onShowScheduledTasks,
   onShowKits,
-  onShowSites,
+  onShowLibrary,
   onNewChat,
   isCollapsed,
   onToggleCollapse,
@@ -194,7 +193,6 @@ const Sidebar: React.FC<SidebarProps> = ({
   updateNotice,
   hideAdBanner,
   hideLogin,
-  hideSites,
 }) => {
   const currentAgentId = useSelector((state: RootState) => state.agent.currentAgentId);
   const agents = useSelector((state: RootState) => state.agent.agents);
@@ -744,21 +742,19 @@ const Sidebar: React.FC<SidebarProps> = ({
             <SkillIcon className="h-4 w-4 shrink-0" />
             <span className="min-w-0 truncate">{i18nService.t('skillsAndConnectors')}</span>
           </button>
-          {!hideSites && (
-            <button
-              type="button"
-              onClick={() => {
-                reportSidebarAction('open_sites', { activeView, isCollapsed });
-                setIsSearchOpen(false);
-                onShowSites();
-              }}
-              className={activeView === 'sites' ? activeSidebarNavItemClassName : sidebarNavItemClassName}
-              aria-current={activeView === 'sites' ? 'page' : undefined}
-            >
-              <SidebarSitesIcon className="h-4 w-4 shrink-0" />
-              {i18nService.t('sitesTitle')}
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => {
+              reportSidebarAction('open_library', { activeView, isCollapsed });
+              setIsSearchOpen(false);
+              onShowLibrary();
+            }}
+            className={activeView === 'library' ? activeSidebarNavItemClassName : sidebarNavItemClassName}
+            aria-current={activeView === 'library' ? 'page' : undefined}
+          >
+            <SidebarLibraryIcon className="h-4 w-4 shrink-0" />
+            <span className="min-w-0 truncate">{i18nService.t('librarySidebarTitle')}</span>
+          </button>
         </div>
       </div>
       <div className="relative min-h-0 flex-1">
@@ -924,7 +920,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             <button
               type="button"
               onClick={() => onShowSettings()}
-              className={`inline-flex h-8 min-w-0 items-center justify-center gap-1 rounded-md px-1.5 text-sm font-normal text-foreground transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.04] ${showRechargeButton ? 'flex-1 px-0.5' : hideLogin ? 'w-full' : 'shrink-0'}`}
+              className={`inline-flex h-8 min-w-0 items-center justify-center gap-1 rounded-md px-1.5 text-sm font-normal text-foreground/80 transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.04] ${showRechargeButton ? 'flex-1 px-0.5' : hideLogin ? 'w-full' : 'shrink-0'}`}
               aria-label={i18nService.t('settings')}
             >
               <Cog6ToothIcon className="h-4 w-4 shrink-0" />

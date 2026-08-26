@@ -1,5 +1,6 @@
-import { ChevronRightIcon } from '@heroicons/react/24/outline';
+import { ArrowPathIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import React, {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -89,6 +90,7 @@ interface AccountMenuActionProps {
   onClick: () => void | Promise<void>;
   trailing?: React.ReactNode;
   danger?: boolean;
+  title?: string;
 }
 
 const AccountMenuAction: React.FC<AccountMenuActionProps> = ({
@@ -97,9 +99,11 @@ const AccountMenuAction: React.FC<AccountMenuActionProps> = ({
   onClick,
   trailing,
   danger = false,
+  title,
 }) => (
   <button
     type="button"
+    title={title}
     onClick={() => void onClick()}
     className={`flex w-full cursor-pointer items-center gap-2 px-4 py-2 text-left text-[13px] transition-colors hover:bg-surface-raised ${
       danger ? 'text-red-500' : 'text-foreground'
@@ -202,10 +206,22 @@ const UserMenu: React.FC<UserMenuProps> = ({
   const user = useSelector((state: RootState) => state.auth.user);
   const profileSummary = useSelector((state: RootState) => state.auth.profileSummary);
   const isEn = i18nService.getLanguage() === 'en';
+  // The menu fetches on mount, so start in the loading state to avoid a
+  // one-frame "--" flash before the mount effect runs.
+  const [summaryLoading, setSummaryLoading] = useState(true);
+
+  const refreshProfileSummary = useCallback(async () => {
+    setSummaryLoading(true);
+    try {
+      await authService.fetchProfileSummary();
+    } finally {
+      setSummaryLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    authService.fetchProfileSummary();
-  }, []);
+    void refreshProfileSummary();
+  }, [refreshProfileSummary]);
 
   const openPortalUrl = async (url: string) => {
     await window.electron.shell.openExternal(url);
@@ -232,6 +248,17 @@ const UserMenu: React.FC<UserMenuProps> = ({
   };
 
   const handleCreditsDetail = async () => {
+    if (!profileSummary) {
+      // The summary never loaded (e.g. offline); clicking retries the fetch
+      // instead of opening a portal page that would fail the same way.
+      if (summaryLoading) return;
+      reportAccountMenuAction('retry_profile_summary', {
+        creditItemCount: creditItems.length,
+        hasCredits,
+      });
+      await refreshProfileSummary();
+      return;
+    }
     try {
       await openPortalUrl(getPortalCreditsDetailUrl());
       reportAccountMenuAction('open_credits_detail', {
@@ -358,6 +385,27 @@ const UserMenu: React.FC<UserMenuProps> = ({
   const phoneSuffix = user?.phone ? user.phone.slice(-4) : '';
 
   const totalCredits = profileSummary?.totalCreditsRemaining ?? 0;
+  const creditsUnavailable = !profileSummary && !summaryLoading;
+  let creditsTrailingContent: React.ReactNode;
+  if (profileSummary) {
+    creditsTrailingContent = (
+      <>
+        {formatCredits(totalCredits)}
+        <ChevronRightIcon className="h-3.5 w-3.5 text-secondary" />
+      </>
+    );
+  } else if (summaryLoading) {
+    creditsTrailingContent = (
+      <ArrowPathIcon className="h-3.5 w-3.5 animate-spin text-secondary" />
+    );
+  } else {
+    creditsTrailingContent = (
+      <>
+        <span className="text-secondary">--</span>
+        <ArrowPathIcon className="h-3.5 w-3.5 text-secondary" />
+      </>
+    );
+  }
   const creditItems = profileSummary?.creditItems ?? [];
   const hasCredits = creditItems.length > 0;
   const accountName = profileSummary?.nickname
@@ -409,10 +457,10 @@ const UserMenu: React.FC<UserMenuProps> = ({
         <AccountMenuAction
           icon={<PointsStackIcon />}
           label={i18nService.t('authCreditsRemaining')}
+          title={creditsUnavailable ? i18nService.t('authCreditsUnavailableRetry') : undefined}
           trailing={(
             <span className="ml-auto flex shrink-0 items-center gap-1 text-xs font-medium text-foreground">
-              {formatCredits(totalCredits)}
-              <ChevronRightIcon className="h-3.5 w-3.5 text-secondary" />
+              {creditsTrailingContent}
             </span>
           )}
           onClick={handleCreditsDetail}
@@ -591,8 +639,8 @@ const LoginButton: React.FC<LoginButtonProps> = ({
         onClick={handleClick}
         className={
           useSidebarPromoLogin
-            ? 'inline-flex h-8 w-[5.5rem] shrink-0 items-center justify-center rounded-lg bg-black px-3 text-[14px] font-medium text-white shadow-sm transition-colors hover:bg-black/85 dark:bg-white dark:text-black dark:hover:bg-white/85 cursor-pointer'
-            : 'inline-flex h-7 items-center justify-start gap-2 rounded-md px-1.5 text-[14px] font-normal text-foreground/80 transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.04] cursor-pointer'
+            ? 'inline-flex h-8 w-[5.5rem] shrink-0 items-center justify-center rounded-lg bg-black px-3 text-sm font-medium text-white shadow-sm transition-colors hover:bg-black/85 dark:bg-white dark:text-black dark:hover:bg-white/85 cursor-pointer'
+            : 'inline-flex h-7 items-center justify-start gap-2 rounded-md px-1.5 text-sm font-normal text-foreground/80 transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.04] cursor-pointer'
         }
       >
         {isLoggedIn ? (
