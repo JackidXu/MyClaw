@@ -1,7 +1,7 @@
-import { ChevronDownIcon, ChevronRightIcon, ChevronUpIcon, FolderIcon } from '@heroicons/react/24/outline';
+import { ChevronDownIcon, ChevronRightIcon, ChevronUpIcon, FolderIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 
-import { classifyErrorKey } from '../../../common/coworkErrorClassify';
+import { classifyErrorKey, CoworkErrorI18nKey } from '../../../common/coworkErrorClassify';
 import { ContextCompactionStatus } from '../../../common/coworkSystemMessages';
 import { getScheduledReminderDisplayText } from '../../../scheduledTask/reminderText';
 import {
@@ -12,6 +12,7 @@ import {
 } from '../../../shared/cowork/errorDetail';
 import type { CoworkGoal } from '../../../shared/cowork/goal';
 import { dedupeArtifactsForDisplay } from '../../services/artifactParser';
+import { getPortalPricingUrl } from '../../services/endpoints';
 import { i18nService } from '../../services/i18n';
 import type { Artifact } from '../../types/artifact';
 import type { CoworkMessage, CoworkMessageMetadata } from '../../types/cowork';
@@ -210,6 +211,57 @@ const getSystemMessageDisplayContent = (message: CoworkMessage, content: string)
   return key ? i18nService.t(key) : content;
 };
 
+const getSystemMessageErrorKey = (message: CoworkMessage, content: string): string | null => {
+  const errorText = typeof message.metadata?.error === 'string' ? message.metadata.error : null;
+  if (!errorText) return classifyErrorKey(content);
+  return classifyErrorKey(errorText) ?? classifyErrorKey(content);
+};
+
+const isCreditQuotaExhaustedKey = (key: string | null): boolean => (
+  key === CoworkErrorI18nKey.QuotaExhausted
+  || key === CoworkErrorI18nKey.FreeQuotaExhausted
+);
+
+const CreditQuotaExhaustedBanner: React.FC<{ onDismiss: () => void }> = ({ onDismiss }) => {
+  const handlePurchase = () => {
+    void window.electron.shell.openExternal(getPortalPricingUrl());
+  };
+
+  return (
+    <div className="relative rounded-lg border border-border bg-background px-4 py-3 pr-10 shadow-sm">
+      <button
+        type="button"
+        onClick={onDismiss}
+        className="absolute right-2 top-2 inline-flex h-6 w-6 items-center justify-center rounded-full text-secondary transition-colors hover:bg-surface-raised hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+        aria-label={i18nService.t('close')}
+        title={i18nService.t('close')}
+      >
+        <XMarkIcon className="h-4 w-4" />
+      </button>
+      <div className="flex items-center gap-3">
+        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md bg-surface-raised text-secondary">
+          <InformationCircleIcon className="h-5 w-5" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-semibold leading-5 text-foreground">
+            {i18nService.t('coworkCreditQuotaBannerTitle')}
+          </div>
+          <div className="mt-1 text-xs leading-5 text-secondary">
+            {i18nService.t('coworkCreditQuotaBannerDescription')}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={handlePurchase}
+          className="ml-2 inline-flex h-8 flex-shrink-0 items-center justify-center rounded-full bg-foreground px-5 text-xs font-medium text-background transition-opacity hover:opacity-85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+        >
+          {i18nService.t('coworkCreditQuotaBannerAction')}
+        </button>
+      </div>
+    </div>
+  );
+};
+
 // ── SystemErrorTechnicalDetail ───────────────────────────────────────────────
 
 /**
@@ -395,6 +447,9 @@ const AssistantTurnBlock: React.FC<{
 }) => {
   const [artifactCardsExpanded, setArtifactCardsExpanded] = useState(false);
   const [processExpanded, setProcessExpanded] = useState(false);
+  const [dismissedCreditQuotaMessageIds, setDismissedCreditQuotaMessageIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const visibleAssistantItems = useMemo(
     () => getVisibleAssistantItems(turn.assistantItems),
     [turn.assistantItems],
@@ -464,6 +519,19 @@ const AssistantTurnBlock: React.FC<{
       return null;
     }
     const normalizedContent = getScheduledReminderDisplayText(rawContent) ?? rawContent;
+    const errorKey = getSystemMessageErrorKey(message, normalizedContent);
+    if (isCreditQuotaExhaustedKey(errorKey)) {
+      if (dismissedCreditQuotaMessageIds.has(message.id)) return null;
+      return (
+        <CreditQuotaExhaustedBanner
+          onDismiss={() => setDismissedCreditQuotaMessageIds(previous => {
+            const next = new Set(previous);
+            next.add(message.id);
+            return next;
+          })}
+        />
+      );
+    }
     const displayContent = getSystemMessageDisplayContent(message, normalizedContent);
     const content = mapDisplayText ? mapDisplayText(displayContent) : displayContent;
     if (!content.trim() && !isContextCompactionMessage(message)) return null;
