@@ -106,7 +106,7 @@ const PlanModelCard: React.FC<{
 
   return (
     <article
-      className="min-h-[184px] rounded-2xl border border-transparent bg-surface-raised/50 p-5 transition-colors hover:border-border"
+      className="min-h-[184px] min-w-0 rounded-2xl border border-transparent bg-surface-raised/50 p-5 transition-colors hover:border-border"
     >
       <div className="flex items-center justify-between gap-3">
         <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border bg-surface text-primary">
@@ -316,7 +316,7 @@ const PlanModelSettingsSection: React.FC = () => {
           {i18nService.t('planModelCatalogEmpty')}
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 pt-2 xl:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 pt-2 xl:grid-cols-3">
           {visibleModels.map((model, index) => (
             <PlanModelCard
               key={model.modelId || `${model.modelName}-${index}`}
