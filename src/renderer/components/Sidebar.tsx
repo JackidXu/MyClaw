@@ -1,7 +1,4 @@
-import {
-  CurrencyYenIcon,
-  ExclamationTriangleIcon,
-} from '@heroicons/react/24/outline';
+import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import { AgentId } from '@shared/agent';
 import { EnterpriseMemberRole } from '@shared/enterpriseAccount/constants';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -40,6 +37,7 @@ import {
 import CoworkSearchModal from './cowork/CoworkSearchModal';
 import Cog6ToothIcon from './icons/Cog6ToothIcon';
 import ComposeIcon from './icons/ComposeIcon';
+import FinancingOneIcon from './icons/FinancingOneIcon';
 import SidebarAutomationIcon from './icons/SidebarAutomationIcon';
 import SidebarKitsIcon from './icons/SidebarKitsIcon';
 import SidebarLibraryIcon from './icons/SidebarLibraryIcon';
@@ -949,7 +947,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           <div
             className={
               showRechargeButton
-                ? 'flex items-end px-2 pt-1'
+                ? 'flex items-end pl-3 pr-2 pt-1'
                 : 'flex items-center gap-1 pl-3 pr-2 pt-1'
             }
           >
@@ -996,7 +994,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   className="inline-flex h-7 min-w-0 items-center justify-center gap-[2px] rounded-md px-0.5 text-sm font-normal text-foreground/80 transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
                   aria-label={i18nService.t('authTopUp')}
                 >
-                  <CurrencyYenIcon className="h-4 w-4 shrink-0" strokeWidth={2} />
+                  <FinancingOneIcon className="h-3.5 w-3.5 shrink-0" />
                   <span className="min-w-0 truncate">{i18nService.t('authTopUp')}</span>
                 </button>
                 <button
