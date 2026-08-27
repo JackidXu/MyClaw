@@ -8,13 +8,15 @@ export type BrowserProfileMode = typeof BrowserProfileMode[keyof typeof BrowserP
 
 export const BrowserRuntimeProfile = {
   Managed: 'openclaw',
+  InApp: 'lobster-in-app',
   User: 'user',
 } as const;
 
 export type BrowserRuntimeProfile = typeof BrowserRuntimeProfile[keyof typeof BrowserRuntimeProfile];
 
 export const BrowserDisplayMode = {
-  Embedded: 'embedded',
+  ReadOnly: 'embedded',
+  InApp: 'in-app',
   External: 'external',
 } as const;
 
@@ -60,6 +62,16 @@ export const BrowserIpc = {
   GetObservation: 'openclaw:browser:getObservation',
   RefreshObservation: 'openclaw:browser:refreshObservation',
   Observation: 'openclaw:browser:observation',
+  GetHostState: 'openclaw:browser:getHostState',
+  SetHostView: 'openclaw:browser:setHostView',
+  NavigateHost: 'openclaw:browser:navigateHost',
+  GoBackHost: 'openclaw:browser:goBackHost',
+  GoForwardHost: 'openclaw:browser:goForwardHost',
+  ReloadHost: 'openclaw:browser:reloadHost',
+  StopHost: 'openclaw:browser:stopHost',
+  SelectHostPage: 'openclaw:browser:selectHostPage',
+  CloseHostPage: 'openclaw:browser:closeHostPage',
+  HostState: 'openclaw:browser:hostState',
 } as const;
 
 export type BrowserIpc = typeof BrowserIpc[keyof typeof BrowserIpc];
@@ -178,6 +190,57 @@ export interface AgentBrowserObservationResponse {
   error?: string;
 }
 
+export interface AgentBrowserHostTab {
+  pageId: number;
+  title: string;
+  url: string;
+  selected: boolean;
+  loading: boolean;
+  canGoBack: boolean;
+  canGoForward: boolean;
+}
+
+export interface AgentBrowserHostState {
+  tabs: AgentBrowserHostTab[];
+  selectedPageId?: number;
+  visible: boolean;
+  updatedAt: number;
+  error?: string;
+}
+
+export interface AgentBrowserHostStateEvent {
+  sessionId?: string;
+  state: AgentBrowserHostState;
+}
+
+export interface AgentBrowserHostRequest {
+  sessionId?: string;
+}
+
+export interface AgentBrowserHostSetViewRequest extends AgentBrowserHostRequest {
+  visible: boolean;
+  bounds?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+}
+
+export interface AgentBrowserHostNavigateRequest extends AgentBrowserHostRequest {
+  url: string;
+}
+
+export interface AgentBrowserHostPageRequest extends AgentBrowserHostRequest {
+  pageId: number;
+}
+
+export interface AgentBrowserHostResponse {
+  success: boolean;
+  state?: AgentBrowserHostState;
+  error?: string;
+}
+
 export interface BrowserDiagnosticResultStep {
   step: BrowserDiagnosticStep;
   status: BrowserDiagnosticStatus;
@@ -194,7 +257,7 @@ export interface BrowserDiagnosticResult {
 export const defaultBrowserWebAccessConfig: BrowserWebAccessConfig = {
   browserEnabled: true,
   profileMode: BrowserProfileMode.Managed,
-  displayMode: BrowserDisplayMode.Embedded,
+  displayMode: BrowserDisplayMode.ReadOnly,
   networkMode: BrowserNetworkMode.ProxyCompatible,
   followGlobalProxy: true,
   allowedHostnames: [],

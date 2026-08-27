@@ -21,6 +21,12 @@ import type {
   AuthSessionStatus,
 } from '../../shared/auth/constants';
 import type {
+  AgentBrowserHostNavigateRequest,
+  AgentBrowserHostPageRequest,
+  AgentBrowserHostRequest,
+  AgentBrowserHostResponse,
+  AgentBrowserHostSetViewRequest,
+  AgentBrowserHostStateEvent,
   AgentBrowserObservation,
   AgentBrowserObservationRequest,
   AgentBrowserObservationResponse,
@@ -869,6 +875,16 @@ interface IElectronAPI {
       getObservation: (request: AgentBrowserObservationRequest) => Promise<AgentBrowserObservationResponse>;
       refreshObservation: (request: AgentBrowserObservationRequest) => Promise<AgentBrowserObservationResponse>;
       onObservation: (callback: (observation: AgentBrowserObservation) => void) => () => void;
+      getHostState: (request?: AgentBrowserHostRequest) => Promise<AgentBrowserHostResponse>;
+      setHostView: (request: AgentBrowserHostSetViewRequest) => Promise<AgentBrowserHostResponse>;
+      navigateHost: (request: AgentBrowserHostNavigateRequest) => Promise<AgentBrowserHostResponse>;
+      goBackHost: (request?: AgentBrowserHostRequest) => Promise<AgentBrowserHostResponse>;
+      goForwardHost: (request?: AgentBrowserHostRequest) => Promise<AgentBrowserHostResponse>;
+      reloadHost: (request?: AgentBrowserHostRequest) => Promise<AgentBrowserHostResponse>;
+      stopHost: (request?: AgentBrowserHostRequest) => Promise<AgentBrowserHostResponse>;
+      selectHostPage: (request: AgentBrowserHostPageRequest) => Promise<AgentBrowserHostResponse>;
+      closeHostPage: (request: AgentBrowserHostPageRequest) => Promise<AgentBrowserHostResponse>;
+      onHostState: (callback: (event: AgentBrowserHostStateEvent) => void) => () => void;
     };
     dataMigration: {
       backup: () => Promise<DataMigrationBackupResult>;

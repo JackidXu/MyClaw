@@ -163,9 +163,11 @@ const BrowserWebAccessSettings: React.FC<BrowserWebAccessSettingsProps> = ({
       <div className="space-y-8">
         <SettingRow
           title={i18nService.t('browserDisplayModeTitle')}
-          description={value.displayMode === BrowserDisplayMode.Embedded
-            ? i18nService.t('browserDisplayModeEmbeddedDescription')
-            : i18nService.t('browserDisplayModeExternalDescription')}
+          description={value.displayMode === BrowserDisplayMode.ReadOnly
+            ? i18nService.t('browserDisplayModeReadOnlyDescription')
+            : value.displayMode === BrowserDisplayMode.InApp
+              ? i18nService.t('browserDisplayModeInAppDescription')
+              : i18nService.t('browserDisplayModeExternalDescription')}
           control={(
             <div className="w-[300px]">
               <ThemedSelect
@@ -174,8 +176,12 @@ const BrowserWebAccessSettings: React.FC<BrowserWebAccessSettingsProps> = ({
                 onChange={(mode) => update({ displayMode: mode as BrowserDisplayMode })}
                 options={[
                   {
-                    value: BrowserDisplayMode.Embedded,
-                    label: i18nService.t('browserDisplayModeEmbedded'),
+                    value: BrowserDisplayMode.ReadOnly,
+                    label: i18nService.t('browserDisplayModeReadOnly'),
+                  },
+                  {
+                    value: BrowserDisplayMode.InApp,
+                    label: i18nService.t('browserDisplayModeInApp'),
                   },
                   {
                     value: BrowserDisplayMode.External,

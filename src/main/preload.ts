@@ -22,6 +22,12 @@ import {
   type AuthSessionChangedEvent,
 } from '../shared/auth/constants';
 import {
+  type AgentBrowserHostNavigateRequest,
+  type AgentBrowserHostPageRequest,
+  type AgentBrowserHostRequest,
+  type AgentBrowserHostResponse,
+  type AgentBrowserHostSetViewRequest,
+  type AgentBrowserHostStateEvent,
   type AgentBrowserObservation,
   type AgentBrowserObservationRequest,
   type AgentBrowserObservationResponse,
@@ -370,6 +376,30 @@ contextBridge.exposeInMainWorld('electron', {
           callback(observation);
         ipcRenderer.on(BrowserIpc.Observation, handler);
         return () => ipcRenderer.removeListener(BrowserIpc.Observation, handler);
+      },
+      getHostState: (request?: AgentBrowserHostRequest): Promise<AgentBrowserHostResponse> =>
+        ipcRenderer.invoke(BrowserIpc.GetHostState, request),
+      setHostView: (request: AgentBrowserHostSetViewRequest): Promise<AgentBrowserHostResponse> =>
+        ipcRenderer.invoke(BrowserIpc.SetHostView, request),
+      navigateHost: (request: AgentBrowserHostNavigateRequest): Promise<AgentBrowserHostResponse> =>
+        ipcRenderer.invoke(BrowserIpc.NavigateHost, request),
+      goBackHost: (request?: AgentBrowserHostRequest): Promise<AgentBrowserHostResponse> =>
+        ipcRenderer.invoke(BrowserIpc.GoBackHost, request),
+      goForwardHost: (request?: AgentBrowserHostRequest): Promise<AgentBrowserHostResponse> =>
+        ipcRenderer.invoke(BrowserIpc.GoForwardHost, request),
+      reloadHost: (request?: AgentBrowserHostRequest): Promise<AgentBrowserHostResponse> =>
+        ipcRenderer.invoke(BrowserIpc.ReloadHost, request),
+      stopHost: (request?: AgentBrowserHostRequest): Promise<AgentBrowserHostResponse> =>
+        ipcRenderer.invoke(BrowserIpc.StopHost, request),
+      selectHostPage: (request: AgentBrowserHostPageRequest): Promise<AgentBrowserHostResponse> =>
+        ipcRenderer.invoke(BrowserIpc.SelectHostPage, request),
+      closeHostPage: (request: AgentBrowserHostPageRequest): Promise<AgentBrowserHostResponse> =>
+        ipcRenderer.invoke(BrowserIpc.CloseHostPage, request),
+      onHostState: (callback: (event: AgentBrowserHostStateEvent) => void) => {
+        const handler = (_event: Electron.IpcRendererEvent, hostEvent: AgentBrowserHostStateEvent) =>
+          callback(hostEvent);
+        ipcRenderer.on(BrowserIpc.HostState, handler);
+        return () => ipcRenderer.removeListener(BrowserIpc.HostState, handler);
       },
     },
     dataMigration: {

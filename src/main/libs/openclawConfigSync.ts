@@ -1849,6 +1849,8 @@ type OpenClawConfigSyncDeps = {
   getResolvedMcpServers?: () => ResolvedMcpServer[];
   getAskUserCallbackUrl?: () => string | null;
   getMediaCallbackUrl?: () => string | null;
+  getBrowserCallbackUrl?: () => string | null;
+  getLobsterBrowserMcpCommand?: () => string | null;
   getMcpBridgeSecret?: () => string;
   getSkillsList?: () => Array<{ id: string; name: string; enabled: boolean }>;
   getAgents?: () => Agent[];
@@ -1877,6 +1879,8 @@ export class OpenClawConfigSync {
   private readonly getResolvedMcpServers?: () => ResolvedMcpServer[];
   private readonly getAskUserCallbackUrl?: () => string | null;
   private readonly getMediaCallbackUrl?: () => string | null;
+  private readonly getBrowserCallbackUrl?: () => string | null;
+  private readonly getLobsterBrowserMcpCommand?: () => string | null;
   private readonly getMcpBridgeSecret?: () => string;
   private readonly getSkillsList?: () => Array<{ id: string; name: string; enabled: boolean }>;
   private readonly getAgents?: () => Agent[];
@@ -1906,6 +1910,8 @@ export class OpenClawConfigSync {
     this.getResolvedMcpServers = deps.getResolvedMcpServers;
     this.getAskUserCallbackUrl = deps.getAskUserCallbackUrl;
     this.getMediaCallbackUrl = deps.getMediaCallbackUrl;
+    this.getBrowserCallbackUrl = deps.getBrowserCallbackUrl;
+    this.getLobsterBrowserMcpCommand = deps.getLobsterBrowserMcpCommand;
     this.getMcpBridgeSecret = deps.getMcpBridgeSecret;
     this.getSkillsList = deps.getSkillsList;
     this.getAgents = deps.getAgents;
@@ -1966,13 +1972,38 @@ export class OpenClawConfigSync {
           ...(blockedHostnames.length > 0 ? { blockedHostnames } : {}),
         };
 
-    return {
+    const commonConfig = {
       enabled: true,
-      defaultProfile: BrowserRuntimeProfile.Managed,
       evaluateEnabled: browserWebAccess.evaluateEnabled,
-      headless: browserWebAccess.displayMode === BrowserDisplayMode.Embedded,
-      ...(extraArgs.length > 0 ? { extraArgs } : {}),
       ssrfPolicy,
+    };
+
+    if (browserWebAccess.displayMode === BrowserDisplayMode.InApp) {
+      const callbackUrl = this.getBrowserCallbackUrl?.();
+      const mcpCommand = this.getLobsterBrowserMcpCommand?.();
+      if (callbackUrl && mcpCommand) {
+        return {
+          ...commonConfig,
+          defaultProfile: BrowserRuntimeProfile.InApp,
+          profiles: {
+            [BrowserRuntimeProfile.InApp]: {
+              driver: 'existing-session',
+              attachOnly: true,
+              color: '#D7A514',
+              mcpCommand,
+              mcpArgs: [`--lobster-bridge-url=${callbackUrl}`],
+            },
+          },
+        };
+      }
+      console.warn('[OpenClawConfigSync] In-app browser bridge is unavailable; falling back to headless browser.');
+    }
+
+    return {
+      ...commonConfig,
+      defaultProfile: BrowserRuntimeProfile.Managed,
+      headless: browserWebAccess.displayMode !== BrowserDisplayMode.External,
+      ...(extraArgs.length > 0 ? { extraArgs } : {}),
     };
   }
 

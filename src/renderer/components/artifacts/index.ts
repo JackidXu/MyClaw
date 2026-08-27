@@ -1,3 +1,4 @@
+export { default as AgentBrowserInAppPanel } from './AgentBrowserInAppPanel';
 export { default as AgentBrowserObserverPanel } from './AgentBrowserObserverPanel';
 export { default as ArtifactBadge } from './ArtifactBadge';
 export {

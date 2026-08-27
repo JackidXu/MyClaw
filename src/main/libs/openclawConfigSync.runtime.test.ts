@@ -2844,7 +2844,7 @@ describe('OpenClawConfigSync runtime config output', () => {
     } = await import('../../shared/browserWebAccess/constants');
     const { OpenClawConfigSync } = await import('./openclawConfigSync');
     setSystemProxyEnabled(true);
-    let browserDisplayMode = BrowserDisplayMode.Embedded;
+    let browserDisplayMode = BrowserDisplayMode.ReadOnly;
 
     const sync = new OpenClawConfigSync({
       engineManager: {
@@ -2954,6 +2954,54 @@ describe('OpenClawConfigSync runtime config output', () => {
     expect(externalResult.ok).toBe(true);
     const externalConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
     expect(externalConfig.browser.headless).toBe(false);
+
+    browserDisplayMode = BrowserDisplayMode.InApp;
+    const inAppSync = new OpenClawConfigSync({
+      engineManager: {
+        getConfigPath: () => configPath,
+        getGatewayToken: () => 'gateway-token',
+        getStateDir: () => stateDir,
+        getBaseDir: () => tmpDir,
+      } as never,
+      getCoworkConfig: () => ({
+        workingDirectory: tmpDir,
+        systemPrompt: '',
+        executionMode: 'local',
+        agentEngine: 'openclaw',
+        memoryEnabled: false,
+        memoryImplicitUpdateEnabled: false,
+        memoryLlmJudgeEnabled: false,
+        memoryGuardLevel: 'balanced',
+        memoryUserMemoriesMaxItems: 100,
+        skipMissedJobs: false,
+      }),
+      getBrowserWebAccessConfig: () => ({ displayMode: browserDisplayMode }),
+      getBrowserCallbackUrl: () => 'http://127.0.0.1:3210/browser/tool',
+      getLobsterBrowserMcpCommand: () => 'C:/LobsterAI/lobster-browser-mcp.cmd',
+      isEnterprise: () => false,
+      getPopoInstances: () => [],
+      getNeteaseBeeChanConfig: () => null,
+      getWeixinConfig: () => null,
+      getIMSettings: () => null,
+      getSkillsList: () => [],
+      getAgents: () => [],
+    } as never);
+    const inAppResult = inAppSync.sync('browser-web-access-in-app');
+    expect(inAppResult.ok).toBe(true);
+    const inAppConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    expect(inAppConfig.browser).toMatchObject({
+      defaultProfile: BrowserRuntimeProfile.InApp,
+      profiles: {
+        [BrowserRuntimeProfile.InApp]: {
+          driver: 'existing-session',
+          attachOnly: true,
+          mcpCommand: 'C:/LobsterAI/lobster-browser-mcp.cmd',
+          mcpArgs: ['--lobster-bridge-url=http://127.0.0.1:3210/browser/tool'],
+        },
+      },
+    });
+    expect(inAppConfig.browser.headless).toBeUndefined();
+    expect(inAppConfig.browser.extraArgs).toBeUndefined();
   });
 
   test('marks MCP server config changes as restart impact', async () => {
