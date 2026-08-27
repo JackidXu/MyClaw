@@ -12,6 +12,7 @@ import Modal from '../common/Modal';
 interface LibraryShareDeleteDialogProps {
   fileName: string;
   busy: boolean;
+  showFreeQuotaNotice: boolean;
   error?: string;
   onCancel: () => void;
   onConfirm: () => void;
@@ -20,6 +21,7 @@ interface LibraryShareDeleteDialogProps {
 const LibraryShareDeleteDialog: React.FC<LibraryShareDeleteDialogProps> = ({
   fileName,
   busy,
+  showFreeQuotaNotice,
   error,
   onCancel,
   onConfirm,
@@ -55,9 +57,11 @@ const LibraryShareDeleteDialog: React.FC<LibraryShareDeleteDialogProps> = ({
         <p id={descriptionId} className={`${MANAGEMENT_BODY_TEXT} mt-2 leading-[var(--lobster-leading-sm)] text-secondary`}>
           {i18nService.t('libraryShareDeleteConfirmDescription')}
         </p>
-        <p className="mt-2 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2 text-xs leading-5 text-red-700 dark:text-red-300">
-          {i18nService.t('libraryShareDeleteQuotaNotice')}
-        </p>
+        {showFreeQuotaNotice && (
+          <p className="mt-2 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2 text-xs leading-5 text-red-700 dark:text-red-300">
+            {i18nService.t('libraryShareDeleteQuotaNotice')}
+          </p>
+        )}
         <label
           className={`${MANAGEMENT_META_TEXT} mt-4 block font-medium leading-[var(--lobster-leading-xs)] text-secondary`}
           htmlFor={inputId}

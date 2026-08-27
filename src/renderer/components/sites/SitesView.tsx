@@ -41,6 +41,7 @@ import { i18nService } from '../../services/i18n';
 import type { RootState } from '../../store';
 import { showToast } from '../../utils/localFileActions';
 import { buildArtifactFileShareCopyText } from '../artifacts/artifactFileShareCopy';
+import { shouldShowFreePublishingDeleteQuotaNotice } from '../artifacts/publishingDeleteNoticePolicy';
 import {
   MANAGEMENT_BODY_TEXT,
   MANAGEMENT_META_TEXT,
@@ -55,6 +56,7 @@ import SidebarToggleIcon from '../icons/SidebarToggleIcon';
 import Tooltip, { TooltipAlign, TooltipPosition } from '../ui/Tooltip';
 import SiteAnalyticsChart from './SiteAnalyticsChart';
 import SiteDefaultIcon from './SiteDefaultIcon';
+import SiteDeleteWarnings from './SiteDeleteWarnings';
 import {
   resolveSiteSettingsSaveDecision,
   SiteSettingsSaveDecision,
@@ -326,6 +328,9 @@ const SitesView: React.FC<SitesViewProps> = ({
 }) => {
   const ownerAccountKey = useSelector((state: RootState) => state.auth.ownerAccountKey);
   const accountGeneration = useSelector((state: RootState) => state.auth.accountGeneration);
+  const showFreeSiteDeleteQuotaNotice = useSelector((state: RootState) => (
+    shouldShowFreePublishingDeleteQuotaNotice(state.auth.quota?.subscriptionStatus)
+  ));
   const accountScopeKey = ownerAccountKey
     ? `${ownerAccountKey}:${accountGeneration}`
     : null;
@@ -1125,6 +1130,13 @@ const SitesView: React.FC<SitesViewProps> = ({
     const canCopyAccessInformation = isSiteOnline
       && !siteAccessChanged
       && (selectedSite.accessMode !== HtmlShareAccessMode.Code || Boolean(selectedSite.shareCode));
+    const showShareCodeInAccessInformation =
+      siteAccessSelectionDraft === SiteAccessSelection.Code;
+    const shareCodeAvailableAfterSave = showShareCodeInAccessInformation
+      && selectedSite.accessMode !== HtmlShareAccessMode.Code;
+    const shareCodeUnavailable = showShareCodeInAccessInformation
+      && selectedSite.accessMode === HtmlShareAccessMode.Code
+      && !selectedSite.shareCode;
     const requestEmbeddedSettingsSave = () => {
       const decision = resolveSiteSettingsSaveDecision({
         accessChanged: siteAccessChanged,
@@ -1448,21 +1460,46 @@ const SitesView: React.FC<SitesViewProps> = ({
                   <div className={`${MANAGEMENT_META_TEXT} font-medium leading-[var(--lobster-leading-xs)] text-secondary`}>
                     {i18nService.t('libraryShareAccessAddress')}
                   </div>
-                  <div className="mt-2 flex min-w-0 items-center gap-3 rounded-lg bg-surface-raised px-3 py-2.5">
-                    <p className={`min-w-0 flex-1 truncate ${MANAGEMENT_BODY_TEXT} text-secondary`}>
-                      {selectedSite.url}
-                    </p>
-                    <button
-                      type="button"
-                      disabled={!canCopyAccessInformation || actionLoading}
-                      onClick={() => void copySelectedSiteAccessInformation()}
-                      className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-surface disabled:cursor-not-allowed disabled:text-tertiary"
-                    >
-                      <ClipboardDocumentIcon className="h-4 w-4" />
-                      {selectedSite.accessMode === HtmlShareAccessMode.Code
-                        ? i18nService.t('sitesCopyLinkAndCode')
-                        : i18nService.t('sitesCopyLink')}
-                    </button>
+                  <div className="mt-2 overflow-hidden rounded-lg bg-surface-raised">
+                    <div className="flex min-w-0 items-center gap-3 px-3 py-2.5">
+                      <p
+                        className={`min-w-0 flex-1 truncate ${MANAGEMENT_BODY_TEXT} text-secondary`}
+                        title={selectedSite.url}
+                      >
+                        {selectedSite.url}
+                      </p>
+                      <button
+                        type="button"
+                        disabled={!canCopyAccessInformation || actionLoading}
+                        onClick={() => void copySelectedSiteAccessInformation()}
+                        className="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-border bg-background px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-surface disabled:cursor-not-allowed disabled:text-tertiary"
+                      >
+                        <ClipboardDocumentIcon className="h-4 w-4" />
+                        {showShareCodeInAccessInformation
+                          ? i18nService.t('sitesCopyLinkAndCode')
+                          : i18nService.t('sitesCopyLink')}
+                      </button>
+                    </div>
+                    {showShareCodeInAccessInformation && (
+                      <div className="flex items-center gap-2 border-t border-border px-3 py-2.5 text-xs">
+                        <span className="shrink-0 text-tertiary">
+                          {i18nService.t('sitesShareCode')}
+                        </span>
+                        {shareCodeAvailableAfterSave ? (
+                          <span className="text-secondary">
+                            {i18nService.t('sitesShareCodeAvailableAfterSave')}
+                          </span>
+                        ) : shareCodeUnavailable ? (
+                          <span className="text-amber-600 dark:text-amber-400">
+                            {i18nService.t('sitesShareCodeUnavailable')}
+                          </span>
+                        ) : (
+                          <span className="font-medium text-foreground">
+                            {selectedSite.shareCode}
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -1525,14 +1562,6 @@ const SitesView: React.FC<SitesViewProps> = ({
                   })}
                 </div>
 
-                {selectedSite.accessMode === HtmlShareAccessMode.Code && (
-                  <div className="mt-3 flex items-center gap-2 rounded-lg bg-surface-raised px-3 py-2.5 text-xs">
-                    <span className="text-tertiary">{i18nService.t('sitesShareCode')}</span>
-                    <span className="font-medium text-foreground">
-                      {selectedSite.shareCode ?? '—'}
-                    </span>
-                  </div>
-                )}
                 {hasUnsavedSettings && (
                   <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
                     <span className="text-xs text-amber-600 dark:text-amber-400">
@@ -1911,11 +1940,10 @@ const SitesView: React.FC<SitesViewProps> = ({
           <p className={`${MANAGEMENT_BODY_TEXT} mt-2 leading-[var(--lobster-leading-sm)] text-secondary`}>
             {i18nService.t('sitesDeleteConfirmDescription')}
           </p>
-          {isNode && selectedSite.persistence?.enabled && (
-            <p className="mt-2 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2 text-xs leading-5 text-red-700 dark:text-red-300">
-              {i18nService.t('sitesDeletePersistenceWarning')}
-            </p>
-          )}
+          <SiteDeleteWarnings
+            showFreeQuotaNotice={showFreeSiteDeleteQuotaNotice}
+            showPersistenceWarning={Boolean(isNode && selectedSite.persistence?.enabled)}
+          />
           <label
             className={`${MANAGEMENT_META_TEXT} mt-4 block font-medium leading-[var(--lobster-leading-xs)] text-secondary`}
             htmlFor="site-delete-confirm"

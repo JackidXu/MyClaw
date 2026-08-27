@@ -367,6 +367,7 @@ import {
 import { getKeyfromAttribution, initializeKeyfromAttribution } from './libs/keyfromAttribution';
 import { LibraryThumbnailRenderer } from './libs/libraryThumbnailRenderer';
 import { LibraryThumbnailService } from './libs/libraryThumbnailService';
+import { isLikelyBlankThumbnailBitmap } from './libs/libraryThumbnailValidation';
 import { exportLogsZip } from './libs/logExport';
 import { MainLogReporter } from './libs/mainLogReporter';
 import { inferImageMimeTypeFromDataUrl, type PersistedGeneratedImageAsset, persistGeneratedImageAssets, type PersistGeneratedImageAssetsResult, persistGeneratedVideoAssets, type RemoteGeneratedMediaAsset } from './libs/mediaAssetPersistence';
@@ -12098,11 +12099,27 @@ if (!gotTheLock) {
       try {
         return await libraryThumbnailRenderer.render(filePath, size);
       } catch (rendererError) {
+        const extension = path.extname(filePath).toLowerCase();
+        console.warn('[LibraryThumbnail] Renderer failed; using native fallback', {
+          extension,
+          errorType: rendererError instanceof Error ? rendererError.name : 'UnknownError',
+        });
         try {
           const image = await nativeImage.createThumbnailFromPath(filePath, size);
           if (image.isEmpty()) throw new Error('Thumbnail is empty');
+          if (
+            process.platform === 'win32'
+            && extension === '.pptx'
+            && isLikelyBlankThumbnailBitmap(image.toBitmap())
+          ) {
+            throw new Error('Native PPTX thumbnail is visually blank');
+          }
           return image.toPNG();
         } catch (nativeError) {
+          console.error('[LibraryThumbnail] Renderer and native fallback failed', {
+            extension,
+            errorType: nativeError instanceof Error ? nativeError.name : 'UnknownError',
+          });
           const rendererMessage = rendererError instanceof Error
             ? rendererError.message
             : 'Unknown renderer error';
