@@ -659,8 +659,9 @@ export const LogReporterActionPrefix = {
 - 事件含义：统计账号菜单入口的使用情况和常用路径。
 - 业务参数：
   - `source`：string，触发来源。当前固定为 `home_account_menu`。
-  - `actionType`：string，动作类型。当前取值包括 `login`、`open_menu`、`close_menu`、`retry_profile_summary`、`open_credits_detail`、`expand_credits`、`collapse_credits`、`open_usage_overview`、`open_recharge`、`open_plan_upgrade`、`open_invitation`、`open_credits_reset_campaign`、`open_credits_final_reward`、`logout`。
+  - `actionType`：string，动作类型。当前取值包括 `login`、`open_menu`、`close_menu`、`retry_profile_summary`、`open_credits_detail`、`expand_credits`、`collapse_credits`、`open_usage_overview`、`open_recharge`、`open_recharge_failed`、`open_plan_upgrade`、`open_invitation`、`open_credits_reset_campaign`、`open_credits_final_reward`、`logout`。
   - `result`：string，动作结果。当前取值为 `success` 或 `failed`；仅登录、打开外链和退出登录等异步动作发送。
+  - `errorCode`：string，失败分类。当前取值包括 `open_external_failed`、`unknown`；当前仅充值外链打开失败发送。
   - `isLoggedIn`：boolean，触发动作时是否处于登录态。
   - `hasCredits`：boolean，当前账号摘要中是否存在额度明细。
   - `creditItemCount`：number，当前账号摘要中的额度明细数量。

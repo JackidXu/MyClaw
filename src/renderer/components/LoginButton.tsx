@@ -49,6 +49,7 @@ const reportAccountMenuAction = (
     accountMode?: AccountPlanAnalyticsContext['accountMode'];
     creditItemCount?: number;
     canUpgrade?: boolean;
+    errorCode?: string;
     hasCredits?: boolean;
     hasSubscriptionPlan?: boolean;
     isLoggedIn?: boolean;
@@ -64,6 +65,7 @@ const reportAccountMenuAction = (
     actionType,
     accountMode: options.accountMode,
     canUpgrade: options.canUpgrade,
+    errorCode: options.errorCode,
     result: options.result,
     isLoggedIn: options.isLoggedIn ?? true,
     hasCredits: options.hasCredits,
@@ -341,20 +343,43 @@ const UserMenu: React.FC<UserMenuProps> = ({
   };
 
   const handleRecharge = async () => {
+    reportAccountMenuAction('open_recharge', {
+      creditItemCount: creditItems.length,
+      hasCredits,
+    });
     try {
-      await openPortalUrl(getPortalRechargeUrl());
-      reportAccountMenuAction('open_recharge', {
-        creditItemCount: creditItems.length,
-        hasCredits,
-        result: 'success',
-      });
+      const message = 'opening recharge portal from account menu';
+      console.debug(`[LoginButton] ${message}`);
+      writeAccountMenuRendererLog('debug', message);
+      const result = await window.electron.shell.openExternal(getPortalRechargeUrl());
+      if (!result.success) {
+        console.warn('[LoginButton] failed to open recharge portal:', result.error);
+        writeAccountMenuRendererLog(
+          'warn',
+          `failed to open recharge portal from account menu: ${result.error ?? 'unknown'}`,
+        );
+        reportAccountMenuAction('open_recharge_failed', {
+          creditItemCount: creditItems.length,
+          errorCode: 'open_external_failed',
+          hasCredits,
+          result: 'failed',
+        });
+        return;
+      }
+      onClose();
     } catch (error) {
-      reportAccountMenuAction('open_recharge', {
+      console.warn('[LoginButton] failed to open recharge portal:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      writeAccountMenuRendererLog(
+        'warn',
+        `failed to open recharge portal from account menu: ${errorMessage}`,
+      );
+      reportAccountMenuAction('open_recharge_failed', {
         creditItemCount: creditItems.length,
+        errorCode: 'unknown',
         hasCredits,
         result: 'failed',
       });
-      throw error;
     }
   };
 
