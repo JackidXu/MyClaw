@@ -221,6 +221,14 @@
     "skill-creator": {
       "order": 10120,
       "enabled": true
+    },
+    "ffmpeg-tool": {
+      "order": 10130,
+      "enabled": true
+    },
+    "whisper-tool": {
+      "order": 10140,
+      "enabled": true
     }
   }
 }
