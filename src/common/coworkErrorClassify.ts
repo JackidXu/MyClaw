@@ -21,6 +21,8 @@ export const CoworkErrorI18nKey = {
   ServerError: 'coworkErrorServerError',
   TranscriptOversized: 'coworkErrorTranscriptOversized',
   GatewayHeapOutOfMemory: 'coworkErrorGatewayHeapOutOfMemory',
+  IncompleteTurnWithTools: 'coworkErrorIncompleteTurnWithTools',
+  IncompleteTurn: 'coworkErrorIncompleteTurn',
 } as const;
 
 const LOBSTERAI_QUOTA_EXHAUSTED_PATTERN =
@@ -33,6 +35,9 @@ const API_KEY_PATTERN = String.raw`(?:api\s*key|api[_-]?key|apikey)`;
 const UNAVAILABLE_NETWORK_CODE_PATTERN = String.raw`(?:ECONNREFUSED|ECONNRESET|ECONNABORTED|ENOTFOUND|ETIMEDOUT|ENETUNREACH|EHOSTUNREACH|EAI_AGAIN|UND_ERR_[A-Z_]+)`;
 
 const ERROR_RULES: Array<[RegExp, string]> = [
+  // Incomplete agent turn (e.g. context limit reached or model ended with empty output after tool executions)
+  [/Agent couldn't generate a response.*some tool actions may have already been executed/i, CoworkErrorI18nKey.IncompleteTurnWithTools],
+  [/Agent couldn't generate a response/i, CoworkErrorI18nKey.IncompleteTurn],
   // OAuth / token refresh failures. Must precede generic auth handling.
   [/oauth.*(invalid|expired|failed|error|scope|token|callback|authorization|not completed)|auth[_ ]refresh|refresh[_ ]timeout|callback[_ ](timeout|validation)|token.*(expired|invalid)|invalid.*token|authorization method/i, CoworkErrorI18nKey.OAuthInvalid],
   // Provider/model permission errors. Must precede generic auth handling.
@@ -89,4 +94,14 @@ export function classifyErrorKey(error: string): string | null {
 
 export function isLobsterAIQuotaExhaustedError(error: string): boolean {
   return LOBSTERAI_QUOTA_EXHAUSTED_PATTERN.test(error);
+}
+
+export function isContextOrInterruptionErrorKey(key?: string | null): boolean {
+  if (!key) return false;
+  return (
+    key === CoworkErrorI18nKey.IncompleteTurnWithTools ||
+    key === CoworkErrorI18nKey.IncompleteTurn ||
+    key === 'coworkErrorInputTooLong' ||
+    key === CoworkErrorI18nKey.TranscriptOversized
+  );
 }

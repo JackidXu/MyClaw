@@ -1,7 +1,7 @@
-import { ChevronDownIcon, ChevronRightIcon, ChevronUpIcon, FolderIcon } from '@heroicons/react/24/outline';
+import { ChevronDownIcon, ChevronRightIcon, ChevronUpIcon, FolderIcon, PlusIcon } from '@heroicons/react/24/outline';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 
-import { classifyErrorKey } from '../../../common/coworkErrorClassify';
+import { classifyErrorKey, isContextOrInterruptionErrorKey } from '../../../common/coworkErrorClassify';
 import { ContextCompactionStatus } from '../../../common/coworkSystemMessages';
 import { getScheduledReminderDisplayText } from '../../../scheduledTask/reminderText';
 import {
@@ -12,6 +12,7 @@ import {
 } from '../../../shared/cowork/errorDetail';
 import type { CoworkGoal } from '../../../shared/cowork/goal';
 import { dedupeArtifactsForDisplay } from '../../services/artifactParser';
+import { coworkService } from '../../services/cowork';
 import { i18nService } from '../../services/i18n';
 import type { Artifact } from '../../types/artifact';
 import type { CoworkMessage, CoworkMessageMetadata } from '../../types/cowork';
@@ -477,7 +478,6 @@ const AssistantTurnBlock: React.FC<{
       return null;
     }
 
-
     if (isContextCompactionMessage(message)) {
       const status = message.metadata?.status;
       return (
@@ -490,6 +490,9 @@ const AssistantTurnBlock: React.FC<{
 
     const errorDetail = parseCoworkErrorDetail(message.metadata?.errorDetail);
     const errorModelLine = errorDetail ? buildErrorModelLine(errorDetail) : null;
+    const rawErrorText = typeof message.metadata?.error === 'string' ? message.metadata.error : null;
+    const classifiedKey = (rawErrorText ? classifyErrorKey(rawErrorText) : null) ?? classifyErrorKey(rawContent);
+    const isContextOrInterruption = isContextOrInterruptionErrorKey(classifiedKey);
 
     return (
       <div className="rounded-lg border border-border bg-background px-3 py-2">
@@ -509,6 +512,33 @@ const AssistantTurnBlock: React.FC<{
           <div className="mt-1 pl-6 text-xs text-muted">{errorModelLine}</div>
         )}
         {errorDetail && <SystemErrorTechnicalDetail detail={errorDetail} />}
+        {isContextOrInterruption && (
+          <div className="mt-2.5 pl-6 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                const targetSessionId = message.sessionId || turn.sessionId;
+                if (targetSessionId) {
+                  void coworkService.compactContext(targetSessionId);
+                }
+              }}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors border border-primary/20 shadow-sm"
+            >
+              <ContextCompressionIcon className="w-3.5 h-3.5 flex-shrink-0" />
+              <span>{i18nService.t('coworkActionCompactContext')}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                coworkService.clearSession({ restoreAgentSkills: true });
+              }}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md bg-surface-raised text-secondary hover:text-foreground hover:bg-surface transition-colors border border-border shadow-sm"
+            >
+              <PlusIcon className="w-3.5 h-3.5 flex-shrink-0" />
+              <span>{i18nService.t('coworkActionNewSession')}</span>
+            </button>
+          </div>
+        )}
       </div>
     );
   };

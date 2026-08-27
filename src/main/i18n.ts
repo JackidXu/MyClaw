@@ -78,6 +78,10 @@ const translations: Record<LanguageType, Record<string, string>> = {
     coworkErrorFreeQuotaExhausted:
       '大模型额度已耗尽，请联系管理员进行手动充值，或在设置中配置您的自定义 API Key。',
     coworkErrorInsufficientBalance: 'API 余额不足，请联系管理员进行手动充值，或在设置中配置您的自定义 API Key。',
+    coworkErrorIncompleteTurnWithTools:
+      'AI 生成回复中断（对话上下文过长或模型输出异常）。部分工具操作已执行，建议压缩上下文或开启新会话继续。',
+    coworkErrorIncompleteTurn:
+      'AI 生成回复中断（对话上下文过长或模型输出异常），请重试或开启新会话。',
     coworkErrorInputTooLong: '输入内容过长，超出模型上下文限制。',
     coworkErrorMessageTooLarge:
       '本次消息过大，请减少附件、压缩图片或拆分提交。（单次整体需小于 30MB）',
@@ -421,6 +425,10 @@ const translations: Record<LanguageType, Record<string, string>> = {
     coworkErrorFreeQuotaExhausted:
       'The quota has been used up. Please contact your administrator for manual recharge, or configure your own API Key in Settings.',
     coworkErrorInsufficientBalance: 'Insufficient API balance. Please contact your administrator for manual recharge, or configure your own API Key in Settings.',
+    coworkErrorIncompleteTurnWithTools:
+      'AI response was interrupted (conversation context too long or model output ended abnormally). Some actions were executed. Please compact context or start a new task.',
+    coworkErrorIncompleteTurn:
+      'AI response was interrupted (conversation context too long or model output ended abnormally). Please retry or start a new task.',
     coworkErrorInputTooLong: 'Input too long, exceeding model context limit.',
     coworkErrorMessageTooLarge:
       'This message is too large. Reduce attachments, compress images, or split it up. (Keep each message under about 30 MB.)',

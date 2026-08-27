@@ -1,6 +1,10 @@
 import { expect,test } from 'vitest';
 
-import { classifyErrorKey, isLobsterAIQuotaExhaustedError } from './coworkErrorClassify';
+import {
+  classifyErrorKey,
+  isContextOrInterruptionErrorKey,
+  isLobsterAIQuotaExhaustedError,
+} from './coworkErrorClassify';
 
 const classifyError = (error: string) => classifyErrorKey(error) ?? error;
 
@@ -325,6 +329,29 @@ test('server: HTTP 502', () => {
 
 test('server: HTTP 503', () => {
   expect(classifyError('Request failed with status 503')).toBe('coworkErrorServerError');
+});
+
+// ==================== Incomplete turn / Context interruption errors ====================
+
+test('incomplete: Agent could not generate a response with tools', () => {
+  expect(
+    classifyError("⚠️ Agent couldn't generate a response. Note: some tool actions may have already been executed — please verify before retrying.")
+  ).toBe('coworkErrorIncompleteTurnWithTools');
+});
+
+test('incomplete: Agent could not generate a response generic', () => {
+  expect(
+    classifyError("⚠️ Agent couldn't generate a response. Please try again.")
+  ).toBe('coworkErrorIncompleteTurn');
+});
+
+test('isContextOrInterruptionErrorKey returns true for context-related error keys', () => {
+  expect(isContextOrInterruptionErrorKey('coworkErrorIncompleteTurnWithTools')).toBe(true);
+  expect(isContextOrInterruptionErrorKey('coworkErrorIncompleteTurn')).toBe(true);
+  expect(isContextOrInterruptionErrorKey('coworkErrorInputTooLong')).toBe(true);
+  expect(isContextOrInterruptionErrorKey('coworkErrorTranscriptOversized')).toBe(true);
+  expect(isContextOrInterruptionErrorKey('coworkErrorAuthInvalid')).toBe(false);
+  expect(isContextOrInterruptionErrorKey(null)).toBe(false);
 });
 
 // ==================== Unrecognized errors (passthrough) ====================
