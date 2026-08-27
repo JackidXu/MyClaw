@@ -32,15 +32,21 @@ interface SecondBrainResponse<T = unknown> {
 export interface CognitionStats {
   /** 持续学习天数 */
   learning_days: number;
+  /** 今日被调用次数 */
+  usage_count_today?: number;
   /** 已采纳认知条数 */
   adopted_count: number;
+  /** 昨日新增采纳条数 */
+  adopted_count_yesterday?: number;
   /** 待确认认知条数 */
   pending_count: number;
   /** 学习资料数量 */
   material_count: number;
+  /** 近 7 日上传文件数 */
+  material_count_7d?: number;
 }
 
-/** 认知变更原有项 */
+/** 认知变更原有项（冲突旧认知） */
 export interface ReplacedCognition {
   proposition: string;
   elaboration: string;
@@ -57,8 +63,8 @@ export interface CognitionItem {
   proposition: string;
   /** 认知阐述（详情） */
   elaboration: string;
-  /** 是否有认知变化，非空数组表示有变化 */
-  replaces?: ReplacedCognition[] | null;
+  /** 冲突/变更旧认知，有冲突时为对象，无冲突时为 null */
+  replaces?: ReplacedCognition | null;
   replaces_node_id?: number;
   source_id?: number;
   /** 1=文档 2=会话 3=归纳 */
@@ -231,15 +237,33 @@ export async function fetchCognitionStats(): Promise<CognitionStats> {
   return get<CognitionStats>('/fmp/stats');
 }
 
-/** 获取待确认认知列表(分页) */
-export async function fetchCognitionItemList(params: {
-  page: number;
-  pageSize: number;
-}): Promise<CognitionListResponse> {
-  const query = new URLSearchParams({
-    page: String(params.page),
-    pageSize: String(params.pageSize),
-  });
+/** 认知列表查询参数 */
+export interface FetchCognitionItemListParams {
+  page?: number;
+  pageSize?: number;
+  /** 状态：0 待审核 / 1 已采纳 / 2 已驳回 / 3 已失效 */
+  status?: number;
+  /** 层级过滤：0~6 */
+  layer?: number;
+  /** 是否已失效：0 仅未失效 / 1 仅已失效 */
+  superseded?: number;
+  /** 创建时间范围开始 */
+  createTimeStart?: string;
+  /** 创建时间范围结束 */
+  createTimeEnd?: string;
+}
+
+/** 获取认知列表(支持待审核、已采纳、时间范围等过滤) */
+export async function fetchCognitionItemList(params: FetchCognitionItemListParams = {}): Promise<CognitionListResponse> {
+  const query = new URLSearchParams();
+  if (params.page !== undefined) query.set('page', String(params.page));
+  if (params.pageSize !== undefined) query.set('pageSize', String(params.pageSize));
+  if (params.status !== undefined) query.set('status', String(params.status));
+  if (params.layer !== undefined) query.set('layer', String(params.layer));
+  if (params.superseded !== undefined) query.set('superseded', String(params.superseded));
+  if (params.createTimeStart) query.set('createTimeStart', params.createTimeStart);
+  if (params.createTimeEnd) query.set('createTimeEnd', params.createTimeEnd);
+
   return get<CognitionListResponse>(`/fmp/node/list?${query.toString()}`);
 }
 

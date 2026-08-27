@@ -1,4 +1,3 @@
-import { CheckIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
@@ -26,10 +25,7 @@ import {
   uploadFileToTos,
 } from '../../services/secondBrainApi';
 import {
-  MANAGEMENT_BODY_TEXT,
-  MANAGEMENT_META_TEXT,
   MANAGEMENT_PAGE_TITLE_TEXT,
-  MANAGEMENT_TITLE_TEXT,
 } from '../common/managementTypography';
 import ComposeIcon from '../icons/ComposeIcon';
 import SidebarToggleIcon from '../icons/SidebarToggleIcon';
@@ -75,10 +71,19 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
   const [materialTab, setMaterialTab] = useState<MaterialTab>('文档');
   const [stats, setStats] = useState<CognitionStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
+
+  /** 待审核认知列表相关 */
   const [items, setItems] = useState<CognitionItem[]>([]);
   const [itemsLoading, setItemsLoading] = useState(true);
   const [itemsPage, setItemsPage] = useState(1);
   const [itemsLastPage, setItemsLastPage] = useState(1);
+  const [itemsTotal, setItemsTotal] = useState(0);
+
+  /** 今日 AI 自动吸收相关 */
+  const [todayAdoptedList, setTodayAdoptedList] = useState<CognitionItem[]>([]);
+  const [todayAdoptedLoading, setTodayAdoptedLoading] = useState(true);
+  const [isUpgradeCollapsed, setIsUpgradeCollapsed] = useState(true);
+
   /** 正在操作中的 nodeId（防止重复点击） */
   const [actioningIds, setActioningIds] = useState<Set<number>>(new Set());
   /** 用户编辑后的认知命题：key 为 node_id，value 为最新编辑的命题 */
@@ -113,10 +118,8 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
     setEditingNodeId(null);
   };
 
-
   /** 人设相关状态 */
   const [persona, setPersona] = useState<PersonaData | null>(null);
-  const [personaLoading, setPersonaLoading] = useState(true);
   const [showPersonaModal, setShowPersonaModal] = useState(false);
   const [savingPersona, setSavingPersona] = useState(false);
   const [personaForm, setPersonaForm] = useState<{
@@ -136,6 +139,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
   const [docsLoading, setDocsLoading] = useState(true);
   const [docsPage, setDocsPage] = useState(1);
   const [docsLastPage, setDocsLastPage] = useState(1);
+  const [docsTotal, setDocsTotal] = useState(0);
 
   /** 上传/删除/下载/重新萃取/更多菜单状态 */
   const [uploading, setUploading] = useState(false);
@@ -159,9 +163,6 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
 
   /** Toast 提示状态 */
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
-
-  const isMac = window.electron.platform === 'darwin';
-  const isWindows = window.electron.platform === 'win32';
 
   const showToast = (type: 'success' | 'error', message: string) => {
     setToast({ type, message });
@@ -195,16 +196,40 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
       .finally(() => setStatsLoading(false));
   };
 
-  /** 拉取待确认认知列表 */
+  /** 拉取待审核认知列表 (status: 0) */
   const loadItems = (page: number) => {
     setItemsLoading(true);
-    fetchCognitionItemList({ page, pageSize: 10 })
+    fetchCognitionItemList({ status: 0, page, pageSize: 10 })
       .then((res) => {
         setItems(res.data || []);
         setItemsLastPage(Number(res.last_page) || 1);
+        setItemsTotal(Number(res.total) || 0);
       })
-      .catch((err) => { console.warn('[SecondBrainView] 认知列表接口失败:', err); })
+      .catch((err) => {
+        console.warn('[SecondBrainView] 待审核认知列表接口失败:', err);
+        setItems([]);
+      })
       .finally(() => { setItemsLoading(false); });
+  };
+
+  /** 拉取今日 AI 自动吸收列表 (status: 1, 当天时间范围) */
+  const loadTodayAdopted = () => {
+    setTodayAdoptedLoading(true);
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const ymd = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    fetchCognitionItemList({
+      status: 1,
+      createTimeStart: `${ymd} 00:00:00`,
+      createTimeEnd: `${ymd} 23:59:59`,
+      page: 1,
+      pageSize: 20,
+    })
+      .then((res) => {
+        setTodayAdoptedList(res.data || []);
+      })
+      .catch((err) => { console.warn('[SecondBrainView] 今日自动吸收接口失败:', err); })
+      .finally(() => { setTodayAdoptedLoading(false); });
   };
 
   /** 采纳 */
@@ -222,9 +247,10 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
       if (editingNodeId === item.node_id) {
         setEditingNodeId(null);
       }
-      loadItems(itemsPage);
+      setItems((prev) => prev.filter((i) => i.node_id !== item.node_id));
+      setItemsTotal((prev) => Math.max(0, prev - 1));
       loadStats();
-      showToast('success', '认知已成功采纳并存入第二大脑');
+      showToast('success', item.replaces ? '已采纳更新，新萃取认知已覆盖旧认知' : '已采纳该认知，已沉淀至商业第二大脑');
     } catch (err: any) {
       console.warn('[SecondBrainView] 采纳失败:', err);
       showToast('error', `采纳失败: ${err?.message || '未知错误'}`);
@@ -239,9 +265,13 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
     setActioning(item.node_id, true);
     try {
       await rejectCognitionItem(item.node_id);
-      loadItems(itemsPage);
+      if (editingNodeId === item.node_id) {
+        setEditingNodeId(null);
+      }
+      setItems((prev) => prev.filter((i) => i.node_id !== item.node_id));
+      setItemsTotal((prev) => Math.max(0, prev - 1));
       loadStats();
-      showToast('success', '认知已驳回');
+      showToast('success', item.replaces ? '已驳回，维持存量旧认知不变' : '已驳回该认知');
     } catch (err: any) {
       console.warn('[SecondBrainView] 驳回失败:', err);
       showToast('error', `驳回失败: ${err?.message || '未知错误'}`);
@@ -252,7 +282,6 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
 
   /** 加载人设详情 */
   const loadPersona = async () => {
-    setPersonaLoading(true);
     try {
       const data = await fetchPersonaDetail();
       setPersona(data);
@@ -266,21 +295,19 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
       }
     } catch (err) {
       console.warn('[SecondBrainView] 获取人设详情失败:', err);
-    } finally {
-      setPersonaLoading(false);
     }
   };
 
   /** 保存/完善人设信息 */
-  const handleSavePersona = async (isGuide = false) => {
+  const handleSavePersona = async () => {
     if (!personaForm.name.trim() || !personaForm.business.trim() || savingPersona) return;
     setSavingPersona(true);
     try {
       await updatePersona({
         name: personaForm.name.trim(),
         business: personaForm.business.trim(),
-        industry: personaForm.industry.trim() || undefined,
-        positioning: personaForm.positioning.trim() || undefined,
+        industry: personaForm.industry.trim(),
+        positioning: personaForm.positioning.trim(),
       });
       setPersona({
         name: personaForm.name.trim(),
@@ -289,12 +316,8 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
         positioning: personaForm.positioning.trim(),
       });
       setShowPersonaModal(false);
-      if (isGuide) {
-        loadStats();
-        loadItems(1);
-        loadDocs(materialTab, 1);
-      }
-      showToast('success', isGuide ? '人设信息已完善，欢迎使用第二大脑' : '人设信息修改成功');
+      loadStats();
+      showToast('success', '人设信息修改成功');
     } catch (err: any) {
       console.warn('[SecondBrainView] 保存人设失败:', err);
       showToast('error', `保存失败: ${err?.message || '未知错误'}`);
@@ -303,13 +326,14 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
     }
   };
 
-  /** 挂载时拉取人设和统计 */
+  /** 挂载时拉取人设、统计和今日自动吸收 */
   useEffect(() => {
     loadPersona();
     loadStats();
+    loadTodayAdopted();
   }, []);
 
-  /** 翻页或挂载时拉取认知列表 */
+  /** 翻页或挂载时拉取待审核认知列表 */
   useEffect(() => {
     loadItems(itemsPage);
   }, [itemsPage]);
@@ -330,6 +354,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
           }));
           setDocs(list);
           setDocsLastPage(Number(res.last_page) || 1);
+          setDocsTotal(Number(res.total) || 0);
         })
         .catch((err) => { console.warn('[SecondBrainView] 对话列表接口失败:', err); })
         .finally(() => { setDocsLoading(false); });
@@ -346,6 +371,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
           }));
           setDocs(list);
           setDocsLastPage(Number(res.last_page) || 1);
+          setDocsTotal(Number(res.total) || 0);
         })
         .catch((err) => { console.warn('[SecondBrainView] 资料文档列表接口失败:', err); })
         .finally(() => { setDocsLoading(false); });
@@ -496,259 +522,345 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
     }
   };
 
-  /** 统计卡片配置 */
-  const statCards = stats
-    ? [
-        { label: '持续学习', value: String(stats.learning_days), unit: '天', pending: false },
-        { label: '学习资料', value: String(stats.material_count), unit: '个', pending: false },
-        { label: '已形成认知', value: String(stats.adopted_count), unit: '条', pending: false },
-        { label: '待确认认知', value: String(stats.pending_count), unit: '条', pending: stats.pending_count > 0 },
-      ]
-    : [
-        { label: '持续学习', value: '--', unit: '天', pending: false },
-        { label: '学习资料', value: '--', unit: '个', pending: false },
-        { label: '已形成认知', value: '--', unit: '条', pending: false },
-        { label: '待确认认知', value: '--', unit: '条', pending: false },
-      ];
+  /** 原型款通用居中分页器 */
+  const renderPager = (
+    page: number,
+    lastPage: number,
+    total: number,
+    onPageChange: (p: number) => void,
+    unitName: string
+  ) => {
+    if (lastPage <= 1) return null;
+    return (
+      <div className="flex items-center justify-center gap-3.5 pt-4 border-t border-border/70 text-xs select-none">
+        <button
+          type="button"
+          disabled={page <= 1}
+          onClick={() => onPageChange(page - 1)}
+          className="min-w-[76px] h-7 px-3 rounded-lg border border-border bg-surface hover:bg-surface-raised font-bold text-secondary hover:text-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          ‹ 上一页
+        </button>
+        <div className="flex items-center gap-1 font-mono">
+          <span className="text-[#FF6B35] font-extrabold text-[15px]">{page}</span>
+          <span className="text-secondary/60 font-semibold">/</span>
+          <span className="text-secondary font-bold text-xs">{lastPage}</span>
+        </div>
+        <button
+          type="button"
+          disabled={page >= lastPage}
+          onClick={() => onPageChange(page + 1)}
+          className="min-w-[76px] h-7 px-3 rounded-lg border border-border bg-surface hover:bg-surface-raised font-bold text-secondary hover:text-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          下一页 ›
+        </button>
+        <span className="text-secondary text-[11px] ml-1">
+          共 <b className="text-foreground font-bold">{total}</b> {unitName}
+        </span>
+      </div>
+    );
+  };
 
   return (
-    <div
-      data-skin-management-page="true"
-      className="relative z-10 flex-1 flex flex-col bg-background h-full overflow-hidden"
-    >
-      {/* Toast 反馈提示 */}
-      {toast && (
-        <div className="fixed top-4 right-6 z-50 flex items-center gap-2 rounded-xl border border-border bg-surface px-4 py-3 shadow-lg transition-all animate-in fade-in slide-in-from-top-2">
-          {toast.type === 'success' ? (
-            <div className="h-2 w-2 rounded-full bg-emerald-500" />
-          ) : (
-            <div className="h-2 w-2 rounded-full bg-destructive" />
-          )}
-          <span className={`text-xs font-medium ${toast.type === 'success' ? 'text-emerald-600 dark:text-emerald-400' : 'text-destructive'}`}>
-            {toast.message}
-          </span>
-        </div>
-      )}
-
-      {/* 顶部标题栏 */}
+    <div data-skin-management-page="true" className="relative z-10 flex-1 flex flex-col bg-background h-full overflow-hidden">
+      {/* 顶部 Header */}
       <div className="draggable flex h-12 items-center justify-between px-4 border-b border-border shrink-0">
-        <div className="flex items-center space-x-3 h-8">
-          {isSidebarCollapsed && !isWindows && (
-            <div className={`non-draggable flex items-center gap-1 ${isMac ? 'pl-[68px]' : ''}`}>
-              <button
-                type="button"
-                onClick={onToggleSidebar}
-                className="h-8 w-8 inline-flex items-center justify-center rounded-lg text-secondary hover:bg-surface-raised transition-colors"
-                title="展开侧边栏"
-              >
-                <SidebarToggleIcon className="h-4 w-4" isCollapsed={true} />
-              </button>
-              <button
-                type="button"
-                onClick={onNewChat}
-                className="h-8 w-8 inline-flex items-center justify-center rounded-lg text-secondary hover:bg-surface-raised transition-colors"
-                title="新建对话"
-              >
-                <ComposeIcon className="h-4 w-4" />
-              </button>
-              {updateBadge}
-            </div>
+        <div className="flex items-center gap-2">
+          {isSidebarCollapsed && (
+            <button
+              type="button"
+              className="non-draggable p-1.5 text-secondary hover:text-foreground hover:bg-surface-raised rounded-md transition-colors"
+              onClick={onToggleSidebar}
+              title="展开侧边栏"
+            >
+              <SidebarToggleIcon className="w-4 h-4" isCollapsed={isSidebarCollapsed ?? false} />
+            </button>
           )}
           <h1 className={`${MANAGEMENT_PAGE_TITLE_TEXT} font-semibold text-foreground`}>
             第二大脑
           </h1>
         </div>
-      </div>
 
-      {/* 页面内容区 */}
-      {personaLoading ? (
-        <div className="flex-1 min-h-0 flex items-center justify-center">
-          <span className="text-xs text-secondary/60">加载中…</span>
-        </div>
-      ) : !persona ? (
-        /* 人设引导录入页 */
-        <div className="flex-1 min-h-0 overflow-y-auto [scrollbar-gutter:stable] flex flex-col items-center justify-center p-6">
-          <div className="w-full max-w-lg space-y-6 animate-in fade-in zoom-in-95 duration-200">
-            <div className="text-center space-y-1.5">
-              <h1 className="text-xl font-bold text-foreground tracking-tight">打造你的「第二大脑」</h1>
-              <p className={`${MANAGEMENT_BODY_TEXT} text-secondary`}>填写以下信息，让认知萃取更贴合你的真实情况</p>
-            </div>
-
-            <div className="rounded-xl border border-border bg-surface p-6 space-y-4 shadow-subtle">
-              <div>
-                <label className="block text-xs font-medium text-foreground mb-1.5">称呼 <span className="text-destructive">*</span></label>
-                <input
-                  type="text"
-                  value={personaForm.name}
-                  onChange={(e) => setPersonaForm((prev) => ({ ...prev, name: e.target.value }))}
-                  placeholder="例如：王老板"
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground placeholder:text-muted outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-foreground mb-1.5">所属行业</label>
-                <input
-                  type="text"
-                  value={personaForm.industry}
-                  onChange={(e) => setPersonaForm((prev) => ({ ...prev, industry: e.target.value }))}
-                  placeholder="例如：制造业"
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground placeholder:text-muted outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-foreground mb-1.5">主要业务 <span className="text-destructive">*</span></label>
-                <input
-                  type="text"
-                  value={personaForm.business}
-                  onChange={(e) => setPersonaForm((prev) => ({ ...prev, business: e.target.value }))}
-                  placeholder="例如：跨境电商，主营东南亚服装零售"
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground placeholder:text-muted outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-foreground mb-1.5">定位描述</label>
-                <textarea
-                  rows={3}
-                  value={personaForm.positioning}
-                  onChange={(e) => setPersonaForm((prev) => ({ ...prev, positioning: e.target.value }))}
-                  placeholder="你希望对外传递的核心定位，将以此为基础理解你的专业视角进行认知萃取"
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground placeholder:text-muted outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary resize-none leading-relaxed"
-                />
-              </div>
-            </div>
-
+        <div className="flex items-center gap-2">
+          {updateBadge}
+          {onNewChat && (
             <button
               type="button"
-              disabled={!personaForm.name.trim() || !personaForm.business.trim() || savingPersona}
-              onClick={() => handleSavePersona(true)}
-              className="w-full h-10 rounded-xl bg-primary text-xs font-medium text-white shadow-xs hover:bg-primary-hover transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="non-draggable flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-secondary hover:text-foreground hover:bg-surface-raised rounded-lg border border-border transition-colors"
+              onClick={onNewChat}
             >
-              {savingPersona ? '提交中…' : '开始使用'}
+              <ComposeIcon className="w-3.5 h-3.5" />
+              <span>新会话</span>
             </button>
-          </div>
+          )}
         </div>
-      ) : (
-        /* 常规第二大脑主页 */
-        <div className="flex-1 min-h-0 overflow-y-auto [scrollbar-gutter:stable]">
-          <div className="mx-auto w-full max-w-[1120px] px-8 py-6 space-y-6">
-            {/* 页面副标题 */}
-            <p className={`${MANAGEMENT_BODY_TEXT} pb-1 text-secondary`}>
-              持续学习你的经验、思考与决策方式，让 AI 在长期使用中越来越懂你
-            </p>
+      </div>
 
-            {/* 统计与人设卡片区 */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-              {statCards.map((stat) => (
-                <div
-                  key={stat.label}
-                  className="rounded-xl border border-border bg-surface px-4 py-3.5 shadow-subtle transition hover:shadow-card"
-                >
-                  <div className={`${MANAGEMENT_META_TEXT} text-secondary mb-1`}>{stat.label}</div>
-                  <div className={`text-xl font-semibold leading-tight ${statsLoading ? 'text-secondary/40' : 'text-foreground'}`}>
-                    {/* 待确认认知：只有 > 0 时才显示橙色高亮 */}
-                    <span className={stat.pending ? 'text-amber-500 dark:text-amber-400' : ''}>
-                      {stat.value}
-                    </span>
-                    <span className={`${MANAGEMENT_BODY_TEXT} font-normal text-secondary ml-1`}>{stat.unit}</span>
-                  </div>
+      {/* 隐藏文件输入框（支持批量与常见格式） */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        accept=".docx,.md,.txt"
+        onChange={handleFileChange}
+        className="hidden"
+      />
+
+      {/* 页面内容区域 */}
+      <div className="flex-1 min-h-0 overflow-y-auto [scrollbar-gutter:stable]">
+        <div className="mx-auto w-full max-w-[1120px] px-8 py-6 space-y-5">
+
+          {/* 1. 我的判断库（统领大卡片 .judge-lib） */}
+          <div className="rounded-2xl border border-border bg-gradient-to-b from-surface to-surface-raised/40 p-5 md:p-6 shadow-[0_4px_16px_rgba(0,0,0,0.04)] space-y-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-3.5 border-b border-dashed border-border/90">
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 shrink-0 rounded-xl bg-gradient-to-br from-[#9b59b6]/15 via-[#f5a623]/10 to-[#34a853]/15 border border-[#9b59b6]/25 flex items-center justify-center text-2xl shadow-2xs">
+                  🧠
                 </div>
-              ))}
-              {/* 人设信息卡片 */}
-              <div
-                onClick={() => {
-                  if (persona) {
-                    setPersonaForm({
-                      name: persona.name ?? '',
-                      business: persona.business ?? '',
-                      industry: persona.industry ?? '',
-                      positioning: persona.positioning ?? '',
-                    });
-                  }
-                  setShowPersonaModal(true);
-                }}
-                className="group cursor-pointer rounded-xl border border-border bg-surface px-4 py-3.5 shadow-subtle transition hover:border-primary/50 hover:shadow-card flex flex-col justify-between"
-              >
-                <div className={`${MANAGEMENT_META_TEXT} text-secondary mb-1`}>人设信息</div>
-                <div className="flex items-center gap-2">
-                  <span className={`${MANAGEMENT_TITLE_TEXT} font-semibold leading-tight text-foreground`}>
-                    已完善
-                  </span>
-                  <span className={`${MANAGEMENT_META_TEXT} text-secondary group-hover:text-primary transition-colors`}>
-                    修改
-                  </span>
+                <div className="space-y-0.5">
+                  <div className="flex items-center">
+                    <h2 className="text-sm md:text-[15px] font-bold text-foreground">
+                      {persona?.name ? `${persona.name}的商业第二大脑` : '老板的商业第二大脑'}
+                    </h2>
+                    <button
+                      type="button"
+                      onClick={() => setShowPersonaModal(true)}
+                      className="text-[11.5px] text-secondary hover:text-foreground underline ml-2 font-normal cursor-pointer"
+                    >
+                      人设侧写 ✏️
+                    </button>
+                  </div>
+                  <p className="text-xs text-secondary">
+                    沉淀你的思维，越来越敢替你拍板 · 已形成 <b className="text-foreground font-bold">{stats?.adopted_count ?? 0}</b> 条标准决策
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2.5 shrink-0 self-end md:self-auto">
+                <div className="relative group">
+                  <button
+                    type="button"
+                    disabled={uploading}
+                    onClick={handleUploadClick}
+                    className="bg-[#FF6B35] hover:bg-[#e85c27] text-white border-0 rounded-lg px-4 py-2 text-xs font-bold shadow-[0_2px_8px_rgba(255,107,53,0.3)] transition-all whitespace-nowrap disabled:opacity-50 cursor-pointer"
+                  >
+                    {uploading ? '上传中…' : '+ 上传文件'}
+                  </button>
+                  <div className="pointer-events-none absolute right-0 bottom-full mb-2 z-20 whitespace-nowrap rounded-xl bg-black/90 dark:bg-black px-3.5 py-1.5 text-xs font-medium text-white shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200">
+                    支持 .docx / .md / .txt（最大 2MB）
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* 待确认认知区：有数据时才展示 */}
-            {!itemsLoading && items.length > 0 && (
-              <div className="space-y-3">
-                <div>
-                  <h2 className={`${MANAGEMENT_TITLE_TEXT} font-semibold text-foreground`}>待确认认知</h2>
-                  <p className={`${MANAGEMENT_BODY_TEXT} text-secondary mt-0.5`}>
-                    从你的资料和对话中发现了新的认知，请确认后加入你的第二大脑
-                  </p>
+            {/* 4 个大字重指标格 (.jl-states) */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+              {/* 格子 1：持续学习 */}
+              <div className="bg-surface border border-border rounded-xl p-3.5 shadow-2xs transition hover:border-border/80">
+                <div className="text-[11px] text-secondary font-medium mb-1">持续学习</div>
+                <div className="text-[22px] font-extrabold text-foreground leading-tight flex items-baseline">
+                  {statsLoading ? '--' : stats?.learning_days ?? 0}
+                  <span className="text-xs font-semibold text-secondary ml-1">天</span>
                 </div>
+                <div className="text-[10.5px] text-secondary mt-1.5">
+                  今日被调用 <b className="text-[#FF6B35] font-bold">{stats?.usage_count_today ?? 0}</b> 次
+                </div>
+              </div>
 
-                <div className="space-y-3">
-                  {items.map((item) => {
-                    const hasChange = Boolean(item.replaces && item.replaces.length > 0);
-                    return (
+              {/* 格子 2：学习资料 */}
+              <div className="bg-surface border border-border rounded-xl p-3.5 shadow-2xs transition hover:border-border/80">
+                <div className="text-[11px] text-secondary font-medium mb-1">学习资料</div>
+                <div className="text-[22px] font-extrabold text-foreground leading-tight flex items-baseline">
+                  {statsLoading ? '--' : stats?.material_count ?? 0}
+                  <span className="text-xs font-semibold text-secondary ml-1">个</span>
+                </div>
+                <div className="text-[10.5px] text-secondary mt-1.5">
+                  近 7 日上传 <b className="text-foreground font-bold">{stats?.material_count_7d ?? 0}</b> 个文件
+                </div>
+              </div>
+
+              {/* 格子 3：已形成认知 */}
+              <div className="bg-surface border border-border rounded-xl p-3.5 shadow-2xs transition hover:border-border/80">
+                <div className="text-[11px] text-secondary font-medium mb-1">已形成认知</div>
+                <div className="text-[22px] font-extrabold text-foreground leading-tight flex items-baseline">
+                  {statsLoading ? '--' : stats?.adopted_count ?? 0}
+                  <span className="text-xs font-semibold text-secondary ml-1">条</span>
+                </div>
+                <div className="text-[10.5px] text-secondary mt-1.5">
+                  昨日新增 <b className="text-[#2d8a5f] dark:text-emerald-400 font-bold">+{stats?.adopted_count_yesterday ?? 0}</b> 条
+                </div>
+              </div>
+
+              {/* 格子 4：待确认认知 */}
+              <div className="bg-[#f5a623]/5 border border-[#f5a623]/30 rounded-xl p-3.5 shadow-2xs transition hover:border-[#f5a623]/50">
+                <div className="text-[11px] text-[#f5a623] font-medium mb-1">待确认认知</div>
+                <div className="text-[22px] font-extrabold text-[#f5a623] leading-tight flex items-baseline">
+                  {statsLoading ? '--' : stats?.pending_count ?? 0}
+                  <span className="text-xs font-semibold text-[#f5a623]/80 ml-1">条</span>
+                </div>
+                <div className="text-[10.5px] text-[#f5a623] font-bold mt-1.5">
+                  需你拍板
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 2. 今日 AI 自动吸收（单行折叠 + 点击展开 .upg-card） */}
+          <div className="rounded-2xl border border-border bg-surface shadow-[0_2px_8px_rgba(0,0,0,0.03)] overflow-hidden transition-all">
+            <div
+              onClick={() => setIsUpgradeCollapsed(!isUpgradeCollapsed)}
+              className="grid grid-cols-[auto_1fr_auto] gap-3.5 items-center px-4 py-3 cursor-pointer select-none hover:bg-surface-raised/60 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-base">💡</span>
+                <span className="text-xs md:text-sm font-bold text-foreground">今日 AI 自动吸收</span>
+                <span className="text-[10.5px] font-bold bg-[#2d8a5f] text-white px-2 py-0.5 rounded-md">
+                  {todayAdoptedList.length}
+                </span>
+              </div>
+
+              <div className="text-xs text-secondary truncate hidden sm:block">
+                {todayAdoptedLoading
+                  ? '加载中…'
+                  : todayAdoptedList.length > 0
+                  ? `+${todayAdoptedList.length} 新增 · 今日已自动沉淀到第二大脑`
+                  : '今日暂无自动沉淀，与 AI 专家日常对话后将自动提炼吸收'}
+              </div>
+
+              <div className="flex items-center gap-1 text-xs font-bold text-[#2d8a5f] shrink-0">
+                <span>{isUpgradeCollapsed ? '查看详情' : '收起'}</span>
+                <span className={`inline-block transition-transform duration-200 ${isUpgradeCollapsed ? '' : 'rotate-180'}`}>
+                  ▾
+                </span>
+              </div>
+            </div>
+
+            {/* 展开内容 */}
+            {!isUpgradeCollapsed && (
+              <div className="border-t border-border px-4 py-3.5 bg-background/40 space-y-2.5">
+                {todayAdoptedLoading && (
+                  <div className="py-6 text-center text-xs text-secondary/60">加载今日自动吸收数据中…</div>
+                )}
+                {!todayAdoptedLoading && todayAdoptedList.length === 0 && (
+                  <div className="py-6 text-center text-xs text-secondary">
+                    今日暂无自动吸收的认知，与 AI 专家日常对话后系统将自动提炼沉淀。
+                  </div>
+                )}
+                {!todayAdoptedLoading && todayAdoptedList.length > 0 && (
+                  <div className="space-y-2">
+                    {todayAdoptedList.map((item) => (
                       <div
                         key={item.node_id}
-                        className="rounded-xl border border-border bg-surface p-4 shadow-subtle transition hover:shadow-card space-y-3"
+                        className="bg-surface border border-border border-l-[3.5px] border-l-[#2d8a5f] rounded-2xl p-3.5 space-y-1.5 shadow-2xs"
                       >
-                    {/* 顶部：标签 + 操作按钮 */}
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex flex-wrap gap-1.5">
-                        <span className="inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-medium bg-primary/10 text-primary">
-                          {LAYER_LABEL[item.layer] ?? `层级${item.layer}`}
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10.5px] font-bold text-[#2d8a5f] bg-[#2d8a5f]/12 px-2 py-0.5 rounded-[6px]">
+                              + 新增
+                            </span>
+                            <span className="text-[10px] font-bold text-secondary bg-surface-raised border border-border px-1.5 py-0.5 rounded">
+                              {LAYER_LABEL[item.layer] ?? `层级${item.layer}`}
+                            </span>
+                          </div>
+                          <span className="text-[11px] text-secondary/60">{formatTimestamp(item.create_time)}</span>
+                        </div>
+                        <p className="text-xs font-semibold text-foreground leading-relaxed">
+                          "{item.proposition}"
+                        </p>
+                        {item.elaboration && (
+                          <p className="text-[11px] text-secondary leading-relaxed">
+                            {item.elaboration}
+                          </p>
+                        )}
+                        <div className="text-[10.5px] text-secondary/70 pt-0.5">
+                          📥 {item.source_type === 1 ? '来自文档' : item.source_type === 2 ? '来自对话' : '来自日常业务'} · 已写入商业第二大脑
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="pt-2 border-t border-border/60 text-center text-[11px] text-secondary">
+                  今日 <b>{todayAdoptedList.length}</b> 条自动吸收 · 历史共 <b>{stats?.adopted_count ?? 0}</b> 条沉淀
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 3. 待审核认知区 (#s-pending) */}
+          <div className="rounded-2xl border border-border bg-surface p-5 md:p-6 shadow-[0_2px_8px_rgba(0,0,0,0.03)] space-y-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-bold text-foreground">
+                  待审核认知
+                </h2>
+                {itemsTotal > 0 && (
+                  <span className="text-xs font-bold bg-[#f5a623]/15 text-[#f5a623] px-2 py-0.5 rounded-md">
+                    {itemsTotal}
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-secondary mt-1">
+                AI 拿不准的才会出现在这里 · 点「编辑」可直接修正局部信息 · 想补材料就重新上传文档
+              </p>
+            </div>
+
+            {/* 加载中 */}
+            {itemsLoading && (
+              <div className="flex items-center justify-center py-10">
+                <span className="text-xs text-secondary/60">加载待审核认知中…</span>
+              </div>
+            )}
+
+            {/* 空状态 */}
+            {!itemsLoading && items.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-10 text-center">
+                <div className="h-10 w-10 rounded-full bg-surface-raised border border-border flex items-center justify-center mb-2 text-secondary font-bold">
+                  ✓
+                </div>
+                <p className="text-xs font-semibold text-foreground">暂无待审核认知</p>
+                <p className="text-[11px] text-secondary mt-0.5">所有认知均已处理完毕</p>
+              </div>
+            )}
+
+            {/* 待审核列表 */}
+            {!itemsLoading && items.length > 0 && (
+              <div className="space-y-3.5">
+                {items.map((item) => {
+                  const isConflict = Boolean(item.replaces);
+                  const isEditing = editingNodeId === item.node_id;
+
+                  return (
+                    <div
+                      key={item.node_id}
+                      className={`rounded-2xl border border-border ${
+                        isConflict ? 'border-l-[3.5px] border-l-[#f53f3f]' : 'border-l-[3.5px] border-l-[#9b59b6]'
+                      } bg-surface p-4 md:p-5 shadow-[0_2px_8px_rgba(0,0,0,0.03)] space-y-3.5 transition`}
+                    >
+                      {/* 顶部标签与来源 */}
+                      <div className="flex items-center justify-between gap-2 text-xs">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-[10.5px] font-extrabold text-[#9b59b6] bg-[#9b59b6]/12 px-2.5 py-0.5 rounded-[7px]">
+                            {LAYER_LABEL[item.layer] ?? `层级${item.layer}`}
+                          </span>
+                          <span className={`text-[11px] font-bold ${isConflict ? 'text-[#f53f3f]' : 'text-secondary'}`}>
+                            {isConflict ? '⚠️ 认知冲突 · 与存量判断不一致' : '📥 候选判断 · 待你确认收编'}
+                          </span>
+                        </div>
+                        <span className="text-[11px] text-secondary ml-auto">
+                          {item.source_type === 1 && (item.source_name ? `来源：${item.source_name}` : '来源：文档')}
+                          {item.source_type === 2 && (item.source_name ? `来源：${item.source_name}` : '来源：对话')}
+                          {item.source_type === 3 && (item.source_name ? `来源：${item.source_name}` : '来源：归纳')}
+                          {` · ${formatTimestamp(item.create_time)}`}
                         </span>
                       </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <button
-                          type="button"
-                          disabled={actioningIds.has(item.node_id)}
-                          onClick={() => handleAdopt(item)}
-                          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary/90 transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed shadow-xs"
-                        >
-                          <CheckIcon className="h-3.5 w-3.5" />
-                          <span>
-                            {actioningIds.has(item.node_id)
-                              ? '处理中…'
-                              : hasChange
-                              ? '采纳更新'
-                              : '采纳'}
-                          </span>
-                        </button>
-                        <button
-                          type="button"
-                          disabled={actioningIds.has(item.node_id)}
-                          onClick={() => handleReject(item)}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-secondary hover:bg-surface-raised transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          <XMarkIcon className="h-3.5 w-3.5" />
-                          <span>
-                            {actioningIds.has(item.node_id)
-                              ? '处理中…'
-                              : hasChange
-                              ? '保留原有'
-                              : '驳回'}
-                          </span>
-                        </button>
-                      </div>
-                    </div>
 
-                    {/* 认知摘要与正文（编辑态 / 展示态） */}
-                    {editingNodeId === item.node_id ? (
-                      <div className="flex items-start gap-3">
-                        <div className="flex-1 space-y-2">
+                      {/* 编辑态 */}
+                      {isEditing ? (
+                        <div className="space-y-2.5 pt-1">
                           <div>
                             <label className="block text-[11px] font-medium text-secondary mb-1">
-                              认知摘要
+                              认知命题（标题）
                             </label>
                             <input
                               type="text"
@@ -756,190 +868,173 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                               value={editingPropText}
                               onChange={(e) => setEditingPropText(e.target.value)}
                               placeholder="请输入认知摘要"
-                              className="w-full rounded-lg border border-primary bg-background px-3 py-1.5 text-sm font-semibold text-foreground outline-none shadow-xs focus:ring-2 focus:ring-primary/20"
+                              className="w-full rounded-lg border border-primary bg-surface px-3 py-2 text-xs font-semibold text-foreground outline-none shadow-2xs focus:ring-1 focus:ring-primary"
                             />
                           </div>
                           <div>
                             <label className="block text-[11px] font-medium text-secondary mb-1">
-                              认知正文
+                              认知阐述（正文）
                             </label>
                             <textarea
                               rows={3}
                               value={editingElabText}
                               onChange={(e) => setEditingElabText(e.target.value)}
-                              placeholder="请输入认知正文详情"
-                              className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-xs text-foreground outline-none shadow-xs focus:border-primary focus:ring-2 focus:ring-primary/20 resize-none leading-relaxed"
+                              placeholder="请输入具体阐述内容"
+                              className="w-full rounded-lg border border-primary bg-surface px-3 py-2 text-xs text-foreground outline-none shadow-2xs focus:ring-1 focus:ring-primary resize-none leading-relaxed"
                             />
                           </div>
-                        </div>
-                        <div className="flex flex-col gap-1.5 shrink-0 pt-5">
-                          <button
-                            type="button"
-                            onClick={() => saveEditing(item.node_id)}
-                            className="rounded-lg border border-primary bg-transparent px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10 transition-colors whitespace-nowrap"
-                          >
-                            保存
-                          </button>
-                          <button
-                            type="button"
-                            onClick={cancelEditing}
-                            className="rounded-lg border border-border bg-transparent px-3 py-1.5 text-xs font-medium text-secondary hover:bg-surface-raised transition-colors whitespace-nowrap"
-                          >
-                            取消
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div
-                        onClick={() => startEditing(item)}
-                        className="group relative cursor-pointer rounded-lg p-2 -m-2 space-y-1.5 transition-colors hover:bg-surface-raised/60 border border-transparent hover:border-border/40"
-                        title="点击编辑认知"
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <p className="text-sm font-semibold text-foreground leading-relaxed flex-1">
-                            {editedPropositions[item.node_id] ?? item.proposition}
-                          </p>
-                          <span className="opacity-0 group-hover:opacity-100 transition-opacity text-xs text-primary flex items-center gap-1 shrink-0 mt-0.5 font-normal">
-                            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                            </svg>
-                            <span>点击编辑</span>
-                          </span>
-                        </div>
-                        {(editedElaborations[item.node_id] ?? item.elaboration) && (
-                          <p className="text-xs text-secondary leading-relaxed">
-                            {editedElaborations[item.node_id] ?? item.elaboration}
-                          </p>
-                        )}
-                      </div>
-                    )}
-
-                    {/* 认知变化提示 */}
-                    {hasChange && item.replaces && (
-                      <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-3.5 py-2.5 space-y-1.5">
-                        <div className="flex items-center gap-1.5 text-xs font-medium text-red-600 dark:text-red-400">
-                          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                          </svg>
-                          <span>认知变化</span>
-                        </div>
-                        {item.replaces.map((r, idx) => (
-                          <div key={idx} className="text-xs text-secondary space-y-0.5">
-                            <div>原有命题：{r.proposition}</div>
-                            {r.elaboration && (
-                              <div className="text-secondary/70">原有阐述：{r.elaboration}</div>
-                            )}
+                          <div className="flex items-center justify-end gap-2 pt-1">
+                            <button
+                              type="button"
+                              onClick={cancelEditing}
+                              className="rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-xs text-secondary hover:bg-surface transition-colors cursor-pointer"
+                            >
+                              取消编辑
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => saveEditing(item.node_id)}
+                              className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-hover transition-colors shadow-2xs cursor-pointer"
+                            >
+                              完成编辑
+                            </button>
                           </div>
-                        ))}
-                      </div>
-                    )}
+                        </div>
+                      ) : (
+                        /* 展示态：普通认知 vs 冲突对比认知 */
+                        <>
+                          {isConflict ? (
+                            <div className="space-y-2.5">
+                              {/* VS 对比框 */}
+                              <div className="grid grid-cols-[1fr_42px_1fr] items-center gap-2.5 md:gap-3">
+                                {/* 左侧：旧认知 */}
+                                <div className="bg-[#f5a623]/8 border border-[#f5a623]/30 rounded-xl p-3.5 space-y-2">
+                                  <div className="text-[11px] font-extrabold text-[#f5a623]">旧认知</div>
+                                  <div className="text-xs md:text-[13px] font-bold text-foreground leading-snug">
+                                    "{item.replaces?.proposition || '存量既有认知'}"
+                                  </div>
+                                  <div className="text-[10.5px] text-secondary bg-surface px-2.5 py-1 rounded-[5px] border-l-2 border-l-[#f5a623] truncate block shadow-2xs">
+                                    {item.replaces?.elaboration || '已沉淀判断'}
+                                  </div>
+                                </div>
 
-                    {/* 底部元数据 */}
-                    <div className="flex items-center justify-between text-[11px] text-secondary/60">
-                      <div className="flex items-center gap-3">
-                        {Boolean(item.confidence && item.confidence > 0) && (
-                          <span>置信度：{item.confidence}</span>
-                        )}
-                        {item.source_type === 1 && (
-                          <span>来至文档{item.source_name ? `：${item.source_name}` : ''}</span>
-                        )}
-                        {item.source_type === 2 && (
-                          <span>来至对话{item.source_name ? `：${item.source_name}` : ''}</span>
-                        )}
-                        {item.source_type === 3 && (
-                          <span>来至{item.source_name ? ` ${item.source_name}` : '归纳'}</span>
-                        )}
-                      </div>
-                      <span>{formatTimestamp(item.create_time)}</span>
+                                {/* 中间：VS 圆圈 */}
+                                <div className="flex justify-center">
+                                  <div className="w-[34px] h-[34px] rounded-full bg-[#f5a623] text-white font-extrabold text-xs flex items-center justify-center mx-auto shadow-2xs">
+                                    VS
+                                  </div>
+                                </div>
+
+                                {/* 右侧：新萃取 */}
+                                <div className="bg-[#4a8fe7]/8 border border-[#4a8fe7]/30 rounded-xl p-3.5 space-y-2">
+                                  <div className="text-[11px] font-extrabold text-[#4a8fe7]">新萃取</div>
+                                  <div className="text-xs md:text-[13px] font-bold text-foreground leading-snug">
+                                    "{editedPropositions[item.node_id] ?? item.proposition}"
+                                  </div>
+                                  <div className="text-[10.5px] text-secondary bg-surface px-2.5 py-1 rounded-[5px] border-l-2 border-l-[#4a8fe7] truncate block shadow-2xs">
+                                    {item.source_name || '新提取判断'}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* 提示文案 */}
+                              <div className="bg-surface-raised/80 rounded-lg px-3.5 py-2 text-[11.5px] text-secondary leading-relaxed">
+                                采纳后，「新萃取」内容将覆盖旧认知。驳回则维持旧认知不变。
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="rounded-xl border border-border bg-surface-raised/50 p-3.5 space-y-2">
+                              <div className="text-xs md:text-[13.5px] font-bold text-foreground leading-relaxed">
+                                {editedPropositions[item.node_id] ?? item.proposition}
+                              </div>
+                              {(editedElaborations[item.node_id] ?? item.elaboration) && (
+                                <p className="text-xs text-secondary leading-relaxed">
+                                  {editedElaborations[item.node_id] ?? item.elaboration}
+                                </p>
+                              )}
+                              <div className="text-[11.5px] text-secondary leading-relaxed border-t border-border/60 pt-2">
+                                <b>采纳后影响：</b>直接写入你的第二大脑，影响后续所有对话与方案生成。
+                              </div>
+                            </div>
+                          )}
+
+                          {/* 底部按钮组 (.pact) */}
+                          <div className="flex items-center gap-2.5 pt-1">
+                            <button
+                              type="button"
+                              disabled={actioningIds.has(item.node_id)}
+                              onClick={() => handleAdopt(item)}
+                              className="bg-[#f5a623] hover:bg-[#df9318] text-white font-bold text-xs px-4 py-1.5 rounded-lg border border-[#f5a623] shadow-2xs transition-colors disabled:opacity-50 cursor-pointer"
+                            >
+                              {actioningIds.has(item.node_id) ? '处理中…' : '采纳'}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={actioningIds.has(item.node_id)}
+                              onClick={() => handleReject(item)}
+                              className="border border-border bg-surface-raised hover:bg-surface text-foreground font-semibold text-xs px-4 py-1.5 rounded-lg transition-colors disabled:opacity-50 cursor-pointer"
+                            >
+                              {actioningIds.has(item.node_id) ? '处理中…' : '驳回'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => startEditing(item)}
+                              className="border border-border bg-surface-raised hover:bg-surface text-foreground font-semibold text-xs px-4 py-1.5 rounded-lg transition-colors cursor-pointer"
+                            >
+                              编辑
+                            </button>
+                          </div>
+                        </>
+                      )}
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
 
-            {/* 分页 */}
-            {itemsLastPage > 1 && (
-              <div className="flex items-center justify-center gap-2 mt-4">
-                <button
-                  type="button"
-                  disabled={itemsPage <= 1}
-                  onClick={() => setItemsPage((p) => p - 1)}
-                  className="rounded-lg border border-border px-3 py-1.5 text-xs text-secondary hover:bg-surface-raised transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  上一页
-                </button>
-                <span className="text-xs text-secondary">
-                  {itemsPage} / {itemsLastPage}
-                </span>
-                <button
-                  type="button"
-                  disabled={itemsPage >= itemsLastPage}
-                  onClick={() => setItemsPage((p) => p + 1)}
-                  className="rounded-lg border border-border px-3 py-1.5 text-xs text-secondary hover:bg-surface-raised transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  下一页
-                </button>
+                {/* 分页器 */}
+                {renderPager(itemsPage, itemsLastPage, itemsTotal, setItemsPage, '条待确认认知')}
               </div>
             )}
           </div>
-        )}
 
-          {/* 学习资料区 */}
-          <div className="space-y-4">
-            {/* 隐藏的文件上传 input */}
-            <input
-              type="file"
-              ref={fileInputRef}
-              className="hidden"
-              accept=".docx,.md,.txt"
-              multiple
-              onChange={handleFileChange}
-            />
-
-            <div>
-              <h2 className={`${MANAGEMENT_TITLE_TEXT} font-semibold text-foreground`}>学习资料</h2>
+          {/* 4. 学习资料区 (#s-materials) */}
+          <div id="s-materials" className="space-y-2">
+            <div className="text-[11px] font-bold tracking-wider text-secondary uppercase">
+              学习资料
             </div>
 
-              {/* 第二行：分类 Tab（下划线风格） + 上传文档按钮 */}
-              <div className="flex items-center justify-between gap-3 border-b border-border">
-                <div className="flex items-center">
+            <div className="rounded-2xl border border-border bg-surface p-5 md:p-6 shadow-[0_2px_8px_rgba(0,0,0,0.03)] space-y-4">
+              {/* Tab 栏 + 上传按钮 (.mtabs) */}
+              <div className="flex items-center justify-between border-b border-border">
+                <div className="flex items-end gap-1 -mb-[1px]">
                   {MATERIAL_TABS.map((tab) => (
                     <button
                       key={tab}
                       type="button"
                       onClick={() => setMaterialTab(tab)}
-                      className={`relative px-3 pb-2.5 pt-0.5 ${MANAGEMENT_TITLE_TEXT} font-semibold transition-colors ${
+                      className={`text-xs md:text-sm px-4 py-2 rounded-t-lg transition-colors cursor-pointer border-b-2 ${
                         materialTab === tab
-                          ? 'text-foreground'
-                          : 'text-secondary hover:text-foreground'
+                          ? 'bg-[#FF6B35]/10 text-[#FF6B35] border-b-[#FF6B35] font-bold'
+                          : 'text-secondary hover:text-foreground border-b-transparent font-semibold'
                       }`}
                     >
                       {tab}
-                      <div
-                        className={`absolute bottom-[-1px] left-0 right-0 h-0.5 rounded-full transition-colors ${
-                          materialTab === tab ? 'bg-primary' : 'bg-transparent'
-                        }`}
-                      />
                     </button>
                   ))}
                 </div>
 
-                {/* 上传文档按钮 + hover tooltip（仅在文档 Tab 显示） */}
+                {/* 仅在文档 Tab 下展示上传文档按钮 */}
                 {materialTab === '文档' && (
-                  <div className="relative group pb-2">
+                  <div className="relative group mb-1.5">
                     <button
                       type="button"
                       disabled={uploading}
                       onClick={handleUploadClick}
-                      className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-1.5 text-xs font-medium text-white hover:bg-primary-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-xs"
+                      className="bg-[#4a8fe7] hover:bg-[#3b7ed4] text-white font-bold text-xs px-3.5 py-1.5 rounded-lg shadow-2xs transition-colors flex items-center gap-1 disabled:opacity-50 cursor-pointer"
                     >
-                      <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                      </svg>
-                      {uploading ? '上传中…' : '上传文档'}
+                      <span>+</span>
+                      <span>{uploading ? '上传中…' : '上传文档'}</span>
                     </button>
-                    {/* Tooltip */}
-                    <div className="pointer-events-none absolute right-0 bottom-full mb-2 z-10 whitespace-nowrap rounded-xl bg-black/90 dark:bg-black px-3.5 py-2 text-xs font-medium text-white shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200">
+                    <div className="pointer-events-none absolute right-0 bottom-full mb-2 z-20 whitespace-nowrap rounded-xl bg-black/90 dark:bg-black px-3.5 py-1.5 text-xs font-medium text-white shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200">
                       支持 .docx / .md / .txt（最大 2MB）
                     </div>
                   </div>
@@ -948,317 +1043,311 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
 
               {/* 加载中 */}
               {docsLoading && (
-                <div className="rounded-xl border border-border bg-surface flex items-center justify-center py-10 shadow-subtle">
-                  <span className="text-xs text-secondary/60">加载中…</span>
+                <div className="flex items-center justify-center py-10">
+                  <span className="text-xs text-secondary/60">加载资料列表中…</span>
                 </div>
               )}
 
               {/* 空状态 */}
               {!docsLoading && docs.length === 0 && (
-                <div className="rounded-xl border border-border bg-surface flex flex-col items-center justify-center py-12 px-6 text-center shadow-subtle">
-                  <div className="h-12 w-12 rounded-full bg-surface-raised border border-border flex items-center justify-center mb-4">
-                    <svg className="h-6 w-6 text-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
+                <div className="flex flex-col items-center justify-center py-10 text-center">
+                  <div className="h-10 w-10 rounded-full bg-surface-raised border border-border flex items-center justify-center mb-2 text-secondary text-base">
+                    📄
                   </div>
-                  <p className={`${MANAGEMENT_TITLE_TEXT} font-medium text-foreground mb-2`}>
+                  <p className="text-xs font-semibold text-foreground">
                     {materialTab === '对话' ? '暂无对话' : '暂无资料'}
                   </p>
-                  <p className={`${MANAGEMENT_BODY_TEXT} text-secondary`}>
+                  <p className="text-[11px] text-secondary mt-0.5">
                     {materialTab === '对话'
-                      ? '与智能体进行日常业务对话，系统将自动从对话中提炼出你的决策逻辑与思考方式'
-                      : '上传个人笔记、项目总结、思考记录等第一手资料，系统将自动萃取你的决策原则、行事标准'}
+                      ? '与智能体进行日常业务对话，系统将自动从对话中提炼出你的决策逻辑'
+                      : '上传个人笔记、项目总结等第一手资料，系统将自动萃取决策原则'}
                   </p>
-                  {materialTab === '文档' && (
-                    <p className={`${MANAGEMENT_META_TEXT} text-secondary/60 mt-2`}>
-                      第三方课程笔记、行业报告等，萃取出的认知可能不完全代表本人，请注意甄别。
-                    </p>
-                  )}
                 </div>
               )}
 
-              {/* 资料列表 */}
+              {/* 资料列表 (.mlist & .mitem) */}
               {!docsLoading && docs.length > 0 && (
-                <div className="space-y-2">
+                <div className="space-y-2.5">
                   {docs.map((doc) => (
                     <div
                       key={`${doc.type}-${doc.id}`}
-                      className="group flex items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3.5 shadow-subtle transition hover:border-primary/40 hover:shadow-card"
+                      className="group flex items-center gap-3.5 p-3 rounded-xl border border-border/80 bg-background/40 hover:bg-surface hover:border-primary/40 transition-all shadow-2xs"
                     >
-                  {/* 类型图标 */}
-                  <div className="h-9 w-9 shrink-0 rounded-lg border border-border bg-surface-raised flex items-center justify-center">
-                    {doc.type === 'document' ? (
-                      <svg className="h-4 w-4 text-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                    ) : (
-                      <svg className="h-4 w-4 text-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-3 3-3-3z" />
-                      </svg>
-                    )}
-                  </div>
+                      {/* 图标 .mic */}
+                      <div className="w-8 h-8 rounded-lg bg-surface-raised border border-border flex items-center justify-center text-sm shrink-0">
+                        {doc.type === 'document' ? '📄' : '💬'}
+                      </div>
 
-                  {/* 主信息 */}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">{doc.name}</p>
-                    <div className="flex items-center gap-1.5 mt-0.5 text-[11px]">
-                      <span className="text-secondary/60">{formatDate(doc.create_time)}</span>
-                      <span className="text-secondary/60">·</span>
-                      {/* extract_status 显示 */}
-                      {doc.extract_status === DOCUMENT_STATUS.Pending && (
-                        <span className="text-secondary/70">待萃取</span>
-                      )}
-                      {doc.extract_status === DOCUMENT_STATUS.Processing && (
-                        <span className="text-primary font-medium">萃取中</span>
-                      )}
-                      {doc.extract_status === DOCUMENT_STATUS.Done && (
-                        <span className="text-emerald-600 dark:text-emerald-400 font-medium">已萃取 {doc.extract_count} 条认知</span>
-                      )}
-                      {doc.extract_status === DOCUMENT_STATUS.Failed && (
-                        <span className="text-destructive font-medium">萃取失败</span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* 右侧操作栏（Hover 时可见，或展开更多菜单时可见） */}
-                  <div
-                    className={`flex items-center gap-2 shrink-0 transition-opacity ${
-                      moreMenuDocId === doc.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-                    }`}
-                  >
-                    {doc.type === 'document' && (
-                      <div className="relative group/re">
-                        <button
-                          type="button"
-                          disabled={
-                            reExtractingId === doc.id ||
-                            doc.extract_status === DOCUMENT_STATUS.Pending ||
-                            doc.extract_status === DOCUMENT_STATUS.Processing
-                          }
-                          onClick={() => handleReExtract(doc.id)}
-                          className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs font-medium text-foreground hover:bg-surface-raised transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                          {reExtractingId === doc.id || doc.extract_status === DOCUMENT_STATUS.Processing
-                            ? '萃取中…'
-                            : doc.extract_status === DOCUMENT_STATUS.Pending
-                            ? '排队中…'
-                            : '重新萃取'}
-                        </button>
-                        {/* Tooltip */}
-                        <div className="pointer-events-none absolute right-0 bottom-full mb-2 z-20 whitespace-nowrap rounded-xl bg-black/90 dark:bg-black px-3 py-1.5 text-xs font-medium text-white shadow-lg opacity-0 group-hover/re:opacity-100 transition-all duration-200">
-                          {doc.extract_status === DOCUMENT_STATUS.Pending || doc.extract_status === DOCUMENT_STATUS.Processing
-                            ? '当前正在处理中，暂不可重新萃取'
-                            : '将同步删除已萃取的认知'}
+                      {/* 主信息 .mbody */}
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs md:text-[13px] font-semibold text-foreground truncate">{doc.name}</div>
+                        <div className="text-[11px] text-secondary mt-0.5 flex items-center gap-1.5">
+                          <span>{formatDate(doc.create_time)}</span>
+                          <span>·</span>
+                          {doc.extract_status === DOCUMENT_STATUS.Pending && (
+                            <span className="text-[#f5a623] font-semibold">待萃取</span>
+                          )}
+                          {doc.extract_status === DOCUMENT_STATUS.Processing && (
+                            <span className="text-[#4a8fe7] font-semibold">萃取中</span>
+                          )}
+                          {doc.extract_status === DOCUMENT_STATUS.Done && (
+                            <span className="text-[#2d8a5f] dark:text-emerald-400 font-semibold">
+                              已萃取 {doc.extract_count} 条认知
+                            </span>
+                          )}
+                          {doc.extract_status === DOCUMENT_STATUS.Failed && (
+                            <span className="text-destructive font-semibold">萃取失败</span>
+                          )}
                         </div>
                       </div>
-                    )}
 
-                    {doc.type === 'document' ? (
-                      <div className="relative">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setMoreMenuDocId(moreMenuDocId === doc.id ? null : doc.id);
-                          }}
-                          className={`h-7 w-7 inline-flex items-center justify-center rounded-lg border border-border text-xs text-secondary hover:bg-surface-raised hover:text-foreground transition-colors ${
-                            moreMenuDocId === doc.id ? 'bg-surface-raised text-foreground' : ''
-                          }`}
-                          title="更多操作"
-                        >
-                          ···
-                        </button>
-                        {moreMenuDocId === doc.id && (
-                          <div
-                            onClick={(e) => e.stopPropagation()}
-                            className="absolute right-0 top-full mt-1 z-30 min-w-[88px] rounded-xl border border-border bg-surface p-1 shadow-lg animate-in fade-in"
-                          >
+                      {/* 右侧操作 .mops */}
+                      <div
+                        className={`flex items-center gap-2 shrink-0 transition-opacity ${
+                          moreMenuDocId === doc.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                        }`}
+                      >
+                        {doc.type === 'document' && (
+                          <div className="relative group/re">
                             <button
                               type="button"
-                              disabled={downloadingId === doc.id}
-                              onClick={() => {
-                                setMoreMenuDocId(null);
-                                handleDownload(doc.id);
-                              }}
-                              className="w-full rounded-lg px-2.5 py-1.5 text-left text-xs text-foreground hover:bg-surface-raised transition-colors disabled:opacity-50"
+                              disabled={
+                                reExtractingId === doc.id ||
+                                doc.extract_status === DOCUMENT_STATUS.Pending ||
+                                doc.extract_status === DOCUMENT_STATUS.Processing
+                              }
+                              onClick={() => handleReExtract(doc.id)}
+                              className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs font-semibold text-foreground hover:bg-surface-raised transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                             >
-                              {downloadingId === doc.id ? '获取中…' : '下载'}
+                              {reExtractingId === doc.id || doc.extract_status === DOCUMENT_STATUS.Processing
+                                ? '萃取中…'
+                                : doc.extract_status === DOCUMENT_STATUS.Pending
+                                ? '排队中…'
+                                : '重新萃取'}
                             </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setMoreMenuDocId(null);
-                                setDeletingDoc(doc);
-                              }}
-                              className="w-full rounded-lg px-2.5 py-1.5 text-left text-xs text-destructive hover:bg-destructive/10 transition-colors"
-                            >
-                              删除
-                            </button>
+                            <div className="pointer-events-none absolute right-0 bottom-full mb-2 z-20 whitespace-nowrap rounded-xl bg-black/90 dark:bg-black px-3.5 py-1.5 text-xs font-medium text-white shadow-lg opacity-0 group-hover/re:opacity-100 transition-all duration-200">
+                              {doc.extract_status === DOCUMENT_STATUS.Pending || doc.extract_status === DOCUMENT_STATUS.Processing
+                                ? '当前正在处理中，暂不可重新萃取'
+                                : '将同步删除已萃取的认知'}
+                            </div>
                           </div>
                         )}
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setDeletingDoc(doc)}
-                        className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs font-medium text-secondary hover:bg-surface-raised hover:text-destructive transition-colors"
-                      >
-                        删除
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
 
-            {/* 分页 */}
-            {!docsLoading && docsLastPage > 1 && (
-              <div className="flex items-center justify-center gap-2 mt-4">
-                <button
-                  type="button"
-                  disabled={docsPage <= 1}
-                  onClick={() => setDocsPage((p) => p - 1)}
-                  className="rounded-xl border border-border px-3 py-1.5 text-xs text-secondary hover:bg-surface-raised transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  上一页
-                </button>
-                <span className="text-xs text-secondary">
-                  {docsPage} / {docsLastPage}
-                </span>
-                <button
-                  type="button"
-                  disabled={docsPage >= docsLastPage}
-                  onClick={() => setDocsPage((p) => p + 1)}
-                  className="rounded-xl border border-border px-3 py-1.5 text-xs text-secondary hover:bg-surface-raised transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  下一页
-                </button>
-              </div>
-            )}
+                        {doc.type === 'document' ? (
+                          <div className="relative">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setMoreMenuDocId(moreMenuDocId === doc.id ? null : doc.id);
+                              }}
+                              className={`h-7 w-7 inline-flex items-center justify-center rounded-lg border border-border text-xs text-secondary hover:bg-surface-raised hover:text-foreground transition-colors cursor-pointer ${
+                                moreMenuDocId === doc.id ? 'bg-surface-raised text-foreground' : ''
+                              }`}
+                              title="更多操作"
+                            >
+                              ···
+                            </button>
+                            {moreMenuDocId === doc.id && (
+                              <div
+                                onClick={(e) => e.stopPropagation()}
+                                className="absolute right-0 top-full mt-1 z-30 min-w-[88px] rounded-xl border border-border bg-surface p-1 shadow-lg animate-in fade-in"
+                              >
+                                <button
+                                  type="button"
+                                  disabled={downloadingId === doc.id}
+                                  onClick={() => {
+                                    setMoreMenuDocId(null);
+                                    handleDownload(doc.id);
+                                  }}
+                                  className="w-full rounded-lg px-2.5 py-1.5 text-left text-xs text-foreground hover:bg-surface-raised transition-colors disabled:opacity-50 cursor-pointer"
+                                >
+                                  {downloadingId === doc.id ? '获取中…' : '下载'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setMoreMenuDocId(null);
+                                    setDeletingDoc(doc);
+                                  }}
+                                  className="w-full rounded-lg px-2.5 py-1.5 text-left text-xs text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
+                                >
+                                  删除
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setDeletingDoc(doc)}
+                            className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs font-semibold text-secondary hover:bg-surface-raised hover:text-destructive transition-colors cursor-pointer"
+                          >
+                            删除
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* 分页器 */}
+                  {renderPager(docsPage, docsLastPage, docsTotal, setDocsPage, materialTab === '对话' ? '份对话' : '份资料')}
+                </div>
+              )}
+            </div>
           </div>
+
         </div>
       </div>
-    )}
 
-      {/* 删除确认 Modal 弹窗 */}
-      {deletingDoc &&
-        createPortal(
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
-            <div className="w-full max-w-sm rounded-xl border border-border bg-surface p-5 shadow-lg space-y-4">
-              <div className="space-y-1">
-                <h3 className={`${MANAGEMENT_TITLE_TEXT} font-semibold text-foreground`}>确认删除</h3>
-                <p className={`${MANAGEMENT_BODY_TEXT} text-secondary leading-relaxed`}>
-                  确定要删除{deletingDoc.type === 'chat' ? '对话' : '资料'} <span className="font-medium text-foreground">“{deletingDoc.name}”</span> 吗？此操作无法撤销。
-                </p>
+      {/* 删除确认弹窗 */}
+      {deletingDoc && createPortal(
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => !deleting && setDeletingDoc(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-xl border border-border bg-surface p-5 shadow-xl space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="space-y-1.5">
+              <h3 className="text-sm font-bold text-foreground">
+                确认删除{deletingDoc.type === 'chat' ? '对话' : '资料'}
+              </h3>
+              <p className="text-xs text-secondary">
+                确定要删除 "{deletingDoc.name}" 吗？删除后将无法恢复。
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={() => setDeletingDoc(null)}
+                className="rounded-lg border border-border px-3.5 py-1.5 text-xs font-semibold text-secondary hover:bg-surface-raised transition-colors disabled:opacity-50 cursor-pointer"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={handleConfirmDelete}
+                className="rounded-lg bg-destructive px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-destructive/90 transition-colors disabled:opacity-50 cursor-pointer shadow-2xs"
+              >
+                {deleting ? '删除中…' : '确认删除'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* 人设信息编辑弹窗 */}
+      {showPersonaModal && createPortal(
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => !savingPersona && setShowPersonaModal(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-xl border border-border bg-surface p-6 shadow-xl space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <h3 className="text-sm font-bold text-foreground">人设信息</h3>
+              <button
+                type="button"
+                onClick={() => setShowPersonaModal(false)}
+                className="text-secondary hover:text-foreground text-sm cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block font-medium text-secondary mb-1">
+                  称呼/姓名 <span className="text-destructive">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={personaForm.name}
+                  onChange={(e) => setPersonaForm({ ...personaForm, name: e.target.value })}
+                  placeholder="例如：陈总"
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground outline-none focus:border-primary"
+                />
               </div>
-              <div className="flex items-center justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  disabled={deleting}
-                  onClick={() => setDeletingDoc(null)}
-                  className="rounded-xl border border-border px-3 py-1.5 text-xs font-medium text-secondary hover:bg-surface-raised transition-colors disabled:opacity-50"
-                >
-                  取消
-                </button>
-                <button
-                  type="button"
-                  disabled={deleting}
-                  onClick={handleConfirmDelete}
-                  className="rounded-xl bg-destructive px-3 py-1.5 text-xs font-medium text-white hover:bg-destructive/90 transition-colors disabled:opacity-50"
-                >
-                  {deleting ? '删除中…' : '确认删除'}
-                </button>
+
+              <div>
+                <label className="block font-medium text-secondary mb-1">
+                  主营业务 <span className="text-destructive">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={personaForm.business}
+                  onChange={(e) => setPersonaForm({ ...personaForm, business: e.target.value })}
+                  placeholder="例如：高端美甲加盟与供应链"
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground outline-none focus:border-primary"
+                />
+              </div>
+
+              <div>
+                <label className="block font-medium text-secondary mb-1">所属行业</label>
+                <input
+                  type="text"
+                  value={personaForm.industry}
+                  onChange={(e) => setPersonaForm({ ...personaForm, industry: e.target.value })}
+                  placeholder="例如：美业 / 消费零售"
+                  className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-foreground outline-none focus:border-primary"
+                />
+              </div>
+
+              <div>
+                <label className="block font-medium text-secondary mb-1">定位与风格</label>
+                <textarea
+                  rows={3}
+                  value={personaForm.positioning}
+                  onChange={(e) => setPersonaForm({ ...personaForm, positioning: e.target.value })}
+                  placeholder="例如：专业实战派，重数据与落地交付，不做网红做生意"
+                  className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-foreground outline-none focus:border-primary resize-none"
+                />
               </div>
             </div>
-          </div>,
-          document.body,
-        )}
 
-      {/* 人设编辑 Modal 弹窗 */}
-      {showPersonaModal &&
-        createPortal(
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
-            <div className="w-full max-w-md rounded-xl border border-border bg-surface p-6 shadow-xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
-              <div className="flex items-center justify-between pb-2 border-b border-border/60">
-                <h3 className={`${MANAGEMENT_TITLE_TEXT} font-semibold text-foreground`}>编辑人设信息</h3>
-                <button
-                  type="button"
-                  onClick={() => setShowPersonaModal(false)}
-                  className="rounded-lg p-1 text-secondary hover:bg-surface-raised transition-colors"
-                >
-                  <XMarkIcon className="h-4 w-4" />
-                </button>
-              </div>
-
-              <div className="space-y-3 pt-1">
-                <div>
-                  <label className="block text-xs font-medium text-foreground mb-1">称呼 <span className="text-destructive">*</span></label>
-                  <input
-                    type="text"
-                    value={personaForm.name}
-                    onChange={(e) => setPersonaForm((prev) => ({ ...prev, name: e.target.value }))}
-                    placeholder="例如：王老板"
-                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground placeholder:text-muted outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-foreground mb-1">所属行业</label>
-                  <input
-                    type="text"
-                    value={personaForm.industry}
-                    onChange={(e) => setPersonaForm((prev) => ({ ...prev, industry: e.target.value }))}
-                    placeholder="例如：制造业"
-                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground placeholder:text-muted outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-foreground mb-1">主要业务 <span className="text-destructive">*</span></label>
-                  <input
-                    type="text"
-                    value={personaForm.business}
-                    onChange={(e) => setPersonaForm((prev) => ({ ...prev, business: e.target.value }))}
-                    placeholder="例如：跨境电商，主营东南亚服装零售"
-                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground placeholder:text-muted outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-foreground mb-1">定位描述</label>
-                  <textarea
-                    rows={3}
-                    value={personaForm.positioning}
-                    onChange={(e) => setPersonaForm((prev) => ({ ...prev, positioning: e.target.value }))}
-                    placeholder="你希望对外传递的核心定位，将以此为基础理解你的专业视角进行认知萃取"
-                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground placeholder:text-muted outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary resize-none leading-relaxed"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-border/60">
-                <button
-                  type="button"
-                  disabled={savingPersona}
-                  onClick={() => setShowPersonaModal(false)}
-                  className="rounded-xl border border-border px-3 py-1.5 text-xs font-medium text-secondary hover:bg-surface-raised transition-colors disabled:opacity-50"
-                >
-                  取消
-                </button>
-                <button
-                  type="button"
-                  disabled={!personaForm.name.trim() || !personaForm.business.trim() || savingPersona}
-                  onClick={() => handleSavePersona(false)}
-                  className="rounded-xl bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-hover transition-colors disabled:opacity-50 shadow-xs"
-                >
-                  {savingPersona ? '更新中…' : '更新'}
-                </button>
-              </div>
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+              <button
+                type="button"
+                disabled={savingPersona}
+                onClick={() => setShowPersonaModal(false)}
+                className="rounded-lg border border-border px-4 py-1.5 text-xs font-medium text-secondary hover:bg-surface-raised transition-colors"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                disabled={savingPersona || !personaForm.name.trim() || !personaForm.business.trim()}
+                onClick={handleSavePersona}
+                className="rounded-lg bg-primary px-4 py-1.5 text-xs font-medium text-white hover:bg-primary-hover transition-colors disabled:opacity-50"
+              >
+                {savingPersona ? '保存中…' : '保存'}
+              </button>
             </div>
-          </div>,
-          document.body,
-        )}
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* 全局 Toast */}
+      {toast && createPortal(
+        <div
+          className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-xl text-xs font-medium shadow-lg transition-all ${
+            toast.type === 'success'
+              ? 'bg-foreground text-background dark:bg-white dark:text-black'
+              : 'bg-destructive text-destructive-foreground'
+          }`}
+        >
+          {toast.message}
+        </div>,
+        document.body
+      )}
     </div>
   );
 };
