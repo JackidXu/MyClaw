@@ -63,9 +63,7 @@ export const startSidebarBannerAutoRefresh = (
       - SIDEBAR_BANNER_REFRESH_MIN_INTERVAL_MS;
     const delay = SIDEBAR_BANNER_REFRESH_MIN_INTERVAL_MS + Math.random() * spread;
     fallbackTimer = setTimeout(() => {
-      if (document.visibilityState === 'visible' && document.hasFocus()) {
-        void triggerRefresh(true);
-      }
+      void triggerRefresh(true);
       if (!stopped) scheduleFallback();
     }, delay);
   };
