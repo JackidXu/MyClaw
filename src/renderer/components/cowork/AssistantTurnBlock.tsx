@@ -3,7 +3,6 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useSelector } from 'react-redux';
 
 import { classifyErrorKey, isContextOrInterruptionErrorKey } from '../../../common/coworkErrorClassify';
-import { selectCurrentSession } from '../../store/selectors/coworkSelectors';
 import { ContextCompactionStatus } from '../../../common/coworkSystemMessages';
 import { getScheduledReminderDisplayText } from '../../../scheduledTask/reminderText';
 import {
@@ -16,6 +15,7 @@ import type { CoworkGoal } from '../../../shared/cowork/goal';
 import { dedupeArtifactsForDisplay } from '../../services/artifactParser';
 import { coworkService } from '../../services/cowork';
 import { i18nService } from '../../services/i18n';
+import { selectCurrentSession } from '../../store/selectors/coworkSelectors';
 import type { Artifact } from '../../types/artifact';
 import type { CoworkMessage, CoworkMessageMetadata } from '../../types/cowork';
 import { revealLocalPathWithToast } from '../../utils/localFileActions';
@@ -396,6 +396,7 @@ const AssistantTurnBlock: React.FC<{
   isStreamingTurn = false,
   hasRunningSubagents = false,
 }) => {
+  const currentSession = useSelector(selectCurrentSession);
   const [artifactCardsExpanded, setArtifactCardsExpanded] = useState(false);
   const [processExpanded, setProcessExpanded] = useState(false);
   const visibleAssistantItems = useMemo(
@@ -490,7 +491,6 @@ const AssistantTurnBlock: React.FC<{
       );
     }
 
-    const currentSession = useSelector(selectCurrentSession);
     const errorDetail = parseCoworkErrorDetail(message.metadata?.errorDetail);
     const errorModelLine = errorDetail ? buildErrorModelLine(errorDetail) : null;
     const rawErrorText = typeof message.metadata?.error === 'string' ? message.metadata.error : null;
