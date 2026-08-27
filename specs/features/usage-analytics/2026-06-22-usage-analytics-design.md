@@ -652,6 +652,25 @@ export const LogReporterActionPrefix = {
   - 额度相关字段只记录是否有额度明细和明细数量，不记录资产金额。
   - 套餐相关字段只记录规范化档位、订阅状态和是否可升级，不记录用户可见套餐名称或权益明细。
 
+#### 2.4.28.1 `lobsterai_daily_check_in_action`
+
+- 状态：已实现。
+- 触发时机：用户点击首页右上角或左下角「我的」浮层里的每日积分礼领取入口后发送。领取请求成功、已领取、需登录、活动不可用或领取失败时补充结果事件。
+- 事件含义：统计每日积分礼两个入口的领取转化、登录拦截和失败情况。
+- 业务参数：
+  - `source`：string，触发来源。当前取值为 `home_header` 或 `account_menu`。
+  - `actionType`：string，动作类型。当前取值包括 `claim_click`、`login_required`、`claim_success`、`claim_already_claimed`、`claim_unavailable`、`claim_failed`。
+  - `result`：string，动作结果。当前取值为 `success` 或 `failed`；仅结果类动作发送。
+  - `activityCode`：string，活动编码。
+  - `configRevision`：number，活动配置版本。
+  - `isLoggedIn`：boolean，触发动作时是否处于客户端登录态。
+  - `isAuthenticated`：boolean，活动上下文是否已通过服务端认证。
+  - `canClaim`：boolean，点击时活动上下文是否允许领取。
+  - `errorCode`：string，失败分类。当前取值包括 `login_required`、`already_claimed`、`not_active`、`not_found`、`revision_mismatch`、`action_invalid`、`config_invalid`、`server_error`、`unknown`；仅失败、已领取或不可用等结果发送。
+- 隐私边界：
+  - 不上传手机号、昵称、头像 URL、活动展示文案、奖励积分数值、已领取积分数值、有效期、登录 URL、接口错误详情或用户账号标识。
+  - 活动字段只记录活动编码、配置版本、来源和状态类枚举，用于统计入口转化和问题分类。
+
 #### 2.4.29 `lobsterai_sidebar_action`
 
 - 状态：已实现。

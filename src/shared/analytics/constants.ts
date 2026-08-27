@@ -39,6 +39,7 @@ export const LogReporterAction = {
   ConversationBlockAction: 'lobsterai_conversation_block_action',
   ConversationMessageAction: 'lobsterai_conversation_message_action',
   ConversationNavigationAction: 'lobsterai_conversation_navigation_action',
+  DailyCheckInAction: 'lobsterai_daily_check_in_action',
   DreamingSettingChanged: 'lobsterai_dreaming_setting_changed',
   DshAction: 'lobsterai_dsh_action',
   EmailSkillConnectionTested: 'lobsterai_email_skill_connection_tested',
