@@ -8,6 +8,8 @@ export interface ClientBanner {
   imageUrl: string;
   imageWidth?: number;
   imageHeight?: number;
+  onlineAt?: string;
+  offlineAt?: string;
   updatedAt?: string;
 }
 

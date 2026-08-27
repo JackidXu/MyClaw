@@ -578,11 +578,19 @@ interface ClientBannerData {
   activityDescription: string;
   weight?: number;
   status?: number;
+  onlineAt?: string;
+  offlineAt?: string;
   linkUrl: string;
   imageUrl: string;
   imageWidth?: number;
   imageHeight?: number;
   updatedAt?: string;
+}
+
+interface ClientBannerSnapshotData {
+  serverTime: string;
+  nextRefreshAt: string | null;
+  banners: ClientBannerData[];
 }
 
 interface HtmlShareResult {
@@ -1956,6 +1964,10 @@ interface IElectronAPI {
     claimCreditsFinalReward: (campaignCode: string) => Promise<{ success: boolean; data?: CreditsFinalRewardClaimData; error?: string }>;
     getActiveClientBanner: () => Promise<{ success: boolean; data?: ClientBannerData | null }>;
     getActiveClientBanners: () => Promise<{ success: boolean; data?: ClientBannerData[] }>;
+    getClientBannerSnapshot: () => Promise<{
+      success: boolean;
+      data?: ClientBannerSnapshotData;
+    }>;
     getPendingCallback: () => Promise<string | null>;
     onCallback: (callback: (data: { code: string }) => void) => () => void;
     onQuotaChanged: (callback: () => void) => () => void;
