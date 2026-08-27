@@ -69,11 +69,13 @@ import SidebarToggleIcon from '../icons/SidebarToggleIcon';
 import Tooltip, { TooltipAlign, TooltipPosition } from '../ui/Tooltip';
 import { LIBRARY_ACTION_MENU_WIDTH_PX } from './libraryActionMenuPresentation';
 import {
+  createLibraryAnalyticsOperationId,
   createLibraryAnalyticsPageViewId,
   getLibraryLoadedItemCountBucket,
   LibraryAnalyticsActionType,
   type LibraryAnalyticsContext,
   LibraryAnalyticsControl,
+  LibraryAnalyticsEventPhase,
   LibraryAnalyticsResult,
   LibraryAnalyticsSurface,
   reportLibraryAction,
@@ -453,6 +455,7 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
   const pageExposureReportedRef = useRef(false);
   const lastListResultSignatureRef = useRef('');
   const lastReportedKeywordRef = useRef('');
+  const pendingRefreshOperationIdRef = useRef<string>();
 
   useEffect(() => {
     localDataRef.current = localData;
@@ -591,6 +594,7 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
       result,
       loadedItemCountBucket: getLibraryLoadedItemCountBucket(resultCount),
       hasMore,
+      operationId: pendingRefreshOperationIdRef.current,
     });
     if (lastListResultSignatureRef.current === signature) return;
     lastListResultSignatureRef.current = signature;
@@ -599,7 +603,14 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
       result,
       loadedItemCount: resultCount,
       hasMore,
+      ...(pendingRefreshOperationIdRef.current
+        ? {
+            operationId: pendingRefreshOperationIdRef.current,
+            eventPhase: LibraryAnalyticsEventPhase.Result,
+          }
+        : {}),
     });
+    pendingRefreshOperationIdRef.current = undefined;
   }, [analyticsContext]);
 
   const clearKeyword = useCallback(() => {
@@ -926,8 +937,12 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
   refreshLocalWindowRef.current = refreshLocalWindow;
 
   const handleRefresh = useCallback((): void => {
+    const operationId = createLibraryAnalyticsOperationId();
+    pendingRefreshOperationIdRef.current = operationId;
     reportLibraryAction(analyticsContext, {
       actionType: LibraryAnalyticsActionType.Refresh,
+      operationId,
+      eventPhase: LibraryAnalyticsEventPhase.Start,
     });
     if (wantsLocal) {
       const coordinator = refreshCoordinatorRef.current;
@@ -1152,11 +1167,14 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
 
   const updateFavorite = async (item: LibraryItem): Promise<void> => {
     const next = !item.isFavorite;
+    const operationId = createLibraryAnalyticsOperationId();
     reportLibraryAction(analyticsContext, {
       actionType: LibraryAnalyticsActionType.FavoriteChange,
       itemKind: item.itemKind,
       itemCategory: item.category,
       favorite: next,
+      operationId,
+      eventPhase: LibraryAnalyticsEventPhase.Start,
     });
     if (item.itemKind === LibraryItemKind.LocalArtifact) {
       setLocalData(current => ({
@@ -1176,6 +1194,15 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
       itemKind: item.itemKind,
       itemId: item.itemId,
       favorite: next,
+    });
+    reportLibraryAction(analyticsContext, {
+      actionType: LibraryAnalyticsActionType.FavoriteChange,
+      itemKind: item.itemKind,
+      itemCategory: item.category,
+      favorite: next,
+      operationId,
+      eventPhase: LibraryAnalyticsEventPhase.Result,
+      result: result.success ? LibraryAnalyticsResult.Success : LibraryAnalyticsResult.Failure,
     });
     if (!result.success) {
       setError(result.error);

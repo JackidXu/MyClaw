@@ -53,6 +53,7 @@ class MemoryStorage implements Storage {
 
 const attribution = {
   attemptId: 'attempt-1',
+  operationId: 'operation-1',
   feature: 'share',
   resourceKind: 'file',
   operationType: 'create',
@@ -102,6 +103,7 @@ describe('publishing conversion attribution', () => {
       action: LogReporterAction.PublishingSubscriptionObserved,
       actionType: 'subscription_observed',
       attemptId: 'attempt-1',
+      operationId: 'operation-1',
       exposureId: 'exposure-1',
       feature: 'share',
       source: 'library_list',
