@@ -139,12 +139,14 @@ interface LibraryCloudViewProps {
   analyticsPageViewId: string;
   data: LibraryCloudListData;
   loading: boolean;
+  refreshing: boolean;
   loadingMore: boolean;
   error?: string;
   isAuthenticated: boolean;
   showFreeShareDeleteQuotaNotice: boolean;
   category: LibraryCategory;
   status: LibraryCloudAvailabilityFilterValue;
+  displayStatus: LibraryCloudAvailabilityFilterValue;
   favoritesOnly: boolean;
   keywordInput: string;
   loadMoreSentinelRef: React.RefObject<HTMLDivElement>;
@@ -1296,12 +1298,14 @@ const LibraryCloudView: React.FC<LibraryCloudViewProps> = ({
   analyticsPageViewId,
   data,
   loading,
+  refreshing,
   loadingMore,
   error,
   isAuthenticated,
   showFreeShareDeleteQuotaNotice,
   category,
   status,
+  displayStatus,
   favoritesOnly,
   keywordInput,
   loadMoreSentinelRef,
@@ -1323,6 +1327,7 @@ const LibraryCloudView: React.FC<LibraryCloudViewProps> = ({
   const [activeItem, setActiveItem] = useState<SharedFileItem>();
   const [activeSite, setActiveSite] = useState<DeployedSiteItem>();
   const [interactionError, setInteractionError] = useState<string>();
+  const busy = loading || refreshing || loadingMore;
   const expirations = useMemo(
     () => data.list
       .flatMap(item => [item.accessExpiresAt, item.effectiveExpiresAt])
@@ -1333,9 +1338,8 @@ const LibraryCloudView: React.FC<LibraryCloudViewProps> = ({
   const effectiveNow = useLibraryServerClock(data.serverNow, expirations);
   const items = useMemo(() => data.list.filter(item => (
     (!hideSites || item.itemKind !== LibraryItemKind.DeployedSite)
-    && (category === LibraryCategory.All || item.category === category)
-    && matchesLibraryCloudAvailability(item, status, effectiveNow)
-  )), [category, data.list, effectiveNow, hideSites, status]);
+    && matchesLibraryCloudAvailability(item, displayStatus, effectiveNow)
+  )), [data.list, displayStatus, effectiveNow, hideSites]);
 
   const handleSharedItemDeleted = (item: SharedFileItem): void => {
     if (item.isFavorite) onToggleFavorite(item);
@@ -1542,7 +1546,10 @@ const LibraryCloudView: React.FC<LibraryCloudViewProps> = ({
   };
 
   return (
-    <div className="mx-auto w-full max-w-[1120px] px-8 py-6">
+    <div
+      aria-busy={busy}
+      className="mx-auto w-full max-w-[1120px] px-8 py-6"
+    >
       <div className="sticky top-0 z-10 border-b border-border bg-background pb-3 pt-1">
         <div className="flex min-w-[760px] items-center gap-3">
           <div className="flex shrink-0 items-center gap-2">
@@ -1607,11 +1614,17 @@ const LibraryCloudView: React.FC<LibraryCloudViewProps> = ({
                 ? <StarSolidIcon className="h-4 w-4" />
                 : <StarIcon className="h-4 w-4" />}
             </HeaderAction>
-            <HeaderAction label={i18nService.t('refresh')} align={TooltipAlign.End} onClick={onRefresh} disabled={loading}>
-              <ArrowPathIcon className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            <HeaderAction label={i18nService.t('refresh')} align={TooltipAlign.End} onClick={onRefresh} disabled={busy}>
+              <ArrowPathIcon className={`h-4 w-4 ${loading || refreshing ? 'animate-spin' : ''}`} />
             </HeaderAction>
           </div>
         </div>
+        {refreshing && (
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 -bottom-px h-0.5 bg-primary/60"
+          />
+        )}
       </div>
 
       {(error || interactionError) && (
