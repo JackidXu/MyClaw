@@ -35,6 +35,7 @@ import {
   getAccountPlanPresentation,
   getFinalRewards,
 } from './accountMenuState';
+import { ACCOUNT_MENU_COMPACT_CTA_CLASS_NAME } from './accountMenuStyles';
 import CreditsFinalRewardModal from './CreditsFinalRewardModal';
 import { DailyCheckInAccountMenuEntry } from './DailyCheckInActivity';
 import UserAvatarIcon from './icons/UserAvatarIcon';
@@ -201,7 +202,7 @@ const AccountPlanAction: React.FC<AccountPlanActionProps> = ({
       <button
         type="button"
         onClick={() => void onUpgrade()}
-        className="ml-auto h-5 shrink-0 rounded-md bg-[#111111] px-1.5 text-[10px] font-medium leading-none text-white transition-colors hover:bg-[#2a2a2a] dark:bg-white dark:text-black dark:hover:bg-white/85"
+        className={`ml-auto ${ACCOUNT_MENU_COMPACT_CTA_CLASS_NAME} bg-[#111111] text-white transition-colors hover:bg-[#2a2a2a] dark:bg-white dark:text-black dark:hover:bg-white/85`}
       >
         {i18nService.t('authUpgradePlan')}
       </button>
