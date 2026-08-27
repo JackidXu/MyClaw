@@ -159,6 +159,8 @@ const sidebarNavItemClassName =
 const activeSidebarNavItemClassName =
   `${sidebarNavItemClassName} bg-black/[0.06] font-medium hover:bg-black/[0.06] dark:bg-white/[0.07] dark:hover:bg-white/[0.07]`;
 const sidebarCreateIconClassName = 'h-4 w-4 shrink-0';
+const sidebarBottomIconButtonClassName =
+  'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-foreground/80 transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.04]';
 
 type SidebarAnalyticsSource = 'home_sidebar' | 'home_agent_sidebar';
 
@@ -1007,35 +1009,32 @@ const Sidebar: React.FC<SidebarProps> = ({
               </div>
             )}
             {showRechargeButton ? (
-              <div className="ml-auto flex shrink-0 items-center justify-end gap-2">
+              <div className="ml-auto flex shrink-0 items-center justify-end gap-1.5">
                 <button
                   type="button"
                   onClick={() => void handleRechargeClick()}
-                  className="inline-flex h-7 min-w-0 items-center justify-center gap-[2px] rounded-md px-0.5 text-sm font-normal text-foreground/80 transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
+                  className={sidebarBottomIconButtonClassName}
                   aria-label={i18nService.t('authTopUp')}
                 >
                   <FinancingOneIcon className="h-3.5 w-3.5 shrink-0" />
-                  <span className="min-w-0 truncate">{i18nService.t('authTopUp')}</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => onShowSettings()}
-                  className="inline-flex h-7 min-w-0 items-center justify-center gap-[2px] rounded-md px-0.5 text-sm font-normal text-foreground/80 transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
+                  className={sidebarBottomIconButtonClassName}
                   aria-label={i18nService.t('settings')}
                 >
                   <Cog6ToothIcon className="h-4 w-4 shrink-0" />
-                  <span className="min-w-0 truncate">{i18nService.t('settings')}</span>
                 </button>
               </div>
             ) : (
               <button
                 type="button"
                 onClick={() => onShowSettings()}
-                className={`inline-flex h-7 items-center justify-start gap-1.5 rounded-md px-1.5 text-sm font-normal text-foreground/80 transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.04] ${hideLogin ? 'w-full' : 'shrink-0'}`}
+                className={sidebarBottomIconButtonClassName}
                 aria-label={i18nService.t('settings')}
               >
                 <Cog6ToothIcon className="h-4 w-4 shrink-0" />
-                <span className="min-w-0 truncate">{i18nService.t('settings')}</span>
               </button>
             )}
           </div>
