@@ -95,6 +95,11 @@ import {
   shouldUseOpenAIResponsesForProvider,
 } from './settings/modelProviderUtils';
 import ModelSettingsSection, { DeleteProviderConfirmDialog, ModelEditorDialog } from './settings/ModelSettingsSection';
+import {
+  PlanModelCatalogAnalyticsActionType,
+  PlanModelCatalogAnalyticsSource,
+  reportPlanModelCatalogAction,
+} from './settings/planModelCatalogAnalytics';
 import PlanModelSettingsSection from './settings/PlanModelSettingsSection';
 import { resolveSettingsEscapeAction, SettingsEscapeAction } from './settings/settingsEscape';
 import EmailSkillConfig from './skills/EmailSkillConfig';
@@ -3699,7 +3704,10 @@ const Settings: React.FC<SettingsProps> = ({
   };
 
   // 标签页切换处理
-  const doTabChange = useCallback((tab: TabType) => {
+  const doTabChange = useCallback((
+    tab: TabType,
+    source: PlanModelCatalogAnalyticsSource = PlanModelCatalogAnalyticsSource.SettingsSidebar,
+  ) => {
     if (tab !== 'model') {
       setIsAddingModel(false);
       setIsEditingModel(false);
@@ -3709,15 +3717,26 @@ const Settings: React.FC<SettingsProps> = ({
       setNewModelSupportsImage(false);
       setModelFormError(null);
     }
+    if (tab === 'planModelIntro' && activeTab !== tab) {
+      reportPlanModelCatalogAction({
+        actionType: PlanModelCatalogAnalyticsActionType.OpenTab,
+        previousTab: activeTab,
+        source,
+        targetTab: tab,
+      });
+    }
     setActiveTab(tab);
-  }, []);
+  }, [activeTab]);
 
-  const handleTabChange = useCallback((tab: TabType) => {
+  const handleTabChange = useCallback((
+    tab: TabType,
+    source: PlanModelCatalogAnalyticsSource = PlanModelCatalogAnalyticsSource.SettingsSidebar,
+  ) => {
     if (isBackingUpOpenClawData || isRestoringOpenClawData) return;
-    if (activeTab === 'plugins' && pluginsSettingsRef.current?.guardLeave(() => doTabChange(tab))) {
+    if (activeTab === 'plugins' && pluginsSettingsRef.current?.guardLeave(() => doTabChange(tab, source))) {
       return;
     }
-    doTabChange(tab);
+    doTabChange(tab, source);
   }, [activeTab, doTabChange, isBackingUpOpenClawData, isRestoringOpenClawData]);
 
   // Guarded close: check plugin dirty state before closing
@@ -4581,7 +4600,7 @@ const Settings: React.FC<SettingsProps> = ({
       if (!targetTab || !sidebarTabs.some(tab => tab.key === targetTab)) return;
 
       event.preventDefault();
-      handleTabChange(targetTab);
+      handleTabChange(targetTab, PlanModelCatalogAnalyticsSource.SettingsShortcut);
     };
 
     document.addEventListener('keydown', handleSettingsTabShortcut);
@@ -5964,7 +5983,7 @@ const Settings: React.FC<SettingsProps> = ({
             {sidebarTabs.map((tab) => (
               <button
                 key={tab.key}
-                onClick={() => handleTabChange(tab.key)}
+                onClick={() => handleTabChange(tab.key, PlanModelCatalogAnalyticsSource.SettingsSidebar)}
                 className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors text-left ${
                   activeTab === tab.key
                     ? 'bg-primary-muted text-primary'

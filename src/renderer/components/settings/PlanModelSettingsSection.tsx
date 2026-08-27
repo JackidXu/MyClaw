@@ -10,6 +10,14 @@ import { getProviderIcon, ProviderIconId } from '../../providers/uiRegistry';
 import type { PricingCatalogMediaModel, PricingCatalogTextModel } from '../../services/auth';
 import { getPortalPricingUrl } from '../../services/endpoints';
 import { i18nService } from '../../services/i18n';
+import {
+  PlanModelCatalogAnalyticsActionType,
+  PlanModelCatalogAnalyticsCategory,
+  type PlanModelCatalogAnalyticsCategory as PlanModelCategory,
+  PlanModelCatalogAnalyticsResult,
+  PlanModelCatalogAnalyticsSource,
+  reportPlanModelCatalogAction,
+} from './planModelCatalogAnalytics';
 
 const MODEL_ICON_CLASS_NAME = 'h-6 w-6';
 const DESCRIPTION_TOOLTIP_MAX_WIDTH = 420;
@@ -44,7 +52,6 @@ type LoadState =
   | { kind: 'loaded'; groups: PlanModelGroup[] }
   | { kind: 'error'; message: string };
 
-type PlanModelCategory = 'text' | 'image' | 'video';
 type PlanModelCategoryFilter = PlanModelCategory;
 
 type PricingCatalogDisplayModel = (PricingCatalogTextModel | PricingCatalogMediaModel) & {
@@ -75,7 +82,11 @@ const PLAN_MODEL_FILTER_LABEL_KEYS: Record<PlanModelCategoryFilter, string> = {
   video: 'planModelCatalogVideoModels',
 };
 
-const PLAN_MODEL_FILTERS: PlanModelCategoryFilter[] = ['text', 'image', 'video'];
+const PLAN_MODEL_FILTERS: PlanModelCategoryFilter[] = [
+  PlanModelCatalogAnalyticsCategory.Text,
+  PlanModelCatalogAnalyticsCategory.Image,
+  PlanModelCatalogAnalyticsCategory.Video,
+];
 
 const getPlanModelCounts = (groups: PlanModelGroup[]): PlanModelCatalogCounts => ({
   text: groups.find(group => group.key === 'text')?.models.length ?? 0,
@@ -422,6 +433,15 @@ const PlanModelSettingsSection: React.FC = () => {
   const handleCategoryChange = useCallback((nextCategory: PlanModelCategoryFilter) => {
     if (nextCategory === activeCategory) return;
     console.debug(`[PlanModelCatalog] renderer switched category from ${activeCategory} to ${nextCategory}.`);
+    reportPlanModelCatalogAction({
+      actionType: PlanModelCatalogAnalyticsActionType.CategoryChange,
+      activeCategory,
+      modelCounts: categoryCounts,
+      previousCategory: activeCategory,
+      source: PlanModelCatalogAnalyticsSource.CatalogToolbar,
+      targetCategory: nextCategory,
+      visibleModelCount: categoryCounts[nextCategory],
+    });
     setActiveCategory(nextCategory);
     window.requestAnimationFrame(() => {
       const scrollContainer = getScrollContainer();
@@ -429,11 +449,46 @@ const PlanModelSettingsSection: React.FC = () => {
         scrollContainer.scrollTop = 0;
       }
     });
-  }, [activeCategory, getScrollContainer]);
+  }, [activeCategory, categoryCounts, getScrollContainer]);
 
-  const handleOpenSubscription = useCallback(() => {
-    void window.electron.shell.openExternal(getPortalPricingUrl());
-  }, []);
+  const handleOpenSubscription = useCallback(async () => {
+    console.debug(`[PlanModelCatalog] renderer opening pricing portal from ${activeCategory} category.`);
+    try {
+      const result = await window.electron.shell.openExternal(getPortalPricingUrl());
+      if (!result.success) {
+        console.warn('[PlanModelCatalog] renderer failed to open pricing portal:', result.error);
+        reportPlanModelCatalogAction({
+          actionType: PlanModelCatalogAnalyticsActionType.OpenPricing,
+          activeCategory,
+          errorCode: 'open_external_failed',
+          modelCounts: categoryCounts,
+          result: PlanModelCatalogAnalyticsResult.Failed,
+          source: PlanModelCatalogAnalyticsSource.CatalogToolbar,
+          visibleModelCount: categoryCounts[activeCategory],
+        });
+        return;
+      }
+      reportPlanModelCatalogAction({
+        actionType: PlanModelCatalogAnalyticsActionType.OpenPricing,
+        activeCategory,
+        modelCounts: categoryCounts,
+        result: PlanModelCatalogAnalyticsResult.Success,
+        source: PlanModelCatalogAnalyticsSource.CatalogToolbar,
+        visibleModelCount: categoryCounts[activeCategory],
+      });
+    } catch (error) {
+      console.warn('[PlanModelCatalog] renderer failed to open pricing portal:', error);
+      reportPlanModelCatalogAction({
+        actionType: PlanModelCatalogAnalyticsActionType.OpenPricing,
+        activeCategory,
+        errorCode: 'unknown',
+        modelCounts: categoryCounts,
+        result: PlanModelCatalogAnalyticsResult.Failed,
+        source: PlanModelCatalogAnalyticsSource.CatalogToolbar,
+        visibleModelCount: categoryCounts[activeCategory],
+      });
+    }
+  }, [activeCategory, categoryCounts]);
 
   if (loadState.kind === 'loading') {
     return (
@@ -494,7 +549,7 @@ const PlanModelSettingsSection: React.FC = () => {
         </div>
         <button
           type="button"
-          onClick={handleOpenSubscription}
+          onClick={() => { void handleOpenSubscription(); }}
           className="shrink-0 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary-hover active:scale-[0.98]"
         >
           {i18nService.t('planModelCatalogBuyPlan')}

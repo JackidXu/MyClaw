@@ -294,6 +294,28 @@ export const LogReporterActionPrefix = {
   - `isServerModel`：boolean，是否为服务端套餐模型。
 - 隐私边界：不上传 provider API Key、base URL、鉴权类型或其他模型凭证配置。
 
+#### 2.4.6.1 `lobsterai_plan_model_catalog_action`
+
+- 状态：已实现。
+- 触发时机：用户在设置页点击「套餐模型」tab、切换套餐模型分类、点击「购买套餐」并完成外链打开尝试后发送。
+- 事件含义：统计套餐模型入口使用、模型分类浏览偏好和购买套餐入口转化。
+- 业务参数：
+  - `source`：string，触发来源。当前取值包括 `settings_sidebar`、`settings_shortcut`、`settings_plan_model_catalog`。
+  - `actionType`：string，动作类型。当前取值包括 `open_tab`、`category_change`、`open_pricing`。
+  - `previousTab`：string，切换前设置 tab；仅 `open_tab` 时发送。
+  - `targetTab`：string，目标设置 tab；仅 `open_tab` 时发送，当前为 `planModelIntro`。
+  - `activeCategory`：string，触发时当前套餐模型分类。当前取值包括 `text`、`image`、`video`。
+  - `previousCategory`：string，切换前套餐模型分类；仅分类切换时发送。
+  - `targetCategory`：string，目标套餐模型分类；仅分类切换时发送。
+  - `visibleModelCount`：number，触发动作时当前或目标分类下可见模型数量。
+  - `textModelCount` / `imageModelCount` / `videoModelCount`：number，当前目录中各分类模型数量。
+  - `totalModelCount`：number，当前目录模型总数。
+  - `result`：string，动作结果。当前取值为 `success` 或 `failed`；仅 `open_pricing` 时发送。
+  - `errorCode`：string，失败分类。当前取值包括 `open_external_failed`、`unknown`；仅 `open_pricing` 失败时发送。
+- 隐私边界：
+  - 不上传模型 ID、模型展示名称、模型说明、套餐购买 URL、外链打开错误详情或用户账号信息。
+  - 模型目录相关字段只记录分类和数量，用于分析入口与分类浏览行为。
+
 #### 2.4.7 `lobsterai_general_setting_changed`
 
 - 状态：已实现。
