@@ -2,6 +2,7 @@ import type {
   HtmlShareAccessMode,
   HtmlShareConfigurableStatus,
 } from '../../../shared/htmlShare/constants';
+import { normalizePublishingQuotaErrorData } from '../../../shared/publishing/constants';
 import type {
   SiteAnalytics,
   SiteAnalyticsOptions,
@@ -28,10 +29,12 @@ const readResponse = async <T>(response: Response): Promise<SiteResult<T>> => {
   if (response.ok && body?.code === 0 && body.data !== undefined) {
     return { success: true, data: body.data };
   }
+  const quota = normalizePublishingQuotaErrorData(body?.data);
   return {
     success: false,
     code: body?.code ?? response.status,
     error: body?.message || response.statusText || 'Site request failed',
+    ...(quota ? { quota } : {}),
   };
 };
 

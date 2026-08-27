@@ -51,6 +51,7 @@ import {
 } from '../shared/enterpriseAccount/constants';
 import {
   type HtmlShareAccessMode,
+  type HtmlShareAnalyticsInput,
   type HtmlShareConfigurableStatus,
   HtmlShareIpc,
   type HtmlShareSourceType,
@@ -61,6 +62,16 @@ import type {
   KitSkillMetadata,
   ResolvedKitCapabilities,
 } from '../shared/kit/constants';
+import { LibraryIpc } from '../shared/library/constants';
+import type {
+  LibraryArtifactCandidate,
+  LibraryBackfillState,
+  LibraryChangedPayload,
+  LibraryCloudListOptions,
+  LibraryFavoriteInput,
+  LibraryGetLocalItemsInput,
+  LibraryLocalListOptions,
+} from '../shared/library/types';
 import {
   type ListLocalWebServicesOptions,
   type LocalWebService,
@@ -759,7 +770,7 @@ contextBridge.exposeInMainWorld('electron', {
     saveFileCopy: (filePath: string) =>
       ipcRenderer.invoke(DialogIpc.SaveFileCopy, filePath),
     generateThumbnail: (filePath: string) =>
-      ipcRenderer.invoke('dialog:generateThumbnail', filePath),
+      ipcRenderer.invoke(DialogIpc.GenerateThumbnail, filePath),
     showMessageBox: (options: {
       message: string;
       type?: 'none' | 'info' | 'error' | 'question' | 'warning';
@@ -837,12 +848,20 @@ contextBridge.exposeInMainWorld('electron', {
       artifactId?: string;
       filePath?: string;
     }) => ipcRenderer.invoke(HtmlShareIpc.GetByArtifactFile, options),
+    getBySource: (options: {
+      sourceType: HtmlShareSourceType;
+      clientSourceKey: string;
+    }) => ipcRenderer.invoke(HtmlShareIpc.GetBySource, options),
     updateStatus: (options: { shareId: string; status: HtmlShareConfigurableStatus }) =>
       ipcRenderer.invoke(HtmlShareIpc.UpdateStatus, options),
     updateAccessMode: (options: { shareId: string; accessMode: HtmlShareAccessMode }) =>
       ipcRenderer.invoke(HtmlShareIpc.UpdateAccessMode, options),
     disable: (shareId: string) => ipcRenderer.invoke(HtmlShareIpc.Disable, shareId),
     get: (shareId: string) => ipcRenderer.invoke(HtmlShareIpc.Get, shareId),
+    getQuota: () => ipcRenderer.invoke(HtmlShareIpc.GetQuota),
+    getTrialPolicy: () => ipcRenderer.invoke(HtmlShareIpc.GetTrialPolicy),
+    getAnalytics: (options: HtmlShareAnalyticsInput) =>
+      ipcRenderer.invoke(HtmlShareIpc.GetAnalytics, options),
   },
   shareDeployment: {
     detectProjectCandidates: (options: ShareDeploymentDetectCandidatesInput) =>
@@ -878,6 +897,36 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.invoke(SiteIpc.CreateQuotaReservation, input),
     releaseQuotaReservation: (reservationId: string) =>
       ipcRenderer.invoke(SiteIpc.ReleaseQuotaReservation, reservationId),
+  },
+  library: {
+    listLocal: (options: LibraryLocalListOptions = {}) =>
+      ipcRenderer.invoke(LibraryIpc.ListLocal, options),
+    listCloud: (options: LibraryCloudListOptions = {}) =>
+      ipcRenderer.invoke(LibraryIpc.ListCloud, options),
+    getLocalItems: (input: LibraryGetLocalItemsInput) =>
+      ipcRenderer.invoke(LibraryIpc.GetLocalItems, input),
+    getLocalDetail: (itemId: string) =>
+      ipcRenderer.invoke(LibraryIpc.GetLocalDetail, itemId),
+    recordCandidates: (candidates: LibraryArtifactCandidate[]) =>
+      ipcRenderer.invoke(LibraryIpc.RecordCandidates, candidates),
+    addLocalFiles: (filePaths: string[]) =>
+      ipcRenderer.invoke(LibraryIpc.AddLocalFiles, filePaths),
+    setFavorite: (input: LibraryFavoriteInput) =>
+      ipcRenderer.invoke(LibraryIpc.SetFavorite, input),
+    openLocal: (itemId: string) => ipcRenderer.invoke(LibraryIpc.OpenLocal, itemId),
+    revealLocal: (itemId: string) => ipcRenderer.invoke(LibraryIpc.RevealLocal, itemId),
+    repairIndex: () => ipcRenderer.invoke(LibraryIpc.RepairIndex),
+    getIndexStatus: () => ipcRenderer.invoke(LibraryIpc.GetIndexStatus),
+    getBackfillState: () => ipcRenderer.invoke(LibraryIpc.GetBackfillState),
+    setBackfillState: (state: LibraryBackfillState) =>
+      ipcRenderer.invoke(LibraryIpc.SetBackfillState, state),
+    onChanged: (callback: (payload: LibraryChangedPayload) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: LibraryChangedPayload) => {
+        callback(payload);
+      };
+      ipcRenderer.on(LibraryIpc.Changed, handler);
+      return () => ipcRenderer.removeListener(LibraryIpc.Changed, handler);
+    },
   },
   asr: {
     createRealtimeSession: (options: AsrRealtimeSessionRequest) =>

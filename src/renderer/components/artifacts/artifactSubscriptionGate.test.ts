@@ -19,7 +19,7 @@ describe('artifactSubscriptionGate', () => {
     expect(refreshSnapshot).not.toHaveBeenCalled();
   });
 
-  test('uses refreshed auth state before blocking the action', async () => {
+  test('allows a logged-in free user without refreshing auth state', async () => {
     const refreshSnapshot = vi.fn().mockResolvedValue({
       isLoggedIn: true,
       subscriptionStatus: AuthSubscriptionStatus.Active,
@@ -28,10 +28,10 @@ describe('artifactSubscriptionGate', () => {
       isLoggedIn: true,
       subscriptionStatus: AuthSubscriptionStatus.Free,
     }, refreshSnapshot, ArtifactSubscriptionFeature.Share)).resolves.toEqual({ allowed: true });
-    expect(refreshSnapshot).toHaveBeenCalledOnce();
+    expect(refreshSnapshot).not.toHaveBeenCalled();
   });
 
-  test('distinguishes login and subscription blockers', () => {
+  test('blocks logged-out users and allows logged-in personal users', () => {
     expect(getArtifactSubscriptionDecision({
       isLoggedIn: false,
       subscriptionStatus: AuthSubscriptionStatus.Free,
@@ -42,10 +42,8 @@ describe('artifactSubscriptionGate', () => {
     expect(getArtifactSubscriptionDecision({
       isLoggedIn: true,
       subscriptionStatus: AuthSubscriptionStatus.Free,
-    }, ArtifactSubscriptionFeature.Share)).toEqual({
-      allowed: false,
-      reason: ArtifactSubscriptionBlockReason.SubscriptionRequired,
-    });
+      shareEntitled: false,
+    }, ArtifactSubscriptionFeature.Share)).toEqual({ allowed: true });
   });
 
   test('allows enterprise sharing and deployment only from explicit server entitlements', () => {

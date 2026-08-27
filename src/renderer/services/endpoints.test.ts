@@ -57,6 +57,17 @@ test('portal pricing url can include html share keyfrom', () => {
   );
 });
 
+test('portal pricing url can carry a publishing attribution trace', () => {
+  mockTestMode(false);
+
+  expect(getPortalPricingUrl(
+    PortalPricingKeyfrom.SiteDeployment,
+    { traceId: 'attempt-123' },
+  )).toBe(
+    'https://lobsterai.youdao.com/portal#/pricing?keyfrom=site_deployment&trace_id=attempt-123',
+  );
+});
+
 test('enterprise console urls use the selected enterprise context', () => {
   mockTestMode(false);
 

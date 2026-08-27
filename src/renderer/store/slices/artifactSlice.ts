@@ -44,7 +44,7 @@ export interface ArtifactPreviewTab {
   openedAt: number;
 }
 
-interface AddArtifactPayload {
+export interface AddArtifactPayload {
   sessionId: string;
   artifact: Artifact;
   defaultProjectDirectory?: string;
