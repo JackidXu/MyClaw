@@ -633,18 +633,24 @@ export const LogReporterActionPrefix = {
 #### 2.4.28 `lobsterai_account_menu_action`
 
 - 状态：已实现。
-- 触发时机：用户在首页左下角「我的」入口执行主动动作后发送。包括未登录点击登录、已登录打开/关闭账号菜单、展开/收起剩余额度、打开用量概览、打开充值页、打开邀请页、退出登录。
+- 触发时机：用户在首页左下角「我的」入口执行主动动作后发送。包括未登录点击登录、已登录打开/关闭账号菜单、展开/收起剩余额度、打开用量概览、打开充值页、打开套餐升级页、打开邀请页、退出登录。
 - 事件含义：统计账号菜单入口的使用情况和常用路径。
 - 业务参数：
   - `source`：string，触发来源。当前固定为 `home_account_menu`。
-  - `actionType`：string，动作类型。当前取值包括 `login`、`open_menu`、`close_menu`、`expand_credits`、`collapse_credits`、`open_usage_overview`、`open_recharge`、`open_invitation`、`logout`。
+  - `actionType`：string，动作类型。当前取值包括 `login`、`open_menu`、`close_menu`、`retry_profile_summary`、`open_credits_detail`、`expand_credits`、`collapse_credits`、`open_usage_overview`、`open_recharge`、`open_plan_upgrade`、`open_invitation`、`open_credits_reset_campaign`、`open_credits_final_reward`、`logout`。
   - `result`：string，动作结果。当前取值为 `success` 或 `failed`；仅登录、打开外链和退出登录等异步动作发送。
   - `isLoggedIn`：boolean，触发动作时是否处于登录态。
   - `hasCredits`：boolean，当前账号摘要中是否存在额度明细。
   - `creditItemCount`：number，当前账号摘要中的额度明细数量。
+  - `accountMode`：string，当前账号模式。当前取值为 `personal`、`enterprise` 或 `unknown`；当前仅套餐升级入口发送。
+  - `subscriptionStatus`：string，当前订阅状态。当前取值沿用账号 quota，例如 `free`、`active`、`enterprise`；当前仅套餐升级入口发送。
+  - `planTier`：string，当前套餐档位的规范化枚举。当前取值包括 `basic`、`standard`、`advanced`、`professional`、`excellent`、`enterprise`、`unknown`；当前仅套餐升级入口发送。
+  - `hasSubscriptionPlan`：boolean，当前账号摘要中是否存在 `subscription` 类型权益；当前仅套餐升级入口发送。
+  - `canUpgrade`：boolean，当前展示状态下是否允许继续升级；当前仅套餐升级入口发送。
 - 隐私边界：
-  - 不上传手机号、手机号后四位、昵称、头像 URL、具体剩余额度数值、额度明细 label、额度类型、到期时间、Portal URL、登录 URL 或退出登录错误详情。
+  - 不上传手机号、手机号后四位、昵称、头像 URL、具体剩余额度数值、额度明细 label、套餐展示文案、套餐到期时间、Portal URL、登录 URL 或退出登录错误详情。
   - 额度相关字段只记录是否有额度明细和明细数量，不记录资产金额。
+  - 套餐相关字段只记录规范化档位、订阅状态和是否可升级，不记录用户可见套餐名称或权益明细。
 
 #### 2.4.29 `lobsterai_sidebar_action`
 
