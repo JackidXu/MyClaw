@@ -462,8 +462,6 @@ contextBridge.exposeInMainWorld('electron', {
       secondBrainEnabled?: boolean;
       imageAttachments?: Array<{ name: string; mimeType: string; base64Data: string; sizeBytes?: number; localPath?: string; previewMimeType?: string; previewBase64Data?: string }>;
       mediaSelection?: { mode: string; modelId?: string; modelName?: string; imageModelId?: string; videoModelId?: string }; mediaReferences?: Array<{ token: string; mediaType: string; index: number; fileId: string; fileName: string; mimeType: string; localPath?: string; remoteUrl?: string; dataUrl?: string; role?: string }>;
-      /** 第二大脑工具定义列表 */
-      fmpTools?: Array<{ type: 'function'; function: { name: string; description: string; parameters: unknown } }>;
       /** 第二大脑认证头，供主进程调用 retrieve 接口 */
       fmpAuthHeaders?: { Authorization?: string };
     }) => ipcRenderer.invoke('cowork:session:start', options),
@@ -740,6 +738,11 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.on(CoworkIpcChannel.OpenSessionFromNotification, handler);
       return () => ipcRenderer.removeListener(CoworkIpcChannel.OpenSessionFromNotification, handler);
     },
+  },
+  secondBrain: {
+    /** \u6ce8\u518c\u5de5\u5177\u5217\u8868\uff08App \u7ea7\uff0c\u5e94\u7528\u521d\u59cb\u5316\u65f6\u8c03\u7528\u4e00\u6b21\uff09 */
+    registerTools: (tools: Array<{ type: 'function'; function: { name: string; description: string; parameters: unknown } }>) =>
+      ipcRenderer.invoke('second-brain:register-tools', tools),
   },
   dialog: {
     selectDirectory: () => ipcRenderer.invoke('dialog:selectDirectory'),

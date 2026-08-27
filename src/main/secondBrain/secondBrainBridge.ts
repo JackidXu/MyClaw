@@ -27,13 +27,6 @@ export interface FmpRetrievePayload {
   document?: string;
 }
 
-interface ApiResponse<T> {
-  status?: string;
-  code?: number;
-  data?: T;
-  message?: string;
-}
-
 const LAYER_NAME_MAP: Record<number, string> = {
   0: '思维模型',
   1: '价值观念',
@@ -53,22 +46,26 @@ export interface FmpToolDefinition {
   };
 }
 
-// 存储全局或 session 维度的认证头与工具定义
+// 存储应用级工具列表（应用初始化时加载一次）
 let latestAuthHeaders: FmpAuthHeaders = {};
 const authHeadersBySessionKey = new Map<string, FmpAuthHeaders>();
-let latestToolDefinition: FmpToolDefinition | null = null;
+let latestToolDefinitions: FmpToolDefinition[] = [];
 
+/** 更新应用级工具列表（完全动态，不感知具体工具名） */
 export function updateSecondBrainToolDefinitions(tools?: FmpToolDefinition[] | null): void {
   if (Array.isArray(tools) && tools.length > 0) {
-    const retrieveTool = tools.find(t => t.function?.name === 'retrieve_fmp') || tools[0];
-    if (retrieveTool) {
-      latestToolDefinition = retrieveTool;
-    }
+    latestToolDefinitions = tools;
   }
 }
 
+/** 获取应用级工具列表 */
+export function getSecondBrainToolDefinitions(): FmpToolDefinition[] {
+  return latestToolDefinitions;
+}
+
+/** 获取第一个工具定义（兼容旧调用方） */
 export function getSecondBrainToolDefinition(): FmpToolDefinition | null {
-  return latestToolDefinition;
+  return latestToolDefinitions[0] ?? null;
 }
 
 export function updateSecondBrainAuthHeaders(sessionKey: string | null, headers: FmpAuthHeaders): void {
@@ -81,7 +78,6 @@ export function updateSecondBrainAuthHeaders(sessionKey: string | null, headers:
 }
 
 export function getSecondBrainAuthHeaders(sessionKey?: string): FmpAuthHeaders {
-
   if (sessionKey) {
     if (authHeadersBySessionKey.has(sessionKey)) {
       return authHeadersBySessionKey.get(sessionKey)!;
@@ -96,11 +92,10 @@ export function getSecondBrainAuthHeaders(sessionKey?: string): FmpAuthHeaders {
   return latestAuthHeaders;
 }
 
-
-function getRetrieveBaseUrl(): string {
+function getAdminClawBaseUrl(): string {
   return app.isPackaged
-    ? 'https://zhike.banchengyun.com'
-    : 'https://dev-zhike.banchengyun.com';
+    ? 'https://admin.claw.chaohui.ai'
+    : 'http://localhost:8082';
 }
 
 /** 动态格式化检索结果回填大模型 */
@@ -131,48 +126,44 @@ export function formatRetrieveResultToDocument(data: FmpRetrievePayload): string
   return sections.join('\n\n');
 }
 
-/** 执行 /fmp/retrieve 接口调用（供 MCP bridge server 使用） */
+/**
+ * 统一工具执行入口：将 OpenClaw 工具调用转发到 admin-claw 的统一端点
+ * admin-claw 负责按工具名路由到对应的 PHP 接口
+ * 新增工具时只需在 admin-claw server.js 中添加 case，客户端无需改动
+ */
 export async function executeSecondBrainRetrieve(options: {
   query: string;
   topK?: number;
+  layer?: number;
   sessionKey?: string;
 }): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
-  return callPhpSecondBrainRetrieve(options.query, options.topK ?? 3, options.sessionKey) as Promise<{
-    content: Array<{ type: 'text'; text: string }>;
-    isError?: boolean;
-  }>;
-}
+  const adminBaseUrl = getAdminClawBaseUrl();
+  // 工具名从动态列表中取第一个，若列表为空则回退到历史默认值
+  const toolName = latestToolDefinitions[0]?.function?.name ?? 'retrieve_fmp';
+  const auth = getSecondBrainAuthHeaders(options.sessionKey);
+  const authVal = auth.Authorization || auth.authorization;
 
-/**
- * 直接调用 PHP 第二大脑 RAG 检索接口
- * 供 OpenClaw retrieve_fmp / retrieve-fmp 工具在沙箱内通过 IPC 代理调用
- */
-export async function callPhpSecondBrainRetrieve(
-  query: string,
-  topK: number = 3,
-  sessionKey?: string
-): Promise<{ content: Array<{ type: string; text: string }>; isError?: boolean }> {
-  const phpBaseUrl = getRetrieveBaseUrl();
-  const apiPath = '/api/chaohuixie/claw/fmp/retrieve';
-  const fullUrl = `${phpBaseUrl}${apiPath}`;
-
-  const auth = getSecondBrainAuthHeaders(sessionKey);
-  const parsedUrl = nodeUrl.parse(fullUrl);
-  const isHttps = parsedUrl.protocol === 'https:';
-  const body = JSON.stringify({ query, topK });
-
-  const hostname = parsedUrl.hostname ?? '';
-  const port = parsedUrl.port
-    ? parseInt(parsedUrl.port, 10)
-    : (isHttps ? 443 : 80);
+  const body = JSON.stringify({
+    name: toolName,
+    arguments: {
+      query: options.query,
+      ...(options.topK !== undefined ? { topK: options.topK } : {}),
+      ...(options.layer !== undefined ? { layer: options.layer } : {}),
+    },
+  });
 
   return new Promise((resolve) => {
+    const parsedUrl = nodeUrl.parse(`${adminBaseUrl}/api/client/fmp/tool/execute`);
+    const isHttps = parsedUrl.protocol === 'https:';
+    const hostname = parsedUrl.hostname ?? '';
+    const port = parsedUrl.port
+      ? parseInt(parsedUrl.port, 10)
+      : (isHttps ? 443 : 80);
+
     const reqHeaders: Record<string, string | number> = {
       'Content-Type': 'application/json',
       'Content-Length': Buffer.byteLength(body),
     };
-
-    const authVal = auth.Authorization || auth.authorization;
     if (authVal) {
       reqHeaders['Authorization'] = authVal;
     }
@@ -180,7 +171,7 @@ export async function callPhpSecondBrainRetrieve(
     const reqOptions: http.RequestOptions = {
       hostname,
       port,
-      path: apiPath,
+      path: '/api/client/fmp/tool/execute',
       method: 'POST',
       headers: reqHeaders,
     };
@@ -192,12 +183,12 @@ export async function callPhpSecondBrainRetrieve(
       res.on('end', () => {
         try {
           const raw = Buffer.concat(chunks).toString('utf-8');
-          const parsed = JSON.parse(raw) as ApiResponse<FmpRetrievePayload>;
+          const parsed = JSON.parse(raw) as { success: boolean; data?: FmpRetrievePayload; error?: string };
 
-          if (parsed.status !== 'success' || parsed.code !== 1) {
-            console.warn('[SecondBrainBridge] retrieve API business failure:', parsed.message || raw);
+          if (!parsed.success) {
+            console.warn('[SecondBrainBridge] tool execute failed:', parsed.error || raw);
             resolve({
-              content: [{ type: 'text', text: `第二大脑检索返回异常: ${parsed.message || '业务错误'}` }],
+              content: [{ type: 'text', text: `第二大脑检索返回异常: ${parsed.error || '业务错误'}` }],
               isError: true,
             });
             return;
@@ -208,7 +199,7 @@ export async function callPhpSecondBrainRetrieve(
             content: [{ type: 'text', text: formattedText }],
           });
         } catch (parseErr) {
-          console.error('[SecondBrainBridge] failed to parse retrieve API response:', parseErr);
+          console.error('[SecondBrainBridge] failed to parse tool execute response:', parseErr);
           resolve({
             content: [{ type: 'text', text: `解析第二大脑检索响应失败: ${parseErr instanceof Error ? parseErr.message : String(parseErr)}` }],
             isError: true,

@@ -881,7 +881,6 @@ interface IElectronAPI {
       mediaSelection?: { mode: string; modelId?: string; modelName?: string; imageModelId?: string; videoModelId?: string };
       mediaReferences?: Array<{ token: string; mediaType: string; index: number; fileId: string; fileName: string; mimeType: string; localPath?: string; remoteUrl?: string; dataUrl?: string; role?: string }>;
       fmpAuthHeaders?: { Authorization?: string };
-      fmpTools?: Array<{ type: 'function'; function: { name: string; description: string; parameters: unknown } }>;
     }) => Promise<{
       success: boolean;
       session?: CoworkSession;
@@ -904,7 +903,6 @@ interface IElectronAPI {
       mediaSelection?: { mode: string; modelId?: string; modelName?: string; imageModelId?: string; videoModelId?: string };
       mediaReferences?: Array<{ token: string; mediaType: string; index: number; fileId: string; fileName: string; mimeType: string; localPath?: string; remoteUrl?: string; dataUrl?: string; role?: string }>;
       fmpAuthHeaders?: { Authorization?: string };
-      fmpTools?: Array<{ type: 'function'; function: { name: string; description: string; parameters: unknown } }>;
     }) => Promise<{
       success: boolean;
       session?: CoworkSession;
@@ -1193,6 +1191,10 @@ interface IElectronAPI {
     onSessionModelOverrideChanged?: (
       callback: (data: { sessionId: string; modelOverride: string }) => void,
     ) => () => void;
+  };
+  secondBrain: {
+    /** 注册工具列表（App 级，应用初始化时调用一次） */
+    registerTools: (tools: Array<{ type: 'function'; function: { name: string; description: string; parameters: unknown } }>) => Promise<{ success: boolean; error?: string }>;
   };
   dialog: {
     selectDirectory: () => Promise<{ success: boolean; path: string | null }>;

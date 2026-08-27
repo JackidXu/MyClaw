@@ -43,7 +43,7 @@ import type { DiscordInstanceConfig, IMSettings, TelegramInstanceConfig } from '
 import type { DingTalkInstanceConfig, EmailMultiInstanceConfig, FeishuInstanceConfig, NeteaseBeeChanConfig, NimInstanceConfig, PopoInstanceConfig, QQInstanceConfig, WecomInstanceConfig, WeixinOpenClawConfig } from '../im/types';
 import { OpenClawSessionKeepAlive } from '../openclawSessionPolicy/constants';
 import { buildOpenClawSessionConfig } from '../openclawSessionPolicy/store';
-import { getSecondBrainToolDefinition } from '../secondBrain/secondBrainBridge';
+import { getSecondBrainToolDefinitions } from '../secondBrain/secondBrainBridge';
 import {
   getAllServerModelMetadata,
   listProviderSourceEntries,
@@ -2745,14 +2745,18 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
     if (hasSecondBrainPlugin && secondBrainCallbackUrl && managedConfig.plugins) {
       const plugins = managedConfig.plugins as Record<string, unknown>;
       const entries = plugins.entries as Record<string, Record<string, unknown>>;
-      const dynamicTool = getSecondBrainToolDefinition();
+      const dynamicTools = getSecondBrainToolDefinitions();
       entries['second-brain'] = {
         enabled: true,
         config: {
           callbackUrl: secondBrainCallbackUrl,
           secret: '${LOBSTER_MCP_BRIDGE_SECRET}',
           requestTimeoutMs: 60000,
-          ...(dynamicTool ? { tool: dynamicTool.function } : {}),
+          // 优先传 tools 数组，单个工具时也传 tool 字段保持向后兼容
+          ...(dynamicTools.length > 0 ? {
+            tools: dynamicTools.map(t => t.function),
+            tool: dynamicTools[0].function,
+          } : {}),
         },
       };
     }

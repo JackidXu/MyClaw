@@ -8948,8 +8948,6 @@ if (!gotTheLock) {
         mediaReferences?: MediaAttachmentRefMain[];
         selectedTextSnippets?: CoworkSelectedTextSnippet[];
         browserAnnotations?: CoworkBrowserAnnotationMessageBatch[];
-        /** 第二大脑工具定义列表 */
-        fmpTools?: Array<{ type: 'function'; function: { name: string; description: string; parameters: unknown } }>;
         /** 第二大脑认证头 */
         fmpAuthHeaders?: { Authorization?: string };
       },
@@ -9053,11 +9051,6 @@ if (!gotTheLock) {
         if (options.fmpAuthHeaders) {
           updateSecondBrainAuthHeaders(session.id, options.fmpAuthHeaders);
         }
-
-        if (options.fmpTools) {
-          updateSecondBrainToolDefinitions(options.fmpTools);
-        }
-
 
 
         if (options.modelOverride) {
@@ -9185,6 +9178,20 @@ if (!gotTheLock) {
           success: false,
           error: error instanceof Error ? error.message : 'Failed to start session',
         };
+      }
+    },
+  );
+
+  // 第二大脑工具注册（App 级，应用初始化时调用一次）
+  ipcMain.handle(
+    'second-brain:register-tools',
+    (_event, tools: Array<{ type: 'function'; function: { name: string; description: string; parameters: unknown } }>) => {
+      try {
+        updateSecondBrainToolDefinitions(tools);
+        return { success: true };
+      } catch (error) {
+        console.error('[SecondBrain] failed to register tools:', error);
+        return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
       }
     },
   );

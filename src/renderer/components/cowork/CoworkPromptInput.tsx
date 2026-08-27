@@ -58,7 +58,6 @@ import {
   LogReporterEntry,
   reportYdAnalyzer,
 } from '../../services/logReporter';
-import type { FmpTool } from '../../services/secondBrainApi';
 import { resolveLocalizedText, skillService } from '../../services/skill';
 import { vipService } from '../../services/vipService';
 import { RootState } from '../../store';
@@ -425,7 +424,6 @@ interface CoworkPromptInputProps {
     selectedTextSnippets?: CoworkSelectedTextSnippet[],
     browserAnnotations?: CoworkBrowserAnnotationMessageBatch[],
     collaborationMode?: CoworkCollaborationMode,
-    fmpTools?: FmpTool[],
   ) => boolean | void | Promise<boolean | void>;
 
   onStop?: () => void | Promise<void>;

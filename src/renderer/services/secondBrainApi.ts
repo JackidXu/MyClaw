@@ -298,7 +298,7 @@ export async function reExtractDocument(documentId: number): Promise<void> {
   await post<unknown>('/fmp/document/reExtract', { documentId });
 }
 
-/** /fmp/inject 返回的工具函数定义 */
+/** 工具函数定义（来自 /fmp/injectTools） */
 export interface FmpToolFunction {
   name: string;
   description: string;
@@ -309,22 +309,28 @@ export interface FmpToolFunction {
   };
 }
 
-/** /fmp/inject 返回的工具项 */
+/** 工具项（来自 /fmp/injectTools） */
 export interface FmpTool {
   type: 'function';
   function: FmpToolFunction;
 }
 
-/** /fmp/inject v2 响应数据结构 */
-export interface FmpInjectionResult {
+/** /fmp/injectPrompt 响应数据结构（会话级，每次新会话调用） */
+export interface FmpPromptResult {
   /** 精简后的认知注入提示词 */
   prompt: string;
-  /** 需要注册给大模型的工具列表 */
-  tools: FmpTool[];
   /** 数据版本号 */
   version?: number;
   /** 是否来自后端缓存 */
   cached?: boolean;
+}
+
+/** /fmp/injectTools 响应数据结构（应用级，启动时一次性加载） */
+export interface FmpToolsResult {
+  /** 需要注册给大模型的工具列表 */
+  tools: FmpTool[];
+  /** 数据版本号 */
+  version?: number;
 }
 
 /** /fmp/retrieve 返回的单条认知节点 */
@@ -358,31 +364,42 @@ export interface FmpRetrieveResult {
   document: string;
 }
 
-/** 获取认知注入数据（GET /fmp/inject） */
-export async function fetchCognitionInjection(): Promise<FmpInjectionResult> {
+/** 获取会话级认知注入提示词（GET /fmp/injectPrompt，每次新会话调用） */
+export async function fetchCognitionPrompt(): Promise<FmpPromptResult> {
   try {
-    const res = await get<FmpInjectionResult | { prompt?: string; version?: number } | string>('/fmp/inject');
-    if (typeof res === 'string') {
-      return { prompt: res, tools: [] };
-    }
-    if (typeof res === 'object' && res !== null) {
-      const obj = res as Record<string, unknown>;
-      return {
-        prompt: typeof obj.prompt === 'string' ? obj.prompt : '',
-        tools: Array.isArray(obj.tools) ? (obj.tools as FmpTool[]) : [],
-        version: typeof obj.version === 'number' ? obj.version : undefined,
-        cached: typeof obj.cached === 'boolean' ? obj.cached : undefined,
-      };
-    }
-    return { prompt: '', tools: [] };
+    const res = await get<FmpPromptResult>('/fmp/injectPrompt');
+    return {
+      prompt: typeof res.prompt === 'string' ? res.prompt : '',
+      version: res.version,
+      cached: res.cached,
+    };
   } catch (err) {
-    console.warn('[SecondBrain] fetchCognitionInjection error:', err);
-    return { prompt: '', tools: [] };
+    console.warn('[SecondBrain] fetchCognitionPrompt error:', err);
+    return { prompt: '' };
   }
 }
 
-/** RAG 检索（POST /fmp/retrieve） */
-export async function retrieveFmp(params: { query: string; topK?: number }): Promise<FmpRetrieveResult> {
+/** 获取应用级工具列表（GET /fmp/injectTools，应用初始化时调用一次） */
+export async function fetchCognitionTools(): Promise<FmpToolsResult> {
+  try {
+    const res = await get<FmpToolsResult>('/fmp/injectTools');
+    return {
+      tools: Array.isArray(res.tools) ? res.tools : [],
+      version: res.version,
+    };
+  } catch (err) {
+    console.warn('[SecondBrain] fetchCognitionTools error:', err);
+    return { tools: [] };
+  }
+}
+
+/**
+ * RAG 检索（POST /fmp/retrieve）
+ * @param query 检索查询词
+ * @param topK 返回条数
+ * @param layer 层级筛选：0=思维模型 1=价值观念 2=决策规则 3=工作方式 4=行业知识 5=经验提炼 6=语言习惯，不传则检索全部层级
+ */
+export async function retrieveFmp(params: { query: string; topK?: number; layer?: number }): Promise<FmpRetrieveResult> {
   return post<FmpRetrieveResult>('/fmp/retrieve', params);
 }
 
@@ -421,14 +438,14 @@ export interface UpdatePersonaParams {
   positioning?: string;
 }
 
-/** 获取人设详情 (GET /persona/detail) */
+/** 获取人设详情 (GET /fmp/persona/detail) */
 export async function fetchPersonaDetail(): Promise<PersonaData | null> {
-  return get<PersonaData | null>('/persona/detail');
+  return get<PersonaData | null>('/fmp/persona/detail');
 }
 
-/** 更新人设信息 (POST /persona/update) */
+/** 更新人设信息 (POST /fmp/persona/update) */
 export async function updatePersona(params: UpdatePersonaParams): Promise<void> {
-  await post<unknown>('/persona/update', params);
+  await post<unknown>('/fmp/persona/update', params);
 }
 
 export const secondBrainApi = {
@@ -444,7 +461,8 @@ export const secondBrainApi = {
   deleteDocument,
   deleteChat,
   reExtractDocument,
-  fetchCognitionInjection,
+  fetchCognitionPrompt,
+  fetchCognitionTools,
   retrieveFmp,
   reportChatSession,
   fetchPersonaDetail,
