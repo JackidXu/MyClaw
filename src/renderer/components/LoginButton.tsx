@@ -679,6 +679,8 @@ const LoginButton: React.FC<LoginButtonProps> = ({
       });
       return;
     }
+    const loginVariant = useSidebarPromoLogin ? 'sidebar_promo' : 'default';
+    writeAccountMenuRendererLog('debug', `login requested variant=${loginVariant}`);
     try {
       await authService.login();
       reportAccountMenuAction('login', {
@@ -686,6 +688,7 @@ const LoginButton: React.FC<LoginButtonProps> = ({
         result: 'success',
       });
     } catch (error) {
+      writeAccountMenuRendererLog('warn', `login request failed variant=${loginVariant}`);
       reportAccountMenuAction('login', {
         isLoggedIn: false,
         result: 'failed',
@@ -729,7 +732,7 @@ const LoginButton: React.FC<LoginButtonProps> = ({
         onClick={handleClick}
         className={
           useSidebarPromoLogin
-            ? 'inline-flex h-7 w-[5.25rem] shrink-0 items-center justify-center rounded-md bg-black px-2.5 text-[13px] font-medium text-white shadow-sm transition-colors hover:bg-black/85 dark:bg-white dark:text-black dark:hover:bg-white/85 cursor-pointer'
+            ? 'sidebar-login-rainbow inline-flex h-7 w-[5.25rem] shrink-0 cursor-pointer items-center justify-center rounded-md px-2.5 text-[13px] font-medium transition-[filter,transform]'
             : 'inline-flex h-7 items-center justify-start gap-2 rounded-md px-1.5 text-sm font-normal text-foreground/80 transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.04] cursor-pointer'
         }
       >
