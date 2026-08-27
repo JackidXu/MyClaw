@@ -25,6 +25,7 @@ import { expertService } from '../../services/expertService';
 import { i18nService } from '../../services/i18n';
 import { quickActionService } from '../../services/quickAction';
 import { fetchCognitionPrompt, fetchCognitionTools, type FmpTool } from '../../services/secondBrainApi';
+import { vipService } from '../../services/vipService';
 import { RootState } from '../../store';
 import {
   selectCoworkConfig,
@@ -233,11 +234,11 @@ const CoworkView: React.FC<CoworkViewProps> = ({
     isHomeView,
   ]);
 
-  // App 级工具注册：第二大脑开关开启时一次性加载工具列表
+  // App 级工具注册：具有第二大脑权限且开关开启时一次性加载工具列表
   // 使用 ref 防止重复请求
   const secondBrainToolsRegisteredRef = useRef(false);
   useEffect(() => {
-    if (!homeDraftSecondBrainEnabled || secondBrainToolsRegisteredRef.current) return;
+    if (!homeDraftSecondBrainEnabled || !vipService.hasSecondBrainPermission() || secondBrainToolsRegisteredRef.current) return;
     secondBrainToolsRegisteredRef.current = true;
     fetchCognitionTools().then((result) => {
       if (result.tools.length > 0) {
@@ -503,8 +504,9 @@ const CoworkView: React.FC<CoworkViewProps> = ({
       dispatch(setDraftSkillIds({ draftKey: '__home__', skillIds: [] }));
       dispatch(clearSelection());
       let finalSkillPrompt = skillPrompt;
+      const isSecondBrainEffective = homeDraftSecondBrainEnabled && vipService.hasSecondBrainPermission();
       // 认知注入只在 Session 首次创建（新会话第一条消息）时触发，避免多轮对话 systemPrompt 频繁变化破坏 Prompt Cache
-      if (homeDraftSecondBrainEnabled) {
+      if (isSecondBrainEffective) {
         try {
           const injection = await fetchCognitionPrompt();
           if (injection.prompt?.trim()) {
@@ -540,13 +542,13 @@ const CoworkView: React.FC<CoworkViewProps> = ({
         agentId: currentAgentId,
         modelOverride: sessionModelOverride,
         thinkingLevel: currentAgentThinkingLevel,
-        secondBrainEnabled: homeDraftSecondBrainEnabled,
+        secondBrainEnabled: isSecondBrainEffective,
         imageAttachments,
         mediaSelection: mediaSelection && mediaSelection.mode !== 'none' ? mediaSelection : undefined,
         mediaReferences,
         selectedTextSnippets,
         browserAnnotations,
-        fmpAuthHeaders: homeDraftSecondBrainEnabled
+        fmpAuthHeaders: isSecondBrainEffective
           ? { Authorization: `Bearer ${localStorage.getItem('heyclaw_session') ?? ''}` }
           : undefined,
       });

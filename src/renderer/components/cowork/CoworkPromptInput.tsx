@@ -549,9 +549,17 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     const [showVoiceLoginPrompt, setShowVoiceLoginPrompt] = useState(false);
     const [showVoiceQuotaPrompt, setShowVoiceQuotaPrompt] = useState(false);
     const [isLargeToolbarCompact, setIsLargeToolbarCompact] = useState(false);
-    // While the input holds quick-action template text, pin the textarea to
-    // maxHeight so switching templates doesn't bounce the layout around it.
     const [isTemplateHeightLocked, setIsTemplateHeightLocked] = useState(false);
+    const [hasSecondBrainPermission, setHasSecondBrainPermission] = useState<boolean>(() => vipService.hasSecondBrainPermission());
+
+    useEffect(() => {
+      const unsubscribe = vipService.subscribe((state) => {
+        const granted = state.authorized && state.permissions.includes('secondBrain');
+        setHasSecondBrainPermission(granted);
+      });
+      return unsubscribe;
+    }, []);
+
     const currentSessionSecondBrainEnabled = useSelector((state: RootState) => (
       sessionId && state.cowork.currentSession?.id === sessionId
         ? state.cowork.currentSession.secondBrainEnabled
@@ -560,7 +568,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     const draftSecondBrainEnabled = useSelector((state: RootState) => (
       state.cowork.draftSecondBrainEnabled[draftKey]
     ));
-    const secondBrainEnabled = currentSessionSecondBrainEnabled ?? draftSecondBrainEnabled ?? true;
+    const secondBrainEnabled = hasSecondBrainPermission && (currentSessionSecondBrainEnabled ?? draftSecondBrainEnabled ?? true);
 
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const draftKeyRef = useRef(draftKey);
@@ -3148,44 +3156,47 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     </button>
   );
 
-  const renderSecondBrainToggle = () => (
-    <div className="relative group ml-auto flex shrink-0 items-center">
-      <div className="inline-flex items-center gap-1.5 rounded-full bg-background px-3 py-1 text-xs text-foreground border border-border/40 shadow-xs transition-colors hover:border-border">
-        <BrainIcon className="h-3.5 w-3.5 text-primary shrink-0" />
-        <span className="font-medium select-none text-[12px] text-foreground">我的第二大脑</span>
-        <button
-          type="button"
-          role="switch"
-          disabled={sessionHasMessages}
-          aria-checked={secondBrainEnabled}
-          onClick={(e) => {
-            e.stopPropagation();
-            if (sessionHasMessages) return;
-            const nextValue = !secondBrainEnabled;
-            dispatch(setDraftSecondBrainEnabled({ draftKey, enabled: nextValue }));
-          }}
-          className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-            sessionHasMessages
-              ? 'cursor-not-allowed opacity-50'
-              : 'cursor-pointer'
-          } ${
-            secondBrainEnabled ? 'bg-primary' : 'bg-neutral-300 dark:bg-neutral-700'
-          }`}
-        >
-          <span
-            className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
-              secondBrainEnabled ? 'translate-x-4' : 'translate-x-0'
+  const renderSecondBrainToggle = () => {
+    if (!hasSecondBrainPermission) return null;
+    return (
+      <div className="relative group ml-auto flex shrink-0 items-center">
+        <div className="inline-flex items-center gap-1.5 rounded-full bg-background px-3 py-1 text-xs text-foreground border border-border/40 shadow-xs transition-colors hover:border-border">
+          <BrainIcon className="h-3.5 w-3.5 text-primary shrink-0" />
+          <span className="font-medium select-none text-[12px] text-foreground">我的第二大脑</span>
+          <button
+            type="button"
+            role="switch"
+            disabled={sessionHasMessages}
+            aria-checked={secondBrainEnabled}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (sessionHasMessages) return;
+              const nextValue = !secondBrainEnabled;
+              dispatch(setDraftSecondBrainEnabled({ draftKey, enabled: nextValue }));
+            }}
+            className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+              sessionHasMessages
+                ? 'cursor-not-allowed opacity-50'
+                : 'cursor-pointer'
+            } ${
+              secondBrainEnabled ? 'bg-primary' : 'bg-neutral-300 dark:bg-neutral-700'
             }`}
-          />
-        </button>
-      </div>
+          >
+            <span
+              className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                secondBrainEnabled ? 'translate-x-4' : 'translate-x-0'
+              }`}
+            />
+          </button>
+        </div>
 
-      {/* Hover Tooltip */}
-      <div className="pointer-events-none absolute right-0 bottom-full mb-2 z-30 whitespace-nowrap rounded-xl bg-black/90 dark:bg-black px-3.5 py-2 text-xs font-medium text-white shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200">
-        启用后，AI 将结合你的长期认知、思考方式和决策习惯回答问题
+        {/* Hover Tooltip */}
+        <div className="pointer-events-none absolute right-0 bottom-full mb-2 z-30 whitespace-nowrap rounded-xl bg-black/90 dark:bg-black px-3.5 py-2 text-xs font-medium text-white shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200">
+          启用后，AI 将结合你的长期认知、思考方式和决策习惯回答问题
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const largeSendButton = voiceRecordingUiState.showTaskStopButton
     ? largeTaskStopButton

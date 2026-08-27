@@ -92,6 +92,7 @@ import {
 } from './coworkSessionRefreshPolicy';
 import { i18nService } from './i18n';
 import { reportChatSession } from './secondBrainApi';
+import { vipService } from './vipService';
 
 const STREAM_ERROR_DUPLICATE_WINDOW_MS = 10_000;
 
@@ -2347,10 +2348,10 @@ class CoworkService {
         const res = await window.electron.cowork.getSession(sessionId);
         session = res?.session ?? null;
       }
-      const enabled = session?.secondBrainEnabled ?? true;
+      const enabled = (session?.secondBrainEnabled ?? true) && vipService.hasSecondBrainPermission();
 
       if (!enabled) {
-        console.debug('[SecondBrain] 对话上报未开启（该 Session 开关关闭）');
+        console.debug('[SecondBrain] 对话上报未开启（该 Session 开关关闭或无第二大脑权限）');
         return;
       }
 

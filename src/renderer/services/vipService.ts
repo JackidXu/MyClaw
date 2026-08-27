@@ -15,6 +15,7 @@ export interface VipSubscription {
 export interface VipStatusState {
   authorized: boolean;
   subscriptions: VipSubscription[];
+  permissions: string[];
   reason?: 'session_expired' | 'device_limit' | 'user_mismatch' | string;
   loading: boolean;
   lastUpdated: number;
@@ -26,6 +27,7 @@ class VipService {
   private state: VipStatusState = {
     authorized: false,
     subscriptions: [],
+    permissions: [],
     loading: false,
     lastUpdated: 0,
   };
@@ -67,6 +69,15 @@ class VipService {
     return requiredExpert.some(expertId => this.isExpertUnlocked(expertId));
   }
 
+  public isPermissionGranted(permissionId: string): boolean {
+    if (!this.state.authorized) return false;
+    return this.state.permissions.includes(permissionId);
+  }
+
+  public hasSecondBrainPermission(): boolean {
+    return this.isPermissionGranted('secondBrain');
+  }
+
   public async refreshStatus(): Promise<VipStatusState> {
     const session = localStorage.getItem('heyclaw_session');
 
@@ -74,6 +85,7 @@ class VipService {
       this.state = {
         authorized: false,
         subscriptions: [],
+        permissions: [],
         loading: false,
         lastUpdated: Date.now(),
       };
@@ -95,6 +107,7 @@ class VipService {
         authorized?: boolean;
         reason?: string;
         subscriptions?: VipSubscription[];
+        permissions?: string[];
       }>(`${adminBaseUrl}/api/vip/status`, {
         deviceId: deviceInfo.deviceId,
         platform: deviceInfo.platform,
@@ -107,6 +120,7 @@ class VipService {
           this.state = {
             authorized: true,
             subscriptions: data.subscriptions || [],
+            permissions: data.permissions || [],
             loading: false,
             lastUpdated: Date.now(),
           };
@@ -114,6 +128,7 @@ class VipService {
           this.state = {
             authorized: false,
             subscriptions: [],
+            permissions: [],
             reason: data.reason,
             loading: false,
             lastUpdated: Date.now(),
@@ -128,6 +143,7 @@ class VipService {
           ...this.state,
           authorized: false,
           subscriptions: [],
+          permissions: [],
           loading: false,
           lastUpdated: Date.now(),
         };

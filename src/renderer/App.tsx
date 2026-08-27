@@ -812,6 +812,10 @@ const App: React.FC = () => {
 
 
   const handleShowSecondBrain = useCallback(() => {
+    if (!vipService.hasSecondBrainPermission()) {
+      setMainView('cowork');
+      return;
+    }
     setMainView('secondBrain');
   }, []);
 

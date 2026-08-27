@@ -11,6 +11,7 @@ import { httpClient } from '../services/httpClient';
 import { i18nService } from '../services/i18n';
 import { LogReporterAction, reportYdAnalyzer } from '../services/logReporter';
 import { fetchCognitionStats } from '../services/secondBrainApi';
+import { vipService } from '../services/vipService';
 import { RootState } from '../store';
 import {
   selectCoworkSessions,
@@ -192,13 +193,28 @@ const Sidebar: React.FC<SidebarProps> = ({
   const [isBatchMode, setIsBatchMode] = useState(false);
   const [pendingCognitionCount, setPendingCognitionCount] = useState<number>(0);
 
-  /** 加载待确认认知数，用于侧边栏徽章显示（初始化请求一次，后续通过事件精准更新） */
+  const [hasSecondBrain, setHasSecondBrain] = useState<boolean>(() => vipService.hasSecondBrainPermission());
+
   useEffect(() => {
+    const unsubscribe = vipService.subscribe((state) => {
+      const granted = state.authorized && state.permissions.includes('secondBrain');
+      setHasSecondBrain(granted);
+    });
+    return unsubscribe;
+  }, []);
+
+  /** 加载待确认认知数，用于侧边栏徽章显示（仅在有第二大脑权限时初始化请求一次，后续通过事件精准更新） */
+  useEffect(() => {
+    if (!hasSecondBrain) {
+      setPendingCognitionCount(0);
+      return;
+    }
+
     let cancelled = false;
     const loadPendingCount = () => {
       const session = localStorage.getItem('heyclaw_session');
       const userId = localStorage.getItem('heyclaw_user_id');
-      if (!session || !userId) return;
+      if (!session || !userId || !vipService.hasSecondBrainPermission()) return;
 
       fetchCognitionStats()
         .then((data) => {
@@ -212,6 +228,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     loadPendingCount();
 
     const handleStatsUpdated = (event: Event) => {
+      if (!vipService.hasSecondBrainPermission()) return;
       const customEvent = event as CustomEvent<{ pending_count?: number } | number>;
       if (typeof customEvent.detail === 'number') {
         setPendingCognitionCount(customEvent.detail);
@@ -227,7 +244,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       cancelled = true;
       window.removeEventListener('app:secondBrain:statsUpdated', handleStatsUpdated);
     };
-  }, []);
+  }, [hasSecondBrain]);
 
   // 用户卡片状态与逻辑
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -894,24 +911,26 @@ const Sidebar: React.FC<SidebarProps> = ({
             <SidebarKitsIcon className="h-4 w-4 shrink-0" />
             <span className="min-w-0 truncate">AI 团队</span>
           </button>
-          <button
-            type="button"
-            onClick={() => {
-              setIsSearchOpen(false);
-              onShowSecondBrain();
-            }}
-            className={activeView === 'secondBrain' ? activeSidebarNavItemClassName : sidebarNavItemClassName}
-            aria-current={activeView === 'secondBrain' ? 'page' : undefined}
-          >
-            <BrainIcon className="h-4 w-4 shrink-0" />
-            <span className="min-w-0 truncate">第二大脑</span>
-            {pendingCognitionCount > 0 && (
-              <span className="ml-auto flex items-center gap-1.5 shrink-0 text-[11px] font-medium text-amber-500 dark:text-amber-400">
-                <span className="h-2 w-2 rounded-full bg-amber-500 shrink-0" />
-                <span>新增 {pendingCognitionCount} 条</span>
-              </span>
-            )}
-          </button>
+          {hasSecondBrain && (
+            <button
+              type="button"
+              onClick={() => {
+                setIsSearchOpen(false);
+                onShowSecondBrain();
+              }}
+              className={activeView === 'secondBrain' ? activeSidebarNavItemClassName : sidebarNavItemClassName}
+              aria-current={activeView === 'secondBrain' ? 'page' : undefined}
+            >
+              <BrainIcon className="h-4 w-4 shrink-0" />
+              <span className="min-w-0 truncate">第二大脑</span>
+              {pendingCognitionCount > 0 && (
+                <span className="ml-auto flex items-center gap-1.5 shrink-0 text-[11px] font-medium text-amber-500 dark:text-amber-400">
+                  <span className="h-2 w-2 rounded-full bg-amber-500 shrink-0" />
+                  <span>新增 {pendingCognitionCount} 条</span>
+                </span>
+              )}
+            </button>
+          )}
           {!hideSites && (
             <button
               type="button"
