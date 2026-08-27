@@ -64,6 +64,27 @@ export const BrowserIpc = {
 
 export type BrowserIpc = typeof BrowserIpc[keyof typeof BrowserIpc];
 
+export const BrowserControlRequestMethod = {
+  Get: 'GET',
+  Post: 'POST',
+  Delete: 'DELETE',
+} as const;
+
+export type BrowserControlRequestMethod =
+  typeof BrowserControlRequestMethod[keyof typeof BrowserControlRequestMethod];
+
+export const OpenClawBrowserGatewayMethod = {
+  Request: 'browser.request',
+} as const;
+
+export interface BrowserControlGatewayRequest {
+  method: BrowserControlRequestMethod;
+  path: string;
+  query?: Record<string, string>;
+  body?: unknown;
+  timeoutMs?: number;
+}
+
 export interface BrowserWebFetchConfig {
   enabled: boolean;
   followGlobalProxy: boolean;

@@ -7,18 +7,24 @@ import {
   type AgentBrowserTab,
   type AgentBrowserToolEvent,
   AgentBrowserToolPhase,
+  type BrowserControlGatewayRequest,
+  BrowserControlRequestMethod,
   BrowserRuntimeProfile,
 } from '../../shared/browserWebAccess/constants';
 import type { OpenClawEngineManager } from './openclawEngineManager';
 
-const BROWSER_CONTROL_PORT_OFFSET = 2;
 const BROWSER_CONTROL_TIMEOUT_MS = 15_000;
+const BROWSER_TABS_TIMEOUT_MS = 5_000;
 const MAX_SCREENSHOT_BYTES = 6 * 1024 * 1024;
 const MAX_CACHED_SESSIONS = 8;
+const BrowserControlRoute = {
+  Screenshot: '/screenshot',
+  Tabs: '/tabs',
+} as const;
 
 type BrowserObserverEngineManager = Pick<
   OpenClawEngineManager,
-  'getGatewayConnectionInfo' | 'getStateDir'
+  'getStateDir'
 >;
 
 type BrowserControlTab = {
@@ -46,7 +52,7 @@ export interface OpenClawBrowserObserverOptions {
   engineManager: BrowserObserverEngineManager;
   isEmbeddedMode: () => boolean;
   emitObservation: (observation: AgentBrowserObservation) => void;
-  fetchImpl?: typeof fetch;
+  requestBrowserControl: (request: BrowserControlGatewayRequest) => Promise<unknown>;
   readFile?: typeof fs.promises.readFile;
   statFile?: typeof fs.promises.stat;
   removeFile?: typeof fs.promises.unlink;
@@ -100,7 +106,7 @@ export class OpenClawBrowserObserver {
   private readonly engineManager: BrowserObserverEngineManager;
   private readonly isEmbeddedMode: () => boolean;
   private readonly emitObservation: (observation: AgentBrowserObservation) => void;
-  private readonly fetchImpl: typeof fetch;
+  private readonly requestBrowserControl: (request: BrowserControlGatewayRequest) => Promise<unknown>;
   private readonly readFile: typeof fs.promises.readFile;
   private readonly statFile: typeof fs.promises.stat;
   private readonly removeFile: typeof fs.promises.unlink;
@@ -112,7 +118,7 @@ export class OpenClawBrowserObserver {
     this.engineManager = options.engineManager;
     this.isEmbeddedMode = options.isEmbeddedMode;
     this.emitObservation = options.emitObservation;
-    this.fetchImpl = options.fetchImpl ?? fetch;
+    this.requestBrowserControl = options.requestBrowserControl;
     this.readFile = options.readFile ?? fs.promises.readFile;
     this.statFile = options.statFile ?? fs.promises.stat;
     this.removeFile = options.removeFile ?? fs.promises.unlink;
@@ -224,10 +230,12 @@ export class OpenClawBrowserObserver {
     requestedTargetId: string | undefined,
     profile: string,
   ): Promise<AgentBrowserObservation> {
-    const tabsResult = await this.fetchBrowserJson<BrowserTabsResponse>(
-      `/tabs?profile=${encodeURIComponent(profile)}`,
-      { timeoutMs: 5_000 },
-    );
+    const tabsResult = await this.requestBrowserJson<BrowserTabsResponse>({
+      method: BrowserControlRequestMethod.Get,
+      path: BrowserControlRoute.Tabs,
+      query: { profile },
+      timeoutMs: BROWSER_TABS_TIMEOUT_MS,
+    });
     const tabs = Array.isArray(tabsResult.tabs)
       ? tabsResult.tabs.map(normalizeTab).filter((tab): tab is AgentBrowserTab => tab !== null)
       : [];
@@ -247,18 +255,16 @@ export class OpenClawBrowserObserver {
       ? tabs.find(tab => tabMatchesTarget(tab, preferredTargetId))
       : undefined;
     const screenshotTargetId = preferredTab ? preferredTargetId : undefined;
-    const screenshotResult = await this.fetchBrowserJson<BrowserScreenshotResponse>(
-      `/screenshot?profile=${encodeURIComponent(profile)}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'jpeg',
-          ...(screenshotTargetId ? { targetId: screenshotTargetId } : {}),
-        }),
-        timeoutMs: BROWSER_CONTROL_TIMEOUT_MS,
+    const screenshotResult = await this.requestBrowserJson<BrowserScreenshotResponse>({
+      method: BrowserControlRequestMethod.Post,
+      path: BrowserControlRoute.Screenshot,
+      query: { profile },
+      body: {
+        type: 'jpeg',
+        ...(screenshotTargetId ? { targetId: screenshotTargetId } : {}),
       },
-    );
+      timeoutMs: BROWSER_CONTROL_TIMEOUT_MS,
+    });
     const screenshotPath = readString(screenshotResult.path);
     const capturedTargetId = readString(screenshotResult.targetId);
     if (!screenshotPath) {
@@ -282,41 +288,8 @@ export class OpenClawBrowserObserver {
     };
   }
 
-  private async fetchBrowserJson<T>(
-    route: string,
-    options: RequestInit & { timeoutMs?: number } = {},
-  ): Promise<T> {
-    const connection = this.engineManager.getGatewayConnectionInfo();
-    if (!connection.port || !connection.token) {
-      throw new Error('OpenClaw browser connection is unavailable.');
-    }
-    const { timeoutMs = BROWSER_CONTROL_TIMEOUT_MS, ...requestOptions } = options;
-    const headers = new Headers(requestOptions.headers);
-    headers.set('Authorization', `Bearer ${connection.token}`);
-    const response = await this.fetchImpl(
-      `http://127.0.0.1:${connection.port + BROWSER_CONTROL_PORT_OFFSET}${route}`,
-      {
-        ...requestOptions,
-        headers,
-        signal: AbortSignal.timeout(timeoutMs),
-      },
-    );
-    const text = await response.text();
-    let payload: unknown = null;
-    if (text) {
-      try {
-        payload = JSON.parse(text);
-      } catch {
-        payload = { error: text };
-      }
-    }
-    if (!response.ok) {
-      const message = payload && typeof payload === 'object' && 'error' in payload
-        ? String((payload as { error?: unknown }).error)
-        : `HTTP ${response.status}`;
-      throw new Error(message);
-    }
-    return payload as T;
+  private async requestBrowserJson<T>(request: BrowserControlGatewayRequest): Promise<T> {
+    return await this.requestBrowserControl(request) as T;
   }
 
   private async readScreenshotDataUrl(filePath: string): Promise<string> {

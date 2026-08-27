@@ -2045,6 +2045,13 @@ const getOpenClawBrowserObserver = (): OpenClawBrowserObserver => {
   if (!openClawBrowserObserver) {
     openClawBrowserObserver = new OpenClawBrowserObserver({
       engineManager: getOpenClawEngineManager(),
+      requestBrowserControl: request => {
+        getCoworkEngineRouter();
+        if (!openClawRuntimeAdapter) {
+          throw new Error('OpenClaw runtime adapter is unavailable.');
+        }
+        return openClawRuntimeAdapter.requestBrowserControl(request);
+      },
       isEmbeddedMode: () => normalizeBrowserWebAccessConfig(
         getStore().get<{ browserWebAccess?: Partial<BrowserWebAccessConfig> }>('app_config')
           ?.browserWebAccess,
