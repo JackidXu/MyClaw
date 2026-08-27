@@ -24,7 +24,7 @@ import { buildCoworkCapabilitySelection } from '../../services/coworkCapabilityS
 import { expertService } from '../../services/expertService';
 import { i18nService } from '../../services/i18n';
 import { quickActionService } from '../../services/quickAction';
-import { fetchCognitionPrompt, fetchCognitionTools } from '../../services/secondBrainApi';
+import { fetchCognitionPrompt, fetchCognitionTools, type FmpTool } from '../../services/secondBrainApi';
 import { RootState } from '../../store';
 import {
   selectCoworkConfig,

@@ -1,7 +1,9 @@
 import { ChevronDownIcon, ChevronRightIcon, ChevronUpIcon, FolderIcon, PlusIcon } from '@heroicons/react/24/outline';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useSelector } from 'react-redux';
 
 import { classifyErrorKey, isContextOrInterruptionErrorKey } from '../../../common/coworkErrorClassify';
+import { selectCurrentSession } from '../../store/selectors/coworkSelectors';
 import { ContextCompactionStatus } from '../../../common/coworkSystemMessages';
 import { getScheduledReminderDisplayText } from '../../../scheduledTask/reminderText';
 import {
@@ -488,6 +490,7 @@ const AssistantTurnBlock: React.FC<{
       );
     }
 
+    const currentSession = useSelector(selectCurrentSession);
     const errorDetail = parseCoworkErrorDetail(message.metadata?.errorDetail);
     const errorModelLine = errorDetail ? buildErrorModelLine(errorDetail) : null;
     const rawErrorText = typeof message.metadata?.error === 'string' ? message.metadata.error : null;
@@ -517,7 +520,7 @@ const AssistantTurnBlock: React.FC<{
             <button
               type="button"
               onClick={() => {
-                const targetSessionId = message.sessionId || turn.sessionId;
+                const targetSessionId = currentSession?.id;
                 if (targetSessionId) {
                   void coworkService.compactContext(targetSessionId);
                 }
