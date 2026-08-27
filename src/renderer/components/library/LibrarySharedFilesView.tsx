@@ -142,6 +142,7 @@ interface LibraryCloudViewProps {
   loadingMore: boolean;
   error?: string;
   isAuthenticated: boolean;
+  showFreeShareDeleteQuotaNotice: boolean;
   category: LibraryCategory;
   status: LibraryCloudAvailabilityFilterValue;
   favoritesOnly: boolean;
@@ -484,6 +485,7 @@ const LibraryShareSettingsView: React.FC<{
   analyticsPageViewId: string;
   initialItem: SharedFileItem;
   now: number;
+  showFreeShareDeleteQuotaNotice: boolean;
   onBack: () => void;
   onItemUpdated: (item: SharedFileItem) => void;
   onItemDeleted: (item: SharedFileItem) => void;
@@ -493,6 +495,7 @@ const LibraryShareSettingsView: React.FC<{
   analyticsPageViewId,
   initialItem,
   now,
+  showFreeShareDeleteQuotaNotice,
   onBack,
   onItemUpdated,
   onItemDeleted,
@@ -1275,6 +1278,7 @@ const LibraryShareSettingsView: React.FC<{
           <LibraryShareDeleteDialog
             fileName={getLibraryDisplayFileName(item)}
             busy={deleting}
+            showFreeQuotaNotice={showFreeShareDeleteQuotaNotice}
             error={deleteError}
             onCancel={() => {
               setDeleteConfirmOpen(false);
@@ -1295,6 +1299,7 @@ const LibraryCloudView: React.FC<LibraryCloudViewProps> = ({
   loadingMore,
   error,
   isAuthenticated,
+  showFreeShareDeleteQuotaNotice,
   category,
   status,
   favoritesOnly,
@@ -1345,6 +1350,7 @@ const LibraryCloudView: React.FC<LibraryCloudViewProps> = ({
         analyticsPageViewId={analyticsPageViewId}
         initialItem={activeItem}
         now={effectiveNow}
+        showFreeShareDeleteQuotaNotice={showFreeShareDeleteQuotaNotice}
         onBack={() => setActiveItem(undefined)}
         onItemUpdated={onItemUpdated}
         onItemDeleted={handleSharedItemDeleted}

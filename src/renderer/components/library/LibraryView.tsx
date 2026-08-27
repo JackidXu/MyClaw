@@ -56,6 +56,7 @@ import {
   useOptionalArtifactFileShare,
 } from '../artifacts/ArtifactFileShareController';
 import { isArtifactFileShareable } from '../artifacts/artifactFileSharePolicy';
+import { shouldShowFreePublishingDeleteQuotaNotice } from '../artifacts/publishingDeleteNoticePolicy';
 import CardOverflowMenu, { type CardOverflowMenuItem } from '../common/CardOverflowMenu';
 import {
   MANAGEMENT_BODY_TEXT,
@@ -126,6 +127,7 @@ import {
   createLibraryThumbnailCacheKey,
   getCachedLibraryThumbnail,
   loadLibraryThumbnail,
+  shouldApplyLibraryThumbnailResult,
 } from './libraryThumbnailCache';
 
 interface LibraryViewProps {
@@ -225,10 +227,19 @@ const LibraryThumbnail: React.FC<{ item: LibraryItem }> = ({ item }) => {
     ? createLibraryThumbnailCacheKey(localItem.filePath, localItem.fileMtimeMs)
     : undefined;
   const containerRef = useRef<HTMLDivElement>(null);
+  const currentCacheKeyRef = useRef(cacheKey);
+  currentCacheKeyRef.current = cacheKey;
   const [isNearViewport, setIsNearViewport] = useState(false);
-  const [dataUrl, setDataUrl] = useState<string | undefined>(() => (
-    cacheKey ? getCachedLibraryThumbnail(cacheKey) : undefined
-  ));
+  const [thumbnail, setThumbnail] = useState<{
+    cacheKey: string;
+    dataUrl: string;
+  } | undefined>(() => {
+    const cached = cacheKey ? getCachedLibraryThumbnail(cacheKey) : undefined;
+    return cacheKey && cached ? { cacheKey, dataUrl: cached } : undefined;
+  });
+  const dataUrl = cacheKey && thumbnail?.cacheKey === cacheKey
+    ? thumbnail.dataUrl
+    : undefined;
 
   useEffect(() => {
     const container = containerRef.current;
@@ -250,7 +261,7 @@ const LibraryThumbnail: React.FC<{ item: LibraryItem }> = ({ item }) => {
   useEffect(() => {
     let active = true;
     const cached = cacheKey ? getCachedLibraryThumbnail(cacheKey) : undefined;
-    setDataUrl(cached);
+    setThumbnail(cacheKey && cached ? { cacheKey, dataUrl: cached } : undefined);
     if (!localItem || !cacheKey || !isNearViewport || cached) {
       return () => { active = false; };
     }
@@ -259,7 +270,12 @@ const LibraryThumbnail: React.FC<{ item: LibraryItem }> = ({ item }) => {
       const result = await window.electron.dialog.generateThumbnail(localItem.filePath);
       return result.success ? result.dataUrl : undefined;
     }).then(value => {
-      if (active && value) setDataUrl(value);
+      if (
+        value
+        && shouldApplyLibraryThumbnailResult(cacheKey, currentCacheKeyRef.current, active)
+      ) {
+        setThumbnail({ cacheKey, dataUrl: value });
+      }
     });
     return () => { active = false; };
   }, [cacheKey, isNearViewport, localItem]);
@@ -410,6 +426,9 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
 }) => {
   const artifactFileShare = useOptionalArtifactFileShare();
   const ownerAccountKey = useSelector((state: RootState) => state.auth.ownerAccountKey);
+  const showFreeShareDeleteQuotaNotice = useSelector((state: RootState) => (
+    shouldShowFreePublishingDeleteQuotaNotice(state.auth.quota?.subscriptionStatus)
+  ));
   const favoriteOwnerScope = ownerAccountKey ?? undefined;
   const [analyticsPageViewId] = useState(createLibraryAnalyticsPageViewId);
   const [source, setSource] = useState<LibrarySourceFilter>(requestedSource);
@@ -1552,6 +1571,7 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
               loadingMore={loadingMore}
               error={cloudError}
               isAuthenticated={isAuthenticated}
+              showFreeShareDeleteQuotaNotice={showFreeShareDeleteQuotaNotice}
               category={category}
               status={cloudAvailability}
               favoritesOnly={favoritesOnly}

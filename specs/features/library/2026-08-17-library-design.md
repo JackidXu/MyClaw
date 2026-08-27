@@ -655,7 +655,7 @@ LibraryItem
 
 1. `status = live` 时按钮禁用或点击后提示「请先停止访问」，客户端不得自动串联“停止 + 删除”；服务端也必须独立校验当前状态；
 2. `status = disabled` 时，无论 `disabledSource` 是 `user/admin/moderation/active_limit/system`，owner 均可删除；状态开关是否可恢复与 owner 是否可删除是两个不同权限；
-3. 第一次点击展示影响范围：公共链接永久失效、云端分享文件与访问分析删除且不可恢复、本机原文件和相关任务不受影响、删除不会释放免费分享名额；
+3. 第一次点击展示影响范围：公共链接永久失效、云端分享文件与访问分析删除且不可恢复、本机原文件和相关任务不受影响；仅当前订阅状态明确为免费用户时额外提示“删除不会释放免费分享名额”，个人订阅、企业及订阅状态未知时不展示该免费额度提示；
 4. 用户必须输入当前页面显示的完整文件名，前后空格去除后仍需逐字符完全一致；不得只输入“删除”或复用分享码；
 5. 提交期间锁定关闭、返回和重复提交；成功后清理详情/分析缓存和本地收藏，返回云端第一页并刷新权威 counts；失败时保留页面和输入，仅展示归一化错误；
 6. 客户端收到 `FEATURE_UNAVAILABLE` 时显示“当前版本暂不支持永久删除”，不得从本地列表乐观移除资源；收到 404 时先刷新详情/列表，资源已消失则按其他端删除收敛，资源仍存在才按旧服务端能力不足提示；
@@ -1319,13 +1319,23 @@ Windows 上 `realpath/stat`、杀毒软件扫描和目录 watcher 建立可能�
 ### 7.8 缩略图与预览
 
 1. 缩略图只对可见卡片懒加载；
-2. Renderer 缓存键使用 `filePath + fileMtimeMs`，主进程在重新 `stat` 后使用规范化路径、真实 mtime、大小和 rendererVersion 复核；
+2. Renderer 缓存键使用 `clientRendererVersion + filePath + fileMtimeMs`，主进程在重新 `stat` 后使用规范化路径、真实 mtime、大小和 rendererVersion 复核；异步结果只有在请求缓存键仍等于卡片当前缓存键时才可回填；
 3. 缓存位于客户端 `userData/library/thumbnails`，不写 SQLite BLOB；
 4. 文件变化后旧缓存自然失效，后台可按 LRU 清理；
-5. macOS 使用 Electron `nativeImage.createThumbnailFromPath()`，同版本请求去重且并发不超过 3；失败时显示类型封面；
-6. HTML、SVG 和文档继续使用现有隔离/清洗预览链路；
-7. 不为生成缩略图把本地文件上传到云端；
-8. 云端站点首期可以使用类型封面，不自动抓取不可信网站截图。
+5. macOS、Windows 和 Linux 优先使用 LobsterAI 隔离的跨平台 Renderer 生成缩略图；Renderer 失败后才尝试 Electron `nativeImage.createThumbnailFromPath()`，两条链路均失败时显示类型封面；同版本请求去重且并发不超过 3；
+6. JPG、JPEG、PNG、GIF、WebP、AVIF 和 BMP 在 Renderer 内完成解码，并按 contain 规则绘制到固定尺寸 Canvas；Renderer 直接返回 Canvas PNG，主进程不得再通过共享隐藏窗口截图栅格图片；SVG 继续使用隔离渲染链路；
+7. PPTX 缩略图只解析并渲染第 1 张幻灯片，不得使用列表模式创建整份演示文稿的页面 DOM 后再隐藏；第一页为空白时保留真实空白结果，不擅自改用第 2 页；
+8. PPTX Renderer 只有在第一页字体就绪、内嵌图片完成加载和解码、布局连续两帧稳定后才可返回成功；媒体等待必须有超时并在失败时进入统一降级链路；
+9. 每次隐藏窗口渲染必须携带单调递增的 `renderGeneration`，Renderer 原样回传；主进程只接受与当前请求完全一致的代次，代次缺失或不匹配均视为失败；共享窗口只在实际尺寸变化时调整内容尺寸，不在每次请求中重复设置 zoom factor；
+10. Windows 对 HTML、SVG、文档和视频等非栅格内容订阅完整 presentation frame：第一次回调只作为前序帧屏障，随后主动 `invalidate`，直接使用第二次回调的 `NativeImage` 生成 PNG，不再额外调用 `capturePage()`；所有订阅和定时器都必须在成功、失败和超时路径释放；macOS 和 Linux 保留隔离 Renderer 的 `capturePage` 路径；
+11. 代次不匹配、画面为空、PPTX 有视觉内容但画面异常空白或渲染/画面提交超时时，必须销毁共享窗口，并在全新窗口完整重渲染一次；第二次仍失败才进入原生缩略图和类型封面降级链路，不得仅对旧 DOM 重复截图；
+12. 只有通过 Renderer 就绪契约或原生缩略图成功生成的非空图片才能写入缓存；栅格 Canvas、通用 presentation frame 和 PPTX 第一页 presentation frame 分别使用独立 rendererVersion，本次变更必须使历史白图和串图缓存全部自然失效；
+13. 缩略图日志只记录扩展名、渲染代次、策略、文件大小、页数、资源数量、耗时和失败阶段，不记录完整文件路径、文件名或内容；正常成功不写 info 日志，慢渲染、重试和降级分别使用受控 warn/error 日志；
+14. HTML、SVG 和文档继续使用现有隔离/清洗预览链路；
+15. 不为生成缩略图把本地文件上传到云端；
+16. 云端站点首期可以使用类型封面，不自动抓取不可信网站截图。
+
+缩略图至少覆盖以下验收矩阵：栅格图片与 Markdown/HTML/PDF 交替排列并快速滚动、同一卡片路径或 mtime 变化、冷缓存和热缓存，以及连续 20 次按“图片 → 文档 → 图片 → 文档”生成时不得出现白图、串图或上一项画面。PPTX 另覆盖单页纯文字、多页纯文字、多页全屏图片、多页图文混排、第一页故意为空白、损坏文件和未安装 Office/WPS。Windows 10/11 分别覆盖 100%、125% 和 150% 系统缩放，并至少验证一次硬件加速关闭场景。多页文件在 Renderer 中只能存在第一页 DOM；失败不得留下可被缓存的白图、错误文件画面或未释放的 frame subscription。
 
 ## 8. 本地 SQLite 设计
 

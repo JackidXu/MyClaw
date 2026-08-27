@@ -2405,6 +2405,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     sitesLinkCopied: '链接已复制',
     sitesShareLoadFailed: '访问设置加载失败，请重试。',
     sitesShareCodeCopyUnavailable: '当前分享码无法获取，请更新访问方式后重试。',
+    sitesShareCodeAvailableAfterSave: '保存后将显示分享码',
+    sitesShareCodeUnavailable: '当前分享码无法获取',
     sitesNodeService: 'Node 服务',
     sitesStaticSite: '静态网站',
     sitesPublicAccess: '公开访问',
@@ -2509,6 +2511,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     sitesDeleteConfirmTitle: '永久删除这个网站？',
     sitesDeleteConfirmDescription:
       '删除后，网站地址、页面文件、部署详情和访问分析将无法恢复。原网站地址不会分配给其他网站。',
+    sitesDeleteQuotaNotice: '本次删除不会释放免费建站名额，历史创建数量仍会保留。',
     sitesDeletePersistenceWarning: '此网站启用了服务数据保留，云端持久化数据也会被永久删除。',
     sitesDeleteConfirmInputLabel: '请输入网站名称“{name}”确认删除',
     sitesDeletePermanently: '永久删除',
@@ -6194,6 +6197,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     sitesShareLoadFailed: 'Access settings could not be loaded. Please try again.',
     sitesShareCodeCopyUnavailable:
       'The current share code is unavailable. Update the access mode and try again.',
+    sitesShareCodeAvailableAfterSave: 'The share code will appear after saving.',
+    sitesShareCodeUnavailable: 'The current share code is unavailable.',
     sitesNodeService: 'Node service',
     sitesStaticSite: 'Static site',
     sitesPublicAccess: 'Public access',
@@ -6306,6 +6311,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     sitesDeleteConfirmTitle: 'Permanently delete this site?',
     sitesDeleteConfirmDescription:
       'The site URL, page files, deployment details, and analytics cannot be recovered. The original URL will not be assigned to another site.',
+    sitesDeleteQuotaNotice:
+      'Deleting this site does not release a free site-creation slot. Its historical site count is retained.',
     sitesDeletePersistenceWarning:
       'This site uses service data persistence. Its cloud data will also be permanently deleted.',
     sitesDeleteConfirmInputLabel: 'Enter the site name “{name}” to confirm',
