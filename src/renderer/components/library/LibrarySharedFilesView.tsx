@@ -69,13 +69,27 @@ import {
 import { ArtifactSubscriptionFeature } from '../artifacts/artifactSubscriptionGate';
 import {
   createPublishingAnalyticsAttempt,
+  createPublishingAnalyticsDialog,
+  createPublishingAnalyticsOperationId,
   getPublishingErrorCategory,
+  PublishingAnalyticsActionType,
   type PublishingAnalyticsAttemptContext,
+  PublishingAnalyticsCtaId,
+  type PublishingAnalyticsDialogContext,
+  PublishingAnalyticsDialogType,
   PublishingAnalyticsErrorCategory,
+  PublishingAnalyticsFinalStatus,
   PublishingAnalyticsOperationType,
   PublishingAnalyticsResult,
+  PublishingAnalyticsTarget,
+  reportPublishingCopyDeployLink,
+  reportPublishingCopyShareLink,
+  reportPublishingDialogAction,
+  reportPublishingDialogExposure,
   reportPublishingEntryAction,
   reportPublishingOperationResult,
+  reportPublishingShareResult,
+  updatePublishingAnalyticsAttempt,
 } from '../artifacts/publishingAnalytics';
 import PublishingQuotaLimitDialog from '../artifacts/PublishingQuotaLimitDialog';
 import { getPublishingRemainingMinutes } from '../artifacts/PublishingTrialStatus';
@@ -504,6 +518,8 @@ const LibraryShareSettingsView: React.FC<{
     useState<PublishingQuotaErrorData | null>(null);
   const publishingAnalyticsAttemptRef =
     useRef<PublishingAnalyticsAttemptContext | null>(null);
+  const publishingAnalyticsDialogRef =
+    useRef<PublishingAnalyticsDialogContext | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -514,7 +530,6 @@ const LibraryShareSettingsView: React.FC<{
     setDeleting(false);
     setDeleteError(undefined);
     setPublishingQuota(null);
-    publishingAnalyticsAttemptRef.current = null;
     setDetailView(LibraryShareDetailView.Settings);
     void loadLatestSharedFileItem(initialItem).then(item => {
       if (!active) return;
@@ -532,8 +547,41 @@ const LibraryShareSettingsView: React.FC<{
         error: error instanceof Error ? error.message : i18nService.t('unknownError'),
       }));
     });
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [initialItem]);
+
+  useEffect(() => {
+    const analyticsAttempt = createPublishingAnalyticsAttempt({
+      feature: ArtifactSubscriptionFeature.Share,
+      resourceKind: PublishingResourceKind.File,
+      operationType: PublishingAnalyticsOperationType.Manage,
+      source: ArtifactPreviewActionSource.LibraryPreview,
+      entryPoint: ArtifactPublishEntryPoint.LibrarySettings,
+      surface: LibraryAnalyticsSurface.MyFiles,
+      pageViewId: analyticsPageViewId,
+      hasExistingResource: true,
+    });
+    const analyticsDialog = createPublishingAnalyticsDialog(
+      analyticsAttempt,
+      PublishingAnalyticsDialogType.ShareEditor,
+    );
+    publishingAnalyticsAttemptRef.current = analyticsAttempt;
+    publishingAnalyticsDialogRef.current = analyticsDialog;
+    reportPublishingEntryAction(analyticsAttempt);
+    reportPublishingDialogExposure(analyticsDialog);
+    return () => {
+      if (publishingAnalyticsDialogRef.current === analyticsDialog) {
+        reportPublishingDialogAction(analyticsDialog, {
+          actionType: PublishingAnalyticsActionType.Close,
+          ctaId: PublishingAnalyticsCtaId.Close,
+          target: PublishingAnalyticsTarget.Dismiss,
+        });
+        publishingAnalyticsDialogRef.current = null;
+      }
+    };
+  }, [analyticsPageViewId, initialItem.shareId]);
 
   const item = state.item;
   const contentUpdatedAt = readDateMillis(item.contentUpdatedAt)
@@ -576,13 +624,40 @@ const LibraryShareSettingsView: React.FC<{
 
   const copyShareInformation = (): void => {
     if (!canCopyShareInformation || !copyResult.copyable) return;
+    const operationId = createPublishingAnalyticsOperationId();
+    const operationStartedAt = Date.now();
+    const analyticsAttempt = publishingAnalyticsAttemptRef.current;
+    const analyticsDialog = publishingAnalyticsDialogRef.current;
+    if (analyticsDialog) {
+      reportPublishingDialogAction(analyticsDialog, {
+        actionType: PublishingAnalyticsActionType.Click,
+        ctaId: PublishingAnalyticsCtaId.Secondary,
+        target: PublishingAnalyticsTarget.CopyLink,
+        operationId,
+      });
+    }
     void copyTextToClipboard(copyResult.text).then(copied => {
       if (copied) {
         setState(current => ({ ...current, error: undefined }));
         showToast(i18nService.t('copied'));
-        return;
+      } else {
+        setState(current => ({ ...current, error: i18nService.t('copyFailed') }));
       }
-      setState(current => ({ ...current, error: i18nService.t('copyFailed') }));
+      if (analyticsAttempt) {
+        reportPublishingCopyShareLink(analyticsAttempt, {
+          operationId,
+          exposureId: analyticsDialog?.exposureId,
+          shareId: item.shareId,
+          accessPermission: committedPermission,
+          durationMs: Date.now() - operationStartedAt,
+          result: copied
+            ? PublishingAnalyticsResult.Success
+            : PublishingAnalyticsResult.Failure,
+          ...(!copied
+            ? { errorCategory: PublishingAnalyticsErrorCategory.Unknown }
+            : {}),
+        });
+      }
     });
   };
 
@@ -603,18 +678,58 @@ const LibraryShareSettingsView: React.FC<{
       return;
     }
 
-    const analyticsAttempt = createPublishingAnalyticsAttempt({
-      feature: ArtifactSubscriptionFeature.Share,
-      resourceKind: PublishingResourceKind.File,
-      operationType: PublishingAnalyticsOperationType.UpdatePermission,
-      source: ArtifactPreviewActionSource.LibraryPreview,
-      entryPoint: ArtifactPublishEntryPoint.LibrarySettings,
-      surface: LibraryAnalyticsSurface.MyFiles,
-      pageViewId: analyticsPageViewId,
-      hasExistingResource: true,
-    });
+    const analyticsAttempt = publishingAnalyticsAttemptRef.current
+      ? updatePublishingAnalyticsAttempt(publishingAnalyticsAttemptRef.current, {
+          operationType: PublishingAnalyticsOperationType.UpdatePermission,
+          hasExistingResource: true,
+        })
+      : createPublishingAnalyticsAttempt({
+          feature: ArtifactSubscriptionFeature.Share,
+          resourceKind: PublishingResourceKind.File,
+          operationType: PublishingAnalyticsOperationType.UpdatePermission,
+          source: ArtifactPreviewActionSource.LibraryPreview,
+          entryPoint: ArtifactPublishEntryPoint.LibrarySettings,
+          surface: LibraryAnalyticsSurface.MyFiles,
+          pageViewId: analyticsPageViewId,
+          hasExistingResource: true,
+        });
     publishingAnalyticsAttemptRef.current = analyticsAttempt;
-    reportPublishingEntryAction(analyticsAttempt);
+    if (publishingAnalyticsDialogRef.current) {
+      publishingAnalyticsDialogRef.current = {
+        ...publishingAnalyticsDialogRef.current,
+        attempt: analyticsAttempt,
+      };
+    } else {
+      reportPublishingEntryAction(analyticsAttempt);
+    }
+    const operationId = createPublishingAnalyticsOperationId();
+    const operationStartedAt = Date.now();
+    const analyticsDialog = publishingAnalyticsDialogRef.current;
+    if (analyticsDialog) {
+      reportPublishingDialogAction(analyticsDialog, {
+        actionType: PublishingAnalyticsActionType.Click,
+        ctaId: PublishingAnalyticsCtaId.Primary,
+        target: PublishingAnalyticsTarget.UpdatePermission,
+        operationId,
+      });
+    }
+    const reportPermissionResult = (
+      result: PublishingAnalyticsResult,
+      errorCategory?: PublishingAnalyticsErrorCategory,
+    ): void => {
+      const resultOptions = {
+        result,
+        operationType: PublishingAnalyticsOperationType.UpdatePermission,
+        operationId,
+        exposureId: analyticsDialog?.exposureId,
+        shareId: item.shareId,
+        accessPermission: targetPermission,
+        durationMs: Date.now() - operationStartedAt,
+        errorCategory,
+      };
+      reportPublishingShareResult(analyticsAttempt, resultOptions);
+      reportPublishingOperationResult(analyticsAttempt, resultOptions);
+    };
 
     setState(current => ({ ...current, saving: true, error: undefined }));
     let workingItem = item;
@@ -629,10 +744,10 @@ const LibraryShareSettingsView: React.FC<{
           if (!result.success) {
             if (result.quota) {
               setPublishingQuota(result.quota);
-              reportPublishingOperationResult(analyticsAttempt, {
-                result: PublishingAnalyticsResult.Failure,
-                errorCategory: PublishingAnalyticsErrorCategory.Quota,
-              });
+              reportPermissionResult(
+                PublishingAnalyticsResult.Failure,
+                PublishingAnalyticsErrorCategory.Quota,
+              );
               analyticsResultReported = true;
             }
             throw new Error(result.error ?? i18nService.t('htmlShareAccessModeUpdateFailed'));
@@ -649,10 +764,10 @@ const LibraryShareSettingsView: React.FC<{
           if (!result.success) {
             if (result.quota) {
               setPublishingQuota(result.quota);
-              reportPublishingOperationResult(analyticsAttempt, {
-                result: PublishingAnalyticsResult.Failure,
-                errorCategory: PublishingAnalyticsErrorCategory.Quota,
-              });
+              reportPermissionResult(
+                PublishingAnalyticsResult.Failure,
+                PublishingAnalyticsErrorCategory.Quota,
+              );
               analyticsResultReported = true;
             }
             throw new Error(result.error ?? i18nService.t('htmlShareStatusUpdateFailed'));
@@ -675,15 +790,13 @@ const LibraryShareSettingsView: React.FC<{
       setConfirmationKind(undefined);
       onItemUpdated(committedItem);
       showToast(i18nService.t('artifactFileSharePermissionUpdated'));
-      reportPublishingOperationResult(analyticsAttempt, {
-        result: PublishingAnalyticsResult.Success,
-      });
+      reportPermissionResult(PublishingAnalyticsResult.Success);
     } catch (error) {
       if (!analyticsResultReported) {
-        reportPublishingOperationResult(analyticsAttempt, {
-          result: PublishingAnalyticsResult.Failure,
-          errorCategory: getPublishingErrorCategory(error),
-        });
+        reportPermissionResult(
+          PublishingAnalyticsResult.Failure,
+          getPublishingErrorCategory(error),
+        );
       }
       const reconciledItem = await loadLatestSharedFileItem(workingItem);
       setState({
@@ -1289,8 +1402,62 @@ const LibraryCloudView: React.FC<LibraryCloudViewProps> = ({
   }
 
   const copyLink = (item: LibraryCloudItem): void => {
+    const isDeployment = item.itemKind === LibraryItemKind.DeployedSite;
+    const analyticsAttempt = createPublishingAnalyticsAttempt({
+      feature: isDeployment
+        ? ArtifactSubscriptionFeature.Deployment
+        : ArtifactSubscriptionFeature.Share,
+      resourceKind: isDeployment
+        ? PublishingResourceKind.Site
+        : PublishingResourceKind.File,
+      operationType: PublishingAnalyticsOperationType.Manage,
+      source: ArtifactPreviewActionSource.LibraryList,
+      entryPoint: ArtifactPublishEntryPoint.LibraryMenu,
+      surface: LibraryAnalyticsSurface.MyFiles,
+      pageViewId: analyticsPageViewId,
+      hasExistingResource: true,
+    });
+    const operationId = createPublishingAnalyticsOperationId();
+    const operationStartedAt = Date.now();
+    reportPublishingEntryAction(analyticsAttempt);
     void copyTextToClipboard(item.url).then(copied => {
       if (!copied) setInteractionError(i18nService.t('copyFailed'));
+      const result = copied
+        ? PublishingAnalyticsResult.Success
+        : PublishingAnalyticsResult.Failure;
+      const errorCategory = copied
+        ? undefined
+        : PublishingAnalyticsErrorCategory.Unknown;
+      if (item.itemKind === LibraryItemKind.SharedFile) {
+        reportPublishingCopyShareLink(analyticsAttempt, {
+          operationId,
+          shareId: item.shareId,
+          accessPermission: item.accessMode,
+          durationMs: Date.now() - operationStartedAt,
+          result,
+          errorCategory,
+        });
+        return;
+      }
+      if (!item.deploymentId) return;
+      const finalStatus = item.siteStatus === SiteStatus.Online
+        ? PublishingAnalyticsFinalStatus.Live
+        : item.siteStatus === SiteStatus.AccessStopped
+          ? PublishingAnalyticsFinalStatus.Stopped
+          : item.siteStatus === SiteStatus.Failed || item.siteStatus === SiteStatus.Blocked
+            ? PublishingAnalyticsFinalStatus.Failed
+            : PublishingAnalyticsFinalStatus.Publishing;
+      reportPublishingCopyDeployLink(analyticsAttempt, {
+        operationId,
+        siteId: item.shareId,
+        deploymentId: item.deploymentId,
+        finalStatus,
+        rawDeploymentStatus: item.deploymentStatus ?? item.siteStatus,
+        accessPermission: item.accessMode,
+        durationMs: Date.now() - operationStartedAt,
+        result,
+        errorCategory,
+      });
     });
   };
 

@@ -4,7 +4,7 @@ import { PublishingIdentityType } from '@shared/publishing/constants';
 import { configService } from './config';
 import { LogReporterAction, reportYdAnalyzer } from './logReporter';
 
-export const PublishingConversionAttributionVersion = 1;
+export const PublishingConversionAttributionVersion = 2;
 
 export const PublishingConversionAttributionModel = {
   LastTouch: 'last_touch',
@@ -16,11 +16,14 @@ export const PublishingSubscriptionObservationConfidence = {
 } as const;
 
 const PUBLISHING_CONVERSION_ATTRIBUTION_STORAGE_KEY =
+  'lobsterai_publishing_conversion_attribution_v2';
+const LEGACY_PUBLISHING_CONVERSION_ATTRIBUTION_STORAGE_KEY =
   'lobsterai_publishing_conversion_attribution_v1';
 const PUBLISHING_CONVERSION_ATTRIBUTION_WINDOW_MS = 7 * 24 * 60 * 60 * 1_000;
 
 export interface PublishingConversionAttributionInput {
   attemptId: string;
+  operationId: string;
   feature: string;
   resourceKind: string;
   operationType: string;
@@ -68,6 +71,8 @@ const isStoredAttribution = (
   return candidate.attributionVersion === PublishingConversionAttributionVersion
     && typeof candidate.attemptId === 'string'
     && candidate.attemptId.length > 0
+    && typeof candidate.operationId === 'string'
+    && candidate.operationId.length > 0
     && typeof candidate.exposureId === 'string'
     && candidate.exposureId.length > 0
     && typeof candidate.clickedAt === 'number'
@@ -90,7 +95,9 @@ const persistAttribution = (value: StoredPublishingConversionAttribution): void 
 
 const readAttribution = (): StoredPublishingConversionAttribution | null => {
   try {
-    const raw = getLocalStorage()?.getItem(PUBLISHING_CONVERSION_ATTRIBUTION_STORAGE_KEY);
+    const storage = getLocalStorage();
+    storage?.removeItem(LEGACY_PUBLISHING_CONVERSION_ATTRIBUTION_STORAGE_KEY);
+    const raw = storage?.getItem(PUBLISHING_CONVERSION_ATTRIBUTION_STORAGE_KEY);
     if (raw) {
       const parsed: unknown = JSON.parse(raw);
       if (isStoredAttribution(parsed)) {
@@ -108,7 +115,9 @@ const readAttribution = (): StoredPublishingConversionAttribution | null => {
 export const clearPendingPublishingConversionAttribution = (): void => {
   memoryAttribution = null;
   try {
-    getLocalStorage()?.removeItem(PUBLISHING_CONVERSION_ATTRIBUTION_STORAGE_KEY);
+    const storage = getLocalStorage();
+    storage?.removeItem(PUBLISHING_CONVERSION_ATTRIBUTION_STORAGE_KEY);
+    storage?.removeItem(LEGACY_PUBLISHING_CONVERSION_ATTRIBUTION_STORAGE_KEY);
   } catch {
     // Best-effort cleanup only.
   }
@@ -175,6 +184,7 @@ export const reportPendingPublishingSubscriptionObserved = async (
       const current = readAttribution();
       if (
         current?.attemptId === attribution.attemptId
+        && current.operationId === attribution.operationId
         && current.exposureId === attribution.exposureId
         && current.clickedAt === attribution.clickedAt
       ) {

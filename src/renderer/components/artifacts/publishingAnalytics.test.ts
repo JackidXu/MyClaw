@@ -14,9 +14,13 @@ import {
   createPublishingAnalyticsDialog,
   PublishingAnalyticsActionType,
   PublishingAnalyticsCtaId,
+  PublishingAnalyticsDeploymentPhase,
   PublishingAnalyticsDialogType,
+  PublishingAnalyticsFinalStatus,
   PublishingAnalyticsOperationType,
+  PublishingAnalyticsResult,
   PublishingAnalyticsTarget,
+  reportPublishingDeploymentResult,
   reportPublishingDialogAction,
   reportPublishingDialogExposure,
 } from './publishingAnalytics';
@@ -30,6 +34,7 @@ vi.mock('@/services/logReporter', async () => {
 
 describe('publishing analytics', () => {
   test('keeps an attempt id across exposure and click without private resource data', () => {
+    vi.mocked(reportYdAnalyzer).mockClear();
     const attempt = createPublishingAnalyticsAttempt({
       feature: ArtifactSubscriptionFeature.Share,
       resourceKind: PublishingResourceKind.File,
@@ -75,10 +80,39 @@ describe('publishing analytics', () => {
     expect(calls[1][0]).toMatchObject({
       attemptId: attempt.attemptId,
       exposureId: dialog.exposureId,
+      operationId: expect.any(String),
       target: PublishingAnalyticsTarget.Continue,
       dialogVisibleMs: expect.any(Number),
     });
     expect(JSON.stringify(calls)).not.toContain('filePath');
     expect(JSON.stringify(calls)).not.toContain('shareCode');
+  });
+
+  test('reports both readable deployment id names during schema migration', () => {
+    vi.mocked(reportYdAnalyzer).mockClear();
+    const attempt = createPublishingAnalyticsAttempt({
+      feature: ArtifactSubscriptionFeature.Deployment,
+      resourceKind: PublishingResourceKind.Site,
+      operationType: PublishingAnalyticsOperationType.Create,
+      source: ArtifactPreviewActionSource.ArtifactPanel,
+      entryPoint: ArtifactPublishEntryPoint.ArtifactToolbar,
+      hasExistingResource: false,
+    });
+
+    reportPublishingDeploymentResult(attempt, {
+      operationId: 'operation-1',
+      operationType: PublishingAnalyticsOperationType.Create,
+      eventPhase: PublishingAnalyticsDeploymentPhase.Accepted,
+      finalStatus: PublishingAnalyticsFinalStatus.Publishing,
+      siteId: 'site-1',
+      deploymentId: 'deployment-1',
+      result: PublishingAnalyticsResult.Success,
+    });
+
+    expect(reportYdAnalyzer).toHaveBeenCalledWith(expect.objectContaining({
+      siteId: 'site-1',
+      deploymentId: 'deployment-1',
+      deployId: 'deployment-1',
+    }));
   });
 });
