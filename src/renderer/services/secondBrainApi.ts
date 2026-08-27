@@ -237,6 +237,25 @@ export async function fetchCognitionStats(): Promise<CognitionStats> {
   return get<CognitionStats>('/fmp/stats');
 }
 
+/** 每周趋势项 */
+export interface TrendWeekItem {
+  week_start: string;
+  week_end: string;
+  label: string;
+  adopted_count: number;
+  usage_count: number;
+}
+
+/** 每周趋势响应 */
+export interface CognitionTrendResponse {
+  weeks: TrendWeekItem[];
+}
+
+/** 获取每周趋势（近 N 周沉淀与调用频次） */
+export async function fetchCognitionTrend(weeks = 8): Promise<CognitionTrendResponse> {
+  return get<CognitionTrendResponse>(`/fmp/trend?weeks=${weeks}`);
+}
+
 /** 认知列表查询参数 */
 export interface FetchCognitionItemListParams {
   page?: number;

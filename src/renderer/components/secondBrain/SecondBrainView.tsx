@@ -14,6 +14,7 @@ import {
   fetchChatList,
   fetchCognitionItemList,
   fetchCognitionStats,
+  fetchCognitionTrend,
   fetchDocumentList,
   fetchPersonaDetail,
   fetchUploadPresignedUrl,
@@ -21,13 +22,13 @@ import {
   type PersonaData,
   reExtractDocument,
   rejectCognitionItem,
+  type TrendWeekItem,
   updatePersona,
   uploadFileToTos,
 } from '../../services/secondBrainApi';
 import {
   MANAGEMENT_PAGE_TITLE_TEXT,
 } from '../common/managementTypography';
-import ComposeIcon from '../icons/ComposeIcon';
 import SidebarToggleIcon from '../icons/SidebarToggleIcon';
 
 interface SecondBrainViewProps {
@@ -65,7 +66,6 @@ function formatDate(ts: string | number): string {
 const SecondBrainView: React.FC<SecondBrainViewProps> = ({
   isSidebarCollapsed,
   onToggleSidebar,
-  onNewChat,
   updateBadge,
 }) => {
   const [materialTab, setMaterialTab] = useState<MaterialTab>('文档');
@@ -164,6 +164,11 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
   /** Toast 提示状态 */
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
+  /** 每周趋势数据 */
+  const [trendWeeks, setTrendWeeks] = useState<TrendWeekItem[]>([]);
+  const [trendLoading, setTrendLoading] = useState(false);
+  const [hoveredWeekIndex, setHoveredWeekIndex] = useState<number | null>(null);
+
   const showToast = (type: 'success' | 'error', message: string) => {
     setToast({ type, message });
     setTimeout(() => {
@@ -194,6 +199,22 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
       })
       .catch((err) => console.warn('[SecondBrainView] 统计接口失败:', err))
       .finally(() => setStatsLoading(false));
+  };
+
+  /** 拉取每周趋势数据 (近 8 周) */
+  const loadTrend = () => {
+    setTrendLoading(true);
+    fetchCognitionTrend(8)
+      .then((res) => {
+        setTrendWeeks(res.weeks || []);
+      })
+      .catch((err) => {
+        console.warn('[SecondBrainView] 每周趋势接口失败:', err);
+        setTrendWeeks([]);
+      })
+      .finally(() => {
+        setTrendLoading(false);
+      });
   };
 
   /** 拉取待审核认知列表 (status: 0) */
@@ -250,6 +271,8 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
       setItems((prev) => prev.filter((i) => i.node_id !== item.node_id));
       setItemsTotal((prev) => Math.max(0, prev - 1));
       loadStats();
+      loadTodayAdopted();
+      loadTrend();
       showToast('success', item.replaces ? '已采纳更新，新萃取认知已覆盖旧认知' : '已采纳该认知，已沉淀至商业第二大脑');
     } catch (err: any) {
       console.warn('[SecondBrainView] 采纳失败:', err);
@@ -326,11 +349,12 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
     }
   };
 
-  /** 挂载时拉取人设、统计和今日自动吸收 */
+  /** 挂载时拉取人设、统计、今日自动吸收和趋势 */
   useEffect(() => {
     loadPersona();
     loadStats();
     loadTodayAdopted();
+    loadTrend();
   }, []);
 
   /** 翻页或挂载时拉取待审核认知列表 */
@@ -583,16 +607,6 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
 
         <div className="flex items-center gap-2">
           {updateBadge}
-          {onNewChat && (
-            <button
-              type="button"
-              className="non-draggable flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-secondary hover:text-foreground hover:bg-surface-raised rounded-lg border border-border transition-colors"
-              onClick={onNewChat}
-            >
-              <ComposeIcon className="w-3.5 h-3.5" />
-              <span>新会话</span>
-            </button>
-          )}
         </div>
       </div>
 
@@ -1194,6 +1208,246 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                   {renderPager(docsPage, docsLastPage, docsTotal, setDocsPage, materialTab === '对话' ? '份对话' : '份资料')}
                 </div>
               )}
+            </div>
+          </div>
+
+          {/* 5. 大脑词条近况 (#s-fmp) */}
+          <div className="rounded-2xl border border-[#FF6B35]/25 bg-gradient-to-b from-[#FF6B35]/[0.02] to-surface bg-surface p-5 md:p-6 shadow-[0_4px_20px_rgba(255,107,53,0.05)] space-y-4">
+            <div className="pb-3.5 border-b border-dashed border-[#FF6B35]/20">
+              <h2 className="text-sm font-bold text-foreground">
+                大脑词条近况
+              </h2>
+              <p className="text-xs text-secondary mt-1">
+                本周新增 <b className="text-foreground font-bold">{trendWeeks[trendWeeks.length - 1]?.adopted_count ?? 0}</b> 条 · 总沉淀 <b className="text-foreground font-bold">{stats?.adopted_count ?? 0}</b> 条，覆盖价值 · 决策 · 方式 · 案例。
+              </p>
+            </div>
+
+            {/* 判断力成长曲线 */}
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="text-xs md:text-[13px] font-bold text-foreground flex items-center gap-1.5">
+                  <span>📈</span>
+                  <span>判断力成长曲线</span>
+                </div>
+                <div className="flex items-center gap-3 text-[11px] text-secondary">
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full bg-[#2d8a5f]" />
+                    已沉淀判断
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full bg-[#FF6B35]" />
+                    本周被调用
+                  </span>
+                </div>
+              </div>
+
+              {/* 曲线图 */}
+              {trendLoading ? (
+                <div className="h-[120px] flex items-center justify-center text-xs text-secondary/60">
+                  加载趋势数据中…
+                </div>
+              ) : trendWeeks.length === 0 ? (
+                <div className="h-[120px] flex items-center justify-center text-xs text-secondary/60">
+                  暂无近 8 周趋势数据
+                </div>
+              ) : (() => {
+                const count = trendWeeks.length;
+                const maxVal = Math.max(...trendWeeks.flatMap((w) => [w.adopted_count, w.usage_count]), 1);
+                const stepX = count > 1 ? (302 - 18) / (count - 1) : 0;
+
+                const pointsUsage = trendWeeks.map((w, idx) => {
+                  const x = 18 + idx * stepX;
+                  const y = 68 - (w.usage_count / maxVal) * 52;
+                  return { x: Number(x.toFixed(1)), y: Number(y.toFixed(1)), val: w.usage_count, week: w };
+                });
+
+                const pointsAdopted = trendWeeks.map((w, idx) => {
+                  const x = 18 + idx * stepX;
+                  const y = 68 - (w.adopted_count / maxVal) * 52;
+                  return { x: Number(x.toFixed(1)), y: Number(y.toFixed(1)), val: w.adopted_count, week: w };
+                });
+
+                const pathUsage = pointsUsage.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ');
+                const fillUsage = `${pathUsage} L${pointsUsage[pointsUsage.length - 1].x},72 L${pointsUsage[0].x},72 Z`;
+                const pathAdopted = pointsAdopted.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ');
+
+                return (
+                  <div className="space-y-2">
+                    <div className="relative pt-1">
+                      <svg className="w-full h-[95px] block overflow-visible" viewBox="0 0 320 80" preserveAspectRatio="none">
+                        <defs>
+                          <linearGradient id="gcFill" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#FF6B35" stopOpacity="0.22" />
+                            <stop offset="100%" stopColor="#FF6B35" stopOpacity="0" />
+                          </linearGradient>
+                        </defs>
+
+                        {/* 浅灰极细水平参考线 */}
+                        <line x1="10" y1="16" x2="310" y2="16" stroke="currentColor" strokeDasharray="3 3" opacity="0.06" />
+                        <line x1="10" y1="42" x2="310" y2="42" stroke="currentColor" strokeDasharray="3 3" opacity="0.06" />
+                        <line x1="10" y1="68" x2="310" y2="68" stroke="currentColor" opacity="0.1" />
+
+                        {/* 悬浮列极细竖向导引虚线 */}
+                        {hoveredWeekIndex !== null && pointsUsage[hoveredWeekIndex] && (
+                          <line
+                            x1={pointsUsage[hoveredWeekIndex].x}
+                            y1={6}
+                            x2={pointsUsage[hoveredWeekIndex].x}
+                            y2={72}
+                            stroke="currentColor"
+                            strokeWidth="0.8"
+                            strokeDasharray="2 2"
+                            opacity="0.3"
+                          />
+                        )}
+
+                        {/* 面积渐变与主折线 */}
+                        <path d={fillUsage} fill="url(#gcFill)" />
+                        <path
+                          d={pathUsage}
+                          fill="none"
+                          stroke="#FF6B35"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          vectorEffect="non-scaling-stroke"
+                        />
+                        <path
+                          d={pathAdopted}
+                          fill="none"
+                          stroke="#2d8a5f"
+                          strokeWidth="1.6"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeDasharray="3 3"
+                          opacity=".85"
+                          vectorEffect="non-scaling-stroke"
+                        />
+
+                        {/* 悬浮时精致发光高亮点（仅悬停时展示精致双层微点） */}
+                        {hoveredWeekIndex !== null && pointsUsage[hoveredWeekIndex] && (
+                          <g>
+                            {/* 橙色调用点 */}
+                            <circle
+                              cx={pointsUsage[hoveredWeekIndex].x}
+                              cy={pointsUsage[hoveredWeekIndex].y}
+                              r="5.5"
+                              fill="#FF6B35"
+                              opacity="0.22"
+                            />
+                            <circle
+                              cx={pointsUsage[hoveredWeekIndex].x}
+                              cy={pointsUsage[hoveredWeekIndex].y}
+                              r="2.5"
+                              fill="#FF6B35"
+                              stroke="#ffffff"
+                              strokeWidth="1"
+                            />
+
+                            {/* 绿色采纳点 */}
+                            <circle
+                              cx={pointsAdopted[hoveredWeekIndex].x}
+                              cy={pointsAdopted[hoveredWeekIndex].y}
+                              r="5.5"
+                              fill="#2d8a5f"
+                              opacity="0.22"
+                            />
+                            <circle
+                              cx={pointsAdopted[hoveredWeekIndex].x}
+                              cy={pointsAdopted[hoveredWeekIndex].y}
+                              r="2.5"
+                              fill="#2d8a5f"
+                              stroke="#ffffff"
+                              strokeWidth="1"
+                            />
+                          </g>
+                        )}
+
+                        {/* 交互热区 rect */}
+                        {pointsUsage.map((p, i) => (
+                          <rect
+                            key={i}
+                            x={Math.max(0, p.x - (stepX || 40) / 2)}
+                            y={0}
+                            width={stepX || 40}
+                            height={80}
+                            fill="transparent"
+                            className="cursor-pointer"
+                            onMouseEnter={() => setHoveredWeekIndex(i)}
+                            onMouseLeave={() => setHoveredWeekIndex(null)}
+                          />
+                        ))}
+                      </svg>
+
+                      {/* 动态随位置浮动的 Tooltip 卡片 */}
+                      {hoveredWeekIndex !== null && trendWeeks[hoveredWeekIndex] && (() => {
+                        const leftPercent = count > 1 ? (hoveredWeekIndex / (count - 1)) * 100 : 50;
+                        const transformStyle =
+                          hoveredWeekIndex <= 1
+                            ? 'translateX(0%)'
+                            : hoveredWeekIndex >= count - 2
+                              ? 'translateX(-100%)'
+                              : 'translateX(-50%)';
+
+                        return (
+                          <div
+                            className="absolute -top-3 z-20 pointer-events-none transition-all duration-150 ease-out"
+                            style={{
+                              left: `${leftPercent}%`,
+                              transform: transformStyle,
+                            }}
+                          >
+                            <div className="bg-surface/95 backdrop-blur-md border border-border px-3 py-1.5 rounded-xl shadow-[0_4px_16px_rgba(0,0,0,0.08)] text-[11px] space-y-0.5 whitespace-nowrap">
+                              <div className="font-bold text-foreground flex items-center gap-1">
+                                <span>📅</span>
+                                <span>{trendWeeks[hoveredWeekIndex].label}</span>
+                              </div>
+                              <div className="flex items-center gap-3 pt-0.5 text-[10.5px]">
+                                <span className="text-[#FF6B35] font-semibold flex items-center gap-1">
+                                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#FF6B35]" />
+                                  被调用: <b>{trendWeeks[hoveredWeekIndex].usage_count}</b> 次
+                                </span>
+                                <span className="text-[#2d8a5f] font-semibold flex items-center gap-1">
+                                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#2d8a5f]" />
+                                  已采纳: <b>{trendWeeks[hoveredWeekIndex].adopted_count}</b> 条
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    {/* X 轴日期刻度列表 */}
+                    <div className="flex items-center justify-between px-1 text-[10.5px] text-secondary">
+                      {trendWeeks.map((w, idx) => {
+                        const isHovered = hoveredWeekIndex === idx;
+                        const shortLabel = w.label.includes('~') ? w.label.split('~')[0].trim() : w.label;
+
+                        return (
+                          <button
+                            key={idx}
+                            type="button"
+                            onMouseEnter={() => setHoveredWeekIndex(idx)}
+                            onMouseLeave={() => setHoveredWeekIndex(null)}
+                            className={`text-center font-medium transition-colors cursor-pointer py-0.5 ${
+                              isHovered ? 'text-[#FF6B35] font-bold scale-105' : 'text-secondary/70 hover:text-foreground'
+                            }`}
+                            style={{ flex: 1 }}
+                            title={w.label}
+                          >
+                            {shortLabel}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div className="text-[11px] text-secondary pt-1">
+                近 {trendWeeks.length || 8} 周 · 已沉淀判断共 <b className="text-[#FF6B35] font-bold">{stats?.adopted_count ?? 0}</b> 条，被调用频次同步攀升（本周 <b className="text-[#FF6B35] font-bold">{trendWeeks[trendWeeks.length - 1]?.usage_count ?? 0}</b> 次）
+              </div>
             </div>
           </div>
 
