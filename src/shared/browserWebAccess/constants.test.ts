@@ -66,7 +66,7 @@ describe('browser web access constants', () => {
 
     expect(config.browserEnabled).toBe(false);
     expect(config.profileMode).toBe(BrowserProfileMode.User);
-    expect(config.displayMode).toBe(BrowserDisplayMode.ReadOnly);
+    expect(config.displayMode).toBe(BrowserDisplayMode.External);
     expect(config.networkMode).toBe(BrowserNetworkMode.Strict);
     expect(config.allowedHostnames).toEqual(['https://localhost:8443']);
     expect(config.blockedHostnames).toEqual(['https://tracking.example']);
@@ -80,11 +80,14 @@ describe('browser web access constants', () => {
     });
   });
 
-  test('defaults to read-only display and migrates an explicit headed legacy config', () => {
+  test('defaults to external display while preserving explicit display choices', () => {
     expect(normalizeBrowserWebAccessConfig(undefined).displayMode).toBe(
-      BrowserDisplayMode.ReadOnly,
+      BrowserDisplayMode.External,
     );
     expect(normalizeBrowserWebAccessConfig({ headless: false }).displayMode).toBe(
+      BrowserDisplayMode.External,
+    );
+    expect(normalizeBrowserWebAccessConfig({ headless: true }).displayMode).toBe(
       BrowserDisplayMode.External,
     );
     expect(normalizeBrowserWebAccessConfig({
