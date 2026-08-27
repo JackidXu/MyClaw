@@ -24,6 +24,14 @@ import {
   shouldShowDailyCheckInEntry,
 } from './dailyCheckInActivityState';
 import {
+  DailyCheckInAnalyticsActionType,
+  DailyCheckInAnalyticsResult,
+  DailyCheckInAnalyticsSource,
+  getDailyCheckInAnalyticsContext,
+  getDailyCheckInAnalyticsErrorCode,
+  reportDailyCheckInAction,
+} from './dailyCheckInAnalytics';
+import {
   DailyCheckInRequestError,
   DailyCheckInStaleRequestError,
   useDailyCheckInActivity,
@@ -157,7 +165,7 @@ interface DailyCheckInSuccessPopoverProps {
 interface DailyCheckInEntryControllerOptions {
   enabled?: boolean;
   suppressed?: boolean;
-  source: 'home_header' | 'account_menu';
+  source: DailyCheckInAnalyticsSource;
   successDurationMs?: number | null;
 }
 
@@ -246,12 +254,26 @@ const useDailyCheckInEntryController = ({
 
   const handleClaim = useCallback(async () => {
     if (!snapshot || claiming || success) return;
+    const analyticsContext = getDailyCheckInAnalyticsContext({
+      context: snapshot.context,
+      descriptor: snapshot.descriptor,
+      isLoggedIn,
+      source,
+    });
+    reportDailyCheckInAction(analyticsContext, {
+      actionType: DailyCheckInAnalyticsActionType.ClaimClick,
+    });
     console.debug('[DailyCheckInActivity] claim requested', {
       source,
       activityCode: snapshot.descriptor.activityCode,
       configRevision: snapshot.descriptor.configRevision,
     });
     if (!isLoggedIn || !snapshot.context.authenticated) {
+      reportDailyCheckInAction(analyticsContext, {
+        actionType: DailyCheckInAnalyticsActionType.LoginRequired,
+        result: DailyCheckInAnalyticsResult.Failed,
+        errorCode: 'login_required',
+      });
       console.debug('[DailyCheckInActivity] login required before claim', {
         source,
         activityCode: snapshot.descriptor.activityCode,
@@ -274,6 +296,10 @@ const useDailyCheckInEntryController = ({
         activityCode: response.result.activityCode,
         creditsGranted: response.result.creditsGranted,
       });
+      reportDailyCheckInAction(analyticsContext, {
+        actionType: DailyCheckInAnalyticsActionType.ClaimSuccess,
+        result: DailyCheckInAnalyticsResult.Success,
+      });
     } catch (error) {
       if (error instanceof DailyCheckInStaleRequestError) return;
       if (error instanceof DailyCheckInRequestError) {
@@ -282,6 +308,11 @@ const useDailyCheckInEntryController = ({
             credits: snapshot.context.state.rewardCredits,
             validityDays: null,
           });
+          reportDailyCheckInAction(analyticsContext, {
+            actionType: DailyCheckInAnalyticsActionType.ClaimAlreadyClaimed,
+            result: DailyCheckInAnalyticsResult.Success,
+            errorCode: getDailyCheckInAnalyticsErrorCode(error.code),
+          });
           return;
         }
         if (error.code === ActivityServerErrorCode.LoginRequired) {
@@ -289,11 +320,21 @@ const useDailyCheckInEntryController = ({
             source,
             activityCode: snapshot.descriptor.activityCode,
           });
+          reportDailyCheckInAction(analyticsContext, {
+            actionType: DailyCheckInAnalyticsActionType.LoginRequired,
+            result: DailyCheckInAnalyticsResult.Failed,
+            errorCode: getDailyCheckInAnalyticsErrorCode(error.code),
+          });
           setLoginModalOpen(true);
           return;
         }
         if (error.code === ActivityServerErrorCode.NotActive
             || error.code === ActivityServerErrorCode.NotFound) {
+          reportDailyCheckInAction(analyticsContext, {
+            actionType: DailyCheckInAnalyticsActionType.ClaimUnavailable,
+            result: DailyCheckInAnalyticsResult.Failed,
+            errorCode: getDailyCheckInAnalyticsErrorCode(error.code),
+          });
           return;
         }
       }
@@ -301,6 +342,13 @@ const useDailyCheckInEntryController = ({
         source,
         activityCode: snapshot.descriptor.activityCode,
       }, error);
+      reportDailyCheckInAction(analyticsContext, {
+        actionType: DailyCheckInAnalyticsActionType.ClaimFailed,
+        result: DailyCheckInAnalyticsResult.Failed,
+        errorCode: error instanceof DailyCheckInRequestError
+          ? getDailyCheckInAnalyticsErrorCode(error.code)
+          : 'unknown',
+      });
       showToast(i18nService.t('dailyCheckInClaimFailed'));
     }
   }, [claim, claiming, isLoggedIn, showSuccess, snapshot, source, success]);
@@ -345,7 +393,7 @@ export const DailyCheckInHeaderEntry: React.FC<
   } = useDailyCheckInEntryController({
     enabled,
     suppressed,
-    source: 'home_header',
+    source: DailyCheckInAnalyticsSource.HomeHeader,
   });
 
   if (!isVisible) return null;
@@ -405,7 +453,7 @@ export const DailyCheckInAccountMenuEntry: React.FC<
   } = useDailyCheckInEntryController({
     enabled,
     suppressed,
-    source: 'account_menu',
+    source: DailyCheckInAnalyticsSource.AccountMenu,
   });
 
   if (!isVisible) return null;

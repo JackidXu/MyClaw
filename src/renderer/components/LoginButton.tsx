@@ -30,6 +30,8 @@ import { LogReporterAction, reportYdAnalyzer } from '../services/logReporter';
 import { RootState } from '../store';
 import type { FreeCreditsReward } from '../store/slices/authSlice';
 import {
+  type AccountPlanAnalyticsContext,
+  getAccountPlanAnalyticsContext,
   getAccountPlanPresentation,
   getFinalRewards,
 } from './accountMenuState';
@@ -43,10 +45,15 @@ const ACCOUNT_MENU_ANALYTICS_SOURCE = 'home_account_menu';
 const reportAccountMenuAction = (
   actionType: string,
   options: {
+    accountMode?: AccountPlanAnalyticsContext['accountMode'];
     creditItemCount?: number;
+    canUpgrade?: boolean;
     hasCredits?: boolean;
+    hasSubscriptionPlan?: boolean;
     isLoggedIn?: boolean;
+    planTier?: AccountPlanAnalyticsContext['planTier'];
     result?: 'success' | 'failed';
+    subscriptionStatus?: string;
   } = {},
 ): void => {
   console.debug('[LoginButton] reporting account menu analytics');
@@ -54,11 +61,45 @@ const reportAccountMenuAction = (
     action: LogReporterAction.AccountMenuAction,
     source: ACCOUNT_MENU_ANALYTICS_SOURCE,
     actionType,
+    accountMode: options.accountMode,
+    canUpgrade: options.canUpgrade,
     result: options.result,
     isLoggedIn: options.isLoggedIn ?? true,
     hasCredits: options.hasCredits,
+    hasSubscriptionPlan: options.hasSubscriptionPlan,
     creditItemCount: options.creditItemCount,
+    planTier: options.planTier,
+    subscriptionStatus: options.subscriptionStatus,
   });
+};
+
+const writeAccountMenuRendererLog = (
+  level: 'debug' | 'warn',
+  message: string,
+): void => {
+  try {
+    window.electron?.log?.fromRenderer?.(level, 'LoginButton', message);
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.debug(`[LoginButton] renderer log unavailable: ${errorMessage}`);
+  }
+};
+
+const getPlanUpgradeLogMessage = (
+  analytics: AccountPlanAnalyticsContext,
+  hasCredits: boolean,
+  suffix?: string,
+): string => {
+  const baseMessage = [
+    'opening plan pricing portal',
+    `accountMode=${analytics.accountMode}`,
+    `subscriptionStatus=${analytics.subscriptionStatus}`,
+    `planTier=${analytics.planTier}`,
+    `hasSubscriptionPlan=${analytics.hasSubscriptionPlan}`,
+    `canUpgrade=${analytics.canUpgrade}`,
+    `hasCredits=${hasCredits}`,
+  ].join(', ');
+  return suffix ? `${baseMessage}, ${suffix}` : baseMessage;
 };
 
 const formatDate = (dateStr: string | null): string => {
@@ -206,6 +247,7 @@ const UserMenu: React.FC<UserMenuProps> = ({
   onOpenFinalReward,
 }) => {
   const user = useSelector((state: RootState) => state.auth.user);
+  const quota = useSelector((state: RootState) => state.auth.quota);
   const profileSummary = useSelector((state: RootState) => state.auth.profileSummary);
   const startupCreditEntry = useStartupCreditCampaignEntry();
   const isEn = i18nService.getLanguage() === 'en';
@@ -316,21 +358,34 @@ const UserMenu: React.FC<UserMenuProps> = ({
   };
 
   const handleUpgradePlan = async () => {
+    const accountPlanAnalytics = getAccountPlanAnalyticsContext({
+      accountMode: user?.accountMode ?? quota?.accountMode,
+      creditItems,
+      planName: quota?.planName,
+      subscriptionStatus: quota?.subscriptionStatus,
+    });
     try {
-      console.debug('[LoginButton] opening plan pricing portal', {
-        accountMode: user?.accountMode,
-        creditItemCount: creditItems.length,
-        hasCredits,
-      });
+      const logMessage = getPlanUpgradeLogMessage(accountPlanAnalytics, hasCredits);
+      console.debug(`[LoginButton] ${logMessage}`);
+      writeAccountMenuRendererLog('debug', logMessage);
       await openPortalUrl(getPortalPricingUrl());
       reportAccountMenuAction('open_plan_upgrade', {
+        ...accountPlanAnalytics,
         creditItemCount: creditItems.length,
         hasCredits,
         result: 'success',
       });
     } catch (error) {
-      console.warn('[LoginButton] failed to open plan pricing portal', error);
+      const errorName = error instanceof Error ? error.name : 'UnknownError';
+      const logMessage = getPlanUpgradeLogMessage(
+        accountPlanAnalytics,
+        hasCredits,
+        `result=failed error=${errorName}`,
+      );
+      console.warn(`[LoginButton] ${logMessage}`, error);
+      writeAccountMenuRendererLog('warn', logMessage);
       reportAccountMenuAction('open_plan_upgrade', {
+        ...accountPlanAnalytics,
         creditItemCount: creditItems.length,
         hasCredits,
         result: 'failed',
