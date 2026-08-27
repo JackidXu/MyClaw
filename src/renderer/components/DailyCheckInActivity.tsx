@@ -22,6 +22,7 @@ import type { RootState } from '../store';
 import { ACCOUNT_MENU_COMPACT_CTA_CLASS_NAME } from './accountMenuStyles';
 import {
   formatDailyCheckInCredits,
+  shouldShowDailyCheckInAccountMenuEntry,
   shouldShowDailyCheckInEntry,
 } from './dailyCheckInActivityState';
 import {
@@ -166,6 +167,7 @@ interface DailyCheckInSuccessPopoverProps {
 interface DailyCheckInEntryControllerOptions {
   enabled?: boolean;
   suppressed?: boolean;
+  showClaimedToday?: boolean;
   source: DailyCheckInAnalyticsSource;
   successDurationMs?: number | null;
 }
@@ -210,6 +212,7 @@ const DailyCheckInSuccessPopover: React.FC<DailyCheckInSuccessPopoverProps> = ({
 const useDailyCheckInEntryController = ({
   enabled = true,
   suppressed = false,
+  showClaimedToday = false,
   source,
   successDurationMs = CLAIM_SUCCESS_DURATION_MS,
 }: DailyCheckInEntryControllerOptions) => {
@@ -355,7 +358,9 @@ const useDailyCheckInEntryController = ({
   }, [claim, claiming, isLoggedIn, showSuccess, snapshot, source, success]);
 
   const stateAllowsEntry = snapshot
-    ? shouldShowDailyCheckInEntry(snapshot.context)
+    ? showClaimedToday
+      ? shouldShowDailyCheckInAccountMenuEntry(snapshot.context)
+      : shouldShowDailyCheckInEntry(snapshot.context)
     : false;
 
   const entryLabel = snapshot?.descriptor.cardTitle
@@ -454,6 +459,7 @@ export const DailyCheckInAccountMenuEntry: React.FC<
   } = useDailyCheckInEntryController({
     enabled,
     suppressed,
+    showClaimedToday: true,
     source: DailyCheckInAnalyticsSource.AccountMenu,
   });
 
@@ -461,10 +467,12 @@ export const DailyCheckInAccountMenuEntry: React.FC<
 
   const actionLabel = success
     ? i18nService.t('dailyCheckInTodayClaimed')
-    : claiming
+    : snapshot?.context.state.claimedToday
+      ? i18nService.t('dailyCheckInClaimedAction')
+      : claiming
       ? i18nService.t('dailyCheckInClaiming')
       : i18nService.t('dailyCheckInClaimNow');
-  const claimed = success !== null;
+  const claimed = success !== null || Boolean(snapshot?.context.state.claimedToday);
 
   return (
     <>
