@@ -14015,9 +14015,19 @@ if (!gotTheLock) {
     initializeKeyfromAttribution(store);
     refreshEndpointsTestMode(store);
     // 后台异步拉取云端专家数据（失败时不阻塞启动）
-    fetchExpertsFromCloud().catch(err => {
-      console.error('[Main] Failed to fetch experts from cloud:', err);
-    });
+    fetchExpertsFromCloud()
+      .then(async () => {
+        const updatedCount = getAgentManager().syncPresetAgentsFromCloud();
+        if (updatedCount > 0) {
+          console.log(`[Main] Synced ${updatedCount} preset agent(s) from cloud updates`);
+          await syncOpenClawConfig({ reason: 'experts-cloud-synced' }).catch(err => {
+            console.error('[OpenClaw] config sync after experts cloud sync failed:', err);
+          });
+        }
+      })
+      .catch(err => {
+        console.error('[Main] Failed to fetch experts from cloud:', err);
+      });
     sqliteBackupManager = new SqliteBackupManager(app.getPath('userData'));
 
     const startSqliteBackupLoop = async (): Promise<void> => {
