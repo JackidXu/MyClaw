@@ -33,10 +33,47 @@ if [ "$OS" = "Darwin" ] && command -v xattr >/dev/null 2>&1; then
 fi
 chmod +x "$WH" "$FF" 2>/dev/null || true
 
-# 依赖检查
-[ -f "$WH" ]    || { echo "缺少 whisper-cli: $WH ，请提供方运行 download_deps.sh" >&2; exit 2; }
-[ -f "$FF" ]    || { echo "缺少内置 ffmpeg: $FF ，请提供方运行 download_deps.sh" >&2; exit 2; }
-[ -f "$MODEL" ] || { echo "缺少模型 ggml-base.bin: $MODEL ，请提供方运行 download_deps.sh" >&2; exit 2; }
+download_file() {
+  local url="$1" out="$2" desc="$3"
+  mkdir -p "$(dirname "$out")"
+  echo ">>> [whisper-tool] 正在下载 $desc ..."
+  local proxy_url="https://gh-proxy.com/$url"
+  if curl -sL --retry 3 --retry-delay 2 --max-time 300 -C - -o "$out.tmp" "$url" || \
+     curl -sL --retry 3 --retry-delay 2 --max-time 300 -C - -o "$out.tmp" "$proxy_url"; then
+    mv "$out.tmp" "$out"
+    echo ">>> [whisper-tool] $desc 下载完成！"
+    return 0
+  fi
+  rm -f "$out.tmp"
+  return 1
+}
+
+# 依赖检查与按需自动下载
+FF_TAG="b6.1.1"
+if [ ! -f "$FF" ]; then
+  if [ "$OS" = "Darwin" ]; then
+    if [ "$ARCH" = "arm64" ]; then
+      download_file "https://github.com/eugeneware/ffmpeg-static/releases/download/$FF_TAG/ffmpeg-darwin-arm64" "$FF" "内置 ffmpeg" || {
+        echo "ffmpeg 下载失败，请检查网络后重试。" >&2; exit 2;
+      }
+    else
+      download_file "https://github.com/eugeneware/ffmpeg-static/releases/download/$FF_TAG/ffmpeg-darwin-x64" "$FF" "内置 ffmpeg" || {
+        echo "ffmpeg 下载失败，请检查网络后重试。" >&2; exit 2;
+      }
+    fi
+  fi
+fi
+
+if [ ! -f "$MODEL" ]; then
+  # 优先使用 hf-mirror 国内高速源
+  if ! download_file "https://hf-mirror.com/ggerganov/whisper.cpp/resolve/main/ggml-base.bin" "$MODEL" "Whisper 模型 (ggml-base.bin)"; then
+    download_file "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin" "$MODEL" "Whisper 模型 (ggml-base.bin)" || {
+      echo "模型文件下载失败，请检查网络后重试。" >&2; exit 2;
+    }
+  fi
+fi
+
+[ -f "$WH" ] || { echo "缺少 whisper-cli: $WH ，请先本地编译或下载到位。" >&2; exit 2; }
 
 # 解析参数
 INPUT=""; FMT="srt"; LANG="auto"

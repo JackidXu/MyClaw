@@ -1,8 +1,8 @@
 ---
 name: ffmpeg-tool
-description: 本地离线音视频处理工具。ffmpeg 静态二进制已预打包进 assets/，终端用户完全离线即可完成格式转换、压缩、提取音频、裁剪、合并、截图、GIF 等。当用户提到"视频转格式/压缩视频/提取音频/剪视频/合并视频/生成 GIF/ffmpeg/音视频处理/视频体积太大"时使用。适用于 macOS 与 Windows，运行时零联网、不依赖代理或外网，导入技能即自动就位。
+description: 本地离线音视频处理工具。首次使用按需自动从国内高速源就位 ffmpeg 静态二进制，支持格式转换、压缩、提取音频、裁剪、合并、截图、GIF 等。当用户提到"视频转格式/压缩视频/提取音频/剪视频/合并视频/生成 GIF/ffmpeg/音视频处理/视频体积太大"时使用。适用于 macOS 与 Windows。
 license: CC-BY-4.0
-compatibility: 需要 macOS 或 Windows；ffmpeg 二进制已预打包在 assets/（macOS arm64/x64 + Windows x64），导入技能后调用即自动设置可执行权限、在 macOS 上去掉 Gatekeeper 隔离标记，全程无需联网。如需升级 ffmpeg 版本或更换平台二进制，提供方可在有翻墙的机器上运行 scripts/download_deps.sh 重新拉取。
+compatibility: 需要 macOS 或 Windows；首次调用时自动从高速镜像源下载依赖并完成权限配置，后续全程离线运行。
 metadata:
   author: archerjim
   version: "1.1.0"

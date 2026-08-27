@@ -8,9 +8,64 @@ $WH       = Join-Path $Assets "windows-x64" "whisper-cli.exe"
 $FF       = Join-Path $Assets "ffmpeg" "windows-x64" "ffmpeg.exe"
 $Model    = Join-Path $Assets "models" "ggml-base.bin"
 
-if (-not (Test-Path $WH))    { Write-Error "缺少 whisper-cli.exe: $WH ，请提供方运行 download_deps.ps1"; exit 2 }
-if (-not (Test-Path $FF))    { Write-Error "缺少内置 ffmpeg.exe: $FF ，请提供方运行 download_deps.ps1"; exit 2 }
-if (-not (Test-Path $Model)) { Write-Error "缺少模型 ggml-base.bin: $Model ，请提供方运行 download_deps.ps1"; exit 2 }
+$WhTag = "b4938"; $FfTag = "b6.1.1"
+
+function Download-Component($url, $out, $desc, $isHf=$false) {
+  if (Test-Path $out) { return }
+  Write-Host ">>> [whisper-tool] 正在下载 $desc ..."
+  New-Item -ItemType Directory -Force -Path (Split-Path $out) | Out-Null
+  $tmp = "$out.tmp"
+  $proxyUrl = if ($isHf) { $url } else { "https://gh-proxy.com/$url" }
+  
+  if (Get-Command curl.exe -ErrorAction SilentlyContinue) {
+    & curl.exe -sL --retry 3 --retry-delay 2 --max-time 300 -C - -o $tmp $proxyUrl
+    if (-not (Test-Path $tmp)) {
+      & curl.exe -sL --retry 3 --retry-delay 2 --max-time 300 -C - -o $tmp $url
+    }
+  } else {
+    try {
+      (New-Object System.Net.WebClient).DownloadFile($proxyUrl, $tmp)
+    } catch {
+      (New-Object System.Net.WebClient).DownloadFile($url, $tmp)
+    }
+  }
+
+  if ((Test-Path $tmp) -and ((Get-Item $tmp).Length -gt 1000)) {
+    Move-Item -Path $tmp -Destination $out -Force
+    Write-Host ">>> [whisper-tool] $desc 下载完成！"
+  } else {
+    Remove-Item $tmp -Force -ErrorAction SilentlyContinue
+    Write-Error "$desc 下载失败，请检查网络后重试。"
+    exit 2
+  }
+}
+
+# 1. ffmpeg.exe
+Download-Component "https://github.com/eugeneware/ffmpeg-static/releases/download/$FfTag/ffmpeg-win32-x64" $FF "内置 ffmpeg.exe"
+
+# 2. whisper-cli.exe
+if (-not (Test-Path $WH)) {
+  $zipPath = "$env:TEMP\whisper-bin-x64.zip"
+  Download-Component "https://github.com/ggml-org/whisper.cpp/releases/download/$WhTag/whisper-bin-x64.zip" $zipPath "whisper-cli.exe 压缩包"
+  Expand-Archive -Path $zipPath -DestinationPath "$env:TEMP\whisper-win" -Force
+  $WinExe = (Get-ChildItem "$env:TEMP\whisper-win" -Recurse -Include @("whisper-cli.exe","whisper.exe") | Select-Object -First 1).FullName
+  if ($WinExe) {
+    New-Item -ItemType Directory -Force -Path (Split-Path $WH) | Out-Null
+    Copy-Item $WinExe $WH -Force
+  } else {
+    Write-Error "解压后未找到 whisper-cli.exe"
+    exit 2
+  }
+}
+
+# 3. ggml-base.bin 模型 (国内镜像优先)
+if (-not (Test-Path $Model)) {
+  try {
+    Download-Component "https://hf-mirror.com/ggerganov/whisper.cpp/resolve/main/ggml-base.bin" $Model "Whisper 模型 (ggml-base.bin)" $true
+  } catch {
+    Download-Component "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin" $Model "Whisper 模型 (ggml-base.bin)" $true
+  }
+}
 
 $Input=""; $Fmt="srt"; $Lang="auto"
 $i=0

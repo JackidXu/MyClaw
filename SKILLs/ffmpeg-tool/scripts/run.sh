@@ -28,10 +28,34 @@ if [ "$OS" = "Darwin" ] && command -v xattr >/dev/null 2>&1; then
   xattr -d com.apple.quarantine "$BIN" 2>/dev/null || true
 fi
 
+download_file() {
+  local url="$1" out="$2"
+  mkdir -p "$(dirname "$out")"
+  echo ">>> [ffmpeg-tool] 正在下载 ffmpeg 二进制组件..."
+  local proxy_url="https://gh-proxy.com/$url"
+  if curl -sL --retry 3 --retry-delay 2 --max-time 180 -C - -o "$out.tmp" "$proxy_url" || \
+     curl -sL --retry 3 --retry-delay 2 --max-time 180 -C - -o "$out.tmp" "$url"; then
+    mv "$out.tmp" "$out"
+    echo ">>> [ffmpeg-tool] 下载完成！"
+    return 0
+  fi
+  rm -f "$out.tmp"
+  return 1
+}
+
+TAG="b6.1.1"
 if [ ! -f "$BIN" ]; then
-  echo "未找到 ffmpeg 二进制: $BIN" >&2
-  echo "发布前请提供方在有代理的机器上运行: bash scripts/download_deps.sh" >&2
-  exit 2
+  if [ "$OS" = "Darwin" ]; then
+    if [ "$ARCH" = "arm64" ]; then
+      download_file "https://github.com/eugeneware/ffmpeg-static/releases/download/$TAG/ffmpeg-darwin-arm64" "$BIN" || {
+        echo "ffmpeg 二进制下载失败，请检查网络后重试。" >&2; exit 2;
+      }
+    else
+      download_file "https://github.com/eugeneware/ffmpeg-static/releases/download/$TAG/ffmpeg-darwin-x64" "$BIN" || {
+        echo "ffmpeg 二进制下载失败，请检查网络后重试。" >&2; exit 2;
+      }
+    fi
+  fi
 fi
 
 chmod +x "$BIN" 2>/dev/null || true

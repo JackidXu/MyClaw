@@ -1,8 +1,8 @@
 ---
 name: whisper-tool
-description: 本地离线语音转文字（字幕）工具。whisper.cpp 二进制、ggml-base.bin 模型与内置 ffmpeg 均已预打包进 assets/，无需联网即可把音频/视频中的语音识别为文字，支持中文及多语言，可输出 txt/srt/vtt 字幕。当用户提到"语音转文字/视频转字幕/音频转写/会议记录/字幕生成/whisper/语音识别/转录/把说话内容变成文字"时使用。适用于 macOS 与 Windows，运行时零联网、不依赖代理或外网，导入技能即自动就位。
+description: 本地离线语音转文字（字幕）工具。首次使用按需自动从国内高速镜像源就位 whisper.cpp 二进制、ggml-base.bin 模型与内置 ffmpeg，无需代理即可把音频/视频中的语音识别为文字，支持中文及多语言，可输出 txt/srt/vtt 字幕。当用户提到"语音转文字/视频转字幕/音频转写/会议记录/字幕生成/whisper/语音识别/转录/把说话内容变成文字"时使用。适用于 macOS 与 Windows。
 license: CC-BY-4.0
-compatibility: 需要 macOS 或 Windows；whisper.cpp 二进制（macOS 通用 + Windows x64）、ggml-base.bin 模型、内置 ffmpeg 均已预打包在 assets/，导入技能后调用即自动设置权限/去除隔离标记，全程离线。如需更新二进制/模型，提供方可在有翻墙的 macOS 上运行 scripts/download_deps.sh（含本地编译 macOS 通用二进制）。
+compatibility: 需要 macOS 或 Windows；首次调用时自动从高速镜像源下载依赖并完成权限配置，后续全程离线运行。
 metadata:
   author: archerjim
   version: "1.1.0"

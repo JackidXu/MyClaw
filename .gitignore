@@ -35,6 +35,10 @@ SKILLs/**/.server.pid
 SKILLs/**/.venv/
 SKILLs/**/package-lock.json
 
+# SKILLs large binaries & models
+SKILLs/whisper-tool/assets/models/ggml-base.bin
+SKILLs/ffmpeg-tool/assets/windows-x64/ffmpeg.exe
+
 nul
 .work.env
 .keyfrom-build/
