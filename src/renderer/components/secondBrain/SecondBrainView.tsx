@@ -12,13 +12,13 @@ import {
   DOCUMENT_STATUS,
   type DocumentItem,
   downloadDocument,
+  fetchChatList,
   fetchCognitionItemList,
   fetchCognitionStats,
   fetchDocumentList,
   fetchPersonaDetail,
   fetchUploadPresignedUrl,
   LAYER_LABEL,
-  MATERIAL_TAB_TYPE,
   type PersonaData,
   reExtractDocument,
   rejectCognitionItem,
@@ -42,8 +42,11 @@ interface SecondBrainViewProps {
 }
 
 /** 资料 Tab */
-const MATERIAL_TABS = ['全部', '文档', '对话'] as const;
+const MATERIAL_TABS = ['文档', '对话'] as const;
 type MaterialTab = typeof MATERIAL_TABS[number];
+
+/** 单个上传文档最大限制：2MB */
+const MAX_DOCUMENT_FILE_SIZE = 2 * 1024 * 1024;
 
 /** 秒级时间戳转可读日期时间 */
 function formatTimestamp(ts: string | number): string {
@@ -69,7 +72,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
   onNewChat,
   updateBadge,
 }) => {
-  const [materialTab, setMaterialTab] = useState<MaterialTab>('全部');
+  const [materialTab, setMaterialTab] = useState<MaterialTab>('文档');
   const [stats, setStats] = useState<CognitionStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
   const [items, setItems] = useState<CognitionItem[]>([]);
@@ -311,16 +314,42 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
     loadItems(itemsPage);
   }, [itemsPage]);
 
-  /** 拉取资料列表 */
+  /** 拉取资料列表（根据当前 Tab 区分文档/对话） */
   const loadDocs = (tab: MaterialTab, page: number) => {
     setDocsLoading(true);
-    fetchDocumentList({ type: MATERIAL_TAB_TYPE[tab], page, pageSize: 10 })
-      .then((res) => {
-        setDocs(res.data);
-        setDocsLastPage(Number(res.last_page) || 1);
-      })
-      .catch((err) => { console.warn('[SecondBrainView] 资料列表接口失败:', err); })
-      .finally(() => { setDocsLoading(false); });
+    if (tab === '对话') {
+      fetchChatList({ page, pageSize: 10 })
+        .then((res) => {
+          const list: DocumentItem[] = (res.data || []).map((item) => ({
+            type: 'chat',
+            id: item.chat_id,
+            name: item.name,
+            extract_status: item.extract_status,
+            extract_count: item.extract_count,
+            create_time: Number(item.create_time) || 0,
+          }));
+          setDocs(list);
+          setDocsLastPage(Number(res.last_page) || 1);
+        })
+        .catch((err) => { console.warn('[SecondBrainView] 对话列表接口失败:', err); })
+        .finally(() => { setDocsLoading(false); });
+    } else {
+      fetchDocumentList({ page, pageSize: 10 })
+        .then((res) => {
+          const list: DocumentItem[] = (res.data || []).map((item) => ({
+            type: 'document',
+            id: item.document_id,
+            name: item.name,
+            extract_status: item.extract_status,
+            extract_count: item.extract_count,
+            create_time: Number(item.create_time) || 0,
+          }));
+          setDocs(list);
+          setDocsLastPage(Number(res.last_page) || 1);
+        })
+        .catch((err) => { console.warn('[SecondBrainView] 资料文档列表接口失败:', err); })
+        .finally(() => { setDocsLoading(false); });
+    }
   };
 
   /** Tab 切换时重置页码并重新拉取 */
@@ -347,11 +376,28 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
     if (files.length === 0) return;
     e.target.value = '';
 
+    const oversizedFiles: string[] = [];
+    const validFiles: File[] = [];
+
+    for (const file of files) {
+      if (file.size > MAX_DOCUMENT_FILE_SIZE) {
+        oversizedFiles.push(file.name);
+      } else {
+        validFiles.push(file);
+      }
+    }
+
+    if (oversizedFiles.length > 0) {
+      showToast('error', `文件 "${oversizedFiles.join(', ')}" 超过 2MB 大小限制，无法上传`);
+    }
+
+    if (validFiles.length === 0) return;
+
     setUploading(true);
     let successCount = 0;
     const failedNames: string[] = [];
 
-    for (const file of files) {
+    for (const file of validFiles) {
       try {
         const { upload_url, tos_url, key } = await fetchUploadPresignedUrl();
         await uploadFileToTos(upload_url, file);
@@ -878,24 +924,26 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                   ))}
                 </div>
 
-                {/* 上传文档按钮 + hover tooltip */}
-                <div className="relative group pb-2">
-                  <button
-                    type="button"
-                    disabled={uploading}
-                    onClick={handleUploadClick}
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-1.5 text-xs font-medium text-white hover:bg-primary-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-xs"
-                  >
-                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                    </svg>
-                    {uploading ? '上传中…' : '上传文档'}
-                  </button>
-                  {/* Tooltip */}
-                  <div className="pointer-events-none absolute right-0 bottom-full mb-2 z-10 whitespace-nowrap rounded-xl bg-black/90 dark:bg-black px-3.5 py-2 text-xs font-medium text-white shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200">
-                    支持 .docx / .md / .txt
+                {/* 上传文档按钮 + hover tooltip（仅在文档 Tab 显示） */}
+                {materialTab === '文档' && (
+                  <div className="relative group pb-2">
+                    <button
+                      type="button"
+                      disabled={uploading}
+                      onClick={handleUploadClick}
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-1.5 text-xs font-medium text-white hover:bg-primary-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-xs"
+                    >
+                      <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      {uploading ? '上传中…' : '上传文档'}
+                    </button>
+                    {/* Tooltip */}
+                    <div className="pointer-events-none absolute right-0 bottom-full mb-2 z-10 whitespace-nowrap rounded-xl bg-black/90 dark:bg-black px-3.5 py-2 text-xs font-medium text-white shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200">
+                      支持 .docx / .md / .txt（最大 2MB）
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
 
               {/* 加载中 */}
@@ -913,13 +961,19 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
                   </div>
-                  <p className={`${MANAGEMENT_TITLE_TEXT} font-medium text-foreground mb-2`}>暂无资料</p>
+                  <p className={`${MANAGEMENT_TITLE_TEXT} font-medium text-foreground mb-2`}>
+                    {materialTab === '对话' ? '暂无对话' : '暂无资料'}
+                  </p>
                   <p className={`${MANAGEMENT_BODY_TEXT} text-secondary`}>
-                    上传个人笔记、项目总结、思考记录等第一手资料，系统将自动萃取你的决策原则、行事标准
+                    {materialTab === '对话'
+                      ? '与智能体进行日常业务对话，系统将自动从对话中提炼出你的决策逻辑与思考方式'
+                      : '上传个人笔记、项目总结、思考记录等第一手资料，系统将自动萃取你的决策原则、行事标准'}
                   </p>
-                  <p className={`${MANAGEMENT_META_TEXT} text-secondary/60 mt-2`}>
-                    第三方课程笔记、行业报告等，萃取出的认知可能不完全代表本人，请注意甄别。
-                  </p>
+                  {materialTab === '文档' && (
+                    <p className={`${MANAGEMENT_META_TEXT} text-secondary/60 mt-2`}>
+                      第三方课程笔记、行业报告等，萃取出的认知可能不完全代表本人，请注意甄别。
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -976,15 +1030,25 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                       <div className="relative group/re">
                         <button
                           type="button"
-                          disabled={reExtractingId === doc.id}
+                          disabled={
+                            reExtractingId === doc.id ||
+                            doc.extract_status === DOCUMENT_STATUS.Pending ||
+                            doc.extract_status === DOCUMENT_STATUS.Processing
+                          }
                           onClick={() => handleReExtract(doc.id)}
-                          className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs font-medium text-foreground hover:bg-surface-raised transition-colors disabled:opacity-50"
+                          className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs font-medium text-foreground hover:bg-surface-raised transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                         >
-                          {reExtractingId === doc.id ? '萃取中…' : '重新萃取'}
+                          {reExtractingId === doc.id || doc.extract_status === DOCUMENT_STATUS.Processing
+                            ? '萃取中…'
+                            : doc.extract_status === DOCUMENT_STATUS.Pending
+                            ? '排队中…'
+                            : '重新萃取'}
                         </button>
                         {/* Tooltip */}
                         <div className="pointer-events-none absolute right-0 bottom-full mb-2 z-20 whitespace-nowrap rounded-xl bg-black/90 dark:bg-black px-3 py-1.5 text-xs font-medium text-white shadow-lg opacity-0 group-hover/re:opacity-100 transition-all duration-200">
-                          将同步删除已萃取的认知
+                          {doc.extract_status === DOCUMENT_STATUS.Pending || doc.extract_status === DOCUMENT_STATUS.Processing
+                            ? '当前正在处理中，暂不可重新萃取'
+                            : '将同步删除已萃取的认知'}
                         </div>
                       </div>
                     )}

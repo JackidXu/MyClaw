@@ -113,13 +113,24 @@ export interface DocumentItem {
   create_time: number;
 }
 
+/** 文档列表单项（后端实际返回字段） */
+export interface DocumentListItem {
+  document_id: number;
+  name: string;
+  /** 0=待萃取 1=萃取中 2=已萃取 3=萃取失败 */
+  extract_status: number;
+  /** 已萃取认知条数 */
+  extract_count: number;
+  create_time: string | number;
+}
+
 /** 资料列表响应（分页） */
 export interface DocumentListResponse {
   total: number | string;
   per_page: number | string;
   current_page: number | string;
   last_page: number | string;
-  data: DocumentItem[];
+  data: DocumentListItem[];
 }
 
 /** 待确认认知列表响应（分页） */
@@ -138,9 +149,28 @@ export interface UploadPresignResponse {
   tos_url: string;
 }
 
+/** 对话列表单项 */
+export interface ChatListItem {
+  chat_id: number;
+  name: string;
+  /** 0=待萃取 1=萃取中 2=已萃取 3=萃取失败 */
+  extract_status: number;
+  /** 已萃取认知条数 */
+  extract_count: number;
+  create_time: string | number;
+}
+
+/** 对话列表响应（分页） */
+export interface ChatListResponse {
+  total: number | string;
+  per_page: number | string;
+  current_page: number | string;
+  last_page: number | string;
+  data: ChatListItem[];
+}
+
 /** Tab 对应的 type 参数 */
 export const MATERIAL_TAB_TYPE: Record<string, string> = {
-  '全部': 'all',
   '文档': 'document',
   '对话': 'chat',
 };
@@ -227,18 +257,24 @@ export async function rejectCognitionItem(nodeId: number): Promise<void> {
   await post<unknown>('/fmp/node/reject', { nodeId });
 }
 
-/** 获取学习资料列表（分页） */
+/** 获取学习资料文档列表（分页） */
 export async function fetchDocumentList(params: {
-  type: string;
   page: number;
   pageSize: number;
 }): Promise<DocumentListResponse> {
   const query = new URLSearchParams({
-    type: params.type,
     page: String(params.page),
     pageSize: String(params.pageSize),
   });
   return get<DocumentListResponse>(`/fmp/document/list?${query.toString()}`);
+}
+
+/** 获取对话列表（分页，POST /fmp/chat/list） */
+export async function fetchChatList(params: {
+  page: number;
+  pageSize: number;
+}): Promise<ChatListResponse> {
+  return post<ChatListResponse>('/fmp/chat/list', params);
 }
 
 /** 获取预签名上传参数 */
@@ -454,6 +490,7 @@ export const secondBrainApi = {
   adoptCognitionItem,
   rejectCognitionItem,
   fetchDocumentList,
+  fetchChatList,
   fetchUploadPresignedUrl,
   uploadFileToTos,
   createDocument,
