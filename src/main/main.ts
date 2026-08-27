@@ -5160,6 +5160,7 @@ if (!gotTheLock) {
     apiFormat: string;
     costMultiplier?: number;
     description?: string;
+    moreModel?: boolean;
     accessible?: boolean;
     restrictionHint?: string;
   };

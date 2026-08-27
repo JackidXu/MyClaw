@@ -72,6 +72,7 @@ export interface PricingCatalogTextModel {
   thinkingConfig?: ModelThinkingConfig;
   contextWindow?: number | null;
   costMultiplier?: number;
+  moreModel?: boolean;
 }
 
 export interface PricingCatalogResponse {
@@ -98,6 +99,7 @@ export interface AvailableServerModelEntry {
   explicitContextCache?: boolean;
   costMultiplier?: number;
   description?: string;
+  moreModel?: boolean;
   accessible?: boolean;
   restrictionHint?: string;
 }
@@ -200,6 +202,7 @@ export function mapPricingCatalogTextModelsToServerModels(
       description: readString(model.description) || undefined,
       costMultiplier,
       contextWindow,
+      moreModel: model.moreModel === true,
       accessible: false,
     }];
   });
@@ -241,6 +244,7 @@ export function mapAvailableServerModelsToModels(
       explicitContextCache: model.explicitContextCache ?? false,
       description: model.description,
       costMultiplier: model.costMultiplier,
+      moreModel: model.moreModel === true,
       accessible: model.accessible ?? true,
       restrictionHint: model.restrictionHint ?? undefined,
     };

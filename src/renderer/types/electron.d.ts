@@ -1932,6 +1932,7 @@ interface IElectronAPI {
         explicitContextCache?: boolean;
         costMultiplier?: number;
         description?: string;
+        moreModel?: boolean;
         accessible?: boolean;
         restrictionHint?: string;
       }>;
@@ -1949,6 +1950,7 @@ interface IElectronAPI {
         thinkingConfig?: import('../../shared/providers/modelThinking').ModelThinkingConfig;
         contextWindow?: number | null;
         costMultiplier?: number;
+        moreModel?: boolean;
       }>;
       error?: string;
     }>;
