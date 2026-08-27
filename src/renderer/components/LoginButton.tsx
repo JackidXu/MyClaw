@@ -35,6 +35,7 @@ import {
   getAccountPlanPresentation,
   getFinalRewards,
 } from './accountMenuState';
+import { ACCOUNT_MENU_COMPACT_CTA_CLASS_NAME } from './accountMenuStyles';
 import CreditsFinalRewardModal from './CreditsFinalRewardModal';
 import { DailyCheckInAccountMenuEntry } from './DailyCheckInActivity';
 import UserAvatarIcon from './icons/UserAvatarIcon';
@@ -48,6 +49,7 @@ const reportAccountMenuAction = (
     accountMode?: AccountPlanAnalyticsContext['accountMode'];
     creditItemCount?: number;
     canUpgrade?: boolean;
+    errorCode?: string;
     hasCredits?: boolean;
     hasSubscriptionPlan?: boolean;
     isLoggedIn?: boolean;
@@ -63,6 +65,7 @@ const reportAccountMenuAction = (
     actionType,
     accountMode: options.accountMode,
     canUpgrade: options.canUpgrade,
+    errorCode: options.errorCode,
     result: options.result,
     isLoggedIn: options.isLoggedIn ?? true,
     hasCredits: options.hasCredits,
@@ -201,7 +204,7 @@ const AccountPlanAction: React.FC<AccountPlanActionProps> = ({
       <button
         type="button"
         onClick={() => void onUpgrade()}
-        className="ml-auto h-5 shrink-0 rounded-md bg-[#111111] px-1.5 text-[10px] font-medium leading-none text-white transition-colors hover:bg-[#2a2a2a] dark:bg-white dark:text-black dark:hover:bg-white/85"
+        className={`ml-auto ${ACCOUNT_MENU_COMPACT_CTA_CLASS_NAME} bg-[#111111] text-white transition-colors hover:bg-[#2a2a2a] dark:bg-white dark:text-black dark:hover:bg-white/85`}
       >
         {i18nService.t('authUpgradePlan')}
       </button>
@@ -340,20 +343,43 @@ const UserMenu: React.FC<UserMenuProps> = ({
   };
 
   const handleRecharge = async () => {
+    reportAccountMenuAction('open_recharge', {
+      creditItemCount: creditItems.length,
+      hasCredits,
+    });
     try {
-      await openPortalUrl(getPortalRechargeUrl());
-      reportAccountMenuAction('open_recharge', {
-        creditItemCount: creditItems.length,
-        hasCredits,
-        result: 'success',
-      });
+      const message = 'opening recharge portal from account menu';
+      console.debug(`[LoginButton] ${message}`);
+      writeAccountMenuRendererLog('debug', message);
+      const result = await window.electron.shell.openExternal(getPortalRechargeUrl());
+      if (!result.success) {
+        console.warn('[LoginButton] failed to open recharge portal:', result.error);
+        writeAccountMenuRendererLog(
+          'warn',
+          `failed to open recharge portal from account menu: ${result.error ?? 'unknown'}`,
+        );
+        reportAccountMenuAction('open_recharge_failed', {
+          creditItemCount: creditItems.length,
+          errorCode: 'open_external_failed',
+          hasCredits,
+          result: 'failed',
+        });
+        return;
+      }
+      onClose();
     } catch (error) {
-      reportAccountMenuAction('open_recharge', {
+      console.warn('[LoginButton] failed to open recharge portal:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      writeAccountMenuRendererLog(
+        'warn',
+        `failed to open recharge portal from account menu: ${errorMessage}`,
+      );
+      reportAccountMenuAction('open_recharge_failed', {
         creditItemCount: creditItems.length,
+        errorCode: 'unknown',
         hasCredits,
         result: 'failed',
       });
-      throw error;
     }
   };
 

@@ -19,6 +19,7 @@ import dailyCheckInGiftUrl from '../assets/daily-check-in-gift.png';
 import { authService } from '../services/auth';
 import { i18nService } from '../services/i18n';
 import type { RootState } from '../store';
+import { ACCOUNT_MENU_COMPACT_CTA_CLASS_NAME } from './accountMenuStyles';
 import {
   formatDailyCheckInCredits,
   shouldShowDailyCheckInEntry,
@@ -486,7 +487,7 @@ export const DailyCheckInAccountMenuEntry: React.FC<
           )}
           <span className="min-w-0 flex-1 truncate">{entryLabel}</span>
           <span
-            className={`ml-1 inline-flex h-5 shrink-0 items-center justify-center rounded-md px-2 text-[10px] font-semibold leading-none ${
+            className={`ml-1 ${ACCOUNT_MENU_COMPACT_CTA_CLASS_NAME} ${
               claimed
                 ? 'bg-[#F8D8C7] text-white dark:bg-[#704530] dark:text-[#F7D5C1]'
                 : 'bg-[#111111] text-white dark:bg-white dark:text-black'

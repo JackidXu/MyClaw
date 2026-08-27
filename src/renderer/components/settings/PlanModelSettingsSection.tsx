@@ -305,7 +305,7 @@ const PlanModelCard: React.FC<{
         </div>
       </div>
 
-      <h4 className="mt-6 line-clamp-2 text-xl font-semibold leading-7 text-foreground">
+      <h4 className="mt-6 line-clamp-2 text-base font-semibold leading-6 text-foreground">
         {modelName}
       </h4>
       {description && (
@@ -561,7 +561,7 @@ const PlanModelSettingsSection: React.FC = () => {
           {i18nService.t('planModelCatalogEmpty')}
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 pt-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 pt-2 lg:grid-cols-2 xl:grid-cols-3">
           {visibleModels.map((model, index) => (
             <PlanModelCard
               key={model.modelId || `${model.modelName}-${index}`}
