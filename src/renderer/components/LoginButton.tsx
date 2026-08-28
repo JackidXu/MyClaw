@@ -200,21 +200,23 @@ const AccountPlanAction: React.FC<AccountPlanActionProps> = ({
   canUpgrade,
   onUpgrade,
 }) => (
-  <div className="flex w-full items-center gap-1.5 px-4 py-2 text-left text-[13px] text-foreground">
+  <div className="flex w-full items-center gap-2 px-4 py-2 text-left text-[13px] text-foreground">
     <DiamondSparkleIcon />
-    <span className={expiresAt ? 'max-w-[64px] shrink-0 truncate' : 'min-w-0 flex-1 truncate'}>
-      {label}
-    </span>
-    {expiresAt && (
-      <span className="shrink-0 whitespace-nowrap text-[9px] leading-4 text-secondary">
-        {i18nService.t('authPlanExpiresAt').replace('{date}', formatDate(expiresAt))}
+    <span className="min-w-0 flex-1">
+      <span className="block truncate font-medium" title={label}>
+        {label}
       </span>
-    )}
+      {expiresAt && (
+        <span className="mt-0.5 block truncate text-[9px] leading-3 text-secondary">
+          {i18nService.t('authPlanExpiresAt').replace('{date}', formatDate(expiresAt))}
+        </span>
+      )}
+    </span>
     {canUpgrade && (
       <button
         type="button"
         onClick={() => void onUpgrade()}
-        className={`ml-auto ${ACCOUNT_MENU_COMPACT_CTA_CLASS_NAME} bg-[#111111] text-white transition-colors hover:bg-[#2a2a2a] dark:bg-white dark:text-black dark:hover:bg-white/85`}
+        className={`${ACCOUNT_MENU_COMPACT_CTA_CLASS_NAME} bg-[#111111] text-white transition-colors hover:bg-[#2a2a2a] dark:bg-white dark:text-black dark:hover:bg-white/85`}
       >
         {i18nService.t('authUpgradePlan')}
       </button>
@@ -546,7 +548,7 @@ const UserMenu: React.FC<UserMenuProps> = ({
         )}
         {shouldShowPlanLearnAction && (
           <AccountPlanAction
-            label={i18nService.t('authBasicBenefits')}
+            label={i18nService.t('planFree')}
             expiresAt={null}
             canUpgrade
             onUpgrade={handleUpgradePlan}
@@ -840,7 +842,7 @@ const LoginButton: React.FC<LoginButtonProps> = ({
         onClick={handleClick}
         className={
           useSidebarPromoLogin
-            ? 'sidebar-login-rainbow inline-flex h-7 w-[5.25rem] shrink-0 cursor-pointer items-center justify-center rounded-md px-2.5 text-[13px] font-medium transition-[filter,transform]'
+            ? 'sidebar-login-rainbow inline-flex h-7 w-[5.75rem] shrink-0 cursor-pointer items-center justify-center whitespace-nowrap rounded-md px-2.5 text-[13px] font-medium leading-none transition-[filter,transform]'
             : 'inline-flex h-7 items-center justify-start gap-2 rounded-md px-1.5 text-sm font-normal text-foreground/80 transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.04] cursor-pointer'
         }
       >

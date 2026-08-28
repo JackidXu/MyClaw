@@ -41,10 +41,23 @@ import {
 } from './useDailyCheckInActivity';
 
 const CLAIM_SUCCESS_DURATION_MS = 2200;
+const CJK_TEXT_PATTERN = /[\u3400-\u9fff]/;
 const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
 
 const showToast = (message: string): void => {
   window.dispatchEvent(new CustomEvent('app:showToast', { detail: message }));
+};
+
+export const getLocalizedDailyCheckInText = (
+  serverText: string | null | undefined,
+  fallback: string,
+): string => {
+  const trimmedText = serverText?.trim();
+  if (!trimmedText) return fallback;
+  if (i18nService.getLanguage() === 'en' && CJK_TEXT_PATTERN.test(trimmedText)) {
+    return fallback;
+  }
+  return trimmedText;
 };
 
 const getRewardValidityDays = (
@@ -73,6 +86,18 @@ export const DailyCheckInLoginModal: React.FC<DailyCheckInLoginModalProps> = ({
   onClose,
 }) => {
   const [startingLogin, setStartingLogin] = useState(false);
+  const modalTitle = getLocalizedDailyCheckInText(
+    descriptor.guestModalTitle,
+    i18nService.t('dailyCheckInGuestModalTitle'),
+  );
+  const modalDescription = getLocalizedDailyCheckInText(
+    descriptor.guestModalDescription,
+    i18nService.t('dailyCheckInGuestModalDescription'),
+  );
+  const modalActionText = getLocalizedDailyCheckInText(
+    descriptor.guestModalActionText,
+    i18nService.t('dailyCheckInGuestModalAction'),
+  );
 
   const startLogin = async () => {
     if (startingLogin) return;
@@ -97,7 +122,7 @@ export const DailyCheckInLoginModal: React.FC<DailyCheckInLoginModalProps> = ({
       className="non-draggable fixed inset-0 z-[110] flex items-center justify-center bg-black/30 p-6 backdrop-blur-[1px]"
       role="dialog"
       aria-modal="true"
-      aria-label={descriptor.guestModalTitle}
+      aria-label={modalTitle}
     >
       <button
         type="button"
@@ -121,10 +146,10 @@ export const DailyCheckInLoginModal: React.FC<DailyCheckInLoginModalProps> = ({
           className="mx-auto -mt-1 mb-3 h-[78px] w-[92px] object-contain drop-shadow-lg"
         />
         <h2 className="text-base font-semibold text-foreground">
-          {descriptor.guestModalTitle}
+          {modalTitle}
         </h2>
         <p className="mx-auto mt-2 max-w-[260px] text-xs leading-5 text-secondary">
-          {descriptor.guestModalDescription}
+          {modalDescription}
         </p>
         <button
           type="button"
@@ -134,7 +159,7 @@ export const DailyCheckInLoginModal: React.FC<DailyCheckInLoginModalProps> = ({
         >
           {startingLogin
             ? i18nService.t('dailyCheckInStartingLogin')
-            : descriptor.guestModalActionText}
+            : modalActionText}
         </button>
         <p className="mt-2 text-[10px] leading-4 text-secondary/80">
           {i18nService.t('dailyCheckInLoginHint')}
@@ -376,8 +401,10 @@ const useDailyCheckInEntryController = ({
       : shouldShowDailyCheckInEntry(snapshot.context)
     : false;
 
-  const entryLabel = snapshot?.descriptor.cardTitle
-    || i18nService.t('dailyCheckInEntry');
+  const entryLabel = getLocalizedDailyCheckInText(
+    snapshot?.descriptor.cardTitle,
+    i18nService.t('dailyCheckInEntry'),
+  );
   const buttonLabel = success
     ? i18nService.t('dailyCheckInTodayClaimed')
     : claiming

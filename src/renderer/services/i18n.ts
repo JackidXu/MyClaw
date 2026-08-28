@@ -384,6 +384,9 @@ const translations: Record<LanguageType, Record<string, string>> = {
     dailyCheckInClaimSuccess: '已领取 {credits} 积分',
     dailyCheckInClaimFailed: '领取失败，请重试',
     dailyCheckInEntry: '每日积分礼',
+    dailyCheckInGuestModalTitle: '登录领取每日积分礼',
+    dailyCheckInGuestModalDescription: '登录后即可领取每日积分奖励',
+    dailyCheckInGuestModalAction: '登录领取',
     dailyCheckInRewardReceived: '奖励到账啦',
     dailyCheckInRewardCredits: '+{credits}积分',
     dailyCheckInValidityDays: '有效期{days}天',
@@ -493,6 +496,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     planStandard: '标准',
     planAdvanced: '进阶',
     planPro: '专业',
+    planElite: '卓越',
 
     // 错误信息
     failedToLoadSettings: '加载设置失败',
@@ -4051,6 +4055,9 @@ const translations: Record<LanguageType, Record<string, string>> = {
     dailyCheckInClaimSuccess: '{credits} credits claimed',
     dailyCheckInClaimFailed: 'Unable to claim credits. Please try again.',
     dailyCheckInEntry: 'Daily credit gift',
+    dailyCheckInGuestModalTitle: 'Log in to claim daily credits',
+    dailyCheckInGuestModalDescription: 'Log in to claim your daily credit gift.',
+    dailyCheckInGuestModalAction: 'Log in to claim',
     dailyCheckInRewardReceived: 'Reward received',
     dailyCheckInRewardCredits: '+{credits} credits',
     dailyCheckInValidityDays: 'Valid for {days} days',
@@ -4159,7 +4166,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     planFree: 'Free',
     planStandard: 'Standard',
     planAdvanced: 'Advanced',
-    planPro: 'Pro',
+    planPro: 'Professional',
+    planElite: 'Elite',
 
     // Error Messages
     failedToLoadSettings: 'Failed to load settings',
