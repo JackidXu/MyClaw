@@ -95,19 +95,13 @@ import {
   shouldUseOpenAIResponsesForProvider,
 } from './settings/modelProviderUtils';
 import ModelSettingsSection, { DeleteProviderConfirmDialog, ModelEditorDialog } from './settings/ModelSettingsSection';
-import {
-  PlanModelCatalogAnalyticsActionType,
-  PlanModelCatalogAnalyticsSource,
-  reportPlanModelCatalogAction,
-} from './settings/planModelCatalogAnalytics';
-import PlanModelSettingsSection from './settings/PlanModelSettingsSection';
 import { resolveSettingsEscapeAction, SettingsEscapeAction } from './settings/settingsEscape';
 import EmailSkillConfig from './skills/EmailSkillConfig';
 import SkinPresentationScope from './skin/SkinPresentationScope';
 import SkinSettingsSection from './skin/SkinSettingsSection';
 import ThemedSelect from './ui/ThemedSelect';
 
-type TabType = 'general' | 'appearance' | 'coworkAgentEngine' | 'planModelIntro' | 'model' | 'browserWebAccess' | 'coworkMemory' | 'coworkDreaming' | 'shortcuts' | 'im' | 'email' | 'plugins' | 'experimental' | 'about';
+type TabType = 'general' | 'appearance' | 'coworkAgentEngine' | 'model' | 'browserWebAccess' | 'coworkMemory' | 'coworkDreaming' | 'shortcuts' | 'im' | 'email' | 'plugins' | 'experimental' | 'about';
 
 const waitForNextPaint = (): Promise<void> => new Promise(resolve => {
   window.requestAnimationFrame(() => {
@@ -3704,10 +3698,7 @@ const Settings: React.FC<SettingsProps> = ({
   };
 
   // 标签页切换处理
-  const doTabChange = useCallback((
-    tab: TabType,
-    source: PlanModelCatalogAnalyticsSource = PlanModelCatalogAnalyticsSource.SettingsSidebar,
-  ) => {
+  const doTabChange = useCallback((tab: TabType) => {
     if (tab !== 'model') {
       setIsAddingModel(false);
       setIsEditingModel(false);
@@ -3717,26 +3708,15 @@ const Settings: React.FC<SettingsProps> = ({
       setNewModelSupportsImage(false);
       setModelFormError(null);
     }
-    if (tab === 'planModelIntro' && activeTab !== tab) {
-      reportPlanModelCatalogAction({
-        actionType: PlanModelCatalogAnalyticsActionType.OpenTab,
-        previousTab: activeTab,
-        source,
-        targetTab: tab,
-      });
-    }
     setActiveTab(tab);
-  }, [activeTab]);
+  }, []);
 
-  const handleTabChange = useCallback((
-    tab: TabType,
-    source: PlanModelCatalogAnalyticsSource = PlanModelCatalogAnalyticsSource.SettingsSidebar,
-  ) => {
+  const handleTabChange = useCallback((tab: TabType) => {
     if (isBackingUpOpenClawData || isRestoringOpenClawData) return;
-    if (activeTab === 'plugins' && pluginsSettingsRef.current?.guardLeave(() => doTabChange(tab, source))) {
+    if (activeTab === 'plugins' && pluginsSettingsRef.current?.guardLeave(() => doTabChange(tab))) {
       return;
     }
-    doTabChange(tab, source);
+    doTabChange(tab);
   }, [activeTab, doTabChange, isBackingUpOpenClawData, isRestoringOpenClawData]);
 
   // Guarded close: check plugin dirty state before closing
@@ -4557,7 +4537,6 @@ const Settings: React.FC<SettingsProps> = ({
       { key: 'general' as TabType,        label: i18nService.t('general'),        icon: <SettingsSlidersIcon className="h-5 w-5" /> },
       { key: 'appearance' as TabType,     label: i18nService.t('appearance'),     icon: <SunIcon className="h-5 w-5" /> },
       { key: 'coworkAgentEngine' as TabType, label: i18nService.t('coworkAgentEngine'), icon: <CpuChipIcon className="h-5 w-5" /> },
-      { key: 'planModelIntro' as TabType, label: i18nService.t('settingsPlanModelIntro'), icon: <ArchiveBoxIcon className="h-5 w-5" /> },
       { key: 'model' as TabType,          label: i18nService.t('settingsCustomModel'), icon: <CubeIcon className="h-5 w-5" /> },
       { key: 'im' as TabType,             label: i18nService.t('imBot'),          icon: <ChatBubbleLeftIcon className="h-5 w-5" /> },
       { key: 'browserWebAccess' as TabType, label: i18nService.t('browserWebAccessTab'), icon: <GlobeAltIcon className="h-5 w-5" /> },
@@ -4600,7 +4579,7 @@ const Settings: React.FC<SettingsProps> = ({
       if (!targetTab || !sidebarTabs.some(tab => tab.key === targetTab)) return;
 
       event.preventDefault();
-      handleTabChange(targetTab, PlanModelCatalogAnalyticsSource.SettingsShortcut);
+      handleTabChange(targetTab);
     };
 
     document.addEventListener('keydown', handleSettingsTabShortcut);
@@ -5638,9 +5617,6 @@ const Settings: React.FC<SettingsProps> = ({
           />
         );
 
-      case 'planModelIntro':
-        return <PlanModelSettingsSection />;
-
       case 'model':
         return (
           <ModelSettingsSection
@@ -5983,7 +5959,7 @@ const Settings: React.FC<SettingsProps> = ({
             {sidebarTabs.map((tab) => (
               <button
                 key={tab.key}
-                onClick={() => handleTabChange(tab.key, PlanModelCatalogAnalyticsSource.SettingsSidebar)}
+                onClick={() => handleTabChange(tab.key)}
                 className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors text-left ${
                   activeTab === tab.key
                     ? 'bg-primary-muted text-primary'
