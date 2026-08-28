@@ -411,17 +411,19 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
     }
   };
 
-  /** Tab 切换时重置页码并重新拉取 */
-  useEffect(() => {
-    setDocsPage(1);
-    loadDocs(materialTab, 1);
-  }, [materialTab]);
-
-  /** 翻页时重新拉取 */
+  /** 资料 Tab 或页码切换时拉取资料列表 */
   useEffect(() => {
     loadDocs(materialTab, docsPage);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [docsPage]);
+  }, [materialTab, docsPage]);
+
+  /** Tab 切换处理（重置回第 1 页） */
+  const handleTabChange = (tab: MaterialTab) => {
+    if (tab === materialTab) return;
+    setMaterialTab(tab);
+    if (docsPage !== 1) {
+      setDocsPage(1);
+    }
+  };
 
   /** 点击上传资料触发文件选择框 */
   const handleUploadClick = () => {
@@ -1058,7 +1060,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                     <button
                       key={tab}
                       type="button"
-                      onClick={() => setMaterialTab(tab)}
+                      onClick={() => handleTabChange(tab)}
                       className={`text-xs md:text-sm px-4 py-2 rounded-t-lg transition-colors cursor-pointer border-b-2 ${
                         materialTab === tab
                           ? 'bg-[#FF6B35]/10 text-[#FF6B35] border-b-[#FF6B35] font-bold'
