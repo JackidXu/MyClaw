@@ -1726,6 +1726,18 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
       ? CoworkCollaborationMode.Plan
       : CoworkCollaborationMode.Default;
 
+    if (vipService.isAccountExpired()) {
+      const expiredAt = vipService.getAccountExpiredAt();
+      reportPromptControl('submit_blocked', {
+        blockedReason: 'account_expired',
+        submitMethod: effectiveSubmitMethod,
+        ...getPromptTextAnalyticsParams(trimmedValue),
+        ...getPromptCapabilityAnalyticsParams(),
+      });
+      showToast(expiredAt ? `软件账号授权已到期（${expiredAt}），请联系管理员续费` : '软件账号授权已到期，请联系管理员续费');
+      return;
+    }
+
     const accessPrompt = resolveSubmitModelAccessPrompt();
     if (accessPrompt) {
       reportPromptControl('submit_blocked', {

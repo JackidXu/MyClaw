@@ -7,6 +7,9 @@ HeyClaw 基于网易有道龙虾（LobsterAI）二次开发，定位是垂直领
 ### 1.1 模型与网关体系
 - **模型中转站**：统一使用 **NewAPI**（代码中历史命名的 `oneapi` 变量及配置均指代 NewAPI 中转服务）。
 - **底层模型提供商**：底层大模型接入来自**字节火山方舟**（Volcano Engine / Doubao 等）。
+- **【核心安全铁律】NewAPI / OneAPI 数据库绝对纯只读**：
+  - 代码中**绝对禁止、也严禁对 `oneapi` 数据库执行任何 `INSERT`、`UPDATE`、`DELETE` 或 `ALTER` 等写操作**，只能进行 `SELECT` 纯只读查询（如跨库查询注册用户列表）；
+  - 所有的权限、订阅、设备绑定及自定义业务数据，必须且只能持久化写入我们自己的业务数据库（如 `heyclaw.vip_subscriptions`、`heyclaw.vip_devices` 等）。
 
 ### 1.2 应用数据目录（UserData）
 - **正式环境（Packaged 打包后）**：目录名为 `HeyClaw`

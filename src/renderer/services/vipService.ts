@@ -16,7 +16,8 @@ export interface VipStatusState {
   authorized: boolean;
   subscriptions: VipSubscription[];
   permissions: string[];
-  reason?: 'session_expired' | 'device_limit' | 'user_mismatch' | string;
+  reason?: 'session_expired' | 'device_limit' | 'user_mismatch' | 'account_expired' | string;
+  expiredAt?: string;
   loading: boolean;
   lastUpdated: number;
 }
@@ -36,6 +37,14 @@ class VipService {
 
   public getState(): VipStatusState {
     return this.state;
+  }
+
+  public isAccountExpired(): boolean {
+    return !this.state.authorized && this.state.reason === 'account_expired';
+  }
+
+  public getAccountExpiredAt(): string | undefined {
+    return this.state.expiredAt;
   }
 
   public subscribe(listener: VipChangeListener): () => void {
@@ -106,6 +115,7 @@ class VipService {
       const res = await httpClient.post<{
         authorized?: boolean;
         reason?: string;
+        expiredAt?: string;
         subscriptions?: VipSubscription[];
         permissions?: string[];
       }>(`${adminBaseUrl}/api/vip/status`, {
@@ -130,12 +140,15 @@ class VipService {
             subscriptions: [],
             permissions: [],
             reason: data.reason,
+            expiredAt: data.expiredAt,
             loading: false,
             lastUpdated: Date.now(),
           };
 
           if (data.reason === 'device_limit') {
             console.warn('[VipService] 设备注册数量已达上限 (5台)');
+          } else if (data.reason === 'account_expired') {
+            console.warn(`[VipService] 账号使用权限已到期 (${data.expiredAt || ''})`);
           }
         }
       } else {

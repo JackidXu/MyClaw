@@ -169,6 +169,8 @@ const App: React.FC = () => {
   const [initError, setInitError] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<ToastEventDetail | null>(null);
   const [, forceLanguageRefresh] = useState(0);
+  const [isAccountExpired, setIsAccountExpired] = useState(false);
+  const [accountExpiredAt, setAccountExpiredAt] = useState<string | undefined>(undefined);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isTaskFilterActive, setIsTaskFilterActive] = useState(false);
   const [hasUnreadCompletedTasks, setHasUnreadCompletedTasks] = useState(false);
@@ -671,6 +673,26 @@ const App: React.FC = () => {
     window.addEventListener('app:unauthorized', handleUnauthorizedEvent);
     return () => {
       window.removeEventListener('app:unauthorized', handleUnauthorizedEvent);
+    };
+  }, []);
+
+  // 启动及窗口聚焦时自动同步 VIP 权限与账号状态
+  useEffect(() => {
+    const updateVipState = (state: { authorized: boolean; reason?: string; expiredAt?: string }) => {
+      setIsAccountExpired(!state.authorized && state.reason === 'account_expired');
+      setAccountExpiredAt(state.expiredAt);
+    };
+
+    const unsubscribe = vipService.subscribe(updateVipState);
+    void vipService.refreshStatus();
+
+    const handleFocus = () => {
+      void vipService.refreshStatus();
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => {
+      unsubscribe();
+      window.removeEventListener('focus', handleFocus);
     };
   }, []);
 
@@ -1924,8 +1946,27 @@ const App: React.FC = () => {
           <div
             data-skin-cowork-frame={mainView === 'cowork' ? 'true' : undefined}
             data-skin-management-frame={mainView !== 'cowork' ? 'true' : undefined}
-            className="relative h-full min-h-0 rounded-xl border border-border bg-background overflow-hidden"
+            className="relative h-full min-h-0 rounded-xl border border-border bg-background overflow-hidden flex flex-col"
           >
+            {isAccountExpired && (
+              <div className="shrink-0 bg-amber-500/10 border-b border-amber-500/30 px-4 py-2 flex items-center justify-between z-30">
+                <div className="flex items-center space-x-2 text-xs text-amber-600 dark:text-amber-400">
+                  <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  <span>
+                    您的软件账号授权已到期{accountExpiredAt ? `（${accountExpiredAt}）` : ''}，当前对话与大模型功能已暂停使用，请联系管理员续费。
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { void vipService.refreshStatus(); }}
+                  className="px-2.5 py-1 text-xs font-medium text-amber-700 dark:text-amber-300 bg-amber-500/20 hover:bg-amber-500/30 rounded-md transition"
+                >
+                  已续费，刷新状态
+                </button>
+              </div>
+            )}
             {mainView !== 'cowork' && (
               <SkinBackdrop variant={SkinBackdropVariant.Management} />
             )}
