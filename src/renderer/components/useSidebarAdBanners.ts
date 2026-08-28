@@ -75,6 +75,7 @@ export const useSidebarAdBanners = (): UseSidebarAdBannersResult => {
       const nextSchedule = createCachedBannerSchedule({
         serverTime: result.data.serverTime,
         nextRefreshAt: result.data.nextRefreshAt,
+        clientVersion: result.data.clientVersion,
         banners: result.data.banners as ClientBanner[],
       });
       if (!nextSchedule) return false;
@@ -123,7 +124,10 @@ export const useSidebarAdBanners = (): UseSidebarAdBannersResult => {
   useEffect(() => {
     mountedRef.current = true;
     void (async () => {
-      const cachedSchedule = await readCachedBannerSchedule();
+      const clientVersion = await window.electron.appInfo.getVersion().catch(() => '');
+      const cachedSchedule = clientVersion
+        ? await readCachedBannerSchedule(undefined, Date.now(), clientVersion)
+        : null;
       if (!mountedRef.current) return;
       if (cachedSchedule) {
         const cachedBanners = getActiveCachedBanners(cachedSchedule);

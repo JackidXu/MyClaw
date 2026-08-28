@@ -578,6 +578,7 @@ interface ClientBannerData {
   activityDescription: string;
   weight?: number;
   status?: number;
+  minClientVersion?: string | null;
   onlineAt?: string;
   offlineAt?: string;
   linkUrl: string;
@@ -590,6 +591,7 @@ interface ClientBannerData {
 interface ClientBannerSnapshotData {
   serverTime: string;
   nextRefreshAt: string | null;
+  clientVersion: string;
   banners: ClientBannerData[];
 }
 
