@@ -2,6 +2,8 @@ import { PlusIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import React, { useEffect, useRef, useState } from 'react';
 
 import {
+  BrowserCredentialSaveMode,
+  type BrowserCredentialSaveMode as BrowserCredentialSaveModeValue,
   BrowserCredentialUseMode,
   type BrowserCredentialUseMode as BrowserCredentialUseModeValue,
 } from '../../../shared/browserCredentials/constants';
@@ -225,6 +227,34 @@ const BrowserWebAccessSettings: React.FC<BrowserWebAccessSettingsProps> = ({
                   {
                     value: BrowserCredentialUseMode.Disabled,
                     label: i18nService.t('browserCredentialUseModeDisabled'),
+                  },
+                ]}
+              />
+            </div>
+          )}
+        />
+
+        <SettingRow
+          title={i18nService.t('browserCredentialSaveModeTitle')}
+          description={value.credentialSaveMode === BrowserCredentialSaveMode.Never
+            ? i18nService.t('browserCredentialSaveModeNeverDescription')
+            : i18nService.t('browserCredentialSaveModeAskDescription')}
+          control={(
+            <div className="w-[300px]">
+              <ThemedSelect
+                id="browser-credential-save-mode"
+                value={value.credentialSaveMode}
+                onChange={(mode) => update({
+                  credentialSaveMode: mode as BrowserCredentialSaveModeValue,
+                })}
+                options={[
+                  {
+                    value: BrowserCredentialSaveMode.Ask,
+                    label: i18nService.t('browserCredentialSaveModeAsk'),
+                  },
+                  {
+                    value: BrowserCredentialSaveMode.Never,
+                    label: i18nService.t('browserCredentialSaveModeNever'),
                   },
                 ]}
               />

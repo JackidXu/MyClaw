@@ -30,6 +30,7 @@ import {
   type BrowserCredentialSaveRequest,
 } from '../shared/browserCredentials/constants';
 import {
+  type AgentBrowserCredentialSavePromptRequest,
   type AgentBrowserHostNavigateRequest,
   type AgentBrowserHostPageRequest,
   type AgentBrowserHostRequest,
@@ -403,6 +404,10 @@ contextBridge.exposeInMainWorld('electron', {
         ipcRenderer.invoke(BrowserIpc.SelectHostPage, request),
       closeHostPage: (request: AgentBrowserHostPageRequest): Promise<AgentBrowserHostResponse> =>
         ipcRenderer.invoke(BrowserIpc.CloseHostPage, request),
+      resolveCredentialSavePrompt: (
+        request: AgentBrowserCredentialSavePromptRequest,
+      ): Promise<AgentBrowserHostResponse> =>
+        ipcRenderer.invoke(BrowserIpc.ResolveCredentialSavePrompt, request),
       onHostState: (callback: (event: AgentBrowserHostStateEvent) => void) => {
         const handler = (_event: Electron.IpcRendererEvent, hostEvent: AgentBrowserHostStateEvent) =>
           callback(hostEvent);

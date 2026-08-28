@@ -3,11 +3,13 @@ import {
   ArrowPathIcon,
   ArrowRightIcon,
   ComputerDesktopIcon,
+  KeyIcon,
   StopIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline';
 import {
   BrowserCredentialLoginStatus,
+  BrowserCredentialSaveDecision,
 } from '@shared/browserCredentials/constants';
 import type {
   AgentBrowserHostResponse,
@@ -36,6 +38,7 @@ const AgentBrowserInAppPanel: React.FC<AgentBrowserInAppPanelProps> = ({
   const [state, setState] = useState<AgentBrowserHostState | null>(null);
   const [address, setAddress] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [resolvingCredentialSave, setResolvingCredentialSave] = useState(false);
   const browserViewportRef = useRef<HTMLDivElement>(null);
   const addressFocusedRef = useRef(false);
   const syncFrameRef = useRef<number | null>(null);
@@ -159,6 +162,23 @@ const AgentBrowserInAppPanel: React.FC<AgentBrowserInAppPanelProps> = ({
     }
   };
 
+  const resolveCredentialSavePrompt = async (
+    decision: BrowserCredentialSaveDecision,
+  ): Promise<void> => {
+    const prompt = state?.credentialSavePrompt;
+    if (!prompt || resolvingCredentialSave) return;
+    setResolvingCredentialSave(true);
+    try {
+      await runAction(() => window.electron.openclaw.browser.resolveCredentialSavePrompt({
+        sessionId,
+        requestId: prompt.requestId,
+        decision,
+      }));
+    } finally {
+      setResolvingCredentialSave(false);
+    }
+  };
+
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col bg-background">
       <div className="flex h-11 shrink-0 items-center gap-1.5 border-b border-border px-2">
@@ -249,6 +269,47 @@ const AgentBrowserInAppPanel: React.FC<AgentBrowserInAppPanelProps> = ({
       {state?.error ? (
         <div className="shrink-0 truncate border-b border-amber-500/30 bg-amber-500/10 px-3 py-1 text-[11px] text-amber-700 dark:text-amber-300" title={state.error}>
           {state.error}
+        </div>
+      ) : null}
+
+      {state?.credentialSavePrompt ? (
+        <div className="shrink-0 border-b border-primary/20 bg-primary/5 px-3 py-2">
+          <div className="flex items-start gap-2.5">
+            <KeyIcon className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+            <div className="min-w-0 flex-1">
+              <div className="text-xs font-medium text-foreground">
+                {i18nService.t(state.credentialSavePrompt.updatesExisting
+                  ? 'agentBrowserCredentialUpdatePromptTitle'
+                  : 'agentBrowserCredentialSavePromptTitle')}
+              </div>
+              <div className="mt-0.5 truncate text-[11px] text-secondary" title={`${state.credentialSavePrompt.username} · ${state.credentialSavePrompt.origin}`}>
+                {state.credentialSavePrompt.username} · {state.credentialSavePrompt.origin}
+              </div>
+              <div className="mt-0.5 text-[11px] text-muted">
+                {i18nService.t('agentBrowserCredentialSavePromptDescription')}
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <button
+                type="button"
+                disabled={resolvingCredentialSave}
+                onClick={() => void resolveCredentialSavePrompt(BrowserCredentialSaveDecision.Dismiss)}
+                className="rounded-md px-2 py-1 text-[11px] text-secondary transition-colors hover:bg-surface-raised hover:text-foreground disabled:opacity-50"
+              >
+                {i18nService.t('agentBrowserCredentialSaveNotNow')}
+              </button>
+              <button
+                type="button"
+                disabled={resolvingCredentialSave}
+                onClick={() => void resolveCredentialSavePrompt(BrowserCredentialSaveDecision.Save)}
+                className="rounded-md bg-primary px-2.5 py-1 text-[11px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+              >
+                {i18nService.t(state.credentialSavePrompt.updatesExisting
+                  ? 'agentBrowserCredentialUpdate'
+                  : 'agentBrowserCredentialSave')}
+              </button>
+            </div>
+          </div>
         </div>
       ) : null}
 

@@ -7,6 +7,22 @@ export const BrowserCredentialUseMode = {
 export type BrowserCredentialUseMode =
   typeof BrowserCredentialUseMode[keyof typeof BrowserCredentialUseMode];
 
+export const BrowserCredentialSaveMode = {
+  Ask: 'ask',
+  Never: 'never',
+} as const;
+
+export type BrowserCredentialSaveMode =
+  typeof BrowserCredentialSaveMode[keyof typeof BrowserCredentialSaveMode];
+
+export const BrowserCredentialSaveDecision = {
+  Save: 'save',
+  Dismiss: 'dismiss',
+} as const;
+
+export type BrowserCredentialSaveDecision =
+  typeof BrowserCredentialSaveDecision[keyof typeof BrowserCredentialSaveDecision];
+
 export const BrowserCredentialIpc = {
   GetAvailability: 'openclaw:browser:credentials:getAvailability',
   List: 'openclaw:browser:credentials:list',
@@ -67,6 +83,14 @@ export interface BrowserCredentialAvailabilityResponse {
   error?: string;
 }
 
+export interface BrowserCredentialSavePrompt {
+  requestId: string;
+  pageId: number;
+  origin: string;
+  username: string;
+  updatesExisting: boolean;
+}
+
 export const BrowserCredentialLoginStatus = {
   AwaitingApproval: 'awaiting-approval',
   SigningIn: 'signing-in',
@@ -109,4 +133,10 @@ export interface BrowserCredentialLoginResult {
 
 export const BrowserCredentialLoginTool = {
   Name: 'login_with_saved_credential',
+} as const;
+
+export const BrowserCredentialMcpServer = {
+  Name: 'lobster-browser-credentials',
+  ToolSetArgument: '--lobster-tool-set=credentials',
+  ModelToolName: 'lobster-browser-credentials__login_with_saved_credential',
 } as const;

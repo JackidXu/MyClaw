@@ -28,6 +28,7 @@ import type {
   BrowserCredentialSaveRequest,
 } from '../../shared/browserCredentials/constants';
 import type {
+  AgentBrowserCredentialSavePromptRequest,
   AgentBrowserHostNavigateRequest,
   AgentBrowserHostPageRequest,
   AgentBrowserHostRequest,
@@ -891,6 +892,9 @@ interface IElectronAPI {
       stopHost: (request?: AgentBrowserHostRequest) => Promise<AgentBrowserHostResponse>;
       selectHostPage: (request: AgentBrowserHostPageRequest) => Promise<AgentBrowserHostResponse>;
       closeHostPage: (request: AgentBrowserHostPageRequest) => Promise<AgentBrowserHostResponse>;
+      resolveCredentialSavePrompt: (
+        request: AgentBrowserCredentialSavePromptRequest,
+      ) => Promise<AgentBrowserHostResponse>;
       onHostState: (callback: (event: AgentBrowserHostStateEvent) => void) => () => void;
       credentials: {
         getAvailability: () => Promise<BrowserCredentialAvailabilityResponse>;

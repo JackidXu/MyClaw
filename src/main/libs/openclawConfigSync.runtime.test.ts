@@ -3,6 +3,10 @@ import os from 'os';
 import path from 'path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
+import {
+  BrowserCredentialLoginTool,
+  BrowserCredentialMcpServer,
+} from '../../shared/browserCredentials/constants';
 import { ProviderName } from '../../shared/providers';
 
 vi.mock('electron', () => ({
@@ -2978,6 +2982,11 @@ describe('OpenClawConfigSync runtime config output', () => {
       getBrowserWebAccessConfig: () => ({ displayMode: browserDisplayMode }),
       getBrowserCallbackUrl: () => 'http://127.0.0.1:3210/browser/tool',
       getLobsterBrowserMcpCommand: () => 'C:/LobsterAI/lobster-browser-mcp.cmd',
+      getLobsterBrowserMcpStdioLaunch: () => ({
+        command: 'C:/LobsterAI/LobsterAI.exe',
+        args: ['C:/LobsterAI/lobster-browser-mcp-server.mjs'],
+        env: { ELECTRON_RUN_AS_NODE: '1' },
+      }),
       isEnterprise: () => false,
       getPopoInstances: () => [],
       getNeteaseBeeChanConfig: () => null,
@@ -3002,6 +3011,23 @@ describe('OpenClawConfigSync runtime config output', () => {
     });
     expect(inAppConfig.browser.headless).toBeUndefined();
     expect(inAppConfig.browser.extraArgs).toBeUndefined();
+    expect(inAppConfig.mcp.servers[BrowserCredentialMcpServer.Name]).toEqual({
+      command: 'C:/LobsterAI/LobsterAI.exe',
+      args: [
+        'C:/LobsterAI/lobster-browser-mcp-server.mjs',
+        BrowserCredentialMcpServer.ToolSetArgument,
+      ],
+      env: { ELECTRON_RUN_AS_NODE: '1' },
+      toolFilter: {
+        include: [BrowserCredentialLoginTool.Name],
+      },
+    });
+
+    browserDisplayMode = BrowserDisplayMode.External;
+    const leaveInAppResult = inAppSync.sync('browser-web-access-leave-in-app');
+    expect(leaveInAppResult.ok).toBe(true);
+    const leaveInAppConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    expect(leaveInAppConfig.mcp).toBeUndefined();
   });
 
   test('marks MCP server config changes as restart impact', async () => {

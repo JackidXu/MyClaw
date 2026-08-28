@@ -1,7 +1,10 @@
 import fs from 'fs';
 import path from 'path';
 
-import { BrowserCredentialLoginTool } from '../../shared/browserCredentials/constants';
+import {
+  BrowserCredentialLoginTool,
+  BrowserCredentialMcpServer,
+} from '../../shared/browserCredentials/constants';
 
 const SERVER_FILE_NAME = 'lobster-browser-mcp-server.mjs';
 const RUNTIME_CONFIG_FILE_NAME = 'lobster-browser-mcp-runtime.json';
@@ -13,6 +16,12 @@ export interface LobsterBrowserMcpLaunchOptions {
   bridgeUrl: string;
   bridgeSecret: string;
   platform?: NodeJS.Platform;
+}
+
+export interface LobsterBrowserMcpStdioLaunch {
+  command: string;
+  args: string[];
+  env: Record<string, string>;
 }
 
 const MCP_SERVER_SOURCE = String.raw`import fs from 'node:fs/promises';
@@ -39,7 +48,8 @@ const bridgeUrl = bridgeUrlArg
   : runtimeConfig?.bridgeUrl || '';
 const bridgeSecret = runtimeConfig?.bridgeSecret || '';
 
-const tools = [
+const credentialOnly = process.argv.includes('${BrowserCredentialMcpServer.ToolSetArgument}');
+const toolDefinitions = [
   ['list_pages', {}],
   ['new_page', { url: { type: 'string' }, timeout: { type: 'number' } }],
   ['select_page', { pageId: { type: 'number' }, bringToFront: { type: 'boolean' } }],
@@ -63,11 +73,14 @@ const tools = [
     accountHint: { type: 'string' },
     reason: { type: 'string' },
   }, 'Sign in through an isolated LobsterAI login view with a credential saved for the current website. The password is never returned to the Agent. This may ask the user for approval; after approval, continue the task without asking the user to type or paste the password.'],
-].map(([name, properties, description]) => ({
+];
+const tools = toolDefinitions
+  .filter(([name]) => !credentialOnly || name === '${BrowserCredentialLoginTool.Name}')
+  .map(([name, properties, description]) => ({
   name,
   description: description || 'Operate the LobsterAI in-app browser.',
   inputSchema: { type: 'object', properties, additionalProperties: true },
-}));
+  }));
 
 function writeMessage(message) {
   process.stdout.write(JSON.stringify(message) + '\n');
@@ -214,10 +227,15 @@ const writeFileIfChanged = (filePath: string, contents: string, mode?: number): 
   }
 };
 
-export const resolveLobsterBrowserMcpCommand = (
+interface PreparedLobsterBrowserMcpRuntime {
+  serverDir: string;
+  serverPath: string;
+}
+
+const prepareLobsterBrowserMcpRuntime = (
   baseDir: string,
   options: LobsterBrowserMcpLaunchOptions,
-): string => {
+): PreparedLobsterBrowserMcpRuntime => {
   if (!options.electronNodeRuntimePath.trim()) {
     throw new Error('LobsterAI browser MCP requires an Electron Node runtime path.');
   }
@@ -230,7 +248,8 @@ export const resolveLobsterBrowserMcpCommand = (
   if (process.platform !== 'win32') {
     fs.chmodSync(serverDir, 0o700);
   }
-  writeFileIfChanged(path.join(serverDir, SERVER_FILE_NAME), MCP_SERVER_SOURCE, 0o600);
+  const serverPath = path.join(serverDir, SERVER_FILE_NAME);
+  writeFileIfChanged(serverPath, MCP_SERVER_SOURCE, 0o600);
   writeFileIfChanged(
     path.join(serverDir, RUNTIME_CONFIG_FILE_NAME),
     `${JSON.stringify({
@@ -240,6 +259,15 @@ export const resolveLobsterBrowserMcpCommand = (
     }, null, 2)}\n`,
     0o600,
   );
+
+  return { serverDir, serverPath };
+};
+
+export const resolveLobsterBrowserMcpCommand = (
+  baseDir: string,
+  options: LobsterBrowserMcpLaunchOptions,
+): string => {
+  const { serverDir } = prepareLobsterBrowserMcpRuntime(baseDir, options);
 
   if ((options.platform ?? process.platform) === 'win32') {
     const launcherPath = path.join(serverDir, WINDOWS_LAUNCHER_FILE_NAME);
@@ -258,4 +286,16 @@ export const resolveLobsterBrowserMcpCommand = (
     0o700,
   );
   return launcherPath;
+};
+
+export const resolveLobsterBrowserMcpStdioLaunch = (
+  baseDir: string,
+  options: LobsterBrowserMcpLaunchOptions,
+): LobsterBrowserMcpStdioLaunch => {
+  const { serverPath } = prepareLobsterBrowserMcpRuntime(baseDir, options);
+  return {
+    command: options.electronNodeRuntimePath,
+    args: [serverPath],
+    env: { ELECTRON_RUN_AS_NODE: '1' },
+  };
 };

@@ -1,5 +1,9 @@
 import {
   type BrowserCredentialLoginState,
+  type BrowserCredentialSaveDecision,
+  BrowserCredentialSaveMode,
+  type BrowserCredentialSaveMode as BrowserCredentialSaveModeValue,
+  type BrowserCredentialSavePrompt,
   BrowserCredentialUseMode,
   type BrowserCredentialUseMode as BrowserCredentialUseModeValue,
 } from '../browserCredentials/constants';
@@ -84,6 +88,7 @@ export const BrowserIpc = {
   StopHost: 'openclaw:browser:stopHost',
   SelectHostPage: 'openclaw:browser:selectHostPage',
   CloseHostPage: 'openclaw:browser:closeHostPage',
+  ResolveCredentialSavePrompt: 'openclaw:browser:resolveCredentialSavePrompt',
   HostState: 'openclaw:browser:hostState',
 } as const;
 
@@ -132,6 +137,7 @@ export interface BrowserWebAccessConfig {
   snapshotMode: BrowserSnapshotMode;
   evaluateEnabled: boolean;
   credentialUseMode: BrowserCredentialUseModeValue;
+  credentialSaveMode: BrowserCredentialSaveModeValue;
   executablePath?: string;
   cdpUrl?: string;
   headless?: boolean;
@@ -220,6 +226,7 @@ export interface AgentBrowserHostState {
   visible: boolean;
   updatedAt: number;
   credentialLogin?: BrowserCredentialLoginState;
+  credentialSavePrompt?: BrowserCredentialSavePrompt;
   error?: string;
 }
 
@@ -248,6 +255,11 @@ export interface AgentBrowserHostNavigateRequest extends AgentBrowserHostRequest
 
 export interface AgentBrowserHostPageRequest extends AgentBrowserHostRequest {
   pageId: number;
+}
+
+export interface AgentBrowserCredentialSavePromptRequest extends AgentBrowserHostRequest {
+  requestId: string;
+  decision: BrowserCredentialSaveDecision;
 }
 
 export interface AgentBrowserHostResponse {
@@ -280,6 +292,7 @@ export const defaultBrowserWebAccessConfig: BrowserWebAccessConfig = {
   snapshotMode: BrowserSnapshotMode.Efficient,
   evaluateEnabled: true,
   credentialUseMode: BrowserCredentialUseMode.AlwaysAsk,
+  credentialSaveMode: BrowserCredentialSaveMode.Ask,
   webFetch: {
     enabled: true,
     followGlobalProxy: true,
@@ -519,6 +532,11 @@ export const normalizeBrowserWebAccessConfig = (
   )
     ? value?.credentialUseMode as BrowserCredentialUseModeValue
     : defaultBrowserWebAccessConfig.credentialUseMode;
+  const credentialSaveMode = Object.values(BrowserCredentialSaveMode).includes(
+    value?.credentialSaveMode as BrowserCredentialSaveModeValue,
+  )
+    ? value?.credentialSaveMode as BrowserCredentialSaveModeValue
+    : defaultBrowserWebAccessConfig.credentialSaveMode;
   const executablePath = normalizeOptionalString(value?.executablePath);
   const cdpUrl = normalizeBrowserCdpUrl(value?.cdpUrl);
   const remoteCdpTimeoutMs = normalizeOptionalNumber(value?.remoteCdpTimeoutMs);
@@ -540,6 +558,7 @@ export const normalizeBrowserWebAccessConfig = (
     snapshotMode,
     evaluateEnabled: value?.evaluateEnabled ?? defaultBrowserWebAccessConfig.evaluateEnabled,
     credentialUseMode,
+    credentialSaveMode,
     ...(executablePath ? { executablePath } : {}),
     ...(cdpUrl ? { cdpUrl } : {}),
     ...(value?.attachOnly === true ? { attachOnly: true } : {}),

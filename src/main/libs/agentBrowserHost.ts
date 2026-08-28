@@ -4,11 +4,15 @@ import {
   session,
   WebContentsView,
 } from 'electron';
+import fs from 'fs';
+import path from 'path';
 
 import {
   BrowserCredentialLoginOutcome,
   type BrowserCredentialLoginState,
   BrowserCredentialLoginTool,
+  type BrowserCredentialSaveDecision,
+  type BrowserCredentialSavePrompt,
 } from '../../shared/browserCredentials/constants';
 import {
   type AgentBrowserHostState,
@@ -25,6 +29,14 @@ import {
 } from '../browserCredentials/agentBrowserCredentialLogin';
 import type { BrowserCredentialApprovalService } from '../browserCredentials/browserCredentialApprovalService';
 import type { BrowserCredentialService } from '../browserCredentials/browserCredentialService';
+import {
+  ManualCredentialCaptureChannel,
+  ManualCredentialCaptureEventType,
+  parseManualCredentialCaptureEvent,
+} from '../browserCredentials/manualCredentialCaptureProtocol';
+import {
+  ManualCredentialCaptureService,
+} from '../browserCredentials/manualCredentialCaptureService';
 import type {
   BrowserToolRequest,
   BrowserToolResponse,
@@ -97,6 +109,7 @@ type AgentBrowserHostDeps = {
   credentialService: BrowserCredentialService;
   credentialApprovalService: BrowserCredentialApprovalService;
   resolveSessionKey: (sessionId?: string) => string | undefined;
+  manualCredentialPreloadPath?: string;
 };
 
 const textResult = (
@@ -123,6 +136,14 @@ const readTimeout = (value: unknown): number => {
     return DEFAULT_OPERATION_TIMEOUT_MS;
   }
   return Math.min(Math.round(value), MAX_OPERATION_TIMEOUT_MS);
+};
+
+const resolveManualCredentialPreloadPath = (): string => {
+  const candidates = [
+    path.join(__dirname, '..', 'manualCredentialCapturePreload.js'),
+    path.join(__dirname, 'manualCredentialCapturePreload.js'),
+  ];
+  return candidates.find(candidate => fs.existsSync(candidate)) ?? candidates[1];
 };
 
 const normalizeAddress = (rawValue: string): string => {
@@ -221,6 +242,9 @@ export class AgentBrowserHost {
   private credentialLoginViewAttached = false;
   private credentialLoginState: BrowserCredentialLoginState | undefined;
   private readonly credentialLogin: AgentBrowserCredentialLogin;
+  private credentialSavePrompt: BrowserCredentialSavePrompt | undefined;
+  private readonly manualCredentialCapture: ManualCredentialCaptureService;
+  private readonly manualCredentialPreloadPath: string;
   private desiredVisible = false;
   private windowVisible = false;
   private bounds = { x: 0, y: 0, width: 1, height: 1 };
@@ -234,6 +258,18 @@ export class AgentBrowserHost {
     this.browserSession.setPermissionCheckHandler(() => false);
     this.browserSession.setPermissionRequestHandler((_webContents, _permission, callback) => {
       callback(false);
+    });
+    this.manualCredentialPreloadPath = this.deps.manualCredentialPreloadPath
+      ?? resolveManualCredentialPreloadPath();
+    this.manualCredentialCapture = new ManualCredentialCaptureService({
+      credentialService: this.deps.credentialService,
+      getSaveMode: () => normalizeBrowserWebAccessConfig(
+        this.deps.getBrowserConfig(),
+      ).credentialSaveMode,
+      onPromptChanged: prompt => {
+        this.credentialSavePrompt = prompt;
+        this.emitState();
+      },
     });
     this.credentialLogin = new AgentBrowserCredentialLogin({
       browserSession: this.browserSession,
@@ -274,6 +310,7 @@ export class AgentBrowserHost {
       visible: this.attachedPageId !== undefined || this.credentialLoginViewAttached,
       updatedAt: Date.now(),
       ...(this.credentialLoginState ? { credentialLogin: this.credentialLoginState } : {}),
+      ...(this.credentialSavePrompt ? { credentialSavePrompt: this.credentialSavePrompt } : {}),
       ...(this.lastError ? { error: this.lastError } : {}),
     };
   }
@@ -305,6 +342,7 @@ export class AgentBrowserHost {
       this.desiredVisible = false;
       this.syncAttachment();
     }
+    this.manualCredentialCapture.refreshConfig();
     this.refreshProxy();
   }
 
@@ -376,6 +414,7 @@ export class AgentBrowserHost {
   closePage(pageId: number): AgentBrowserHostState {
     this.assertCredentialLoginInactive();
     const page = this.requirePage(pageId);
+    this.manualCredentialCapture.clearPage(pageId);
     this.detachPage(pageId);
     if (page.view.webContents.debugger.isAttached()) {
       page.view.webContents.debugger.detach();
@@ -386,6 +425,16 @@ export class AgentBrowserHost {
       this.selectedPageId = this.pages.keys().next().value as number | undefined;
     }
     this.syncAttachment();
+    this.emitState();
+    return this.getState();
+  }
+
+  resolveCredentialSavePrompt(
+    requestId: string,
+    decision: BrowserCredentialSaveDecision,
+  ): AgentBrowserHostState {
+    this.manualCredentialCapture.resolvePrompt(requestId, decision);
+    this.lastError = undefined;
     this.emitState();
     return this.getState();
   }
@@ -415,6 +464,7 @@ export class AgentBrowserHost {
   async dispose(): Promise<void> {
     this.desiredVisible = false;
     await this.credentialLogin.dispose();
+    this.manualCredentialCapture.dispose();
     this.detachCredentialLoginView();
     this.detachPage(this.attachedPageId);
     for (const page of this.pages.values()) {
@@ -531,6 +581,7 @@ export class AgentBrowserHost {
     const view = new WebContentsView({
       webPreferences: {
         partition: AgentBrowserPartition.Default,
+        preload: this.manualCredentialPreloadPath,
         nodeIntegration: false,
         nodeIntegrationInSubFrames: false,
         contextIsolation: true,
@@ -580,6 +631,27 @@ export class AgentBrowserHost {
     webContents.on('page-title-updated', emit);
     webContents.on('did-navigate', emit);
     webContents.on('did-navigate-in-page', emit);
+    webContents.on('ipc-message', (_event, channel, ...args) => {
+      if (channel !== ManualCredentialCaptureChannel.Event) return;
+      const captureEvent = parseManualCredentialCaptureEvent(args[0]);
+      if (!captureEvent) return;
+      const url = webContents.getURL();
+      if (captureEvent.type === ManualCredentialCaptureEventType.Submitted) {
+        this.manualCredentialCapture.capture({
+          pageId: page.pageId,
+          url,
+          username: captureEvent.username,
+          password: captureEvent.password,
+          formKind: captureEvent.formKind,
+        });
+        return;
+      }
+      this.manualCredentialCapture.observePageState({
+        pageId: page.pageId,
+        url,
+        hasPasswordField: captureEvent.hasPasswordField,
+      });
+    });
     webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
       if (!isMainFrame || errorCode === -3) return;
       page.loading = false;
@@ -587,6 +659,7 @@ export class AgentBrowserHost {
       emit();
     });
     webContents.on('destroyed', () => {
+      this.manualCredentialCapture.clearPage(page.pageId);
       this.pages.delete(page.pageId);
       if (this.selectedPageId === page.pageId) {
         this.selectedPageId = this.pages.keys().next().value as number | undefined;

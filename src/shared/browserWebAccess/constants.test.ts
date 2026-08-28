@@ -1,6 +1,9 @@
 import { describe, expect, test } from 'vitest';
 
-import { BrowserCredentialUseMode } from '../browserCredentials/constants';
+import {
+  BrowserCredentialSaveMode,
+  BrowserCredentialUseMode,
+} from '../browserCredentials/constants';
 import {
   BrowserDisplayMode,
   BrowserNetworkMode,
@@ -110,5 +113,17 @@ describe('browser web access constants', () => {
     expect(normalizeBrowserWebAccessConfig({
       credentialUseMode: 'invalid' as BrowserCredentialUseMode,
     }).credentialUseMode).toBe(BrowserCredentialUseMode.AlwaysAsk);
+  });
+
+  test('offers to save manual logins by default and preserves an explicit policy', () => {
+    expect(normalizeBrowserWebAccessConfig(undefined).credentialSaveMode).toBe(
+      BrowserCredentialSaveMode.Ask,
+    );
+    expect(normalizeBrowserWebAccessConfig({
+      credentialSaveMode: BrowserCredentialSaveMode.Never,
+    }).credentialSaveMode).toBe(BrowserCredentialSaveMode.Never);
+    expect(normalizeBrowserWebAccessConfig({
+      credentialSaveMode: 'invalid' as BrowserCredentialSaveMode,
+    }).credentialSaveMode).toBe(BrowserCredentialSaveMode.Ask);
   });
 });

@@ -7,8 +7,14 @@ import os from 'os';
 import path from 'path';
 import { afterEach, describe, expect, test } from 'vitest';
 
-import { BrowserCredentialLoginTool } from '../../shared/browserCredentials/constants';
-import { resolveLobsterBrowserMcpCommand } from './lobsterBrowserMcpServer';
+import {
+  BrowserCredentialLoginTool,
+  BrowserCredentialMcpServer,
+} from '../../shared/browserCredentials/constants';
+import {
+  resolveLobsterBrowserMcpCommand,
+  resolveLobsterBrowserMcpStdioLaunch,
+} from './lobsterBrowserMcpServer';
 
 const createdDirectories: string[] = [];
 
@@ -75,6 +81,25 @@ describe('resolveLobsterBrowserMcpCommand', () => {
     },
   );
 
+  test('builds a shell-free stdio launch using Electron as Node', () => {
+    const baseDir = createTempDirectory();
+    const electronNodeRuntimePath = 'C:\\Program Files\\LobsterAI\\LobsterAI.exe';
+    const launch = resolveLobsterBrowserMcpStdioLaunch(baseDir, {
+      electronNodeRuntimePath,
+      bridgeUrl: 'http://127.0.0.1:61234/browser/tool',
+      bridgeSecret: 'runtime-only-secret',
+      platform: 'win32',
+    });
+
+    expect(launch).toEqual({
+      command: electronNodeRuntimePath,
+      args: [path.join(baseDir, 'lobster-browser-mcp', 'lobster-browser-mcp-server.mjs')],
+      env: { ELECTRON_RUN_AS_NODE: '1' },
+    });
+    expect(path.extname(launch.command)).toBe('.exe');
+    expect(fs.existsSync(launch.args[0])).toBe(true);
+  });
+
   test('starts with the MCP SDK restricted environment without LobsterAI variables', async () => {
     const baseDir = createTempDirectory();
     const bridgeSecret = 'runtime-only-secret';
@@ -96,20 +121,22 @@ describe('resolveLobsterBrowserMcpCommand', () => {
     });
     const address = bridgeServer.address() as AddressInfo;
     const bridgeUrl = `http://127.0.0.1:${address.port}/browser/tool`;
-    const command = resolveLobsterBrowserMcpCommand(baseDir, {
+    const launch = resolveLobsterBrowserMcpStdioLaunch(baseDir, {
       electronNodeRuntimePath: process.execPath,
       bridgeUrl,
       bridgeSecret,
     });
     const transport = new StdioClientTransport({
-      command,
+      command: launch.command,
       args: [
+        ...launch.args,
         '--autoConnect',
         '--no-usage-statistics',
         '--experimentalStructuredContent',
         '--experimental-page-id-routing',
         `--lobster-bridge-url=${bridgeUrl}`,
       ],
+      env: launch.env,
       stderr: 'pipe',
     });
     const stderr: string[] = [];
@@ -133,6 +160,30 @@ describe('resolveLobsterBrowserMcpCommand', () => {
 
     expect(receivedSecrets).toEqual([bridgeSecret]);
     expect(stderr.join('')).not.toContain('LOBSTERAI_ELECTRON_PATH is not set');
+  }, 15_000);
+
+  test('can expose only the saved-credential login tool to the Agent runtime', async () => {
+    const baseDir = createTempDirectory();
+    const launch = resolveLobsterBrowserMcpStdioLaunch(baseDir, {
+      electronNodeRuntimePath: process.execPath,
+      bridgeUrl: 'http://127.0.0.1:61234/browser/tool',
+      bridgeSecret: 'runtime-only-secret',
+    });
+    const transport = new StdioClientTransport({
+      command: launch.command,
+      args: [...launch.args, BrowserCredentialMcpServer.ToolSetArgument],
+      env: launch.env,
+      stderr: 'pipe',
+    });
+    const client = new Client({ name: 'lobster-browser-credential-test', version: '1.0.0' }, {});
+
+    try {
+      await client.connect(transport);
+      const tools = await client.listTools();
+      expect(tools.tools.map(tool => tool.name)).toEqual([BrowserCredentialLoginTool.Name]);
+    } finally {
+      await client.close().catch(() => {});
+    }
   }, 15_000);
 
   test('rejects incomplete runtime configuration', () => {
