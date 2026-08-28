@@ -31,6 +31,7 @@ import { RootState } from '../store';
 import type { FreeCreditsReward } from '../store/slices/authSlice';
 import {
   type AccountPlanAnalyticsContext,
+  getAccountMenuDisplayName,
   getAccountPlanAnalyticsContext,
   getAccountPlanPresentation,
   getFinalRewards,
@@ -478,8 +479,6 @@ const UserMenu: React.FC<UserMenuProps> = ({
     onOpenFinalReward(reward.campaignCode);
   };
 
-  const phoneSuffix = user?.phone ? user.phone.slice(-4) : '';
-
   const totalCredits = profileSummary?.totalCreditsRemaining ?? 0;
   const creditsUnavailable = !profileSummary && !summaryLoading;
   let creditsTrailingContent: React.ReactNode;
@@ -504,9 +503,12 @@ const UserMenu: React.FC<UserMenuProps> = ({
   }
   const creditItems = profileSummary?.creditItems ?? [];
   const hasCredits = creditItems.length > 0;
-  const accountName = profileSummary?.nickname
-    || user?.nickname
-    || (phoneSuffix ? `****${phoneSuffix}` : i18nService.t('myAccount'));
+  const accountName = getAccountMenuDisplayName({
+    fallback: i18nService.t('myAccount'),
+    profileNickname: profileSummary?.nickname,
+    userNickname: user?.nickname,
+    userPhone: user?.phone,
+  });
   const accountPlan = getAccountPlanPresentation(creditItems, isEn);
   const visibleAccountPlan = user?.accountMode === 'enterprise' ? null : accountPlan;
   const shouldShowPlanLearnAction = (

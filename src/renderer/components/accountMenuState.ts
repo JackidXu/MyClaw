@@ -34,6 +34,7 @@ export interface AccountPlanAnalyticsContext {
 }
 
 const EXCELLENT_PLAN_LABEL_PATTERN = /(?:卓越|excellent)/i;
+const MAINLAND_CHINA_MOBILE_PATTERN = /^1[3-9]\d{9}$/;
 const PLAN_TIER_PATTERNS: Array<{
   pattern: RegExp;
   tier: AccountPlanAnalyticsTier;
@@ -52,6 +53,42 @@ const formatPlanLabel = (label: string, isEnglish: boolean): string => {
   }
   return `${trimmedLabel}套餐`;
 };
+
+const normalizePotentialPhoneNumber = (value: string): string => (
+  value.trim().replace(/[\s-]/g, '').replace(/^\+?86/, '')
+);
+
+export function maskPhoneLikeAccountName(value?: string | null): string {
+  const trimmedValue = value?.trim();
+  if (!trimmedValue) return '';
+
+  const normalizedPhone = normalizePotentialPhoneNumber(trimmedValue);
+  if (MAINLAND_CHINA_MOBILE_PATTERN.test(normalizedPhone)) {
+    return `****${normalizedPhone.slice(-4)}`;
+  }
+
+  return trimmedValue;
+}
+
+export function getAccountMenuDisplayName(input: {
+  fallback: string;
+  profileNickname?: string | null;
+  userNickname?: string | null;
+  userPhone?: string | null;
+}): string {
+  const profileName = maskPhoneLikeAccountName(input.profileNickname);
+  if (profileName) return profileName;
+
+  const userName = maskPhoneLikeAccountName(input.userNickname);
+  if (userName) return userName;
+
+  const normalizedPhone = normalizePotentialPhoneNumber(input.userPhone ?? '');
+  if (normalizedPhone) {
+    return `****${normalizedPhone.slice(-4)}`;
+  }
+
+  return input.fallback;
+}
 
 export function getAccountPlanPresentation(
   creditItems: CreditItem[],
