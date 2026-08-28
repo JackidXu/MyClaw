@@ -1,3 +1,5 @@
+import { app } from 'electron';
+
 import { PresetAgent } from '../presetAgents';
 import { getServerApiBaseUrl } from './endpoints';
 
@@ -53,7 +55,17 @@ export async function fetchExpertsFromCloud(): Promise<{
 }> {
   try {
     const url = `${getServerApiBaseUrl()}/api/experts`;
-    const res = await fetch(url, { method: 'GET' });
+    const headers: Record<string, string> = {};
+    try {
+      const version = app?.getVersion?.();
+      if (version) {
+        headers['X-Client-Version'] = version;
+        headers['X-App-Platform'] = process.platform;
+      }
+    } catch {
+      // 容错处理：版本获取失败不影响正常请求
+    }
+    const res = await fetch(url, { method: 'GET', headers });
     if (!res.ok) {
       console.error(`[ExpertStore] HTTP ${res.status} fetching experts`);
       return { presetExperts: [], paidExperts: [], expertTeams: [] };

@@ -44,6 +44,22 @@ export function handleUnauthorized() {
   window.dispatchEvent(new CustomEvent('app:unauthorized'));
 }
 
+let cachedAppVersion = '';
+
+async function getClientAppVersion(): Promise<string> {
+  if (cachedAppVersion) {
+    return cachedAppVersion;
+  }
+  try {
+    if (typeof window !== 'undefined' && window.electron?.appInfo?.getVersion) {
+      cachedAppVersion = await window.electron.appInfo.getVersion();
+    }
+  } catch {
+    // 静默容错
+  }
+  return cachedAppVersion;
+}
+
 export class HttpClient {
   /**
    * 通用请求核心方法
@@ -54,6 +70,15 @@ export class HttpClient {
     const finalHeaders: Record<string, string> = {
       ...headers,
     };
+
+    try {
+      const appVersion = await getClientAppVersion();
+      if (appVersion && !finalHeaders['X-Client-Version'] && !finalHeaders['x-client-version']) {
+        finalHeaders['X-Client-Version'] = appVersion;
+      }
+    } catch {
+      // 容错兜底：版本号附加失败绝不阻碍请求正常发出
+    }
 
     // 若非 GET 请求且有 body 且未显式指定 Content-Type，默认为 JSON
     if (method !== 'GET' && body !== undefined && !finalHeaders['Content-Type'] && !finalHeaders['content-type']) {

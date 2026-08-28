@@ -12980,13 +12980,30 @@ if (!gotTheLock) {
         }
       }
 
+      const getSafeAppVersionHeader = (): Record<string, string> => {
+        try {
+          const version = app?.getVersion?.();
+          return {
+            ...(version ? { 'X-Client-Version': version } : {}),
+            'X-App-Platform': process.platform,
+          };
+        } catch {
+          return {};
+        }
+      };
+
+      const finalRequestHeaders: Record<string, string> = {
+        ...getSafeAppVersionHeader(),
+        ...options.headers,
+      };
+
       recordApiTraffic({
         id: reqId,
         type: 'request',
         timestamp: Date.now(),
         method: (options.method || 'GET').toUpperCase(),
         url: options.url,
-        headers: options.headers,
+        headers: finalRequestHeaders,
         body: parsedBody,
       });
 
@@ -12996,7 +13013,7 @@ if (!gotTheLock) {
       const logTraffic = !isAnalyticsEndpointUrl(options.url);
       if (logTraffic) {
         console.log(
-          `[api:fetch] ${options.method} ${sanitizedUrl}, headers: ${serializeForLog(options.headers)}, body: ${options.body}`,
+          `[api:fetch] ${options.method} ${sanitizedUrl}, headers: ${serializeForLog(finalRequestHeaders)}, body: ${options.body}`,
         );
       }
 
@@ -13028,7 +13045,7 @@ if (!gotTheLock) {
       };
 
       try {
-        let result = await doFetch(options.headers);
+        let result = await doFetch(finalRequestHeaders);
         if (logTraffic) {
           console.log(
             `[api:fetch] ${options.method} ${sanitizedUrl} -> ${result.status} ${result.statusText}`,
@@ -13103,10 +13120,23 @@ if (!gotTheLock) {
       // 存储 controller 以便后续取消
       activeStreamControllers.set(options.requestId, controller);
 
+      const buildStreamHeaders = (headers: Record<string, string>) => {
+        try {
+          const version = app?.getVersion?.();
+          return {
+            ...(version ? { 'X-Client-Version': version } : {}),
+            'X-App-Platform': process.platform,
+            ...headers,
+          };
+        } catch {
+          return headers;
+        }
+      };
+
       try {
         let response = await session.defaultSession.fetch(options.url, {
           method: options.method,
-          headers: options.headers,
+          headers: buildStreamHeaders(options.headers),
           body: options.body,
           signal: controller.signal,
         });
@@ -13123,7 +13153,7 @@ if (!gotTheLock) {
           if (retried) {
             response = await session.defaultSession.fetch(options.url, {
               method: options.method,
-              headers: refreshedHeaders,
+              headers: buildStreamHeaders(refreshedHeaders),
               body: options.body,
               signal: controller.signal,
             });
