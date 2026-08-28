@@ -2,7 +2,6 @@ import { randomUUID } from 'crypto';
 
 import {
   type LogEventAction,
-  LogReporterActionPrefix,
   LogReporterCategory,
   LogReporterEndpoint,
   LogReporterProduct,
@@ -104,22 +103,14 @@ export class MainLogReporter {
 
   async report(params: MainLogEventParams): Promise<boolean> {
     if (!this.isUsageAnalyticsEnabled()) {
-      console.debug(`[MainLogReporter] skipped event ${params.action} because usage analytics is disabled`);
       return false;
     }
 
     if (!params.action.trim()) {
-      console.warn('[MainLogReporter] skipped an event without an action');
-      return false;
-    }
-
-    if (!params.action.startsWith(LogReporterActionPrefix.LobsterAI)) {
-      console.warn('[MainLogReporter] skipped an event without the LobsterAI action prefix');
       return false;
     }
 
     if (this.activeRequestCount >= this.getMaxConcurrentRequests()) {
-      console.warn(`[MainLogReporter] skipped event ${params.action} because the request limit was reached`);
       return false;
     }
 
@@ -129,7 +120,6 @@ export class MainLogReporter {
       const requestTimeoutMs = this.getRequestTimeoutMs();
       const abortController = new AbortController();
       const timeout = setTimeout(() => abortController.abort(), requestTimeoutMs);
-      console.debug(`[MainLogReporter] sending event ${params.action}`);
       let response: MainLogReporterResponse;
       try {
         response = await this.options.fetch(
@@ -140,13 +130,10 @@ export class MainLogReporter {
         clearTimeout(timeout);
       }
       if (!response.ok) {
-        console.warn(`[MainLogReporter] event ${params.action} failed with status ${response.status}`);
         return false;
       }
-      console.debug(`[MainLogReporter] sent event ${params.action} successfully`);
       return true;
-    } catch (error) {
-      console.warn(`[MainLogReporter] event ${params.action} failed (${getErrorName(error)})`);
+    } catch {
       return false;
     } finally {
       this.activeRequestCount -= 1;
@@ -176,11 +163,8 @@ export class MainLogReporter {
       const config = this.options.store.get<{ usageAnalyticsEnabled?: boolean }>(
         LogReporterStoreKey.AppConfig,
       );
-      return config?.usageAnalyticsEnabled !== false;
-    } catch (error) {
-      console.warn(
-        `[MainLogReporter] failed to read usage analytics setting; skipped event (${getErrorName(error)})`,
-      );
+      return config?.usageAnalyticsEnabled === true;
+    } catch {
       return false;
     }
   }

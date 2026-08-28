@@ -1401,6 +1401,9 @@ if (
     responseData?: any;
     error?: string;
   }) => {
+    if (entry.url && (entry.url.includes('rlogs.youdao.com') || entry.url.includes('/rlog.php'))) {
+      return;
+    }
     if (entry.type === 'request') {
       console.groupCollapsed(
         `%c🌐 [Global API Request] ${entry.method} ${entry.url}`,

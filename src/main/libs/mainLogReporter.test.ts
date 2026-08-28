@@ -70,8 +70,7 @@ describe('MainLogReporter', () => {
 
   test('sends a main-process event with persisted attribution context', async () => {
     const store = createStore({
-      // Legacy app_config rows do not contain usageAnalyticsEnabled and remain opted in.
-      [LogReporterStoreKey.AppConfig]: { language: 'en' },
+      [LogReporterStoreKey.AppConfig]: { language: 'en', usageAnalyticsEnabled: true },
       [LogReporterStoreKey.AuthUser]: { yid: 'user-2' },
       [LogReporterStoreKey.InstallationUuid]: 'installation-2',
       'keyfrom.attribution.v1': {
