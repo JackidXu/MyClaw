@@ -64,7 +64,7 @@ export function maskPhoneLikeAccountName(value?: string | null): string {
 
   const normalizedPhone = normalizePotentialPhoneNumber(trimmedValue);
   if (MAINLAND_CHINA_MOBILE_PATTERN.test(normalizedPhone)) {
-    return `****${normalizedPhone.slice(-4)}`;
+    return `${normalizedPhone.slice(0, 3)}****${normalizedPhone.slice(-4)}`;
   }
 
   return trimmedValue;
@@ -83,6 +83,9 @@ export function getAccountMenuDisplayName(input: {
   if (userName) return userName;
 
   const normalizedPhone = normalizePotentialPhoneNumber(input.userPhone ?? '');
+  if (MAINLAND_CHINA_MOBILE_PATTERN.test(normalizedPhone)) {
+    return `${normalizedPhone.slice(0, 3)}****${normalizedPhone.slice(-4)}`;
+  }
   if (normalizedPhone) {
     return `****${normalizedPhone.slice(-4)}`;
   }

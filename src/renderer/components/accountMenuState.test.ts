@@ -37,10 +37,10 @@ const reward = (
 });
 
 describe('accountMenuState', () => {
-  test('masks phone-like account names returned as nicknames', () => {
-    expect(maskPhoneLikeAccountName('13621177834')).toBe('****7834');
-    expect(maskPhoneLikeAccountName('+8613621177834')).toBe('****7834');
-    expect(maskPhoneLikeAccountName('136-2117-7834')).toBe('****7834');
+  test('masks phone-like account names with prefix and suffix visible', () => {
+    expect(maskPhoneLikeAccountName('13621177834')).toBe('136****7834');
+    expect(maskPhoneLikeAccountName('+8613621177834')).toBe('136****7834');
+    expect(maskPhoneLikeAccountName('136-2117-7834')).toBe('136****7834');
     expect(maskPhoneLikeAccountName('Lobster User')).toBe('Lobster User');
   });
 
@@ -50,7 +50,7 @@ describe('accountMenuState', () => {
       profileNickname: '13621177834',
       userNickname: 'Tester',
       userPhone: '13900001234',
-    })).toBe('****7834');
+    })).toBe('136****7834');
 
     expect(getAccountMenuDisplayName({
       fallback: 'My Account',
@@ -61,6 +61,11 @@ describe('accountMenuState', () => {
     expect(getAccountMenuDisplayName({
       fallback: 'My Account',
       userPhone: '+86 139 0000 1234',
+    })).toBe('139****1234');
+
+    expect(getAccountMenuDisplayName({
+      fallback: 'My Account',
+      userPhone: '1234',
     })).toBe('****1234');
   });
 
