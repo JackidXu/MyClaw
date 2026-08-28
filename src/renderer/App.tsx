@@ -676,7 +676,7 @@ const App: React.FC = () => {
     };
   }, []);
 
-  // 启动及窗口聚焦时自动同步 VIP 权限与账号状态
+  // 订阅 VIP 权限与账号状态更新
   useEffect(() => {
     const updateVipState = (state: { authorized: boolean; reason?: string; expiredAt?: string }) => {
       setIsAccountExpired(!state.authorized && state.reason === 'account_expired');
@@ -684,15 +684,8 @@ const App: React.FC = () => {
     };
 
     const unsubscribe = vipService.subscribe(updateVipState);
-    void vipService.refreshStatus();
-
-    const handleFocus = () => {
-      void vipService.refreshStatus();
-    };
-    window.addEventListener('focus', handleFocus);
     return () => {
       unsubscribe();
-      window.removeEventListener('focus', handleFocus);
     };
   }, []);
 
