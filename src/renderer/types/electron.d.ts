@@ -1447,6 +1447,7 @@ interface IElectronAPI {
       recentLogSnippet?: string;
       error?: string;
     }>;
+    toggleDevTools: () => Promise<{ success: boolean }>;
   };
   appUpdate: {
     getState: () => Promise<AppUpdateRuntimeState>;

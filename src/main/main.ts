@@ -4819,6 +4819,21 @@ if (!gotTheLock) {
     }
   });
 
+  ipcMain.handle(AppIpcChannel.ToggleDevTools, (event) => {
+    try {
+      const targetWindow = BrowserWindow.fromWebContents(event.sender) || mainWindow;
+      if (targetWindow && !targetWindow.isDestroyed()) {
+        targetWindow.webContents.toggleDevTools();
+        return { success: true };
+      }
+      return { success: false, error: 'Window not found' };
+    } catch (err) {
+      console.warn('[Main] failed to toggle devtools:', err);
+      return { success: false, error: String(err) };
+    }
+  });
+
+
   // ── Auth IPC handlers ──
 
   let authAccountGeneration = 0;

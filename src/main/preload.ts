@@ -950,6 +950,7 @@ contextBridge.exposeInMainWorld('electron', {
     openSystemNotificationSettings: () =>
       ipcRenderer.invoke(AppIpcChannel.OpenSystemNotificationSettings),
     getDiagnosticInfo: () => ipcRenderer.invoke(AppIpcChannel.GetDiagnosticInfo),
+    toggleDevTools: () => ipcRenderer.invoke(AppIpcChannel.ToggleDevTools),
   },
   activity: {
     getSlot: (input: ActivityHostGetSlotInput) =>

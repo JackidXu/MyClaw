@@ -313,6 +313,29 @@ const Sidebar: React.FC<SidebarProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // 连续点击头像唤起开发者工具
+  const avatarClickCountRef = useRef<number>(0);
+  const avatarClickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleAvatarDebugClick = (e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+    }
+    avatarClickCountRef.current += 1;
+    if (avatarClickTimerRef.current) {
+      clearTimeout(avatarClickTimerRef.current);
+    }
+    if (avatarClickCountRef.current >= 10) {
+      avatarClickCountRef.current = 0;
+      void window.electron?.appInfo?.toggleDevTools?.();
+      window.dispatchEvent(new CustomEvent('app:showToast', { detail: '已切换开发者工具' }));
+    } else {
+      avatarClickTimerRef.current = setTimeout(() => {
+        avatarClickCountRef.current = 0;
+      }, 3000);
+    }
+  };
+
   const onShowLoginRef = useRef(onShowLogin);
   useEffect(() => {
     onShowLoginRef.current = onShowLogin;
@@ -1093,7 +1116,8 @@ const Sidebar: React.FC<SidebarProps> = ({
               {/* Profile Head: 头像、昵称与算力点数 */}
               <div className="flex items-center gap-2.5 p-3.5 border-b border-border/50">
                 <div 
-                  className={`w-9 h-9 rounded-lg flex items-center justify-center shadow-xs select-none shrink-0 overflow-hidden text-sm font-bold ${
+                  onClick={handleAvatarDebugClick}
+                  className={`w-9 h-9 rounded-lg flex items-center justify-center shadow-xs select-none shrink-0 overflow-hidden text-sm font-bold cursor-pointer ${
                     isImageAvatar(userAvatar)
                       ? 'bg-transparent border border-border/40'
                       : 'bg-surface-raised border border-border/40'
