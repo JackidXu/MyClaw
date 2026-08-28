@@ -8,9 +8,11 @@ import type {
 } from '../store/slices/authSlice';
 import {
   AccountPlanAnalyticsTier,
+  getAccountMenuDisplayName,
   getAccountPlanAnalyticsContext,
   getAccountPlanPresentation,
   getFinalRewards,
+  maskPhoneLikeAccountName,
 } from './accountMenuState';
 
 const creditItem = (
@@ -35,6 +37,33 @@ const reward = (
 });
 
 describe('accountMenuState', () => {
+  test('masks phone-like account names returned as nicknames', () => {
+    expect(maskPhoneLikeAccountName('13621177834')).toBe('****7834');
+    expect(maskPhoneLikeAccountName('+8613621177834')).toBe('****7834');
+    expect(maskPhoneLikeAccountName('136-2117-7834')).toBe('****7834');
+    expect(maskPhoneLikeAccountName('Lobster User')).toBe('Lobster User');
+  });
+
+  test('keeps nickname priority while masking phone display values', () => {
+    expect(getAccountMenuDisplayName({
+      fallback: 'My Account',
+      profileNickname: '13621177834',
+      userNickname: 'Tester',
+      userPhone: '13900001234',
+    })).toBe('****7834');
+
+    expect(getAccountMenuDisplayName({
+      fallback: 'My Account',
+      profileNickname: 'Tester',
+      userPhone: '13900001234',
+    })).toBe('Tester');
+
+    expect(getAccountMenuDisplayName({
+      fallback: 'My Account',
+      userPhone: '+86 139 0000 1234',
+    })).toBe('****1234');
+  });
+
   test('uses the subscription item for the account plan even when its credits are exhausted', () => {
     const plan = getAccountPlanPresentation([
       creditItem(),

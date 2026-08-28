@@ -1,16 +1,10 @@
 import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import { AgentId } from '@shared/agent';
-import { EnterpriseMemberRole } from '@shared/enterpriseAccount/constants';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSelector } from 'react-redux';
 
-import { selectEnterpriseAccountContext } from '../features/enterpriseAccount/selectors';
 import { agentService } from '../services/agent';
 import { coworkService } from '../services/cowork';
-import {
-  getEnterpriseRechargeUrl,
-  getPortalRechargeUrl,
-} from '../services/endpoints';
 import { i18nService } from '../services/i18n';
 import { LogReporterAction, reportYdAnalyzer } from '../services/logReporter';
 import { RootState } from '../store';
@@ -37,7 +31,6 @@ import {
 import CoworkSearchModal from './cowork/CoworkSearchModal';
 import Cog6ToothIcon from './icons/Cog6ToothIcon';
 import ComposeIcon from './icons/ComposeIcon';
-import FinancingOneIcon from './icons/FinancingOneIcon';
 import SidebarAutomationIcon from './icons/SidebarAutomationIcon';
 import SidebarKitsIcon from './icons/SidebarKitsIcon';
 import SidebarLibraryIcon from './icons/SidebarLibraryIcon';
@@ -270,7 +263,6 @@ const Sidebar: React.FC<SidebarProps> = ({
   const agents = useSelector((state: RootState) => state.agent.agents);
   const isLoggedIn = useSelector((state: RootState) => state.auth.isLoggedIn);
   const isAuthLoading = useSelector((state: RootState) => state.auth.isLoading);
-  const enterpriseAccountContext = useSelector(selectEnterpriseAccountContext);
   const sessions = useSelector(selectCoworkSessions);
   const currentSessionId = useSelector(selectCurrentSessionId);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -296,13 +288,6 @@ const Sidebar: React.FC<SidebarProps> = ({
   const showLoginPromo = !hideLogin && !isAuthLoading && !isLoggedIn;
   const shouldShowLoginPromoTip = showLoginPromo && showLoginPromoTip;
   const shouldReserveLoginPromoTipSpace = shouldShowLoginPromoTip;
-  const showRechargeButton = showLoginPromo && (
-    !enterpriseAccountContext
-    || (
-      enterpriseAccountContext.role === EnterpriseMemberRole.SuperAdmin
-      && enterpriseAccountContext.permissions.rechargeEnterprise
-    )
-  );
   const batchSelectableKeySet = useMemo(
     () => new Set(batchSelectableItems.map((item) => item.key)),
     [batchSelectableItems],
@@ -631,34 +616,6 @@ const Sidebar: React.FC<SidebarProps> = ({
     handleExitBatchMode,
   ]);
 
-  const handleRechargeClick = useCallback(async () => {
-    const rechargeTarget = enterpriseAccountContext ? 'enterprise' : 'personal';
-    reportSidebarAction('open_recharge', {
-      activeView,
-      isCollapsed,
-      isCurrentSession: Boolean(currentSessionId),
-    });
-
-    const rechargeUrl = enterpriseAccountContext
-      ? getEnterpriseRechargeUrl(enterpriseAccountContext.enterpriseId)
-      : getPortalRechargeUrl();
-
-    try {
-      const message = `opening ${rechargeTarget} recharge portal`;
-      console.debug(`[Sidebar] ${message}`);
-      writeSidebarRendererLog('debug', message);
-      await window.electron.shell.openExternal(rechargeUrl);
-    } catch (error) {
-      console.warn('[Sidebar] failed to open recharge portal:', error);
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      writeSidebarRendererLog(
-        'warn',
-        `failed to open ${rechargeTarget} recharge portal: ${errorMessage}`,
-        error,
-      );
-    }
-  }, [activeView, currentSessionId, enterpriseAccountContext, isCollapsed]);
-
   const handleResizeStart = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     if (isCollapsed) return;
     event.preventDefault();
@@ -966,18 +923,10 @@ const Sidebar: React.FC<SidebarProps> = ({
             shouldReserveLoginPromoTipSpace ? 'pt-3.5' : 'pt-2'
           }`}
         >
-          <div
-            className={
-              showRechargeButton
-                ? 'flex items-end pl-3 pr-2 pt-1'
-                : 'flex items-center gap-1 pl-3 pr-2 pt-1'
-            }
-          >
+          <div className="flex items-end pl-3 pr-2 pt-1">
             {!hideLogin && (
               <div
-                className={`relative transition-[padding-top] duration-200 ease-out ${
-                  showRechargeButton ? 'shrink-0' : 'min-w-0 flex-1'
-                } ${
+                className={`relative shrink-0 transition-[padding-top] duration-200 ease-out ${
                   shouldReserveLoginPromoTipSpace ? 'pt-9' : ''
                 }`}
               >
@@ -1008,26 +957,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 />
               </div>
             )}
-            {showRechargeButton ? (
-              <div className="ml-auto flex shrink-0 items-center justify-end gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => void handleRechargeClick()}
-                  className={sidebarBottomIconButtonClassName}
-                  aria-label={i18nService.t('authTopUp')}
-                >
-                  <FinancingOneIcon className="h-3.5 w-3.5 shrink-0" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onShowSettings()}
-                  className={sidebarBottomIconButtonClassName}
-                  aria-label={i18nService.t('settings')}
-                >
-                  <Cog6ToothIcon className="h-4 w-4 shrink-0" />
-                </button>
-              </div>
-            ) : (
+            <div className="ml-auto flex shrink-0 items-center justify-end">
               <button
                 type="button"
                 onClick={() => onShowSettings()}
@@ -1036,7 +966,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               >
                 <Cog6ToothIcon className="h-4 w-4 shrink-0" />
               </button>
-            )}
+            </div>
           </div>
         </div>
       )}

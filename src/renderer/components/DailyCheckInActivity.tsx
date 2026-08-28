@@ -35,6 +35,7 @@ import {
 } from './dailyCheckInAnalytics';
 import {
   DailyCheckInRequestError,
+  type DailyCheckInSnapshot,
   DailyCheckInStaleRequestError,
   useDailyCheckInActivity,
 } from './useDailyCheckInActivity';
@@ -151,6 +152,8 @@ interface DailyCheckInHeaderEntryProps {
 
 interface DailyCheckInAccountMenuEntryProps {
   enabled?: boolean;
+  initialSnapshot?: DailyCheckInSnapshot | null;
+  loadOnMount?: boolean;
   suppressed?: boolean;
 }
 
@@ -166,6 +169,8 @@ interface DailyCheckInSuccessPopoverProps {
 
 interface DailyCheckInEntryControllerOptions {
   enabled?: boolean;
+  initialSnapshot?: DailyCheckInSnapshot | null;
+  loadOnMount?: boolean;
   suppressed?: boolean;
   showClaimedToday?: boolean;
   source: DailyCheckInAnalyticsSource;
@@ -211,17 +216,25 @@ const DailyCheckInSuccessPopover: React.FC<DailyCheckInSuccessPopoverProps> = ({
 
 const useDailyCheckInEntryController = ({
   enabled = true,
+  initialSnapshot = null,
+  loadOnMount = true,
   suppressed = false,
   showClaimedToday = false,
   source,
   successDurationMs = CLAIM_SUCCESS_DURATION_MS,
 }: DailyCheckInEntryControllerOptions) => {
   const isLoggedIn = useSelector((state: RootState) => state.auth.isLoggedIn);
+  const activityEnabled = enabled && (loadOnMount || initialSnapshot !== null);
   const {
     snapshot,
     claiming,
     claim,
-  } = useDailyCheckInActivity({ enabled });
+  } = useDailyCheckInActivity({
+    autoRefresh: loadOnMount,
+    enabled: activityEnabled,
+    initialSnapshot,
+    loadOnMount,
+  });
   const [loginModalOpen, setLoginModalOpen] = useState(false);
   const [success, setSuccess] = useState<DailyCheckInSuccessState | null>(null);
   const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -446,7 +459,12 @@ export const DailyCheckInHeaderEntry: React.FC<
 
 export const DailyCheckInAccountMenuEntry: React.FC<
   DailyCheckInAccountMenuEntryProps
-> = ({ enabled = true, suppressed = false }) => {
+> = ({
+  enabled = true,
+  initialSnapshot = null,
+  loadOnMount = true,
+  suppressed = false,
+}) => {
   const {
     claiming,
     entryLabel,
@@ -458,6 +476,8 @@ export const DailyCheckInAccountMenuEntry: React.FC<
     success,
   } = useDailyCheckInEntryController({
     enabled,
+    initialSnapshot,
+    loadOnMount,
     suppressed,
     showClaimedToday: true,
     source: DailyCheckInAnalyticsSource.AccountMenu,
