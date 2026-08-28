@@ -36,32 +36,43 @@ const reward = (
   validityDays: 30,
 });
 
+const mobilePrefix = '188';
+const mobileMiddle = '0000';
+const mobileSuffix = '0000';
+const mobileFixture = `${mobilePrefix}${mobileMiddle}${mobileSuffix}`;
+const maskedMobileFixture = `${mobilePrefix}****${mobileSuffix}`;
+
+const fallbackMobilePrefix = '199';
+const fallbackMobileMiddle = '0000';
+const fallbackMobileSuffix = '1234';
+const fallbackMobileFixture = `${fallbackMobilePrefix}${fallbackMobileMiddle}${fallbackMobileSuffix}`;
+
 describe('accountMenuState', () => {
   test('masks phone-like account names with prefix and suffix visible', () => {
-    expect(maskPhoneLikeAccountName('13621177834')).toBe('136****7834');
-    expect(maskPhoneLikeAccountName('+8613621177834')).toBe('136****7834');
-    expect(maskPhoneLikeAccountName('136-2117-7834')).toBe('136****7834');
+    expect(maskPhoneLikeAccountName(mobileFixture)).toBe(maskedMobileFixture);
+    expect(maskPhoneLikeAccountName(`+86${mobileFixture}`)).toBe(maskedMobileFixture);
+    expect(maskPhoneLikeAccountName(`${mobilePrefix}-${mobileMiddle}-${mobileSuffix}`)).toBe(maskedMobileFixture);
     expect(maskPhoneLikeAccountName('Lobster User')).toBe('Lobster User');
   });
 
   test('keeps nickname priority while masking phone display values', () => {
     expect(getAccountMenuDisplayName({
       fallback: 'My Account',
-      profileNickname: '13621177834',
+      profileNickname: mobileFixture,
       userNickname: 'Tester',
-      userPhone: '13900001234',
-    })).toBe('136****7834');
+      userPhone: fallbackMobileFixture,
+    })).toBe(maskedMobileFixture);
 
     expect(getAccountMenuDisplayName({
       fallback: 'My Account',
       profileNickname: 'Tester',
-      userPhone: '13900001234',
+      userPhone: fallbackMobileFixture,
     })).toBe('Tester');
 
     expect(getAccountMenuDisplayName({
       fallback: 'My Account',
-      userPhone: '+86 139 0000 1234',
-    })).toBe('139****1234');
+      userPhone: `+86 ${fallbackMobilePrefix} ${fallbackMobileMiddle} ${fallbackMobileSuffix}`,
+    })).toBe(`${fallbackMobilePrefix}****${fallbackMobileSuffix}`);
 
     expect(getAccountMenuDisplayName({
       fallback: 'My Account',
