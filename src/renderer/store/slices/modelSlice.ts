@@ -195,8 +195,8 @@ const modelSlice = createSlice({
       if (action.payload.model.accessible === false) return;
       state.selectedModelByAgent[action.payload.agentId] = action.payload.model;
     },
-    setDefaultSelectedModel: (state, action: PayloadAction<Model>) => {
-      if (action.payload.accessible === false) return;
+    setDefaultSelectedModel: (state, action: PayloadAction<Model | null | undefined>) => {
+      if (!action.payload || action.payload.accessible === false) return;
       state.defaultSelectedModel = action.payload;
     },
     clearAgentSelectedModel: (state, action: PayloadAction<string>) => {

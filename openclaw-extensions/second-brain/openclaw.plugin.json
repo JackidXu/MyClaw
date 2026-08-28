@@ -27,6 +27,13 @@
       "tool": {
         "type": "object",
         "description": "Dynamic tool definition for second brain retrieval"
+      },
+      "tools": {
+        "type": "array",
+        "items": {
+          "type": "object"
+        },
+        "description": "List of dynamic tool definitions for second brain retrieval"
       }
     }
   }
