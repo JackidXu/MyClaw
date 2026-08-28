@@ -234,13 +234,21 @@ const CoworkView: React.FC<CoworkViewProps> = ({
     isHomeView,
   ]);
 
-  // App 级工具元数据同步（应用初始化时拉取一次动态工具描述）
+  // App 级工具元数据同步（仅在拥有第二大脑权限时拉取并注册动态工具定义）
+  const secondBrainToolsRegisteredRef = useRef(false);
   useEffect(() => {
-    fetchCognitionTools().then((result) => {
-      if (result.tools.length > 0) {
-        void window.electron.secondBrain.registerTools(result.tools);
-      }
-    });
+    const syncToolsIfGranted = () => {
+      if (!vipService.hasSecondBrainPermission() || secondBrainToolsRegisteredRef.current) return;
+      secondBrainToolsRegisteredRef.current = true;
+      fetchCognitionTools().then((result) => {
+        if (result.tools.length > 0) {
+          void window.electron.secondBrain.registerTools(result.tools);
+        }
+      });
+    };
+
+    syncToolsIfGranted();
+    return vipService.subscribe(syncToolsIfGranted);
   }, []);
 
   const buildCapabilitySelection = useCallback((skillIds: string[], kitIds: string[]) => {
