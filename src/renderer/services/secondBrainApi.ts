@@ -401,36 +401,7 @@ export interface FmpToolsResult {
   version?: number;
 }
 
-/** /fmp/retrieve 返回的单条认知节点 */
-export interface FmpRetrieveItem {
-  type: 'node';
-  id: number;
-  /** 认知层级：0=思维模型 1=价值观念 2=决策规则 3=工作方式 4=行业知识 5=案例经验 6=表达方式 */
-  layer: number;
-  text: string;
-  /** 归一化后的相关性分数 */
-  score: number;
-  /** 原始余弦相似度 */
-  raw_score: number;
-}
 
-/** /fmp/retrieve 响应数据结构 */
-export interface FmpRetrieveResult {
-  /** 检索是否成功 */
-  status: boolean;
-  /** 实际返回的条目数 */
-  count: number;
-  /** 全局候选里最高的原始余弦相似度，用于判断整体相关度 */
-  top_score: number;
-  /** top_score >= threshold 时为 true，表示问题与第二大脑相关 */
-  relevant: boolean;
-  /** 当前生效的相关性阈值（默认 0.4） */
-  threshold: number;
-  /** 命中的 top-K 认知条目 */
-  items: FmpRetrieveItem[];
-  /** 已格式化的 Markdown 文本，可直接作为 tool_result 回填给模型 */
-  document: string;
-}
 
 /** 获取会话级认知注入提示词（GET /fmp/injectPrompt，每次新会话调用） */
 export async function fetchCognitionPrompt(): Promise<FmpPromptResult> {
@@ -461,15 +432,7 @@ export async function fetchCognitionTools(): Promise<FmpToolsResult> {
   }
 }
 
-/**
- * RAG 检索（POST /fmp/retrieve）
- * @param query 检索查询词
- * @param topK 返回条数
- * @param layer 层级筛选：0=思维模型 1=价值观念 2=决策规则 3=工作方式 4=行业知识 5=经验提炼 6=语言习惯，不传则检索全部层级
- */
-export async function retrieveFmp(params: { query: string; topK?: number; layer?: number }): Promise<FmpRetrieveResult> {
-  return post<FmpRetrieveResult>('/fmp/retrieve', params);
-}
+
 
 
 export interface ChatReportParams {
@@ -532,7 +495,6 @@ export const secondBrainApi = {
   reExtractDocument,
   fetchCognitionPrompt,
   fetchCognitionTools,
-  retrieveFmp,
   reportChatSession,
   fetchPersonaDetail,
   updatePersona,

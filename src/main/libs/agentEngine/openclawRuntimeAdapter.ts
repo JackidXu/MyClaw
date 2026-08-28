@@ -1075,7 +1075,7 @@ function buildSecondBrainOutboundReminder(): string {
   return [
     '[Second Brain reminder]',
     'Second Brain is active for this session. Keep the expert\'s Second Brain cognition framework and viewpoints in mind when answering.',
-    'If the current context is insufficient for specialized judgment, use the retrieve_fmp tool to look up relevant cognition before replying.',
+    'If the current context is insufficient or requires specialized insights, use the available Second Brain tools to assist before replying.',
   ].join('\n');
 }
 

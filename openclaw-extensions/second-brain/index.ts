@@ -15,14 +15,15 @@ type PluginConfig = {
   tool?: DynamicToolConfig;
 };
 
-type RetrieveRequest = {
+type SecondBrainToolRequest = {
   query: string;
+  name?: string;
   topK?: number;
   sessionKey: string;
   toolCallId: string;
 };
 
-type RetrieveResponse = {
+type SecondBrainToolResponse = {
   content: Array<{ type: string; text?: string; [key: string]: unknown }>;
   isError?: boolean;
 };
@@ -48,10 +49,10 @@ const parsePluginConfig = (value: unknown): PluginConfig => {
   };
 };
 
-async function callRetrieveBridge(
+async function callSecondBrainToolBridge(
   config: PluginConfig,
-  request: RetrieveRequest,
-): Promise<RetrieveResponse> {
+  request: SecondBrainToolRequest,
+): Promise<SecondBrainToolResponse> {
   const controller = new AbortController();
   const timeoutMs = config.requestTimeoutMs || DEFAULT_TIMEOUT_MS;
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -70,16 +71,16 @@ async function callRetrieveBridge(
     const text = await response.text();
 
     if (!response.ok) {
-      throw new Error(`Second brain retrieval HTTP ${response.status}: ${text.trim() || response.statusText}`);
+      throw new Error(`Second brain tool execution HTTP ${response.status}: ${text.trim() || response.statusText}`);
     }
 
     if (!text.trim()) {
-      return { content: [{ type: 'text', text: '（检索未返回有效内容）' }] };
+      return { content: [{ type: 'text', text: '（工具执行未返回有效内容）' }] };
     }
 
     const parsed = JSON.parse(text);
     if (parsed && Array.isArray(parsed.content)) {
-      return parsed as RetrieveResponse;
+      return parsed as SecondBrainToolResponse;
     }
 
     return {
@@ -87,10 +88,10 @@ async function callRetrieveBridge(
     };
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
-      return { content: [{ type: 'text', text: '第二大脑检索超时，请稍后重试。' }], isError: true };
+      return { content: [{ type: 'text', text: '第二大脑工具执行超时，请稍后重试。' }], isError: true };
     }
     const message = error instanceof Error ? error.message : String(error);
-    return { content: [{ type: 'text', text: `第二大脑检索失败: ${message}` }], isError: true };
+    return { content: [{ type: 'text', text: `第二大脑工具执行失败: ${message}` }], isError: true };
   } finally {
     clearTimeout(timer);
   }
@@ -99,7 +100,7 @@ async function callRetrieveBridge(
 const plugin = {
   id: 'second-brain',
   name: 'SecondBrain',
-  description: 'Second Brain cognition retrieval tool powered by HeyClaw.',
+  description: 'Second Brain cognition tool powered by HeyClaw.',
   configSchema: {
     parse(value: unknown): PluginConfig {
       return parsePluginConfig(value);
@@ -114,20 +115,22 @@ const plugin = {
       return;
     }
 
+    // 若后端未下发工具定义，则跳过注册
+    if (!config.tool?.name) {
+      api.logger.info('[second-brain] skipped: no dynamic tool definition provided.');
+      return;
+    }
+
+    const toolName = config.tool.name;
+    const toolDesc = config.tool.description || '';
+    const toolParams = config.tool.parameters || Type.Object({});
+
     api.registerTool((ctx: any) => {
       const sessionKey = ctx.sessionKey ?? '';
 
-      // 优先使用接口动态下发的工具描述与参数定义
-      const toolName = config.tool?.name || 'retrieve_fmp';
-      const toolDesc = config.tool?.description || '从专家的第二大脑专属认知库中检索相关认知。';
-      const toolParams = config.tool?.parameters || Type.Object({
-        query: Type.String({ description: '检索词' }),
-        topK: Type.Optional(Type.Number({ description: '数量' })),
-      });
-
       return {
         name: toolName,
-        label: 'Second Brain Retrieval',
+        label: toolName,
         description: toolDesc,
         parameters: toolParams,
         async execute(id: string, params: unknown) {
@@ -143,26 +146,27 @@ const plugin = {
           }
 
           try {
-            api.logger.info(`[second-brain] retrieve tool invoked: toolCallId=${id} query="${query}" topK=${topK ?? 'default'}`);
+            api.logger.info(`[second-brain] ${toolName} tool invoked: toolCallId=${id} query="${query}" topK=${topK ?? 'default'}`);
             const startedAt = Date.now();
-            const result = await callRetrieveBridge(config, {
+            const result = await callSecondBrainToolBridge(config, {
               query,
+              name: toolName,
               topK,
               sessionKey,
               toolCallId: id,
             });
-            api.logger.info(`[second-brain] retrieve completed: toolCallId=${id} elapsedMs=${Date.now() - startedAt} isError=${result.isError === true}`);
+            api.logger.info(`[second-brain] ${toolName} completed: toolCallId=${id} elapsedMs=${Date.now() - startedAt} isError=${result.isError === true}`);
             return result;
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
-            api.logger.error(`[second-brain] retrieve tool failed: toolCallId=${id} error=${message}`);
-            return { content: [{ type: 'text', text: `第二大脑检索失败: ${message}` }], isError: true };
+            api.logger.error(`[second-brain] ${toolName} failed: toolCallId=${id} error=${message}`);
+            return { content: [{ type: 'text', text: `第二大脑工具执行失败: ${message}` }], isError: true };
           }
         },
       };
     });
 
-    api.logger.info('[second-brain] registered retrieve_fmp tool.');
+    api.logger.info(`[second-brain] registered ${toolName} tool.`);
   },
 };
 
