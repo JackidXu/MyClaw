@@ -120,6 +120,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
 
   /** 人设相关状态 */
   const [persona, setPersona] = useState<PersonaData | null>(null);
+  const [personaLoading, setPersonaLoading] = useState(true);
   const [showPersonaModal, setShowPersonaModal] = useState(false);
   const [savingPersona, setSavingPersona] = useState(false);
   const [personaForm, setPersonaForm] = useState<{
@@ -133,6 +134,8 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
     industry: '',
     positioning: '',
   });
+
+  const hasValidPersona = Boolean(persona?.name?.trim() && persona?.business?.trim());
 
   /** 资料列表相关 */
   const [docs, setDocs] = useState<DocumentItem[]>([]);
@@ -305,19 +308,25 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
 
   /** 加载人设详情 */
   const loadPersona = async () => {
+    setPersonaLoading(true);
     try {
       const data = await fetchPersonaDetail();
       setPersona(data);
-      if (data) {
+      if (data && data.name?.trim() && data.business?.trim()) {
         setPersonaForm({
           name: data.name ?? '',
           business: data.business ?? '',
           industry: data.industry ?? '',
           positioning: data.positioning ?? '',
         });
+      } else {
+        setShowPersonaModal(true);
       }
     } catch (err) {
       console.warn('[SecondBrainView] 获取人设详情失败:', err);
+      setShowPersonaModal(true);
+    } finally {
+      setPersonaLoading(false);
     }
   };
 
@@ -622,7 +631,32 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
 
       {/* 页面内容区域 */}
       <div className="flex-1 min-h-0 overflow-y-auto [scrollbar-gutter:stable]">
-        <div className="mx-auto w-full max-w-[1120px] px-8 py-6 space-y-5">
+        {personaLoading ? (
+          <div className="h-full flex items-center justify-center py-20">
+            <div className="flex flex-col items-center gap-3 text-secondary text-xs">
+              <div className="w-6 h-6 border-2 border-primary/20 border-t-primary rounded-full animate-spin" />
+              <span>正在加载第二大脑...</span>
+            </div>
+          </div>
+        ) : !hasValidPersona ? (
+          <div className="h-full flex flex-col items-center justify-center py-24 text-center px-4 space-y-3">
+            <div className="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-3xl">
+              🧠
+            </div>
+            <h3 className="text-base font-bold text-foreground">请先完善人设信息</h3>
+            <p className="text-xs text-secondary max-w-sm">
+              第二大脑需要了解您的姓名称呼与主营业务，以提供精准的商业认知与拍板建议
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowPersonaModal(true)}
+              className="mt-2 rounded-xl bg-primary px-5 py-2 text-xs font-semibold text-white hover:bg-primary-hover transition-colors shadow-sm cursor-pointer"
+            >
+              完善人设信息
+            </button>
+          </div>
+        ) : (
+          <div className="mx-auto w-full max-w-[1120px] px-8 py-6 space-y-5">
 
           {/* 1. 我的判断库（统领大卡片 .judge-lib） */}
           <div className="rounded-2xl border border-border bg-gradient-to-b from-surface to-surface-raised/40 p-5 md:p-6 shadow-[0_4px_16px_rgba(0,0,0,0.04)] space-y-4">
@@ -1452,6 +1486,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
           </div>
 
         </div>
+        )}
       </div>
 
       {/* 删除确认弹窗 */}
@@ -1499,22 +1534,36 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
       {showPersonaModal && createPortal(
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-          onClick={() => !savingPersona && setShowPersonaModal(false)}
+          onClick={() => {
+            if (!savingPersona && hasValidPersona) {
+              setShowPersonaModal(false);
+            }
+          }}
         >
           <div
             className="w-full max-w-md rounded-xl border border-border bg-surface p-6 shadow-xl space-y-4"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-border pb-3">
-              <h3 className="text-sm font-bold text-foreground">人设信息</h3>
-              <button
-                type="button"
-                onClick={() => setShowPersonaModal(false)}
-                className="text-secondary hover:text-foreground text-sm cursor-pointer"
-              >
-                ✕
-              </button>
+              <h3 className="text-sm font-bold text-foreground">
+                {hasValidPersona ? '人设信息' : '完善商业人设信息'}
+              </h3>
+              {hasValidPersona && (
+                <button
+                  type="button"
+                  onClick={() => setShowPersonaModal(false)}
+                  className="text-secondary hover:text-foreground text-sm cursor-pointer"
+                >
+                  ✕
+                </button>
+              )}
             </div>
+
+            {!hasValidPersona && (
+              <p className="text-xs text-secondary leading-relaxed bg-surface-raised/60 p-2.5 rounded-lg border border-border/80">
+                第二大脑将以您的身份和主营业务为核心视角进行认知萃取与商业决策，请先完善人设信息。
+              </p>
+            )}
 
             <div className="space-y-3 text-xs">
               <div>
@@ -1567,14 +1616,16 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
-              <button
-                type="button"
-                disabled={savingPersona}
-                onClick={() => setShowPersonaModal(false)}
-                className="rounded-lg border border-border px-4 py-1.5 text-xs font-medium text-secondary hover:bg-surface-raised transition-colors"
-              >
-                取消
-              </button>
+              {hasValidPersona && (
+                <button
+                  type="button"
+                  disabled={savingPersona}
+                  onClick={() => setShowPersonaModal(false)}
+                  className="rounded-lg border border-border px-4 py-1.5 text-xs font-medium text-secondary hover:bg-surface-raised transition-colors"
+                >
+                  取消
+                </button>
+              )}
               <button
                 type="button"
                 disabled={savingPersona || !personaForm.name.trim() || !personaForm.business.trim()}
