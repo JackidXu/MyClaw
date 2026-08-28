@@ -2,6 +2,10 @@ import { PlusIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import React, { useEffect, useRef, useState } from 'react';
 
 import {
+  BrowserCredentialUseMode,
+  type BrowserCredentialUseMode as BrowserCredentialUseModeValue,
+} from '../../../shared/browserCredentials/constants';
+import {
   BrowserDisplayMode,
   BrowserNetworkMode,
   BrowserProfileMode,
@@ -11,6 +15,7 @@ import {
 import { i18nService } from '../../services/i18n';
 import Modal from '../common/Modal';
 import ThemedSelect from '../ui/ThemedSelect';
+import BrowserCredentialSettings from './BrowserCredentialSettings';
 
 interface BrowserWebAccessSettingsProps {
   value: BrowserWebAccessConfig;
@@ -194,6 +199,40 @@ const BrowserWebAccessSettings: React.FC<BrowserWebAccessSettingsProps> = ({
         />
 
         <SettingRow
+          title={i18nService.t('browserCredentialUseModeTitle')}
+          description={value.credentialUseMode === BrowserCredentialUseMode.Disabled
+            ? i18nService.t('browserCredentialUseModeDisabledDescription')
+            : value.credentialUseMode === BrowserCredentialUseMode.OncePerTask
+              ? i18nService.t('browserCredentialUseModeOncePerTaskDescription')
+              : i18nService.t('browserCredentialUseModeAlwaysAskDescription')}
+          control={(
+            <div className="w-[300px]">
+              <ThemedSelect
+                id="browser-credential-use-mode"
+                value={value.credentialUseMode}
+                onChange={(mode) => update({
+                  credentialUseMode: mode as BrowserCredentialUseModeValue,
+                })}
+                options={[
+                  {
+                    value: BrowserCredentialUseMode.AlwaysAsk,
+                    label: i18nService.t('browserCredentialUseModeAlwaysAsk'),
+                  },
+                  {
+                    value: BrowserCredentialUseMode.OncePerTask,
+                    label: i18nService.t('browserCredentialUseModeOncePerTask'),
+                  },
+                  {
+                    value: BrowserCredentialUseMode.Disabled,
+                    label: i18nService.t('browserCredentialUseModeDisabled'),
+                  },
+                ]}
+              />
+            </div>
+          )}
+        />
+
+        <SettingRow
           title={i18nService.t('browserNetworkSectionTitle')}
           description={networkModeDescription}
           control={(
@@ -218,6 +257,8 @@ const BrowserWebAccessSettings: React.FC<BrowserWebAccessSettingsProps> = ({
           onAdd={() => openHostnameDialog(HostnameListTarget.BlockedHostnames)}
           onRemove={removeHostname}
         />
+
+        <BrowserCredentialSettings />
 
       </div>
 

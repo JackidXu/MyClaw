@@ -24,6 +24,9 @@ const createHost = (): AgentBrowserHost => new AgentBrowserHost({
   getBrowserConfig: () => undefined,
   useSystemProxy: () => false,
   emitState: vi.fn(),
+  credentialService: {} as never,
+  credentialApprovalService: {} as never,
+  resolveSessionKey: () => undefined,
 });
 
 describe('AgentBrowserHost persistent storage', () => {
@@ -63,7 +66,7 @@ describe('AgentBrowserHost persistent storage', () => {
     const disposePromise = host.dispose().then(() => {
       disposed = true;
     });
-    await Promise.resolve();
+    await new Promise<void>(resolve => { setImmediate(resolve); });
 
     expect(electronMocks.flushStorageData).toHaveBeenCalledOnce();
     expect(electronMocks.flushStore).toHaveBeenCalledOnce();

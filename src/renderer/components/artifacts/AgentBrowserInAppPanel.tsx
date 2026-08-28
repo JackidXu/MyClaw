@@ -6,6 +6,9 @@ import {
   StopIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline';
+import {
+  BrowserCredentialLoginStatus,
+} from '@shared/browserCredentials/constants';
 import type {
   AgentBrowserHostResponse,
   AgentBrowserHostState,
@@ -38,6 +41,20 @@ const AgentBrowserInAppPanel: React.FC<AgentBrowserInAppPanelProps> = ({
   const syncFrameRef = useRef<number | null>(null);
 
   const selectedTab = state?.tabs.find(tab => tab.pageId === state.selectedPageId);
+  const credentialLoginBusy = state?.credentialLogin?.status === BrowserCredentialLoginStatus.AwaitingApproval
+    || state?.credentialLogin?.status === BrowserCredentialLoginStatus.SigningIn;
+  const credentialLoginStatusKey = state?.credentialLogin
+    ? {
+        [BrowserCredentialLoginStatus.AwaitingApproval]: 'agentBrowserCredentialAwaitingApproval',
+        [BrowserCredentialLoginStatus.SigningIn]: 'agentBrowserCredentialSigningIn',
+        [BrowserCredentialLoginStatus.Authenticated]: 'agentBrowserCredentialAuthenticated',
+        [BrowserCredentialLoginStatus.Submitted]: 'agentBrowserCredentialSubmitted',
+        [BrowserCredentialLoginStatus.NeedsMfa]: 'agentBrowserCredentialNeedsMfa',
+        [BrowserCredentialLoginStatus.NeedsCaptcha]: 'agentBrowserCredentialNeedsCaptcha',
+        [BrowserCredentialLoginStatus.Denied]: 'agentBrowserCredentialDenied',
+        [BrowserCredentialLoginStatus.Failed]: 'agentBrowserCredentialFailed',
+      }[state.credentialLogin.status]
+    : undefined;
 
   useEffect(() => {
     if (!addressFocusedRef.current) {
@@ -147,7 +164,7 @@ const AgentBrowserInAppPanel: React.FC<AgentBrowserInAppPanelProps> = ({
       <div className="flex h-11 shrink-0 items-center gap-1.5 border-b border-border px-2">
         <button
           type="button"
-          disabled={!selectedTab?.canGoBack}
+          disabled={credentialLoginBusy || !selectedTab?.canGoBack}
           onClick={() => void runAction(() => window.electron.openclaw.browser.goBackHost({ sessionId }))}
           className="inline-flex h-7 w-7 items-center justify-center rounded-md text-secondary hover:bg-surface-raised hover:text-foreground disabled:opacity-35"
           title={i18nService.t('agentBrowserBack')}
@@ -157,7 +174,7 @@ const AgentBrowserInAppPanel: React.FC<AgentBrowserInAppPanelProps> = ({
         </button>
         <button
           type="button"
-          disabled={!selectedTab?.canGoForward}
+          disabled={credentialLoginBusy || !selectedTab?.canGoForward}
           onClick={() => void runAction(() => window.electron.openclaw.browser.goForwardHost({ sessionId }))}
           className="inline-flex h-7 w-7 items-center justify-center rounded-md text-secondary hover:bg-surface-raised hover:text-foreground disabled:opacity-35"
           title={i18nService.t('agentBrowserForward')}
@@ -167,7 +184,7 @@ const AgentBrowserInAppPanel: React.FC<AgentBrowserInAppPanelProps> = ({
         </button>
         <button
           type="button"
-          disabled={!selectedTab}
+          disabled={credentialLoginBusy || !selectedTab}
           onClick={() => void runAction(() => selectedTab?.loading
             ? window.electron.openclaw.browser.stopHost({ sessionId })
             : window.electron.openclaw.browser.reloadHost({ sessionId }))}
@@ -186,7 +203,7 @@ const AgentBrowserInAppPanel: React.FC<AgentBrowserInAppPanelProps> = ({
             onFocus={() => { addressFocusedRef.current = true; }}
             onBlur={() => { addressFocusedRef.current = false; }}
             placeholder={i18nService.t('agentBrowserAddressPlaceholder')}
-            disabled={submitting}
+            disabled={submitting || credentialLoginBusy}
             className="h-7 w-full rounded-md border border-border bg-surface px-2.5 text-xs text-foreground outline-none placeholder:text-muted focus:border-primary"
           />
         </form>
@@ -199,6 +216,7 @@ const AgentBrowserInAppPanel: React.FC<AgentBrowserInAppPanelProps> = ({
         <div className="flex h-9 shrink-0 items-center gap-2 border-b border-border bg-surface px-2">
           <select
             value={state.selectedPageId ?? ''}
+            disabled={credentialLoginBusy}
             onChange={event => void runAction(() => window.electron.openclaw.browser.selectHostPage({
               sessionId,
               pageId: Number(event.target.value),
@@ -213,7 +231,7 @@ const AgentBrowserInAppPanel: React.FC<AgentBrowserInAppPanelProps> = ({
           </select>
           <button
             type="button"
-            disabled={!state.selectedPageId}
+            disabled={credentialLoginBusy || !state.selectedPageId}
             onClick={() => state.selectedPageId && void runAction(() =>
               window.electron.openclaw.browser.closeHostPage({
                 sessionId,
@@ -231,6 +249,12 @@ const AgentBrowserInAppPanel: React.FC<AgentBrowserInAppPanelProps> = ({
       {state?.error ? (
         <div className="shrink-0 truncate border-b border-amber-500/30 bg-amber-500/10 px-3 py-1 text-[11px] text-amber-700 dark:text-amber-300" title={state.error}>
           {state.error}
+        </div>
+      ) : null}
+
+      {credentialLoginStatusKey ? (
+        <div className="shrink-0 border-b border-primary/20 bg-primary/10 px-3 py-1 text-[11px] text-primary">
+          {i18nService.t(credentialLoginStatusKey)}
         </div>
       ) : null}
 

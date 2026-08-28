@@ -7,6 +7,7 @@ import os from 'os';
 import path from 'path';
 import { afterEach, describe, expect, test } from 'vitest';
 
+import { BrowserCredentialLoginTool } from '../../shared/browserCredentials/constants';
 import { resolveLobsterBrowserMcpCommand } from './lobsterBrowserMcpServer';
 
 const createdDirectories: string[] = [];
@@ -120,6 +121,8 @@ describe('resolveLobsterBrowserMcpCommand', () => {
       const tools = await client.listTools();
       expect(tools.tools.map(tool => tool.name)).toContain('list_pages');
       expect(tools.tools.map(tool => tool.name)).toContain('click');
+      const savedLoginTool = tools.tools.find(tool => tool.name === BrowserCredentialLoginTool.Name);
+      expect(savedLoginTool?.description).toContain('password is never returned to the Agent');
       const result = await client.callTool({ name: 'list_pages', arguments: {} });
       expect(result.isError).not.toBe(true);
       expect(result.structuredContent).toEqual({ pages: [] });

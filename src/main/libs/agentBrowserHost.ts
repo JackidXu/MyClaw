@@ -6,6 +6,11 @@ import {
 } from 'electron';
 
 import {
+  BrowserCredentialLoginOutcome,
+  type BrowserCredentialLoginState,
+  BrowserCredentialLoginTool,
+} from '../../shared/browserCredentials/constants';
+import {
   type AgentBrowserHostState,
   type AgentBrowserHostStateEvent,
   AgentBrowserPartition,
@@ -15,6 +20,11 @@ import {
   normalizeBrowserHostnamePolicyList,
   normalizeBrowserWebAccessConfig,
 } from '../../shared/browserWebAccess/constants';
+import {
+  AgentBrowserCredentialLogin,
+} from '../browserCredentials/agentBrowserCredentialLogin';
+import type { BrowserCredentialApprovalService } from '../browserCredentials/browserCredentialApprovalService';
+import type { BrowserCredentialService } from '../browserCredentials/browserCredentialService';
 import type {
   BrowserToolRequest,
   BrowserToolResponse,
@@ -39,6 +49,7 @@ const BrowserMcpTool = {
   HandleDialog: 'handle_dialog',
   EvaluateScript: 'evaluate_script',
   WaitFor: 'wait_for',
+  LoginWithSavedCredential: BrowserCredentialLoginTool.Name,
 } as const;
 
 const DEFAULT_PAGE_URL = 'about:blank';
@@ -83,6 +94,9 @@ type AgentBrowserHostDeps = {
   getBrowserConfig: () => Partial<BrowserWebAccessConfig> | null | undefined;
   useSystemProxy: () => boolean;
   emitState: (event: AgentBrowserHostStateEvent) => void;
+  credentialService: BrowserCredentialService;
+  credentialApprovalService: BrowserCredentialApprovalService;
+  resolveSessionKey: (sessionId?: string) => string | undefined;
 };
 
 const textResult = (
@@ -203,6 +217,10 @@ export class AgentBrowserHost {
   private nextPageId = 1;
   private selectedPageId: number | undefined;
   private attachedPageId: number | undefined;
+  private credentialLoginView: WebContentsView | null = null;
+  private credentialLoginViewAttached = false;
+  private credentialLoginState: BrowserCredentialLoginState | undefined;
+  private readonly credentialLogin: AgentBrowserCredentialLogin;
   private desiredVisible = false;
   private windowVisible = false;
   private bounds = { x: 0, y: 0, width: 1, height: 1 };
@@ -216,6 +234,22 @@ export class AgentBrowserHost {
     this.browserSession.setPermissionCheckHandler(() => false);
     this.browserSession.setPermissionRequestHandler((_webContents, _permission, callback) => {
       callback(false);
+    });
+    this.credentialLogin = new AgentBrowserCredentialLogin({
+      browserSession: this.browserSession,
+      credentialService: this.deps.credentialService,
+      approvalService: this.deps.credentialApprovalService,
+      getUseMode: () => normalizeBrowserWebAccessConfig(
+        this.deps.getBrowserConfig(),
+      ).credentialUseMode,
+      resolveSessionKey: this.deps.resolveSessionKey,
+      onViewChanged: view => {
+        this.setCredentialLoginView(view);
+      },
+      onStateChanged: state => {
+        this.credentialLoginState = state;
+        this.emitState();
+      },
     });
     this.refreshProxy();
   }
@@ -237,8 +271,9 @@ export class AgentBrowserHost {
     return {
       tabs,
       ...(this.selectedPageId ? { selectedPageId: this.selectedPageId } : {}),
-      visible: this.attachedPageId !== undefined,
+      visible: this.attachedPageId !== undefined || this.credentialLoginViewAttached,
       updatedAt: Date.now(),
+      ...(this.credentialLoginState ? { credentialLogin: this.credentialLoginState } : {}),
       ...(this.lastError ? { error: this.lastError } : {}),
     };
   }
@@ -277,6 +312,11 @@ export class AgentBrowserHost {
     this.activeSessionId = event.sessionId;
     const targetPageId = readPageId(Number(event.targetId));
     if (targetPageId && this.pages.has(targetPageId)) {
+      if (this.credentialLogin.isActive) {
+        this.selectedPageId = targetPageId;
+        this.emitState(event.sessionId);
+        return;
+      }
       this.selectPage(targetPageId, event.sessionId);
       return;
     }
@@ -284,6 +324,7 @@ export class AgentBrowserHost {
   }
 
   async navigate(url: string, sessionId?: string): Promise<AgentBrowserHostState> {
+    this.assertCredentialLoginInactive();
     if (sessionId?.trim()) this.activeSessionId = sessionId.trim();
     const page = this.getSelectedPage() ?? await this.createPage(DEFAULT_PAGE_URL);
     await this.navigatePage(page, normalizeAddress(url), DEFAULT_OPERATION_TIMEOUT_MS);
@@ -291,6 +332,7 @@ export class AgentBrowserHost {
   }
 
   goBack(): AgentBrowserHostState {
+    this.assertCredentialLoginInactive();
     const page = this.requireSelectedPage();
     if (page.view.webContents.navigationHistory.canGoBack()) {
       page.view.webContents.navigationHistory.goBack();
@@ -299,6 +341,7 @@ export class AgentBrowserHost {
   }
 
   goForward(): AgentBrowserHostState {
+    this.assertCredentialLoginInactive();
     const page = this.requireSelectedPage();
     if (page.view.webContents.navigationHistory.canGoForward()) {
       page.view.webContents.navigationHistory.goForward();
@@ -307,16 +350,19 @@ export class AgentBrowserHost {
   }
 
   reload(): AgentBrowserHostState {
+    this.assertCredentialLoginInactive();
     this.requireSelectedPage().view.webContents.reload();
     return this.getState();
   }
 
   stop(): AgentBrowserHostState {
+    this.assertCredentialLoginInactive();
     this.requireSelectedPage().view.webContents.stop();
     return this.getState();
   }
 
   selectPage(pageId: number, sessionId?: string): AgentBrowserHostState {
+    this.assertCredentialLoginInactive();
     if (!this.pages.has(pageId)) {
       throw new Error(`Browser page ${pageId} does not exist.`);
     }
@@ -328,6 +374,7 @@ export class AgentBrowserHost {
   }
 
   closePage(pageId: number): AgentBrowserHostState {
+    this.assertCredentialLoginInactive();
     const page = this.requirePage(pageId);
     this.detachPage(pageId);
     if (page.view.webContents.debugger.isAttached()) {
@@ -351,6 +398,9 @@ export class AgentBrowserHost {
     if (request.tool === BrowserMcpTool.EvaluateScript && !config.evaluateEnabled) {
       return errorResult('Browser script evaluation is disabled in LobsterAI settings.');
     }
+    if (this.credentialLogin.isActive && request.tool !== BrowserMcpTool.LoginWithSavedCredential) {
+      return errorResult('A secure saved-credential sign-in is in progress. Wait for it to finish.');
+    }
 
     try {
       return await this.dispatchTool(request.tool, request.args);
@@ -364,6 +414,8 @@ export class AgentBrowserHost {
 
   async dispose(): Promise<void> {
     this.desiredVisible = false;
+    await this.credentialLogin.dispose();
+    this.detachCredentialLoginView();
     this.detachPage(this.attachedPageId);
     for (const page of this.pages.values()) {
       if (page.view.webContents.isDestroyed()) continue;
@@ -442,6 +494,30 @@ export class AgentBrowserHost {
       case BrowserMcpTool.WaitFor:
         await this.waitForText(this.resolvePage(args.pageId), readString(args.text), readTimeout(args.timeout));
         return textResult('Text found.');
+      case BrowserMcpTool.LoginWithSavedCredential: {
+        const page = this.resolvePage(args.pageId);
+        const result = await this.credentialLogin.login({
+          url: page.view.webContents.getURL(),
+          sessionId: this.activeSessionId,
+          accountHint: readString(args.accountHint) || undefined,
+          reason: readString(args.reason) || undefined,
+        });
+        if (
+          result.outcome === BrowserCredentialLoginOutcome.Authenticated
+          || result.outcome === BrowserCredentialLoginOutcome.Submitted
+          || result.outcome === BrowserCredentialLoginOutcome.NeedsMfa
+          || result.outcome === BrowserCredentialLoginOutcome.NeedsCaptcha
+        ) {
+          page.view.webContents.reload();
+        }
+        return {
+          ...textResult(result.message, { ...result }),
+          ...(result.outcome === BrowserCredentialLoginOutcome.Failed
+            || result.outcome === BrowserCredentialLoginOutcome.Denied
+            ? { isError: true }
+            : {}),
+        };
+      }
       default:
         throw new Error(`Unsupported LobsterAI browser tool: ${tool}`);
     }
@@ -929,13 +1005,26 @@ export class AgentBrowserHost {
     const mainWindow = this.deps.getMainWindow();
     const shouldAttach = this.desiredVisible
       && this.windowVisible
-      && this.selectedPageId !== undefined
+      && (this.credentialLoginView !== null || this.selectedPageId !== undefined)
       && mainWindow
       && !mainWindow.isDestroyed();
     if (!shouldAttach) {
+      this.detachCredentialLoginView();
       this.detachPage(this.attachedPageId);
       return;
     }
+
+    if (this.credentialLoginView) {
+      this.detachPage(this.attachedPageId);
+      if (!this.credentialLoginViewAttached) {
+        mainWindow.contentView.addChildView(this.credentialLoginView);
+        this.credentialLoginViewAttached = true;
+      }
+      this.credentialLoginView.setBounds(this.normalizeBounds(this.bounds));
+      return;
+    }
+
+    this.detachCredentialLoginView();
 
     if (this.attachedPageId !== this.selectedPageId) {
       this.detachPage(this.attachedPageId);
@@ -958,6 +1047,32 @@ export class AgentBrowserHost {
       }
     }
     if (this.attachedPageId === pageId) this.attachedPageId = undefined;
+  }
+
+  private setCredentialLoginView(view: WebContentsView | null): void {
+    if (this.credentialLoginView !== view) this.detachCredentialLoginView();
+    this.credentialLoginView = view;
+    this.syncAttachment();
+    this.emitState();
+  }
+
+  private detachCredentialLoginView(): void {
+    if (!this.credentialLoginView || !this.credentialLoginViewAttached) return;
+    const mainWindow = this.deps.getMainWindow();
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      try {
+        mainWindow.contentView.removeChildView(this.credentialLoginView);
+      } catch {
+        // The view may already be detached while the window is closing.
+      }
+    }
+    this.credentialLoginViewAttached = false;
+  }
+
+  private assertCredentialLoginInactive(): void {
+    if (this.credentialLogin.isActive) {
+      throw new Error('A secure saved-credential sign-in is in progress.');
+    }
   }
 
   private emitState(sessionId = this.activeSessionId): void {

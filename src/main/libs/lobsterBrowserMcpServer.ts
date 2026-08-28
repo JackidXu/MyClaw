@@ -1,6 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 
+import { BrowserCredentialLoginTool } from '../../shared/browserCredentials/constants';
+
 const SERVER_FILE_NAME = 'lobster-browser-mcp-server.mjs';
 const RUNTIME_CONFIG_FILE_NAME = 'lobster-browser-mcp-runtime.json';
 const WINDOWS_LAUNCHER_FILE_NAME = 'lobster-browser-mcp.cmd';
@@ -56,9 +58,14 @@ const tools = [
   ['handle_dialog', { pageId: { type: 'number' }, action: { type: 'string' }, promptText: { type: 'string' } }],
   ['evaluate_script', { pageId: { type: 'number' }, function: { type: 'string' }, args: { type: 'array' } }],
   ['wait_for', { pageId: { type: 'number' }, text: { type: 'string' }, timeout: { type: 'number' } }],
-].map(([name, properties]) => ({
+  ['${BrowserCredentialLoginTool.Name}', {
+    pageId: { type: 'number' },
+    accountHint: { type: 'string' },
+    reason: { type: 'string' },
+  }, 'Sign in through an isolated LobsterAI login view with a credential saved for the current website. The password is never returned to the Agent. This may ask the user for approval; after approval, continue the task without asking the user to type or paste the password.'],
+].map(([name, properties, description]) => ({
   name,
-  description: 'Operate the LobsterAI in-app browser.',
+  description: description || 'Operate the LobsterAI in-app browser.',
   inputSchema: { type: 'object', properties, additionalProperties: true },
 }));
 

@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 
+import { BrowserCredentialUseMode } from '../browserCredentials/constants';
 import {
   BrowserDisplayMode,
   BrowserNetworkMode,
@@ -97,5 +98,17 @@ describe('browser web access constants', () => {
     expect(normalizeBrowserWebAccessConfig({
       displayMode: BrowserDisplayMode.InApp,
     }).displayMode).toBe(BrowserDisplayMode.InApp);
+  });
+
+  test('defaults saved login use to per-use approval and preserves an explicit policy', () => {
+    expect(normalizeBrowserWebAccessConfig(undefined).credentialUseMode).toBe(
+      BrowserCredentialUseMode.AlwaysAsk,
+    );
+    expect(normalizeBrowserWebAccessConfig({
+      credentialUseMode: BrowserCredentialUseMode.OncePerTask,
+    }).credentialUseMode).toBe(BrowserCredentialUseMode.OncePerTask);
+    expect(normalizeBrowserWebAccessConfig({
+      credentialUseMode: 'invalid' as BrowserCredentialUseMode,
+    }).credentialUseMode).toBe(BrowserCredentialUseMode.AlwaysAsk);
   });
 });

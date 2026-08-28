@@ -21,6 +21,13 @@ import type {
   AuthSessionStatus,
 } from '../../shared/auth/constants';
 import type {
+  BrowserCredentialAvailabilityResponse,
+  BrowserCredentialDeleteRequest,
+  BrowserCredentialListResponse,
+  BrowserCredentialMutationResponse,
+  BrowserCredentialSaveRequest,
+} from '../../shared/browserCredentials/constants';
+import type {
   AgentBrowserHostNavigateRequest,
   AgentBrowserHostPageRequest,
   AgentBrowserHostRequest,
@@ -885,6 +892,12 @@ interface IElectronAPI {
       selectHostPage: (request: AgentBrowserHostPageRequest) => Promise<AgentBrowserHostResponse>;
       closeHostPage: (request: AgentBrowserHostPageRequest) => Promise<AgentBrowserHostResponse>;
       onHostState: (callback: (event: AgentBrowserHostStateEvent) => void) => () => void;
+      credentials: {
+        getAvailability: () => Promise<BrowserCredentialAvailabilityResponse>;
+        list: () => Promise<BrowserCredentialListResponse>;
+        save: (request: BrowserCredentialSaveRequest) => Promise<BrowserCredentialMutationResponse>;
+        delete: (request: BrowserCredentialDeleteRequest) => Promise<BrowserCredentialMutationResponse>;
+      };
     };
     dataMigration: {
       backup: () => Promise<DataMigrationBackupResult>;

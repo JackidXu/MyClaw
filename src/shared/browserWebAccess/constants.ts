@@ -1,3 +1,9 @@
+import {
+  type BrowserCredentialLoginState,
+  BrowserCredentialUseMode,
+  type BrowserCredentialUseMode as BrowserCredentialUseModeValue,
+} from '../browserCredentials/constants';
+
 export const BrowserProfileMode = {
   Managed: 'managed',
   User: 'user',
@@ -125,6 +131,7 @@ export interface BrowserWebAccessConfig {
   blockedHostnames: string[];
   snapshotMode: BrowserSnapshotMode;
   evaluateEnabled: boolean;
+  credentialUseMode: BrowserCredentialUseModeValue;
   executablePath?: string;
   cdpUrl?: string;
   headless?: boolean;
@@ -212,6 +219,7 @@ export interface AgentBrowserHostState {
   selectedPageId?: number;
   visible: boolean;
   updatedAt: number;
+  credentialLogin?: BrowserCredentialLoginState;
   error?: string;
 }
 
@@ -271,6 +279,7 @@ export const defaultBrowserWebAccessConfig: BrowserWebAccessConfig = {
   blockedHostnames: [],
   snapshotMode: BrowserSnapshotMode.Efficient,
   evaluateEnabled: true,
+  credentialUseMode: BrowserCredentialUseMode.AlwaysAsk,
   webFetch: {
     enabled: true,
     followGlobalProxy: true,
@@ -505,6 +514,11 @@ export const normalizeBrowserWebAccessConfig = (
   const snapshotMode = Object.values(BrowserSnapshotMode).includes(value?.snapshotMode as BrowserSnapshotMode)
     ? value?.snapshotMode as BrowserSnapshotMode
     : defaultBrowserWebAccessConfig.snapshotMode;
+  const credentialUseMode = Object.values(BrowserCredentialUseMode).includes(
+    value?.credentialUseMode as BrowserCredentialUseModeValue,
+  )
+    ? value?.credentialUseMode as BrowserCredentialUseModeValue
+    : defaultBrowserWebAccessConfig.credentialUseMode;
   const executablePath = normalizeOptionalString(value?.executablePath);
   const cdpUrl = normalizeBrowserCdpUrl(value?.cdpUrl);
   const remoteCdpTimeoutMs = normalizeOptionalNumber(value?.remoteCdpTimeoutMs);
@@ -525,6 +539,7 @@ export const normalizeBrowserWebAccessConfig = (
     blockedHostnames: normalizeBrowserHostnameList(value?.blockedHostnames),
     snapshotMode,
     evaluateEnabled: value?.evaluateEnabled ?? defaultBrowserWebAccessConfig.evaluateEnabled,
+    credentialUseMode,
     ...(executablePath ? { executablePath } : {}),
     ...(cdpUrl ? { cdpUrl } : {}),
     ...(value?.attachOnly === true ? { attachOnly: true } : {}),

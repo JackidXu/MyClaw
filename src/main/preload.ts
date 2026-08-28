@@ -22,6 +22,14 @@ import {
   type AuthSessionChangedEvent,
 } from '../shared/auth/constants';
 import {
+  type BrowserCredentialAvailabilityResponse,
+  type BrowserCredentialDeleteRequest,
+  BrowserCredentialIpc,
+  type BrowserCredentialListResponse,
+  type BrowserCredentialMutationResponse,
+  type BrowserCredentialSaveRequest,
+} from '../shared/browserCredentials/constants';
+import {
   type AgentBrowserHostNavigateRequest,
   type AgentBrowserHostPageRequest,
   type AgentBrowserHostRequest,
@@ -400,6 +408,16 @@ contextBridge.exposeInMainWorld('electron', {
           callback(hostEvent);
         ipcRenderer.on(BrowserIpc.HostState, handler);
         return () => ipcRenderer.removeListener(BrowserIpc.HostState, handler);
+      },
+      credentials: {
+        getAvailability: (): Promise<BrowserCredentialAvailabilityResponse> =>
+          ipcRenderer.invoke(BrowserCredentialIpc.GetAvailability),
+        list: (): Promise<BrowserCredentialListResponse> =>
+          ipcRenderer.invoke(BrowserCredentialIpc.List),
+        save: (request: BrowserCredentialSaveRequest): Promise<BrowserCredentialMutationResponse> =>
+          ipcRenderer.invoke(BrowserCredentialIpc.Save, request),
+        delete: (request: BrowserCredentialDeleteRequest): Promise<BrowserCredentialMutationResponse> =>
+          ipcRenderer.invoke(BrowserCredentialIpc.Delete, request),
       },
     },
     dataMigration: {
