@@ -65,6 +65,7 @@ import type {
   HtmlShareAnalyticsResult,
   HtmlShareConfigurableStatus,
   HtmlShareDisabledSource,
+  HtmlSharePermanentDeleteResult,
   HtmlShareSourceType,
   HtmlShareStatus,
 } from '../../shared/htmlShare/constants';
@@ -1350,6 +1351,7 @@ interface IElectronAPI {
       accessMode: HtmlShareAccessMode;
     }) => Promise<HtmlShareResult>;
     disable: (shareId: string) => Promise<HtmlShareResult>;
+    deletePermanently: (shareId: string) => Promise<HtmlSharePermanentDeleteResult>;
     get: (shareId: string) => Promise<{ success: boolean; share?: unknown; error?: string }>;
     getQuota: () => Promise<{
       success: boolean;
@@ -1949,6 +1951,34 @@ interface IElectronAPI {
         thinkingConfig?: import('../../shared/providers/modelThinking').ModelThinkingConfig;
         contextWindow?: number | null;
         costMultiplier?: number;
+      }>;
+      imageModels?: Array<{
+        modelId: string;
+        modelName: string;
+        provider?: string;
+        providerLabel?: string;
+        mediaType?: string;
+        description?: string;
+        capabilities?: string | null;
+        billingUnit?: string;
+        unitLabel?: string;
+        unitCredits?: number;
+        unitPriceYuan?: number;
+        pricingDescription?: string | null;
+      }>;
+      videoModels?: Array<{
+        modelId: string;
+        modelName: string;
+        provider?: string;
+        providerLabel?: string;
+        mediaType?: string;
+        description?: string;
+        capabilities?: string | null;
+        billingUnit?: string;
+        unitLabel?: string;
+        unitCredits?: number;
+        unitPriceYuan?: number;
+        pricingDescription?: string | null;
       }>;
       error?: string;
     }>;

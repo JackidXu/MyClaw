@@ -375,15 +375,15 @@ describe('OpenClawConfigSync runtime config output', () => {
     });
   });
 
-  test('enables optimized OpenClaw heartbeat by default', async () => {
+  test('disables optimized OpenClaw heartbeat by default', async () => {
     const sync = await createSync();
 
-    const result = sync.sync('heartbeat-enabled-default');
+    const result = sync.sync('heartbeat-disabled-default');
     expect(result.ok).toBe(true);
 
     const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
     expect(config.agents.defaults.heartbeat).toEqual({
-      every: '1h',
+      every: '0m',
       target: 'none',
       lightContext: true,
       isolatedSession: true,
@@ -391,7 +391,7 @@ describe('OpenClawConfigSync runtime config output', () => {
     });
   });
 
-  test('writes disabled OpenClaw heartbeat cadence when user disables heartbeat', async () => {
+  test('writes enabled OpenClaw heartbeat cadence when user enables heartbeat', async () => {
     const sync = await createSync({
       getCoworkConfig: () => ({
         workingDirectory: tmpDir,
@@ -404,16 +404,16 @@ describe('OpenClawConfigSync runtime config output', () => {
         memoryGuardLevel: 'balanced',
         memoryUserMemoriesMaxItems: 100,
         skipMissedJobs: false,
-        openClawHeartbeatEnabled: false,
+        openClawHeartbeatEnabled: true,
       }),
     });
 
-    const result = sync.sync('heartbeat-disabled');
+    const result = sync.sync('heartbeat-enabled');
     expect(result.ok).toBe(true);
 
     const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
     expect(config.agents.defaults.heartbeat).toEqual({
-      every: '0m',
+      every: '1h',
       target: 'none',
       lightContext: true,
       isolatedSession: true,

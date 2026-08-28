@@ -2444,9 +2444,9 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
             },
           },
           heartbeat: {
-            every: coworkConfig.openClawHeartbeatEnabled === false
-              ? OPENCLAW_HEARTBEAT_EVERY_DISABLED
-              : OPENCLAW_HEARTBEAT_EVERY_ENABLED,
+            every: coworkConfig.openClawHeartbeatEnabled === true
+              ? OPENCLAW_HEARTBEAT_EVERY_ENABLED
+              : OPENCLAW_HEARTBEAT_EVERY_DISABLED,
             target: 'none',
             lightContext: true,
             isolatedSession: true,

@@ -348,6 +348,7 @@ import {
   packageArtifactFile,
 } from './libs/htmlShare/artifactFileSharePackager';
 import {
+  deleteHtmlSharePermanently,
   getHtmlShareAnalytics,
   getHtmlShareBySource,
   getHtmlShareQuota,
@@ -366,6 +367,7 @@ import {
 import { getKeyfromAttribution, initializeKeyfromAttribution } from './libs/keyfromAttribution';
 import { LibraryThumbnailRenderer } from './libs/libraryThumbnailRenderer';
 import { LibraryThumbnailService } from './libs/libraryThumbnailService';
+import { isLikelyBlankThumbnailBitmap } from './libs/libraryThumbnailValidation';
 import { exportLogsZip } from './libs/logExport';
 import { MainLogReporter } from './libs/mainLogReporter';
 import { inferImageMimeTypeFromDataUrl, type PersistedGeneratedImageAsset, persistGeneratedImageAssets, type PersistGeneratedImageAssetsResult, persistGeneratedVideoAssets, type RemoteGeneratedMediaAsset } from './libs/mediaAssetPersistence';
@@ -7214,8 +7216,13 @@ if (!gotTheLock) {
         return { success: false, error: body.message || 'Failed to load pricing catalog.' };
       }
       const textModels = Array.isArray(body.data?.textModels) ? body.data.textModels : [];
-      console.log(`[Auth:getPricingCatalog] loaded ${textModels.length} public text models.`);
-      return { success: true, textModels };
+      const imageModels = Array.isArray(body.data?.imageModels) ? body.data.imageModels : [];
+      const videoModels = Array.isArray(body.data?.videoModels) ? body.data.videoModels : [];
+      console.log(
+        '[Auth:getPricingCatalog] loaded public pricing catalog: '
+        + `${textModels.length} text, ${imageModels.length} image, ${videoModels.length} video models.`,
+      );
+      return { success: true, textModels, imageModels, videoModels };
     } catch (error) {
       console.error('[Auth:getPricingCatalog] pricing catalog request failed:', error);
       return {
@@ -7641,6 +7648,23 @@ if (!gotTheLock) {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to disable share',
+      };
+    }
+  });
+
+  ipcMain.handle(HtmlShareIpc.DeletePermanently, async (_event, shareId: unknown) => {
+    try {
+      const id = sanitizeHtmlShareString(shareId, 'shareId', 64);
+      return await deleteHtmlSharePermanently(
+        getServerApiBaseUrl(),
+        fetchWithAuth,
+        id,
+      );
+    } catch (error) {
+      console.error('[HtmlShare] failed to permanently delete shared file:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to delete shared file',
       };
     }
   });
@@ -10429,6 +10453,14 @@ if (!gotTheLock) {
 
       const nextConfig = getCoworkStore().getConfig();
       const impactDecision = classifyCoworkConfigChange(previousConfig, nextConfig);
+      if (
+        normalizedConfig.openClawHeartbeatEnabled !== undefined
+        && previousConfig.openClawHeartbeatEnabled !== nextConfig.openClawHeartbeatEnabled
+      ) {
+        console.log(
+          `[Cowork] OpenClaw heartbeat setting changed: enabled=${nextConfig.openClawHeartbeatEnabled}, previous=${previousConfig.openClawHeartbeatEnabled}, impact=${impactDecision.impact}`,
+        );
+      }
       if (impactDecision.impact !== OpenClawConfigImpact.None) {
         const syncResult = await syncOpenClawConfig({
           reason: 'cowork-config-change',
@@ -12067,11 +12099,27 @@ if (!gotTheLock) {
       try {
         return await libraryThumbnailRenderer.render(filePath, size);
       } catch (rendererError) {
+        const extension = path.extname(filePath).toLowerCase();
+        console.warn('[LibraryThumbnail] Renderer failed; using native fallback', {
+          extension,
+          errorType: rendererError instanceof Error ? rendererError.name : 'UnknownError',
+        });
         try {
           const image = await nativeImage.createThumbnailFromPath(filePath, size);
           if (image.isEmpty()) throw new Error('Thumbnail is empty');
+          if (
+            process.platform === 'win32'
+            && extension === '.pptx'
+            && isLikelyBlankThumbnailBitmap(image.toBitmap())
+          ) {
+            throw new Error('Native PPTX thumbnail is visually blank');
+          }
           return image.toPNG();
         } catch (nativeError) {
+          console.error('[LibraryThumbnail] Renderer and native fallback failed', {
+            extension,
+            errorType: nativeError instanceof Error ? nativeError.name : 'UnknownError',
+          });
           const rendererMessage = rendererError instanceof Error
             ? rendererError.message
             : 'Unknown renderer error';

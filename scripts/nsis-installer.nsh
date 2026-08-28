@@ -1,17 +1,5 @@
 !include "FileFunc.nsh"
 
-; The Youdao Dictionary bound package owns the install progress UI. Suppress
-; LobsterAI's plugin-owned silent banner only for the explicitly
-; double-click-silent dictbind artifact. Other channels, ordinary /S installs,
-; interactive installers, update flows, and UAC behavior stay unchanged.
-!if "$%KEYFROM%" == "dictbind"
-  !if "$%LOBSTERAI_CHANNEL_BUILD%" == "1"
-    !if "$%LOBSTERAI_SILENT_ON_DOUBLE_CLICK%" == "1"
-      !define LOBSTERAI_HIDE_SILENT_BANNER
-    !endif
-  !endif
-!endif
-
 ; Build-time payload size metadata, generated into build-tar/ by
 ; scripts/electron-builder-hooks.cjs (afterPack) on every Windows packaging
 ; run. PROJECT_DIR is defined by electron-builder for each makensis
@@ -681,9 +669,6 @@ FunctionEnd
     FileWrite $9 "$8 phase=staging-preflight-insufficient attempt_id=$lobsterInstallerAttemptId plugins_drive=$4 plugins_free_mb=$2 staging_needed_mb=$1 install_drive=$3 install_free_mb=$5 install_needed_mb=$6 action=abort-install$\r$\n"
     FileClose $9
     !insertmacro customBeforeInstallerQuit "staging-space-insufficient"
-    ${If} ${Silent}
-      Banner::destroy
-    ${EndIf}
     MessageBox MB_OK|MB_ICONEXCLAMATION "${U+78C1}${U+76D8}${U+7A7A}${U+95F4}${U+4E0D}${U+8DB3}${U+FF0C}${U+65E0}${U+6CD5}${U+5B89}${U+88C5} LobsterAI${U+3002}${U+8BF7}${U+6E05}${U+7406}${U+78C1}${U+76D8}${U+7A7A}${U+95F4}${U+540E}${U+91CD}${U+8BD5}${U+3002}$\r$\n$\r$\nThere is not enough free disk space to install LobsterAI: drive $4 has $2 MB free but staging the installation needs about $1 MB, and installing to drive $3 would need about $6 MB free there. Free up disk space and run the installer again. Details: $APPDATA\LobsterAI\install-timing.log" /SD IDOK
     SetErrorLevel 2
     Quit
@@ -801,9 +786,6 @@ FunctionEnd
       ; Never commit a partial app: restore the previous installation first,
       ; then report. /SD keeps silent (/S) installs from blocking on the box.
       !insertmacro customBeforeInstallerQuit "payload-staging-validation-failed"
-      ${If} ${Silent}
-        Banner::destroy
-      ${EndIf}
       MessageBox MB_OK|MB_ICONEXCLAMATION "${U+5B89}${U+88C5}${U+5305}${U+6570}${U+636E}${U+4E0D}${U+5B8C}${U+6574}${U+FF1A}${U+53EF}${U+80FD}${U+662F}${U+4E34}${U+65F6}${U+76EE}${U+5F55}${U+78C1}${U+76D8}${U+7A7A}${U+95F4}${U+4E0D}${U+8DB3}${U+6216}${U+5B89}${U+88C5}${U+5305}${U+4E0B}${U+8F7D}${U+4E0D}${U+5B8C}${U+6574}${U+3002}${U+8BF7}${U+6E05}${U+7406}${U+78C1}${U+76D8}${U+7A7A}${U+95F4}${U+540E}${U+91CD}${U+8BD5}${U+FF0C}${U+6216}${U+91CD}${U+65B0}${U+4E0B}${U+8F7D}${U+5B89}${U+88C5}${U+5305}${U+3002}$\r$\n$\r$\nThe LobsterAI installation stopped because the unpacked installer data is incomplete ($1). This usually means the drive holding the temporary directory ran out of space during extraction, or the installer download was truncated. Free up disk space on the temp drive or download the installer again. No partial application was committed. Details: $APPDATA\LobsterAI\install-timing.log" /SD IDOK
       SetErrorLevel 2
       Quit
@@ -1075,26 +1057,12 @@ FunctionEnd
 ;    before uninstallOldVersion and file extraction
 ;  - uninstaller: un.install section (assisted) or un.onInit (silent /S)
 !macro customCheckAppRunning
-  !ifndef BUILD_UNINSTALLER
-    ; Silent installs (/S -- e.g. enterprise IT deployments; in-app updates
-    ; use --updated mode with a visible progress page instead) have no
-    ; installer UI at all, so without this the machine looks idle for minutes
-    ; mid-replace. Banner is a plugin-owned window, so it shows even in
-    ; silent mode. The window dies with the installer process, so no failure
-    ; path can leave it behind.
-    ;
-    ; The text is "Updating LobsterAI, please wait..." in Chinese, written as
-    ; ${U+xxxx} escapes because this file must stay pure ASCII: the darwin
-    ; makensis builds used for local syntax checks reject any non-ASCII byte
-    ; (the escapes are fine on the Windows build machine -- the webPackage
-    ; patch ships them in production already).
-    !ifndef LOBSTERAI_HIDE_SILENT_BANNER
-      ${If} ${Silent}
-        Banner::show /NOUNLOAD "${U+6B63}${U+5728}${U+66F4}${U+65B0} LobsterAI${U+FF0C}${U+8BF7}${U+7A0D}${U+5019}${U+2026}"
-      ${EndIf}
-    !endif
-  !endif
-
+  ; Silent installs (/S from app stores and IT deployment, or channel builds
+  ; with the double-click-silent flag) must show no installer-owned window at
+  ; all: /S is a zero-UI contract and the invoking store/channel owns the
+  ; install progress experience. Failure dialogs stay silent-safe through
+  ; their /SD defaults. In-app updates use --updated with a visible progress
+  ; page and are unaffected.
   !ifndef BUILD_UNINSTALLER
     !insertmacro EnsureInstallerAttemptId
     StrCpy $lobsterOldInstallOriginalPath "$INSTDIR"
@@ -1173,9 +1141,6 @@ FunctionEnd
       !insertmacro GetTimestamp $8
       FileWrite $9 "$8 phase=install-failed-before-mutation attempt_id=$lobsterInstallerAttemptId failure_kind=process-stop-failed raw_status=$lobsterTargetProcessesStopStatus exit=$R2 action=old-install-untouched$\r$\n"
       FileClose $9
-      ${If} ${Silent}
-        Banner::destroy
-      ${EndIf}
       MessageBox MB_OK|MB_ICONEXCLAMATION "The LobsterAI update stopped before replacing the previous version because the old application processes could not be confirmed stopped. Please close LobsterAI and retry. Details: $APPDATA\LobsterAI\install-timing.log" /SD IDOK
       SetErrorLevel 2
       Quit
@@ -1386,9 +1351,6 @@ FunctionEnd
       FileWrite $9 "$8 phase=skill-backup-failed-abort attempt_id=$lobsterInstallerAttemptId status=$lobsterLegacySkillsStatus exit=$R2 action=old-install-preserved$\r$\n"
       FileClose $9
       Call lobsterTryRelaunchOldApp
-      ${If} ${Silent}
-        Banner::destroy
-      ${EndIf}
       MessageBox MB_OK|MB_ICONEXCLAMATION "The LobsterAI update stopped because legacy user skills could not be safely inspected or backed up (status=$lobsterLegacySkillsStatus). The previous installation was not replaced. Please retry the update. Details: $APPDATA\LobsterAI\install-timing.log" /SD IDOK
       SetErrorLevel 2
       Quit
@@ -1525,9 +1487,6 @@ FunctionEnd
       FileWrite $9 "$8 phase=old-install-rename-verification-abort attempt_id=$lobsterInstallerAttemptId outcome=recovery-required rollback_status=$lobsterOldInstallRollbackStatus rollback_error=$lobsterOldInstallRollbackError source=$lobsterOldInstallOriginalPath backup=$lobsterOldInstallBackupPath$\r$\n"
       FileClose $9
       MessageBox MB_OK|MB_ICONEXCLAMATION "The LobsterAI update stopped because the previous installation move could not be verified and automatic recovery did not complete. No recovery copy was deleted. Restart Windows before retrying. Details: $APPDATA\LobsterAI\install-timing.log" /SD IDOK
-      ${If} ${Silent}
-        Banner::destroy
-      ${EndIf}
       SetErrorLevel 3
       Quit
 
@@ -1541,9 +1500,6 @@ FunctionEnd
       FileWrite $9 "$8 phase=old-install-rename-verification-abort attempt_id=$lobsterInstallerAttemptId outcome=restored rollback_status=$lobsterOldInstallRollbackStatus relaunch_status=$lobsterOldAppRelaunchStatus source=$lobsterOldInstallOriginalPath$\r$\n"
       FileClose $9
       MessageBox MB_OK|MB_ICONEXCLAMATION "The LobsterAI update stopped because the previous installation move could not be verified. The previous version was restored. Please retry the update. Details: $APPDATA\LobsterAI\install-timing.log" /SD IDOK
-      ${If} ${Silent}
-        Banner::destroy
-      ${EndIf}
       SetErrorLevel 2
       Quit
 
@@ -2334,9 +2290,6 @@ FunctionEnd
     FileWrite $2 "$8 phase=tar-extract-error attempt_id=$lobsterInstallerAttemptId extractor=$R3 exit=$R2 raw_marker=$R4 elapsed_ms=$5 reason=process-termination-failed action=preserve-all-no-concurrent-rollback$\r$\n"
     FileClose $2
     System::Call 'Kernel32::SetEnvironmentVariable(t "ELECTRON_RUN_AS_NODE", t "")i'
-    ${If} ${Silent}
-      Banner::destroy
-    ${EndIf}
     MessageBox MB_OK|MB_ICONEXCLAMATION "The LobsterAI installation stopped because the extractor process could not be confirmed terminated. No automatic rollback or cleanup was attempted while that process may still be writing files. Restart Windows before retrying. Recovery files (if any): $lobsterOldInstallBackupPath. Details: $APPDATA\LobsterAI\install-timing.log" /SD IDOK
     SetErrorLevel 3
     Quit
@@ -2406,9 +2359,6 @@ FunctionEnd
   StrCmp $lobsterOldInstallRollbackStatus "failed" 0 TarExtractAbort
     MessageBox MB_OK|MB_ICONEXCLAMATION "The installation failed and automatic rollback did not complete. No recovery copy was deleted. Previous files: $lobsterOldInstallBackupPath. Partial update: $lobsterOldInstallFailedPath. Details: $APPDATA\LobsterAI\install-timing.log" /SD IDOK
   TarExtractAbort:
-  ${If} ${Silent}
-    Banner::destroy
-  ${EndIf}
   SetErrorLevel 3
   Quit
   TarExtractDone:
@@ -2554,9 +2504,6 @@ FunctionEnd
       SkillRestoreRollbackSucceeded:
         MessageBox MB_OK|MB_ICONEXCLAMATION "The LobsterAI update could not restore user skills, so the previous version was restored. Please retry the update. Details: $APPDATA\LobsterAI\install-timing.log" /SD IDOK
       SkillRestoreAbort:
-      ${If} ${Silent}
-        Banner::destroy
-      ${EndIf}
       SetErrorLevel 2
       Quit
 
@@ -2715,9 +2662,6 @@ FunctionEnd
     NewInstallPrevalidateAbort:
       MessageBox MB_OK|MB_ICONEXCLAMATION "The LobsterAI installation stopped because the new application could not be validated ($lobsterNewInstallValidationReason). New registration and shortcuts were not written. Details: $APPDATA\LobsterAI\install-timing.log" /SD IDOK
     NewInstallPrevalidateAbortAfterMessage:
-    ${If} ${Silent}
-      Banner::destroy
-    ${EndIf}
     SetErrorLevel 2
     Quit
 
@@ -2786,9 +2730,6 @@ FunctionEnd
   FileClose $2
   DetailPrint "[Installer] Installation complete"
 
-  ${If} ${Silent}
-    Banner::destroy
-  ${EndIf}
 !macroend
 
 ; customUnInit intentionally not defined: the uninstaller stops app processes

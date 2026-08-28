@@ -1,3 +1,5 @@
+import type { PublishingIdentityType } from '@shared/publishing/constants';
+
 import {
   type LogEventAction,
   LogReporterAction,
@@ -7,7 +9,10 @@ import {
   LogReporterEntry,
   LogReporterProduct,
 } from '../../shared/analytics/constants';
-import { store } from '../store';
+import {
+  type AnalyticsIdentitySnapshot,
+  getAnalyticsIdentitySnapshot,
+} from './analyticsIdentity';
 import { configService } from './config';
 import { getInstallationId } from './installationId';
 
@@ -36,11 +41,17 @@ const logCommons = {
 export interface BuildLogUrlOptions {
   appVersion?: string;
   arch?: string;
+  environment?: string;
+  eventId?: string;
   firstKeyfrom?: string;
+  identityType?: PublishingIdentityType;
   installationId?: string | null;
+  isLoggedIn?: boolean;
+  isSubscriber?: boolean;
   language?: string;
   latestKeyfrom?: string;
   platform?: string;
+  subscriptionStatus?: string;
   userId?: string;
   timestamp?: number;
 }
@@ -56,6 +67,24 @@ let cachedInstallationId: string | null = null;
 let installationIdPromise: Promise<string | null> | null = null;
 let cachedKeyfromAttribution: LogKeyfromAttribution | null = null;
 let keyfromAttributionPromise: Promise<LogKeyfromAttribution | null> | null = null;
+
+interface PendingAnalyticsEvent {
+  params: LogEventParams;
+  identity: AnalyticsIdentitySnapshot;
+  eventId: string;
+  timestamp: number;
+}
+
+const PendingAnalyticsQueueLimit = 500;
+const PendingAnalyticsRetryDelayMs = 1_000;
+const pendingAnalyticsEvents: PendingAnalyticsEvent[] = [];
+let pendingAnalyticsFlushTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingAnalyticsFlushPromise: Promise<void> | null = null;
+
+const createEventId = (): string => (
+  globalThis.crypto?.randomUUID?.()
+  ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
+);
 
 const writeReporterLog = (level: 'debug' | 'warn', message: string, error?: unknown): void => {
   if (level === 'warn') {
@@ -100,6 +129,7 @@ const getInstallationIdForAnalytics = async (): Promise<string | null> => {
     installationIdPromise = getInstallationId()
       .then(id => {
         cachedInstallationId = id;
+        if (!id) installationIdPromise = null;
         return cachedInstallationId;
       })
       .catch(error => {
@@ -156,10 +186,18 @@ export const buildLogUrl = (
 ): string => {
   const url = new URL(LogReporterEndpoint.YoudaoAnalyzer);
   const config = configService.getConfig();
-  const userId = options.userId ?? store.getState().auth.user?.yid ?? '';
+  const identity = getAnalyticsIdentitySnapshot();
+  const userId = options.userId ?? identity.userId;
+  const isLoggedIn = options.isLoggedIn ?? userId.trim().length > 0;
   const firstKeyfrom = options.firstKeyfrom ?? cachedKeyfromAttribution?.firstKeyfrom;
   const latestKeyfrom = options.latestKeyfrom ?? cachedKeyfromAttribution?.latestKeyfrom;
   const installationId = options.installationId ?? cachedInstallationId;
+  const environment = options.environment
+    ?? (config.app?.testMode
+      ? 'test'
+      : config.app?.isDevelopment
+        ? 'development'
+        : 'production');
   const logParams: Record<string, LogParamValue> = {
     ...params,
     ...logCommons,
@@ -167,11 +205,16 @@ export const buildLogUrl = (
     os_platform: options.platform ?? getWindowPlatform(),
     os_arch: options.arch ?? getWindowArch(),
     language: options.language ?? config.language,
+    environment,
+    eventId: options.eventId ?? createEventId(),
     uuid: installationId,
     firstKeyfrom,
     latestKeyfrom,
-    is_logged_in: userId.trim().length > 0,
+    is_logged_in: isLoggedIn,
     log_Usid: userId,
+    identityType: options.identityType ?? identity.identityType,
+    is_subscriber: options.isSubscriber ?? identity.isSubscriber,
+    subscriptionStatus: options.subscriptionStatus ?? identity.subscriptionStatus,
     uts: options.timestamp ?? Date.now(),
   };
 
@@ -182,6 +225,93 @@ export const buildLogUrl = (
   });
 
   return url.href;
+};
+
+const createPendingEvent = (params: LogEventParams): PendingAnalyticsEvent => ({
+  params: { ...params },
+  identity: getAnalyticsIdentitySnapshot(),
+  eventId: createEventId(),
+  timestamp: Date.now(),
+});
+
+const sendPendingEvent = async (
+  event: PendingAnalyticsEvent,
+): Promise<'sent' | 'uuid_unavailable' | 'failed'> => {
+  await Promise.all([
+    getWindowAppVersion(),
+    getInstallationIdForAnalytics(),
+    getWindowKeyfromAttribution(),
+  ]);
+  if (!cachedInstallationId) return 'uuid_unavailable';
+
+  try {
+    writeReporterLog('debug', `sending event ${event.params.action}`);
+    const response = await window.electron.api.fetch({
+      url: buildLogUrl(event.params, {
+        eventId: event.eventId,
+        identityType: event.identity.identityType,
+        installationId: cachedInstallationId,
+        isLoggedIn: event.identity.isLoggedIn,
+        isSubscriber: event.identity.isSubscriber,
+        subscriptionStatus: event.identity.subscriptionStatus,
+        timestamp: event.timestamp,
+        userId: event.identity.userId,
+      }),
+      method: 'GET',
+      headers: {},
+    });
+    if (!response.ok) {
+      writeReporterLog(
+        'warn',
+        `event ${event.params.action} failed with status ${response.status}`,
+      );
+      return 'failed';
+    }
+    writeReporterLog('debug', `sent event ${event.params.action} successfully`);
+    return 'sent';
+  } catch (error) {
+    writeReporterLog('warn', `event ${event.params.action} failed`, error);
+    return 'failed';
+  }
+};
+
+const schedulePendingAnalyticsFlush = (): void => {
+  if (pendingAnalyticsFlushTimer || pendingAnalyticsEvents.length === 0) return;
+  pendingAnalyticsFlushTimer = globalThis.setTimeout(() => {
+    pendingAnalyticsFlushTimer = null;
+    void flushPendingAnalyticsEvents();
+  }, PendingAnalyticsRetryDelayMs);
+};
+
+const enqueuePendingAnalyticsEvent = (event: PendingAnalyticsEvent): void => {
+  if (pendingAnalyticsEvents.length >= PendingAnalyticsQueueLimit) {
+    pendingAnalyticsEvents.shift();
+    writeReporterLog('warn', 'dropped the oldest pending event because the queue is full');
+  }
+  pendingAnalyticsEvents.push(event);
+  schedulePendingAnalyticsFlush();
+};
+
+const flushPendingAnalyticsEvents = async (): Promise<void> => {
+  if (pendingAnalyticsFlushPromise) return pendingAnalyticsFlushPromise;
+  pendingAnalyticsFlushPromise = (async () => {
+    while (
+      pendingAnalyticsEvents.length > 0
+      && configService.getConfig().usageAnalyticsEnabled !== false
+    ) {
+      const event = pendingAnalyticsEvents[0];
+      const result = await sendPendingEvent(event);
+      if (result === 'uuid_unavailable') break;
+      pendingAnalyticsEvents.shift();
+    }
+    if (configService.getConfig().usageAnalyticsEnabled === false) {
+      pendingAnalyticsEvents.splice(0, pendingAnalyticsEvents.length);
+    }
+  })().finally(() => {
+    pendingAnalyticsFlushPromise = null;
+    schedulePendingAnalyticsFlush();
+  });
+  return pendingAnalyticsFlushPromise;
 };
 
 export const reportYdAnalyzer = async (params: LogEventParams): Promise<boolean> => {
@@ -200,28 +330,12 @@ export const reportYdAnalyzer = async (params: LogEventParams): Promise<boolean>
     return false;
   }
 
-  try {
-    await Promise.all([
-      getWindowAppVersion(),
-      getInstallationIdForAnalytics(),
-      getWindowKeyfromAttribution(),
-    ]);
-    writeReporterLog('debug', `sending event ${params.action}`);
-    const response = await window.electron.api.fetch({
-      url: buildLogUrl(params),
-      method: 'GET',
-      headers: {},
-    });
-
-    if (!response.ok) {
-      writeReporterLog('warn', `event ${params.action} failed with status ${response.status}`);
-      return false;
-    }
-
-    writeReporterLog('debug', `sent event ${params.action} successfully`);
+  const event = createPendingEvent(params);
+  const result = await sendPendingEvent(event);
+  if (result === 'uuid_unavailable') {
+    enqueuePendingAnalyticsEvent(event);
+    writeReporterLog('debug', `queued event ${params.action} until the installation uuid is ready`);
     return true;
-  } catch (error) {
-    writeReporterLog('warn', `event ${params.action} failed`, error);
-    return false;
   }
+  return result === 'sent';
 };
