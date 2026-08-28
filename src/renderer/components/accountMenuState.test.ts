@@ -123,6 +123,27 @@ describe('accountMenuState', () => {
     expect(getAccountPlanPresentation([creditItem()], false)).toBeNull();
   });
 
+  test('normalizes long English subscription labels for the compact account menu', () => {
+    expect(getAccountPlanPresentation([
+      creditItem({
+        type: 'subscription',
+        label: '专业套餐',
+        labelEn: 'Professional Plan',
+      }),
+    ], true)?.label).toBe('Professional');
+
+    expect(getAccountPlanPresentation([
+      creditItem({
+        type: 'subscription',
+        label: '卓越套餐',
+        labelEn: 'Excellent Plan',
+      }),
+    ], true)).toMatchObject({
+      label: 'Elite',
+      canUpgrade: false,
+    });
+  });
+
   test('does not duplicate the plan suffix for Chinese subscription labels', () => {
     expect(getAccountPlanPresentation([
       creditItem({

@@ -33,24 +33,44 @@ export interface AccountPlanAnalyticsContext {
   canUpgrade: boolean;
 }
 
-const EXCELLENT_PLAN_LABEL_PATTERN = /(?:卓越|excellent)/i;
+const EXCELLENT_PLAN_LABEL_PATTERN = /(?:卓越|excellent|elite)/i;
 const MAINLAND_CHINA_MOBILE_PATTERN = /^1[3-9]\d{9}$/;
+const ENGLISH_PLAN_DISPLAY_LABELS: Partial<Record<AccountPlanAnalyticsTier, string>> = {
+  [AccountPlanAnalyticsTier.Basic]: 'Free',
+  [AccountPlanAnalyticsTier.Standard]: 'Standard',
+  [AccountPlanAnalyticsTier.Advanced]: 'Advanced',
+  [AccountPlanAnalyticsTier.Professional]: 'Professional',
+  [AccountPlanAnalyticsTier.Excellent]: 'Elite',
+};
 const PLAN_TIER_PATTERNS: Array<{
   pattern: RegExp;
   tier: AccountPlanAnalyticsTier;
 }> = [
-  { pattern: /(?:卓越|excellent)/i, tier: AccountPlanAnalyticsTier.Excellent },
+  { pattern: /(?:卓越|excellent|elite)/i, tier: AccountPlanAnalyticsTier.Excellent },
   { pattern: /(?:专业|professional|\bpro\b)/i, tier: AccountPlanAnalyticsTier.Professional },
   { pattern: /(?:进阶|advanced)/i, tier: AccountPlanAnalyticsTier.Advanced },
   { pattern: /(?:标准|standard)/i, tier: AccountPlanAnalyticsTier.Standard },
   { pattern: /(?:基础|免费|basic|free)/i, tier: AccountPlanAnalyticsTier.Basic },
 ];
 
-const formatPlanLabel = (label: string, isEnglish: boolean): string => {
+const getPlanTierFromLabel = (labelSource: string): AccountPlanAnalyticsTier | null => (
+  PLAN_TIER_PATTERNS.find(({ pattern }) => pattern.test(labelSource))?.tier ?? null
+);
+
+const formatPlanLabel = (
+  label: string,
+  isEnglish: boolean,
+  labelSource = label,
+): string => {
   const trimmedLabel = label.trim();
-  if (!trimmedLabel || isEnglish || trimmedLabel.endsWith('套餐')) {
+  if (!trimmedLabel) {
     return trimmedLabel;
   }
+  if (isEnglish) {
+    const tier = getPlanTierFromLabel(labelSource);
+    return tier ? ENGLISH_PLAN_DISPLAY_LABELS[tier] ?? trimmedLabel : trimmedLabel;
+  }
+  if (trimmedLabel.endsWith('套餐')) return trimmedLabel;
   return `${trimmedLabel}套餐`;
 };
 
@@ -104,6 +124,7 @@ export function getAccountPlanPresentation(
     label: formatPlanLabel(
       isEnglish ? subscription.labelEn || subscription.label : subscription.label,
       isEnglish,
+      `${subscription.label} ${subscription.labelEn}`,
     ),
     expiresAt: subscription.expiresAt,
     canUpgrade: !EXCELLENT_PLAN_LABEL_PATTERN.test(`${subscription.label} ${subscription.labelEn}`),
