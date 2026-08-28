@@ -27,9 +27,9 @@ TAG_NAME="v$CLEAN_VERSION"
 echo "准备发布版本: $CLEAN_VERSION"
 echo "对应的 Git Tag: $TAG_NAME"
 
-# 1. 更新 package.json 中的版本号
+# 1. 精准更新 package.json 中的版本号（不改动 package-lock.json，确保流水线缓存 100% 精确命中）
 echo "正在更新 package.json 版本号..."
-npm version "$CLEAN_VERSION" --no-git-tag-version --allow-same-version
+node -e 'const fs = require("fs"); const p = JSON.parse(fs.readFileSync("./package.json", "utf8")); p.version = process.argv[1]; fs.writeFileSync("./package.json", JSON.stringify(p, null, 2) + "\n");' "$CLEAN_VERSION"
 
 # 2. 提交版本号修改
 if git status --porcelain | grep -q "package.json"; then
