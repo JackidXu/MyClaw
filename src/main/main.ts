@@ -288,6 +288,7 @@ import {
   setStoreGetter,
   updateServerModelMetadata,
 } from './libs/claudeSettings';
+import { appendClientBannerVersion } from './libs/clientBannerRequest';
 import {
   clearCopilotTokenState,
   initCopilotTokenManager,
@@ -5162,6 +5163,7 @@ if (!gotTheLock) {
     apiFormat: string;
     costMultiplier?: number;
     description?: string;
+    moreModel?: boolean;
     accessible?: boolean;
     restrictionHint?: string;
   };
@@ -7114,8 +7116,11 @@ if (!gotTheLock) {
   ipcMain.handle(AuthIpcChannel.GetActiveClientBanner, async () => {
     try {
       const serverBaseUrl = getServerApiBaseUrl();
-      const url = appendKeyfromQuery(`${serverBaseUrl}/api/client-banners/active?placement=desktop_sidebar`);
-      const resp = await net.fetch(url);
+      const url = appendKeyfromQuery(appendClientBannerVersion(
+        `${serverBaseUrl}/api/client-banners/active?placement=desktop_sidebar`,
+        app.getVersion(),
+      ));
+      const resp = await net.fetch(url, { cache: 'no-store' });
       if (!resp.ok) return { success: false };
       const body = (await resp.json()) as { code: number; data: Record<string, unknown> | null };
       if (body.code !== 0) return { success: false };
@@ -7128,12 +7133,81 @@ if (!gotTheLock) {
   ipcMain.handle(AuthIpcChannel.GetActiveClientBanners, async () => {
     try {
       const serverBaseUrl = getServerApiBaseUrl();
-      const url = appendKeyfromQuery(`${serverBaseUrl}/api/client-banners/active-list?placement=desktop_sidebar`);
-      const resp = await net.fetch(url);
+      const url = appendKeyfromQuery(appendClientBannerVersion(
+        `${serverBaseUrl}/api/client-banners/active-list?placement=desktop_sidebar`,
+        app.getVersion(),
+      ));
+      const resp = await net.fetch(url, { cache: 'no-store' });
       if (!resp.ok) return { success: false };
       const body = (await resp.json()) as { code: number; data: Record<string, unknown>[] | null };
       if (body.code !== 0) return { success: false };
       return { success: true, data: Array.isArray(body.data) ? body.data : [] };
+    } catch {
+      return { success: false };
+    }
+  });
+
+  ipcMain.handle(AuthIpcChannel.GetClientBannerSnapshot, async () => {
+    const serverBaseUrl = getServerApiBaseUrl();
+    try {
+      const snapshotUrl = appendKeyfromQuery(
+        appendClientBannerVersion(
+          `${serverBaseUrl}/api/client-banners/snapshot?placement=desktop_sidebar`,
+          app.getVersion(),
+        ),
+      );
+      const snapshotResponse = await net.fetch(snapshotUrl, { cache: 'no-store' });
+      if (snapshotResponse.ok) {
+        const snapshotBody = (await snapshotResponse.json()) as {
+          code: number;
+          data?: {
+            serverTime?: string;
+            nextRefreshAt?: string | null;
+            banners?: Record<string, unknown>[];
+          };
+        };
+        if (snapshotBody.code === 0
+            && snapshotBody.data
+            && typeof snapshotBody.data.serverTime === 'string'
+            && Array.isArray(snapshotBody.data.banners)) {
+          return {
+            success: true,
+            data: {
+              serverTime: snapshotBody.data.serverTime,
+              nextRefreshAt: snapshotBody.data.nextRefreshAt ?? null,
+              clientVersion: app.getVersion(),
+              banners: snapshotBody.data.banners,
+            },
+          };
+        }
+      }
+    } catch {
+      // Fall through to the legacy list endpoint during mixed-version rollout.
+    }
+
+    try {
+      const legacyUrl = appendKeyfromQuery(
+        appendClientBannerVersion(
+          `${serverBaseUrl}/api/client-banners/active-list?placement=desktop_sidebar`,
+          app.getVersion(),
+        ),
+      );
+      const legacyResponse = await net.fetch(legacyUrl, { cache: 'no-store' });
+      if (!legacyResponse.ok) return { success: false };
+      const legacyBody = (await legacyResponse.json()) as {
+        code: number;
+        data: Record<string, unknown>[] | null;
+      };
+      if (legacyBody.code !== 0) return { success: false };
+      return {
+        success: true,
+        data: {
+          serverTime: new Date().toISOString(),
+          nextRefreshAt: null,
+          clientVersion: app.getVersion(),
+          banners: Array.isArray(legacyBody.data) ? legacyBody.data : [],
+        },
+      };
     } catch {
       return { success: false };
     }
