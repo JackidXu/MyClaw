@@ -12950,7 +12950,7 @@ if (!gotTheLock) {
     url: string;
     method: string;
     headers: Record<string, string>;
-    body?: string;
+    body?: string | ArrayBuffer | Uint8Array | Buffer;
   }): Promise<{ headers: Record<string, string>; retried: boolean }> => {
     try {
       const state = await refreshCopilotTokenNow();
@@ -12972,7 +12972,7 @@ if (!gotTheLock) {
         url: string;
         method: string;
         headers?: Record<string, string>;
-        body?: string;
+        body?: string | ArrayBuffer | Uint8Array | Buffer;
         target?: 'admin' | 'biz';
         skipAuth?: boolean;
       },
@@ -12981,10 +12981,15 @@ if (!gotTheLock) {
       const reqId = `ipc_fetch_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
       let parsedBody: any = undefined;
       if (options.body) {
-        try {
-          parsedBody = JSON.parse(options.body);
-        } catch {
-          parsedBody = options.body;
+        if (typeof options.body === 'string') {
+          try {
+            parsedBody = JSON.parse(options.body);
+          } catch {
+            parsedBody = options.body;
+          }
+        } else {
+          const byteLen = (options.body as ArrayBuffer).byteLength ?? (options.body as Buffer).length ?? 0;
+          parsedBody = `[Binary Data ${byteLen} bytes]`;
         }
       }
 
@@ -13030,16 +13035,20 @@ if (!gotTheLock) {
       // lines); logging them here again would only add noise.
       const logTraffic = !isAnalyticsEndpointUrl(resolvedUrl);
       if (logTraffic) {
+        const bodyLog = typeof options.body === 'string' ? options.body : `[Binary Data ${parsedBody}]`;
         console.log(
-          `[api:fetch] ${options.method} ${sanitizedUrl}, headers: ${serializeForLog(finalRequestHeaders)}, body: ${options.body}`,
+          `[api:fetch] ${options.method} ${sanitizedUrl}, headers: ${serializeForLog(finalRequestHeaders)}, body: ${bodyLog}`,
         );
       }
 
       const doFetch = async (headers: Record<string, string>) => {
+        const fetchBody: any = options.body && typeof options.body !== 'string'
+          ? (Buffer.isBuffer(options.body) ? options.body : Buffer.from(options.body as ArrayBuffer))
+          : options.body;
         const response = await session.defaultSession.fetch(resolvedUrl, {
           method: options.method,
           headers,
-          body: options.body,
+          body: fetchBody,
         });
 
         const contentType = response.headers.get('content-type') || '';

@@ -215,7 +215,7 @@ contextBridge.exposeInMainWorld('electron', {
       url: string;
       method: string;
       headers?: Record<string, string>;
-      body?: string;
+      body?: string | ArrayBuffer | Uint8Array;
       target?: 'admin' | 'biz';
       skipAuth?: boolean;
     }) => {

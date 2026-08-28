@@ -316,19 +316,19 @@ export async function fetchUploadPresignedUrl(): Promise<UploadPresignResponse> 
 
 /** 将文件直接 PUT 上传至 TOS 预签名地址（跨主进程请求绕过 CORS 限制） */
 export async function uploadFileToTos(uploadUrl: string, file: File): Promise<void> {
-  const content = await file.text();
+  const arrayBuffer = await file.arrayBuffer();
   const resp = await (window.electron.api.fetch as (opts: {
     url: string;
     method: string;
     headers: Record<string, string>;
-    body?: string;
+    body?: string | ArrayBuffer | Uint8Array;
   }) => Promise<{ ok: boolean; status: number; data: unknown }>)({
     url: uploadUrl,
     method: 'PUT',
     headers: {
       'Content-Type': file.type || 'application/octet-stream',
     },
-    body: content,
+    body: arrayBuffer,
   });
 
   if (!resp.ok) {
