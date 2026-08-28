@@ -3,7 +3,9 @@
   "name": "SecondBrain",
   "description": "Second Brain cognition retrieval tool powered by HeyClaw.",
   "contracts": {
-    "tools": []
+    "tools": [
+      "retrieve_fmp"
+    ]
   },
   "configSchema": {
     "type": "object",

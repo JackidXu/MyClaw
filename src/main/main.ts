@@ -9195,9 +9195,13 @@ if (!gotTheLock) {
   // 第二大脑工具注册（App 级，应用初始化时调用一次）
   ipcMain.handle(
     'second-brain:register-tools',
-    (_event, tools: Array<{ type: 'function'; function: { name: string; description: string; parameters: unknown } }>) => {
+    async (_event, tools: Array<{ type: 'function'; function: { name: string; description: string; parameters: unknown } }>) => {
       try {
         updateSecondBrainToolDefinitions(tools);
+        // 动态工具定义加载后，必须通知 OpenClaw 同步配置并热重载插件工具
+        await syncOpenClawConfig({
+          reason: 'second-brain-tools-updated',
+        });
         return { success: true };
       } catch (error) {
         console.error('[SecondBrain] failed to register tools:', error);
