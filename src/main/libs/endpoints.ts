@@ -16,20 +16,22 @@ export function refreshEndpointsTestMode(store: SqliteStore): void {
 
 /**
  * Whether the app is in test mode.
- * Uses cached value after init; falls back to !app.isPackaged before init.
+ * Uses cached value from app_config store.
  */
 export const isTestModeEnabled = (): boolean => {
-  return !app?.isPackaged || cachedTestMode === true;
+  return cachedTestMode === true;
 };
 
 /**
- * Server API base URL — switches based on testMode.
- * Used for auth exchange/refresh, models, proxy, etc.
+ * Server API base URL.
+ * In development (unpackaged app) or when testMode is enabled, routes to local server.
+ * Otherwise uses production server.
  */
 export const getServerApiBaseUrl = (): string => {
-  return isTestModeEnabled()
-    ? 'http://localhost:8082'
-    : 'https://admin.claw.chaohui.ai';
+  if (isTestModeEnabled() || !app?.isPackaged) {
+    return 'http://localhost:8082';
+  }
+  return 'https://admin.claw.chaohui.ai';
 };
 
 export const getHtmlSharePublicBaseUrl = (): string => {

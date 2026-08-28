@@ -137,8 +137,6 @@ export const getToolDisplayName = (toolName: string | undefined): string => {
       return 'Subagent';
     case 'sessionsyield':
       return i18nService.t('coworkToolWaitingSubagents');
-    case 'webfetch':
-      return 'WebFetch';
     case 'browser':
       return 'Browser';
     case 'heyclawwebsearch':

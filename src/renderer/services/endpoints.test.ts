@@ -13,6 +13,7 @@ import {
   getPortalPricingUrl,
   getPortalProfileUrl,
   getPortalRechargeUrl,
+  getServerApiBaseUrl,
   PortalPricingKeyfrom,
 } from './endpoints';
 
@@ -29,6 +30,7 @@ afterEach(() => {
 test('portal account urls use production base when test mode is disabled', () => {
   mockTestMode(false);
 
+  expect(getServerApiBaseUrl()).toBe('https://admin.claw.chaohui.ai');
   expect(getPortalProfileUrl()).toBe('https://portal.heyclaw.com/portal#/profile');
   expect(getPortalCreditsDetailUrl()).toBe('https://portal.heyclaw.com/portal#/profile/detail');
   expect(getPortalRechargeUrl()).toBe('https://portal.heyclaw.com/portal#/');
@@ -42,6 +44,7 @@ test('portal account urls use production base when test mode is disabled', () =>
 test('portal account urls use test base when test mode is enabled', () => {
   mockTestMode(true);
 
+  expect(getServerApiBaseUrl()).toBe('http://localhost:8082');
   expect(getPortalProfileUrl()).toBe('https://inner.heyclaw.com/portal#/profile');
   expect(getPortalCreditsDetailUrl()).toBe('https://inner.heyclaw.com/portal#/profile/detail');
   expect(getPortalRechargeUrl()).toBe('https://inner.heyclaw.com/portal#/');

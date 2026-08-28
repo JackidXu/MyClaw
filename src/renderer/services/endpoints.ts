@@ -6,7 +6,7 @@
 import { configService } from './config';
 
 export const isTestModeEnabled = () => {
-  return import.meta.env.DEV || configService.getConfig().app?.testMode === true;
+  return configService.getConfig().app?.testMode === true;
 };
 
 // 自动更新
@@ -76,9 +76,13 @@ export const getPortalCreditsResetActivityUrl = (campaignCode?: string) => (
 );
 
 export const getServerApiBaseUrl = (): string => {
-  return isTestModeEnabled()
-    ? 'http://localhost:8082'
-    : 'https://admin.claw.chaohui.ai';
+  if (isTestModeEnabled()) {
+    return 'http://localhost:8082';
+  }
+  if (import.meta.env.DEV && import.meta.env.MODE !== 'test') {
+    return 'http://localhost:8082';
+  }
+  return 'https://admin.claw.chaohui.ai';
 };
 
 export const getEnterpriseMemberProfileUrl = (enterpriseId: number) => (
