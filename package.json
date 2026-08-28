@@ -6,7 +6,7 @@
     "email": "contact@heyclaw.com"
   },
   "license": "MIT",
-  "version": "1.1.0",
+  "version": "1.2.0-alpha",
   "openclaw": {
     "version": "v2026.6.1",
     "repo": "https://github.com/openclaw/openclaw.git",
