@@ -39,10 +39,29 @@ interface DailyCheckInLoadOptions {
   silent?: boolean;
 }
 
+export const DailyCheckInLoadResultStatus = {
+  Ready: 'ready',
+  Unavailable: 'unavailable',
+  Failed: 'failed',
+} as const;
+
 export interface DailyCheckInSnapshot {
   descriptor: DailyCheckInDescriptor;
   context: DailyCheckInContextResponse;
 }
+
+type DailyCheckInLoadResult =
+  | {
+      status: typeof DailyCheckInLoadResultStatus.Ready;
+      snapshot: DailyCheckInSnapshot;
+    }
+  | {
+      status: typeof DailyCheckInLoadResultStatus.Unavailable;
+    }
+  | {
+      status: typeof DailyCheckInLoadResultStatus.Failed;
+      code?: number;
+    };
 
 interface ScopedDailyCheckInSnapshot {
   accountScope: string;
@@ -52,6 +71,8 @@ interface ScopedDailyCheckInSnapshot {
 export interface UseDailyCheckInActivityOptions {
   enabled?: boolean;
   autoRefresh?: boolean;
+  initialSnapshot?: DailyCheckInSnapshot | null;
+  loadOnMount?: boolean;
 }
 
 export interface UseDailyCheckInActivityResult {
@@ -79,6 +100,51 @@ export class DailyCheckInStaleRequestError extends Error {
   }
 }
 
+export async function loadDailyCheckInSnapshot({
+  retryRevision = true,
+}: Pick<DailyCheckInLoadOptions, 'retryRevision'> = {}): Promise<DailyCheckInLoadResult> {
+  const slot = await window.electron.activity.getSlot({
+    placement: ActivityPlacement.DesktopSidebar,
+  });
+  if (!slot.success) {
+    return {
+      status: DailyCheckInLoadResultStatus.Failed,
+      code: slot.code,
+    };
+  }
+  if (!slot.data
+      || slot.data.slotState !== ActivitySlotState.Available
+      || !isDailyCheckInDescriptor(slot.data.activity)) {
+    return { status: DailyCheckInLoadResultStatus.Unavailable };
+  }
+
+  const descriptor = slot.data.activity;
+  const context = await window.electron.activity.getContext({
+    placement: ActivityPlacement.DesktopSidebar,
+    activityCode: descriptor.activityCode,
+    configRevision: descriptor.configRevision,
+  });
+  if (!context.success) {
+    if (retryRevision
+        && context.code === ActivityServerErrorCode.RevisionMismatch) {
+      return loadDailyCheckInSnapshot({ retryRevision: false });
+    }
+    return {
+      status: DailyCheckInLoadResultStatus.Failed,
+      code: context.code,
+    };
+  }
+  if (!isActiveDailyCheckInContext(context.data)
+      || context.data.activityCode !== descriptor.activityCode
+      || context.data.configRevision !== descriptor.configRevision) {
+    return { status: DailyCheckInLoadResultStatus.Unavailable };
+  }
+  return {
+    status: DailyCheckInLoadResultStatus.Ready,
+    snapshot: { descriptor, context: context.data },
+  };
+}
+
 function createIdempotencyKey(): string {
   const suffix = globalThis.crypto?.randomUUID?.()
     ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -89,6 +155,8 @@ export function useDailyCheckInActivity(
   {
     enabled = true,
     autoRefresh = true,
+    initialSnapshot = null,
+    loadOnMount = true,
   }: UseDailyCheckInActivityOptions = {},
 ): UseDailyCheckInActivityResult {
   const authAccountScope = useSelector(
@@ -97,11 +165,18 @@ export function useDailyCheckInActivity(
       state.auth.accountGeneration,
     ),
   );
-  const [scopedSnapshot, setScopedSnapshot] = useState<ScopedDailyCheckInSnapshot | null>(null);
+  const [scopedSnapshot, setScopedSnapshot] = useState<ScopedDailyCheckInSnapshot | null>(
+    () => (initialSnapshot
+      ? {
+        accountScope: authAccountScope,
+        snapshot: initialSnapshot,
+      }
+      : null),
+  );
   const snapshot = scopedSnapshot?.accountScope === authAccountScope
     ? scopedSnapshot.snapshot
     : null;
-  const [loading, setLoading] = useState(enabled);
+  const [loading, setLoading] = useState(enabled && loadOnMount);
   const [claiming, setClaiming] = useState(false);
   const loadRequestIdRef = useRef(0);
   const claimingRef = useRef(false);
@@ -137,51 +212,24 @@ export function useDailyCheckInActivity(
     }
     if (isCurrentRequest() && !silent) setLoading(true);
     try {
-      const slot = await window.electron.activity.getSlot({
-        placement: ActivityPlacement.DesktopSidebar,
-      });
+      const result = await loadDailyCheckInSnapshot({ retryRevision });
       if (!isCurrentRequest()) return;
-      if (!slot.success) {
-        if (!silent) setScopedSnapshot(null);
+      if (result.status === DailyCheckInLoadResultStatus.Ready) {
+        setScopedSnapshot({
+          accountScope: requestAccountScope,
+          snapshot: result.snapshot,
+        });
         return;
       }
-      if (!slot.data
-          || slot.data.slotState !== ActivitySlotState.Available
-          || !isDailyCheckInDescriptor(slot.data.activity)) {
+      if (result.status === DailyCheckInLoadResultStatus.Unavailable) {
         setScopedSnapshot(null);
         return;
       }
-
-      const descriptor = slot.data.activity;
-      const context = await window.electron.activity.getContext({
-        placement: ActivityPlacement.DesktopSidebar,
-        activityCode: descriptor.activityCode,
-        configRevision: descriptor.configRevision,
-      });
-      if (!isCurrentRequest()) return;
-      if (!context.success) {
-        if (retryRevision
-            && context.code === ActivityServerErrorCode.RevisionMismatch) {
-          await load({ retryRevision: false, silent });
-          return;
-        }
-        if (!silent
-            || context.code === ActivityServerErrorCode.NotActive
-            || context.code === ActivityServerErrorCode.NotFound) {
-          setScopedSnapshot(null);
-        }
-        return;
-      }
-      if (!isActiveDailyCheckInContext(context.data)
-          || context.data.activityCode !== descriptor.activityCode
-          || context.data.configRevision !== descriptor.configRevision) {
+      if (!silent
+          || result.code === ActivityServerErrorCode.NotActive
+          || result.code === ActivityServerErrorCode.NotFound) {
         setScopedSnapshot(null);
-        return;
       }
-      setScopedSnapshot({
-        accountScope: requestAccountScope,
-        snapshot: { descriptor, context: context.data },
-      });
     } catch (error) {
       if (isCurrentRequest()) {
         logSidebarExperienceDiagnostic(
@@ -202,8 +250,12 @@ export function useDailyCheckInActivity(
   );
 
   useEffect(() => {
+    if (!loadOnMount) {
+      setLoading(false);
+      return;
+    }
     void load();
-  }, [authAccountScope, load]);
+  }, [authAccountScope, load, loadOnMount]);
 
   useEffect(() => {
     if (!enabled) return undefined;
