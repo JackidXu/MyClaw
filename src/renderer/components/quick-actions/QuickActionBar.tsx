@@ -40,11 +40,9 @@ interface PromptItem {
 const QuickActionBar: React.FC<QuickActionBarProps> = ({
   actions,
   selectedPromptId,
-  onActionSelect,
   onPromptSelect,
   onClearSelection,
 }) => {
-  const [activeCategory, setActiveCategory] = useState<string>('all');
   const [shuffleSeed, setShuffleSeed] = useState<number>(0);
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -59,16 +57,11 @@ const QuickActionBar: React.FC<QuickActionBarProps> = ({
     return items;
   }, [actions]);
 
-  // 根据当前选中的分类过滤
+  // 推荐卡片列表（支持换一换随机打乱）
   const filteredItems = useMemo<PromptItem[]>(() => {
-    let items = allPromptItems;
-    if (activeCategory !== 'all') {
-      items = allPromptItems.filter((item) => item.action.id === activeCategory);
-    }
-    if (shuffleSeed === 0) return items;
-    // 换一换时随机打乱
-    return [...items].sort(() => Math.random() - 0.5);
-  }, [allPromptItems, activeCategory, shuffleSeed]);
+    if (shuffleSeed === 0) return allPromptItems;
+    return [...allPromptItems].sort(() => Math.random() - 0.5);
+  }, [allPromptItems, shuffleSeed]);
 
   if (actions.length === 0 || allPromptItems.length === 0) {
     return null;
@@ -102,47 +95,7 @@ const QuickActionBar: React.FC<QuickActionBarProps> = ({
   };
 
   return (
-    <div data-skin-quick-actions="true" className="w-full space-y-4">
-      {/* 顶部分类胶囊栏 (wb-cats) */}
-      <div className="flex justify-center">
-        <div className="inline-flex items-center gap-1.5 sm:gap-2 rounded-full border border-border/80 bg-surface-raised p-1 shadow-subtle max-w-full overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <button
-            type="button"
-            onClick={() => {
-              setActiveCategory('all');
-              onActionSelect?.('all');
-            }}
-            className={`px-3.5 sm:px-4 py-1.5 rounded-full text-xs sm:text-[13px] font-semibold transition-all duration-150 whitespace-nowrap cursor-pointer ${
-              activeCategory === 'all'
-                ? 'bg-foreground text-background shadow-sm'
-                : 'text-secondary hover:text-foreground'
-            }`}
-          >
-            {i18nService.t('coworkQuickActionAll')}
-          </button>
-          {actions.map((action) => {
-            const isCategoryActive = activeCategory === action.id;
-            return (
-              <button
-                key={action.id}
-                type="button"
-                onClick={() => {
-                  setActiveCategory(action.id);
-                  onActionSelect?.(action.id);
-                }}
-                className={`px-3.5 sm:px-4 py-1.5 rounded-full text-xs sm:text-[13px] font-semibold transition-all duration-150 whitespace-nowrap cursor-pointer ${
-                  isCategoryActive
-                    ? 'bg-foreground text-background shadow-sm'
-                    : 'text-secondary hover:text-foreground'
-                }`}
-              >
-                {action.label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
+    <div data-skin-quick-actions="true" className="w-full">
       {/* 能力推荐区域 (wb-rec) */}
       <div className="w-full">
         {/* 头部标题与“换一换” */}
