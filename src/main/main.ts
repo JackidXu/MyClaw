@@ -13574,8 +13574,15 @@ if (!gotTheLock) {
     mediaTurnAccountScopeBySession.clear();
     mediaTasksHandledByStatusPolling.clear();
     mediaStatusPollCounts.clear();
-    agentBrowserHost?.dispose();
+    const browserHost = agentBrowserHost;
     agentBrowserHost = null;
+
+    if (browserHost) {
+      currentAppCleanupStep = 'agent-browser-storage';
+      await browserHost.dispose().catch(error => {
+        console.error('[AgentBrowserHost] Failed to flush persistent browser storage on quit:', error);
+      });
+    }
 
     // Stop Cowork sessions without blocking shutdown.
     if (coworkEngineRouter) {

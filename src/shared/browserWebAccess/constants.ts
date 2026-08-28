@@ -14,6 +14,13 @@ export const BrowserRuntimeProfile = {
 
 export type BrowserRuntimeProfile = typeof BrowserRuntimeProfile[keyof typeof BrowserRuntimeProfile];
 
+export const AgentBrowserPartition = {
+  Default: 'persist:lobster-agent-browser',
+} as const;
+
+export type AgentBrowserPartition =
+  typeof AgentBrowserPartition[keyof typeof AgentBrowserPartition];
+
 export const BrowserDisplayMode = {
   ReadOnly: 'embedded',
   InApp: 'in-app',

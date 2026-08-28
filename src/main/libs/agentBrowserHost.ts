@@ -8,6 +8,7 @@ import {
 import {
   type AgentBrowserHostState,
   type AgentBrowserHostStateEvent,
+  AgentBrowserPartition,
   type AgentBrowserToolEvent,
   BrowserDisplayMode,
   type BrowserWebAccessConfig,
@@ -40,7 +41,6 @@ const BrowserMcpTool = {
   WaitFor: 'wait_for',
 } as const;
 
-const AGENT_BROWSER_PARTITION = 'persist:lobster-agent-browser';
 const DEFAULT_PAGE_URL = 'about:blank';
 const DEFAULT_OPERATION_TIMEOUT_MS = 30_000;
 const MAX_OPERATION_TIMEOUT_MS = 60_000;
@@ -212,7 +212,7 @@ export class AgentBrowserHost {
 
   constructor(private readonly deps: AgentBrowserHostDeps) {
     this.windowVisible = Boolean(this.deps.getMainWindow()?.isVisible());
-    this.browserSession = session.fromPartition(AGENT_BROWSER_PARTITION, { cache: true });
+    this.browserSession = session.fromPartition(AgentBrowserPartition.Default, { cache: true });
     this.browserSession.setPermissionCheckHandler(() => false);
     this.browserSession.setPermissionRequestHandler((_webContents, _permission, callback) => {
       callback(false);
@@ -362,7 +362,7 @@ export class AgentBrowserHost {
     }
   }
 
-  dispose(): void {
+  async dispose(): Promise<void> {
     this.desiredVisible = false;
     this.detachPage(this.attachedPageId);
     for (const page of this.pages.values()) {
@@ -374,6 +374,14 @@ export class AgentBrowserHost {
     }
     this.pages.clear();
     this.selectedPageId = undefined;
+
+    // The app's graceful cleanup ends with app.exit(), which does not give
+    // Chromium its normal shutdown window. Explicitly flush the persistent
+    // partition so recently issued login cookies and DOM storage survive an
+    // immediate app restart.
+    this.browserSession.flushStorageData();
+    await this.browserSession.cookies.flushStore();
+    console.log('[AgentBrowserHost] Persistent browser storage flushed on quit.');
   }
 
   private async dispatchTool(tool: string, args: Record<string, unknown>): Promise<BrowserToolResponse> {
@@ -446,7 +454,7 @@ export class AgentBrowserHost {
     const pageId = this.nextPageId++;
     const view = new WebContentsView({
       webPreferences: {
-        partition: AGENT_BROWSER_PARTITION,
+        partition: AgentBrowserPartition.Default,
         nodeIntegration: false,
         nodeIntegrationInSubFrames: false,
         contextIsolation: true,
