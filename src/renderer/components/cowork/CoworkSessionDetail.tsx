@@ -1373,6 +1373,7 @@ const toAbsolutePathFromCwd = (filePath: string, cwd: string): string => {
 
 const EMPTY_ARTIFACTS: Artifact[] = [];
 const EMPTY_PREVIEW_TABS: ArtifactPreviewTab[] = [];
+const EMPTY_MESSAGE_RAIL_INDEX: CoworkMessageRailIndexItem[] = [];
 
 const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
   onManageSkills,
@@ -1435,7 +1436,7 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
     );
   });
   const messageRailIndex = useSelector((state: RootState) =>
-    currentSession?.id ? state.cowork.messageRailIndexBySessionId[currentSession.id] ?? [] : []
+    currentSession?.id ? state.cowork.messageRailIndexBySessionId[currentSession.id] ?? EMPTY_MESSAGE_RAIL_INDEX : EMPTY_MESSAGE_RAIL_INDEX
   );
   const currentMessagesWithDetachedTail = useSelector(selectCurrentMessagesWithDetachedTail);
   const isContextCompacting = useSelector((state: RootState) =>

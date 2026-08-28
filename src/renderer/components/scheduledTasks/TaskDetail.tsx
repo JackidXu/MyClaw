@@ -7,6 +7,7 @@ import type {
   ScheduledTask,
   ScheduledTaskChannelOption,
   ScheduledTaskConversationOption,
+  ScheduledTaskRun,
 } from '../../../scheduledTask/types';
 import { i18nService } from '../../services/i18n';
 import { scheduledTaskService } from '../../services/scheduledTask';
@@ -43,6 +44,8 @@ const lastRunStatusTones: Record<TaskStatus, string> = {
   [TaskStatus.Running]: 'text-blue-600 dark:text-blue-400',
 };
 
+const EMPTY_TASK_RUNS: ScheduledTaskRun[] = [];
+
 interface TaskDetailProps {
   task: ScheduledTask;
   onRequestDelete: (taskId: string, taskName: string, source?: string) => void;
@@ -50,7 +53,7 @@ interface TaskDetailProps {
 
 const TaskDetail: React.FC<TaskDetailProps> = ({ task, onRequestDelete }) => {
   const dispatch = useDispatch();
-  const runs = useSelector((state: RootState) => state.scheduledTask.runs[task.id] ?? []);
+  const runs = useSelector((state: RootState) => state.scheduledTask.runs[task.id] ?? EMPTY_TASK_RUNS);
   const availableModels = useSelector((state: RootState) => state.model.availableModels);
 
   const displayStatus = getTaskDisplayStatus(task);
