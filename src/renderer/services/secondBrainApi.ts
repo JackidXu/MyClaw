@@ -301,12 +301,16 @@ export async function fetchDocumentList(params: {
   return get<DocumentListResponse>(`/fmp/document/list?${query.toString()}`);
 }
 
-/** 获取对话列表（分页，POST /fmp/chat/list） */
+/** 获取对话列表（分页，GET /fmp/chat/list） */
 export async function fetchChatList(params: {
   page: number;
   pageSize: number;
 }): Promise<ChatListResponse> {
-  return post<ChatListResponse>('/fmp/chat/list', params);
+  const query = new URLSearchParams({
+    page: String(params.page),
+    pageSize: String(params.pageSize),
+  });
+  return get<ChatListResponse>(`/fmp/chat/list?${query.toString()}`);
 }
 
 /** 获取预签名上传参数 */
