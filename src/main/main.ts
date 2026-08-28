@@ -288,6 +288,7 @@ import {
   setStoreGetter,
   updateServerModelMetadata,
 } from './libs/claudeSettings';
+import { appendClientBannerVersion } from './libs/clientBannerRequest';
 import {
   clearCopilotTokenState,
   initCopilotTokenManager,
@@ -348,6 +349,7 @@ import {
   packageArtifactFile,
 } from './libs/htmlShare/artifactFileSharePackager';
 import {
+  deleteHtmlSharePermanently,
   getHtmlShareAnalytics,
   getHtmlShareBySource,
   getHtmlShareQuota,
@@ -366,6 +368,7 @@ import {
 import { getKeyfromAttribution, initializeKeyfromAttribution } from './libs/keyfromAttribution';
 import { LibraryThumbnailRenderer } from './libs/libraryThumbnailRenderer';
 import { LibraryThumbnailService } from './libs/libraryThumbnailService';
+import { isLikelyBlankThumbnailBitmap } from './libs/libraryThumbnailValidation';
 import { exportLogsZip } from './libs/logExport';
 import { MainLogReporter } from './libs/mainLogReporter';
 import { inferImageMimeTypeFromDataUrl, type PersistedGeneratedImageAsset, persistGeneratedImageAssets, type PersistGeneratedImageAssetsResult, persistGeneratedVideoAssets, type RemoteGeneratedMediaAsset } from './libs/mediaAssetPersistence';
@@ -5160,6 +5163,7 @@ if (!gotTheLock) {
     apiFormat: string;
     costMultiplier?: number;
     description?: string;
+    moreModel?: boolean;
     accessible?: boolean;
     restrictionHint?: string;
   };
@@ -7112,8 +7116,11 @@ if (!gotTheLock) {
   ipcMain.handle(AuthIpcChannel.GetActiveClientBanner, async () => {
     try {
       const serverBaseUrl = getServerApiBaseUrl();
-      const url = appendKeyfromQuery(`${serverBaseUrl}/api/client-banners/active?placement=desktop_sidebar`);
-      const resp = await net.fetch(url);
+      const url = appendKeyfromQuery(appendClientBannerVersion(
+        `${serverBaseUrl}/api/client-banners/active?placement=desktop_sidebar`,
+        app.getVersion(),
+      ));
+      const resp = await net.fetch(url, { cache: 'no-store' });
       if (!resp.ok) return { success: false };
       const body = (await resp.json()) as { code: number; data: Record<string, unknown> | null };
       if (body.code !== 0) return { success: false };
@@ -7126,12 +7133,81 @@ if (!gotTheLock) {
   ipcMain.handle(AuthIpcChannel.GetActiveClientBanners, async () => {
     try {
       const serverBaseUrl = getServerApiBaseUrl();
-      const url = appendKeyfromQuery(`${serverBaseUrl}/api/client-banners/active-list?placement=desktop_sidebar`);
-      const resp = await net.fetch(url);
+      const url = appendKeyfromQuery(appendClientBannerVersion(
+        `${serverBaseUrl}/api/client-banners/active-list?placement=desktop_sidebar`,
+        app.getVersion(),
+      ));
+      const resp = await net.fetch(url, { cache: 'no-store' });
       if (!resp.ok) return { success: false };
       const body = (await resp.json()) as { code: number; data: Record<string, unknown>[] | null };
       if (body.code !== 0) return { success: false };
       return { success: true, data: Array.isArray(body.data) ? body.data : [] };
+    } catch {
+      return { success: false };
+    }
+  });
+
+  ipcMain.handle(AuthIpcChannel.GetClientBannerSnapshot, async () => {
+    const serverBaseUrl = getServerApiBaseUrl();
+    try {
+      const snapshotUrl = appendKeyfromQuery(
+        appendClientBannerVersion(
+          `${serverBaseUrl}/api/client-banners/snapshot?placement=desktop_sidebar`,
+          app.getVersion(),
+        ),
+      );
+      const snapshotResponse = await net.fetch(snapshotUrl, { cache: 'no-store' });
+      if (snapshotResponse.ok) {
+        const snapshotBody = (await snapshotResponse.json()) as {
+          code: number;
+          data?: {
+            serverTime?: string;
+            nextRefreshAt?: string | null;
+            banners?: Record<string, unknown>[];
+          };
+        };
+        if (snapshotBody.code === 0
+            && snapshotBody.data
+            && typeof snapshotBody.data.serverTime === 'string'
+            && Array.isArray(snapshotBody.data.banners)) {
+          return {
+            success: true,
+            data: {
+              serverTime: snapshotBody.data.serverTime,
+              nextRefreshAt: snapshotBody.data.nextRefreshAt ?? null,
+              clientVersion: app.getVersion(),
+              banners: snapshotBody.data.banners,
+            },
+          };
+        }
+      }
+    } catch {
+      // Fall through to the legacy list endpoint during mixed-version rollout.
+    }
+
+    try {
+      const legacyUrl = appendKeyfromQuery(
+        appendClientBannerVersion(
+          `${serverBaseUrl}/api/client-banners/active-list?placement=desktop_sidebar`,
+          app.getVersion(),
+        ),
+      );
+      const legacyResponse = await net.fetch(legacyUrl, { cache: 'no-store' });
+      if (!legacyResponse.ok) return { success: false };
+      const legacyBody = (await legacyResponse.json()) as {
+        code: number;
+        data: Record<string, unknown>[] | null;
+      };
+      if (legacyBody.code !== 0) return { success: false };
+      return {
+        success: true,
+        data: {
+          serverTime: new Date().toISOString(),
+          nextRefreshAt: null,
+          clientVersion: app.getVersion(),
+          banners: Array.isArray(legacyBody.data) ? legacyBody.data : [],
+        },
+      };
     } catch {
       return { success: false };
     }
@@ -7214,8 +7290,13 @@ if (!gotTheLock) {
         return { success: false, error: body.message || 'Failed to load pricing catalog.' };
       }
       const textModels = Array.isArray(body.data?.textModels) ? body.data.textModels : [];
-      console.log(`[Auth:getPricingCatalog] loaded ${textModels.length} public text models.`);
-      return { success: true, textModels };
+      const imageModels = Array.isArray(body.data?.imageModels) ? body.data.imageModels : [];
+      const videoModels = Array.isArray(body.data?.videoModels) ? body.data.videoModels : [];
+      console.log(
+        '[Auth:getPricingCatalog] loaded public pricing catalog: '
+        + `${textModels.length} text, ${imageModels.length} image, ${videoModels.length} video models.`,
+      );
+      return { success: true, textModels, imageModels, videoModels };
     } catch (error) {
       console.error('[Auth:getPricingCatalog] pricing catalog request failed:', error);
       return {
@@ -7641,6 +7722,23 @@ if (!gotTheLock) {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to disable share',
+      };
+    }
+  });
+
+  ipcMain.handle(HtmlShareIpc.DeletePermanently, async (_event, shareId: unknown) => {
+    try {
+      const id = sanitizeHtmlShareString(shareId, 'shareId', 64);
+      return await deleteHtmlSharePermanently(
+        getServerApiBaseUrl(),
+        fetchWithAuth,
+        id,
+      );
+    } catch (error) {
+      console.error('[HtmlShare] failed to permanently delete shared file:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to delete shared file',
       };
     }
   });
@@ -10429,6 +10527,14 @@ if (!gotTheLock) {
 
       const nextConfig = getCoworkStore().getConfig();
       const impactDecision = classifyCoworkConfigChange(previousConfig, nextConfig);
+      if (
+        normalizedConfig.openClawHeartbeatEnabled !== undefined
+        && previousConfig.openClawHeartbeatEnabled !== nextConfig.openClawHeartbeatEnabled
+      ) {
+        console.log(
+          `[Cowork] OpenClaw heartbeat setting changed: enabled=${nextConfig.openClawHeartbeatEnabled}, previous=${previousConfig.openClawHeartbeatEnabled}, impact=${impactDecision.impact}`,
+        );
+      }
       if (impactDecision.impact !== OpenClawConfigImpact.None) {
         const syncResult = await syncOpenClawConfig({
           reason: 'cowork-config-change',
@@ -12067,11 +12173,27 @@ if (!gotTheLock) {
       try {
         return await libraryThumbnailRenderer.render(filePath, size);
       } catch (rendererError) {
+        const extension = path.extname(filePath).toLowerCase();
+        console.warn('[LibraryThumbnail] Renderer failed; using native fallback', {
+          extension,
+          errorType: rendererError instanceof Error ? rendererError.name : 'UnknownError',
+        });
         try {
           const image = await nativeImage.createThumbnailFromPath(filePath, size);
           if (image.isEmpty()) throw new Error('Thumbnail is empty');
+          if (
+            process.platform === 'win32'
+            && extension === '.pptx'
+            && isLikelyBlankThumbnailBitmap(image.toBitmap())
+          ) {
+            throw new Error('Native PPTX thumbnail is visually blank');
+          }
           return image.toPNG();
         } catch (nativeError) {
+          console.error('[LibraryThumbnail] Renderer and native fallback failed', {
+            extension,
+            errorType: nativeError instanceof Error ? nativeError.name : 'UnknownError',
+          });
           const rendererMessage = rendererError instanceof Error
             ? rendererError.message
             : 'Unknown renderer error';

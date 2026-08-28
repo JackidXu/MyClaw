@@ -22,6 +22,7 @@ import type {
   EnterpriseAccountContext,
   EnterpriseAccountIdentity,
 } from '../../../../shared/enterpriseAccount/types';
+import { getAccountMenuDisplayName } from '../../../components/accountMenuState';
 import { authService } from '../../../services/auth';
 import {
   getEnterpriseMemberProfileUrl,
@@ -68,7 +69,11 @@ export const EnterpriseAccountMenu = ({
 }: EnterpriseAccountMenuProps) => {
   const user = useSelector((state: RootState) => state.auth.user);
   const isSuperAdmin = context.role === EnterpriseMemberRole.SuperAdmin;
-  const phoneSuffix = user?.phone ? user.phone.slice(-4) : '';
+  const accountName = getAccountMenuDisplayName({
+    fallback: context.enterpriseName,
+    userNickname: user?.nickname,
+    userPhone: user?.phone,
+  });
   const [identities, setIdentities] = useState<EnterpriseAccountIdentity[]>([]);
   const [showEnterpriseFlyout, setShowEnterpriseFlyout] = useState(false);
   const [enterpriseFlyoutPosition, setEnterpriseFlyoutPosition] = useState<{
@@ -343,7 +348,7 @@ export const EnterpriseAccountMenu = ({
       <div className="absolute bottom-full left-[-0.5rem] z-50 mb-1 max-h-[calc(100vh-3rem)] w-[15.5rem] max-w-[calc(100vw-1rem)] overflow-y-auto rounded-xl border border-border bg-surface shadow-popover popover-enter">
         <div className="border-b border-border px-4 py-3">
           <div className="truncate text-sm font-medium text-foreground">
-            {user?.nickname || (phoneSuffix ? `****${phoneSuffix}` : context.enterpriseName)}
+            {accountName}
           </div>
           <div className="mt-1 break-words text-xs text-secondary">
             {i18nService.t('enterpriseAccountBelongsTo').replace('{name}', context.enterpriseName)}

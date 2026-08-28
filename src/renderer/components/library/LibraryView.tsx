@@ -56,6 +56,7 @@ import {
   useOptionalArtifactFileShare,
 } from '../artifacts/ArtifactFileShareController';
 import { isArtifactFileShareable } from '../artifacts/artifactFileSharePolicy';
+import { shouldShowFreePublishingDeleteQuotaNotice } from '../artifacts/publishingDeleteNoticePolicy';
 import CardOverflowMenu, { type CardOverflowMenuItem } from '../common/CardOverflowMenu';
 import {
   MANAGEMENT_BODY_TEXT,
@@ -69,11 +70,13 @@ import SidebarToggleIcon from '../icons/SidebarToggleIcon';
 import Tooltip, { TooltipAlign, TooltipPosition } from '../ui/Tooltip';
 import { LIBRARY_ACTION_MENU_WIDTH_PX } from './libraryActionMenuPresentation';
 import {
+  createLibraryAnalyticsOperationId,
   createLibraryAnalyticsPageViewId,
   getLibraryLoadedItemCountBucket,
   LibraryAnalyticsActionType,
   type LibraryAnalyticsContext,
   LibraryAnalyticsControl,
+  LibraryAnalyticsEventPhase,
   LibraryAnalyticsResult,
   LibraryAnalyticsSurface,
   reportLibraryAction,
@@ -102,13 +105,15 @@ import {
 } from './libraryItemPresentation';
 import {
   applyLibraryFavoriteState,
-  hideLibraryCloudItems,
-  hideLibraryLocalItems,
+  removeLibraryCloudItem,
   restoreLibraryFavoriteState,
   sanitizeLibraryLocalListData,
 } from './libraryListState';
 import {
   applyLibraryLocalItemChanges,
+  getLibraryQueryLoadIntent,
+  isLibraryBusyPhase,
+  isLibraryRefreshPhase,
   LibraryLoadIntent,
   LibraryLoadPhase,
   shouldShowLibraryInitialSkeleton,
@@ -123,6 +128,7 @@ import {
   createLibraryThumbnailCacheKey,
   getCachedLibraryThumbnail,
   loadLibraryThumbnail,
+  shouldApplyLibraryThumbnailResult,
 } from './libraryThumbnailCache';
 
 interface LibraryViewProps {
@@ -149,6 +155,12 @@ interface LibraryDateGroup {
   key: string;
   title: string;
   sessionGroups: LibrarySessionGroup[];
+}
+
+interface LibraryCloudResolvedQuery {
+  queryKey: string;
+  scopeKey: string;
+  availability: LibraryCloudAvailabilityFilter;
 }
 
 const CardDetailLoadStatus = {
@@ -222,10 +234,19 @@ const LibraryThumbnail: React.FC<{ item: LibraryItem }> = ({ item }) => {
     ? createLibraryThumbnailCacheKey(localItem.filePath, localItem.fileMtimeMs)
     : undefined;
   const containerRef = useRef<HTMLDivElement>(null);
+  const currentCacheKeyRef = useRef(cacheKey);
+  currentCacheKeyRef.current = cacheKey;
   const [isNearViewport, setIsNearViewport] = useState(false);
-  const [dataUrl, setDataUrl] = useState<string | undefined>(() => (
-    cacheKey ? getCachedLibraryThumbnail(cacheKey) : undefined
-  ));
+  const [thumbnail, setThumbnail] = useState<{
+    cacheKey: string;
+    dataUrl: string;
+  } | undefined>(() => {
+    const cached = cacheKey ? getCachedLibraryThumbnail(cacheKey) : undefined;
+    return cacheKey && cached ? { cacheKey, dataUrl: cached } : undefined;
+  });
+  const dataUrl = cacheKey && thumbnail?.cacheKey === cacheKey
+    ? thumbnail.dataUrl
+    : undefined;
 
   useEffect(() => {
     const container = containerRef.current;
@@ -247,7 +268,7 @@ const LibraryThumbnail: React.FC<{ item: LibraryItem }> = ({ item }) => {
   useEffect(() => {
     let active = true;
     const cached = cacheKey ? getCachedLibraryThumbnail(cacheKey) : undefined;
-    setDataUrl(cached);
+    setThumbnail(cacheKey && cached ? { cacheKey, dataUrl: cached } : undefined);
     if (!localItem || !cacheKey || !isNearViewport || cached) {
       return () => { active = false; };
     }
@@ -256,7 +277,12 @@ const LibraryThumbnail: React.FC<{ item: LibraryItem }> = ({ item }) => {
       const result = await window.electron.dialog.generateThumbnail(localItem.filePath);
       return result.success ? result.dataUrl : undefined;
     }).then(value => {
-      if (active && value) setDataUrl(value);
+      if (
+        value
+        && shouldApplyLibraryThumbnailResult(cacheKey, currentCacheKeyRef.current, active)
+      ) {
+        setThumbnail({ cacheKey, dataUrl: value });
+      }
     });
     return () => { active = false; };
   }, [cacheKey, isNearViewport, localItem]);
@@ -407,6 +433,9 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
 }) => {
   const artifactFileShare = useOptionalArtifactFileShare();
   const ownerAccountKey = useSelector((state: RootState) => state.auth.ownerAccountKey);
+  const showFreeShareDeleteQuotaNotice = useSelector((state: RootState) => (
+    shouldShowFreePublishingDeleteQuotaNotice(state.auth.quota?.subscriptionStatus)
+  ));
   const favoriteOwnerScope = ownerAccountKey ?? undefined;
   const [analyticsPageViewId] = useState(createLibraryAnalyticsPageViewId);
   const [source, setSource] = useState<LibrarySourceFilter>(requestedSource);
@@ -421,7 +450,8 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
   const [localData, setLocalData] = useState<LibraryLocalListData>(EMPTY_LOCAL);
   const [cloudData, setCloudData] = useState<LibraryCloudListData>(EMPTY_CLOUD);
   const [loadPhase, setLoadPhase] = useState<LibraryLoadPhase>(LibraryLoadPhase.Initial);
-  const [resolvedQueryKey, setResolvedQueryKey] = useState('');
+  const [localResolvedQueryKey, setLocalResolvedQueryKey] = useState('');
+  const [cloudResolvedQuery, setCloudResolvedQuery] = useState<LibraryCloudResolvedQuery>();
   const [error, setError] = useState<string>();
   const [cloudError, setCloudError] = useState<string>();
   const [activeItem, setActiveItem] = useState<LibraryItem>();
@@ -452,6 +482,7 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
   const pageExposureReportedRef = useRef(false);
   const lastListResultSignatureRef = useRef('');
   const lastReportedKeywordRef = useRef('');
+  const pendingRefreshOperationIdRef = useRef<string>();
 
   useEffect(() => {
     localDataRef.current = localData;
@@ -472,28 +503,45 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
     keyword,
     favoritesOnly,
   }), [category, favoritesOnly, keyword]);
-  const queryKey = useMemo(() => JSON.stringify({
-    source,
-    localQueryKey,
-    cloudAvailability,
+  const cloudScopeKey = useMemo(() => JSON.stringify({
     favoriteOwnerScope,
     isAuthenticated,
     sitesHidden,
+  }), [favoriteOwnerScope, isAuthenticated, sitesHidden]);
+  const cloudQueryKey = useMemo(() => JSON.stringify({
+    category,
+    keyword,
+    favoritesOnly,
+    cloudAvailability,
+    cloudScopeKey,
   }), [
+    category,
     cloudAvailability,
-    favoriteOwnerScope,
-    isAuthenticated,
-    localQueryKey,
-    sitesHidden,
-    source,
+    cloudScopeKey,
+    favoritesOnly,
+    keyword,
   ]);
+  const queryKey = wantsLocal ? `local:${localQueryKey}` : `cloud:${cloudQueryKey}`;
+  const activeCloudResolvedQuery = cloudResolvedQuery?.scopeKey === cloudScopeKey
+    ? cloudResolvedQuery
+    : undefined;
+  const hasResolvedSnapshot = wantsLocal
+    ? localResolvedQueryKey.length > 0
+    : activeCloudResolvedQuery !== undefined;
+  const hasResolvedCurrentQuery = wantsLocal
+    ? localResolvedQueryKey === localQueryKey
+    : activeCloudResolvedQuery?.queryKey === cloudQueryKey;
+  const visibleCloudData = activeCloudResolvedQuery ? cloudData : EMPTY_CLOUD;
+  const cloudDisplayAvailability = activeCloudResolvedQuery?.availability ?? cloudAvailability;
   localQueryKeyRef.current = localQueryKey;
   currentQueryKeyRef.current = queryKey;
   const loading = shouldShowLibraryInitialSkeleton(
     loadPhase,
-    resolvedQueryKey === queryKey,
+    hasResolvedSnapshot,
   );
   const loadingMore = loadPhase === LibraryLoadPhase.Appending;
+  const refreshing = isLibraryRefreshPhase(loadPhase);
+  const isBusy = isLibraryBusyPhase(loadPhase);
 
   const captureScrollAnchor = useCallback((): void => {
     const root = scrollContainerRef.current;
@@ -590,6 +638,7 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
       result,
       loadedItemCountBucket: getLibraryLoadedItemCountBucket(resultCount),
       hasMore,
+      operationId: pendingRefreshOperationIdRef.current,
     });
     if (lastListResultSignatureRef.current === signature) return;
     lastListResultSignatureRef.current = signature;
@@ -598,7 +647,14 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
       result,
       loadedItemCount: resultCount,
       hasMore,
+      ...(pendingRefreshOperationIdRef.current
+        ? {
+            operationId: pendingRefreshOperationIdRef.current,
+            eventPhase: LibraryAnalyticsEventPhase.Result,
+          }
+        : {}),
     });
+    pendingRefreshOperationIdRef.current = undefined;
   }, [analyticsContext]);
 
   const clearKeyword = useCallback(() => {
@@ -684,24 +740,23 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
   ) => {
     const append = intent === LibraryLoadIntent.Append;
     const requestId = ++requestIdRef.current;
-    const requestQueryKey = queryKey;
+    const requestLocalQueryKey = localQueryKey;
+    const requestCloudQueryKey = cloudQueryKey;
+    const requestCloudScopeKey = cloudScopeKey;
+    const requestCloudAvailability = cloudAvailability;
     setLoadPhase(append
       ? LibraryLoadPhase.Appending
-      : intent === LibraryLoadIntent.Refresh
-        ? LibraryLoadPhase.Refreshing
-        : LibraryLoadPhase.Initial);
+      : intent === LibraryLoadIntent.Revalidate
+        ? LibraryLoadPhase.Revalidating
+        : intent === LibraryLoadIntent.Refresh
+          ? LibraryLoadPhase.Refreshing
+          : LibraryLoadPhase.Initial);
     if (!append) {
       setError(undefined);
       setCloudError(undefined);
-      if (!wantsLocal) {
-        setLocalData(current => hideLibraryLocalItems(current));
-      }
-      if (!wantsCloud) {
-        setCloudData(current => hideLibraryCloudItems(current));
-      }
     }
     const loadLocalPage = wantsLocal && (!append || localData.hasMore);
-    const loadCloudPage = wantsCloud && (!append || cloudData.hasMore);
+    const loadCloudPage = wantsCloud && (!append || visibleCloudData.hasMore);
     const localPromise = loadLocalPage
       ? window.electron.library.listLocal({
           category,
@@ -723,7 +778,9 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
           favoriteOwnerScope,
           availability: cloudAvailability,
           pageSize: LibraryLimits.DefaultPageSize,
-          ...(append && cloudData.nextCursor ? { cursor: cloudData.nextCursor } : {}),
+          ...(append && visibleCloudData.nextCursor
+            ? { cursor: visibleCloudData.nextCursor }
+            : {}),
         })
       : Promise.resolve(null);
     const applyLocalResult = async () => {
@@ -752,15 +809,12 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
                 list: appendUniqueItems(current.list, sanitizedResult.data.list),
               };
             }
-            return wantsLocal
-              ? sanitizedResult.data
-              : hideLibraryLocalItems(sanitizedResult.data);
+            return sanitizedResult.data;
           });
+          if (!append) setLocalResolvedQueryKey(requestLocalQueryKey);
         } else if (localResult) {
           if (!append) reportListResult(LibraryAnalyticsResult.Failure);
           setError(localResult.error);
-        } else if (!append) {
-          setLocalData(current => hideLibraryLocalItems(current));
         }
       } catch (loadError) {
         if (requestId === requestIdRef.current) {
@@ -790,18 +844,24 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
                   || cloudResult.data.recoveryPending,
               };
             }
-            return wantsCloud
-              ? cloudResult.data
-              : hideLibraryCloudItems(cloudResult.data);
+            return cloudResult.data;
           });
+          if (!append) {
+            setCloudResolvedQuery({
+              queryKey: requestCloudQueryKey,
+              scopeKey: requestCloudScopeKey,
+              availability: requestCloudAvailability,
+            });
+          }
         } else if (cloudResult) {
           if (!append) reportListResult(LibraryAnalyticsResult.Failure);
           setCloudError(cloudResult.error);
         } else if (!append) {
           if (wantsCloud && (!isAuthenticated || !favoriteOwnerScope)) {
             reportListResult(LibraryAnalyticsResult.AuthRequired);
+            setCloudData(EMPTY_CLOUD);
+            setCloudResolvedQuery(undefined);
           }
-          setCloudData(current => hideLibraryCloudItems(current));
         }
       } catch (loadError) {
         if (requestId === requestIdRef.current) {
@@ -814,22 +874,23 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
     };
     await Promise.all([applyLocalResult(), applyCloudResult()]);
     if (requestId !== requestIdRef.current) return;
-    if (intent === LibraryLoadIntent.Initial) setResolvedQueryKey(requestQueryKey);
     setLoadPhase(LibraryLoadPhase.Settled);
   }, [
     category,
-    cloudData.hasMore,
-    cloudData.nextCursor,
+    cloudQueryKey,
+    cloudScopeKey,
     favoriteOwnerScope,
     favoritesOnly,
     isAuthenticated,
     keyword,
     localData.hasMore,
     localData.nextCursor,
+    localQueryKey,
     cloudAvailability,
-    queryKey,
     reportListResult,
     sitesHidden,
+    visibleCloudData.hasMore,
+    visibleCloudData.nextCursor,
     wantsCloud,
     wantsLocal,
   ]);
@@ -838,6 +899,7 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
     if (!mountedRef.current) return;
     const requestId = ++requestIdRef.current;
     const requestQueryKey = queryKey;
+    const requestLocalQueryKey = localQueryKey;
     const desiredItemCount = Math.max(
       localDataRef.current.list.length,
       LibraryLimits.DefaultPageSize,
@@ -890,7 +952,7 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
       captureScrollAnchor();
       localDataRef.current = nextData;
       setLocalData(nextData);
-      setResolvedQueryKey(requestQueryKey);
+      setLocalResolvedQueryKey(requestLocalQueryKey);
       reportListResult(LibraryAnalyticsResult.Success, list.length, hasMore);
     } catch (refreshError) {
       if (
@@ -919,14 +981,19 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
     category,
     favoritesOnly,
     keyword,
+    localQueryKey,
     queryKey,
     reportListResult,
   ]);
   refreshLocalWindowRef.current = refreshLocalWindow;
 
   const handleRefresh = useCallback((): void => {
+    const operationId = createLibraryAnalyticsOperationId();
+    pendingRefreshOperationIdRef.current = operationId;
     reportLibraryAction(analyticsContext, {
       actionType: LibraryAnalyticsActionType.Refresh,
+      operationId,
+      eventPhase: LibraryAnalyticsEventPhase.Start,
     });
     if (wantsLocal) {
       const coordinator = refreshCoordinatorRef.current;
@@ -959,7 +1026,8 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
       !wantsCloud
       || !isAuthenticated
       || !favoriteOwnerScope
-      || !cloudData.recoveryPending
+      || !hasResolvedCurrentQuery
+      || !visibleCloudData.recoveryPending
     ) {
       cloudRecoveryAttemptRef.current = 0;
       return undefined;
@@ -977,10 +1045,10 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
         cloudRecoveryTimerRef.current = undefined;
       }
     };
-  }, [cloudData, favoriteOwnerScope, isAuthenticated, wantsCloud]);
+  }, [favoriteOwnerScope, hasResolvedCurrentQuery, isAuthenticated, visibleCloudData, wantsCloud]);
 
   useEffect(() => {
-    void loadData(LibraryLoadIntent.Initial);
+    void loadData(getLibraryQueryLoadIntent(hasResolvedSnapshot));
   // Cursor changes are outputs of this request and must not trigger a new first page.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -1108,14 +1176,13 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
     return () => { active = false; };
   }, [activeItem]);
 
-  const items = useMemo(() => {
-    const merged: LibraryItem[] = [...localData.list, ...cloudData.list];
-    return merged.sort((left, right) => (
+  const items = useMemo<LibraryItem[]>(() => (
+    [...localData.list].sort((left, right) => (
       right.sortTime - left.sortTime
       || right.itemKind.localeCompare(left.itemKind)
       || right.itemId.localeCompare(left.itemId)
-    ));
-  }, [cloudData.list, localData.list]);
+    ))
+  ), [localData.list]);
 
   const dateGroups = useMemo<LibraryDateGroup[]>(() => {
     const now = Date.now();
@@ -1151,11 +1218,14 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
 
   const updateFavorite = async (item: LibraryItem): Promise<void> => {
     const next = !item.isFavorite;
+    const operationId = createLibraryAnalyticsOperationId();
     reportLibraryAction(analyticsContext, {
       actionType: LibraryAnalyticsActionType.FavoriteChange,
       itemKind: item.itemKind,
       itemCategory: item.category,
       favorite: next,
+      operationId,
+      eventPhase: LibraryAnalyticsEventPhase.Start,
     });
     if (item.itemKind === LibraryItemKind.LocalArtifact) {
       setLocalData(current => ({
@@ -1175,6 +1245,15 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
       itemKind: item.itemKind,
       itemId: item.itemId,
       favorite: next,
+    });
+    reportLibraryAction(analyticsContext, {
+      actionType: LibraryAnalyticsActionType.FavoriteChange,
+      itemKind: item.itemKind,
+      itemCategory: item.category,
+      favorite: next,
+      operationId,
+      eventPhase: LibraryAnalyticsEventPhase.Result,
+      result: result.success ? LibraryAnalyticsResult.Success : LibraryAnalyticsResult.Failure,
     });
     if (!result.success) {
       setError(result.error);
@@ -1207,15 +1286,7 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
   }, []);
 
   const deleteCloudItem = useCallback((deletedItem: LibraryCloudItem): void => {
-    setCloudData(current => ({
-      ...current,
-      list: current.list.filter(item => !(
-        item.itemKind === deletedItem.itemKind && item.shareId === deletedItem.shareId
-      )),
-      counts: deletedItem.itemKind === LibraryItemKind.DeployedSite
-        ? { ...current.counts, deployedSite: Math.max(0, current.counts.deployedSite - 1) }
-        : { ...current.counts, sharedFile: Math.max(0, current.counts.sharedFile - 1) },
-    }));
+    setCloudData(current => removeLibraryCloudItem(current, deletedItem));
   }, []);
 
   const openItem = (item: LibraryItem): void => {
@@ -1455,7 +1526,9 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
     }))
   );
 
-  const hasMore = (wantsLocal && localData.hasMore) || (wantsCloud && cloudData.hasMore);
+  const hasMore = hasResolvedCurrentQuery && (
+    (wantsLocal && localData.hasMore) || (wantsCloud && visibleCloudData.hasMore)
+  );
 
   useEffect(() => {
     const root = scrollContainerRef.current;
@@ -1463,8 +1536,7 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
     if (
       !root
       || !sentinel
-      || loading
-      || loadingMore
+      || isBusy
       || !hasMore
       || error
       || cloudError
@@ -1485,7 +1557,7 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
     });
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [cloudError, error, hasMore, loadData, loading, loadingMore]);
+  }, [cloudError, error, hasMore, isBusy, loadData]);
 
   const isMac = window.electron.platform === 'darwin';
   const isWindows = window.electron.platform === 'win32';
@@ -1522,18 +1594,22 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
 
       <main
         ref={scrollContainerRef}
+        aria-busy={isBusy}
         className="min-h-0 flex-1 overflow-auto [scrollbar-gutter:stable]"
       >
           {wantsCloud ? (
             <LibraryCloudView
               analyticsPageViewId={analyticsPageViewId}
-              data={cloudData}
+              data={visibleCloudData}
               loading={loading}
+              refreshing={refreshing}
               loadingMore={loadingMore}
               error={cloudError}
               isAuthenticated={isAuthenticated}
+              showFreeShareDeleteQuotaNotice={showFreeShareDeleteQuotaNotice}
               category={category}
               status={cloudAvailability}
+              displayStatus={cloudDisplayAvailability}
               favoritesOnly={favoritesOnly}
               keywordInput={keywordInput}
               loadMoreSentinelRef={loadMoreSentinelRef}
@@ -1623,6 +1699,12 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
                 </Tooltip>
               </div>
             </div>
+            {refreshing && (
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-x-0 -bottom-px h-0.5 bg-primary/60"
+              />
+            )}
           </div>
 
           {(error || cloudError) && (

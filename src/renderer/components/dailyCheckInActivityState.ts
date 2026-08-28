@@ -111,6 +111,13 @@ export function shouldShowDailyCheckInEntry(
     && !context.state.completed;
 }
 
+export function shouldShowDailyCheckInAccountMenuEntry(
+  context: ActivityContextResponse,
+): boolean {
+  return isActiveDailyCheckInContext(context)
+    && !context.state.completed;
+}
+
 export function formatDailyCheckInCredits(value: number): string {
   return Number(value).toLocaleString(undefined, {
     minimumFractionDigits: 0,

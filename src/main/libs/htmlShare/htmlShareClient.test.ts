@@ -11,6 +11,7 @@ import {
 } from '../../../shared/htmlShare/constants';
 import {
   buildHtmlSharePublicUrl,
+  deleteHtmlSharePermanently,
   getHtmlShareAnalytics,
   getHtmlShareBySource,
   getHtmlShareQuota,
@@ -38,6 +39,47 @@ afterEach(async () => {
 });
 
 describe('htmlShareClient', () => {
+  test('permanently deletes a stopped shared file through the dedicated endpoint', async () => {
+    let requestedUrl = '';
+    let requestedMethod = '';
+    const result = await deleteHtmlSharePermanently(
+      'https://lobsterai-server.inner.youdao.com',
+      async (url, options) => {
+        requestedUrl = url;
+        requestedMethod = options?.method || '';
+        return new Response(JSON.stringify({ code: 0, data: null }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      },
+      'shr_file/with space',
+    );
+
+    expect(requestedUrl).toBe(
+      'https://lobsterai-server.inner.youdao.com/api/html-shares/shr_file%2Fwith%20space/permanent',
+    );
+    expect(requestedMethod).toBe('DELETE');
+    expect(result).toEqual({ success: true, httpStatus: 200 });
+  });
+
+  test('preserves server deletion errors for renderer recovery', async () => {
+    const result = await deleteHtmlSharePermanently(
+      'https://lobsterai-server.inner.youdao.com',
+      async () => new Response(JSON.stringify({
+        code: 41315,
+        message: '请先停止分享，再永久删除',
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+      'shr_live',
+    );
+
+    expect(result).toEqual({
+      success: false,
+      error: '请先停止分享，再永久删除',
+      code: 41315,
+      httpStatus: 200,
+    });
+  });
+
   test('builds environment-specific public share URLs', () => {
     expect(buildHtmlSharePublicUrl('https://lobsterai-server.inner.youdao.com/s', 'shr_123')).toBe(
       'https://lobsterai-server.inner.youdao.com/s/shr_123/',

@@ -17,8 +17,8 @@ import {
   type ArtifactSubscriptionFeature as ArtifactSubscriptionFeatureValue,
 } from './artifactSubscriptionGate';
 
-export const PublishingAnalyticsEventVersion = 1;
-export const PublishingAnalyticsDialogVersion = 1;
+export const PublishingAnalyticsEventVersion = 2;
+export const PublishingAnalyticsDialogVersion = 2;
 
 export const PublishingAnalyticsOperationType = {
   Create: 'create',
@@ -39,6 +39,9 @@ export const PublishingAnalyticsDialogType = {
   SubscriptionRequired: 'subscription_required',
   ActiveQuotaLimit: 'active_quota_limit',
   EnterpriseUnavailable: 'enterprise_unavailable',
+  ShareEditor: 'share_editor',
+  DeploymentEditor: 'deployment_editor',
+  DeploymentStatus: 'deployment_status',
 } as const;
 
 export type PublishingAnalyticsDialogType =
@@ -67,6 +70,12 @@ export const PublishingAnalyticsTarget = {
   Pricing: 'pricing',
   LearnBenefits: 'learn_benefits',
   ManageCloud: 'manage_cloud',
+  CreateShare: 'create_share',
+  UpdateContent: 'update_content',
+  UpdatePermission: 'update_permission',
+  CopyLink: 'copy_link',
+  CreateDeployment: 'create_deployment',
+  Redeploy: 'redeploy',
   Dismiss: 'dismiss',
 } as const;
 
@@ -75,7 +84,7 @@ export type PublishingAnalyticsTarget =
 
 export const PublishingAnalyticsResult = {
   Success: 'success',
-  Failure: 'failure',
+  Failure: 'fail',
 } as const;
 
 export type PublishingAnalyticsResult =
@@ -92,6 +101,25 @@ export const PublishingAnalyticsErrorCategory = {
 
 export type PublishingAnalyticsErrorCategory =
   typeof PublishingAnalyticsErrorCategory[keyof typeof PublishingAnalyticsErrorCategory];
+
+export const PublishingAnalyticsDeploymentPhase = {
+  Accepted: 'accepted',
+  Terminal: 'terminal',
+} as const;
+
+export type PublishingAnalyticsDeploymentPhase =
+  typeof PublishingAnalyticsDeploymentPhase[keyof typeof PublishingAnalyticsDeploymentPhase];
+
+export const PublishingAnalyticsFinalStatus = {
+  Publishing: 'publishing',
+  Live: 'live',
+  Failed: 'failed',
+  Stopped: 'stopped',
+  Expired: 'expired',
+} as const;
+
+export type PublishingAnalyticsFinalStatus =
+  typeof PublishingAnalyticsFinalStatus[keyof typeof PublishingAnalyticsFinalStatus];
 
 export interface PublishingAnalyticsAttemptContext {
   attemptId: string;
@@ -118,6 +146,8 @@ const createId = (): string => (
   globalThis.crypto?.randomUUID?.()
   ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
 );
+
+export const createPublishingAnalyticsOperationId = createId;
 
 export const createPublishingAnalyticsAttempt = (
   input: Omit<PublishingAnalyticsAttemptContext, 'attemptId'>,
@@ -222,13 +252,15 @@ export interface ReportPublishingDialogActionOptions {
   actionType: PublishingAnalyticsActionType;
   ctaId: PublishingAnalyticsCtaId;
   target: PublishingAnalyticsTarget;
+  operationId?: string;
 }
 
 export const reportPublishingDialogAction = (
   context: PublishingAnalyticsDialogContext,
   options: ReportPublishingDialogActionOptions,
-): void => {
+): string => {
   const dialogVisibleMs = Math.max(0, Date.now() - context.openedAt);
+  const operationId = options.operationId ?? createPublishingAnalyticsOperationId();
   if (
     options.actionType === PublishingAnalyticsActionType.Click
     && (
@@ -257,6 +289,7 @@ export const reportPublishingDialogAction = (
       trialAccessTtlSeconds: context.trialAccessTtlSeconds,
       ctaId: options.ctaId,
       target: options.target,
+      operationId,
       dialogVisibleMs,
     });
   }
@@ -264,14 +297,25 @@ export const reportPublishingDialogAction = (
     action: LogReporterAction.PublishingDialogAction,
     ...getDialogParams(context),
     ...options,
+    operationId,
     dialogVisibleMs,
   });
+  return operationId;
 };
 
 export interface ReportPublishingOperationResultOptions {
   result: PublishingAnalyticsResult;
   operationType?: PublishingAnalyticsOperationType;
   errorCategory?: PublishingAnalyticsErrorCategory;
+  operationId?: string;
+  exposureId?: string;
+  shareId?: string;
+  siteId?: string;
+  deploymentId?: string;
+  accessPermission?: string;
+  durationMs?: number;
+  finalStatus?: PublishingAnalyticsFinalStatus;
+  rawDeploymentStatus?: string;
 }
 
 export const reportPublishingOperationResult = (
@@ -282,9 +326,132 @@ export const reportPublishingOperationResult = (
     action: LogReporterAction.PublishingOperationResult,
     ...getAttemptParams(attempt),
     operationType: options.operationType ?? attempt.operationType,
+    operationId: options.operationId ?? createPublishingAnalyticsOperationId(),
+    exposureId: options.exposureId,
+    shareId: options.shareId,
+    siteId: options.siteId,
+    deploymentId: options.deploymentId,
+    deployId: options.deploymentId,
+    accessPermission: options.accessPermission,
+    durationMs: options.durationMs,
+    finalStatus: options.finalStatus,
+    rawDeploymentStatus: options.rawDeploymentStatus,
     result: options.result,
     errorCategory: options.errorCategory,
   });
+};
+
+interface PublishingOperationEventOptions {
+  operationId: string;
+  exposureId?: string;
+  result: PublishingAnalyticsResult;
+  errorCategory?: PublishingAnalyticsErrorCategory;
+  durationMs?: number;
+  accessPermission?: string;
+}
+
+export interface ReportPublishingShareResultOptions extends PublishingOperationEventOptions {
+  operationType: PublishingAnalyticsOperationType;
+  shareId?: string;
+}
+
+export const reportPublishingShareResult = (
+  attempt: PublishingAnalyticsAttemptContext,
+  options: ReportPublishingShareResultOptions,
+): void => {
+  void reportYdAnalyzer({
+    action: LogReporterAction.PublishShareResult,
+    ...getAttemptParams(attempt),
+    ...options,
+  });
+};
+
+export interface ReportPublishingCopyShareLinkOptions extends PublishingOperationEventOptions {
+  shareId: string;
+}
+
+export const reportPublishingCopyShareLink = (
+  attempt: PublishingAnalyticsAttemptContext,
+  options: ReportPublishingCopyShareLinkOptions,
+): void => {
+  void reportYdAnalyzer({
+    action: LogReporterAction.PublishCopyShareLink,
+    ...getAttemptParams(attempt),
+    operationType: 'copy_link',
+    ...options,
+  });
+};
+
+export interface ReportPublishingDeploymentResultOptions extends PublishingOperationEventOptions {
+  operationType: PublishingAnalyticsOperationType;
+  eventPhase: PublishingAnalyticsDeploymentPhase;
+  finalStatus: PublishingAnalyticsFinalStatus;
+  siteId?: string;
+  deploymentId?: string;
+  rawDeploymentStatus?: string;
+}
+
+export const reportPublishingDeploymentResult = (
+  attempt: PublishingAnalyticsAttemptContext,
+  options: ReportPublishingDeploymentResultOptions,
+): void => {
+  void reportYdAnalyzer({
+    action: LogReporterAction.PublishDeploymentResult,
+    ...getAttemptParams(attempt),
+    ...options,
+    deployId: options.deploymentId,
+  });
+};
+
+export interface ReportPublishingCopyDeployLinkOptions extends PublishingOperationEventOptions {
+  siteId: string;
+  deploymentId: string;
+  finalStatus: PublishingAnalyticsFinalStatus;
+  rawDeploymentStatus?: string;
+}
+
+export const reportPublishingCopyDeployLink = (
+  attempt: PublishingAnalyticsAttemptContext,
+  options: ReportPublishingCopyDeployLinkOptions,
+): void => {
+  void reportYdAnalyzer({
+    action: LogReporterAction.PublishCopyDeployLink,
+    ...getAttemptParams(attempt),
+    operationType: 'copy_link',
+    ...options,
+    deployId: options.deploymentId,
+  });
+};
+
+export const reportDeploymentDialogExposure = (
+  context: PublishingAnalyticsDialogContext,
+): void => {
+  const action = context.dialogType === PublishingAnalyticsDialogType.DeploymentStatus
+    ? LogReporterAction.DeploymentStatusExposure
+    : LogReporterAction.DeploymentEditorExposure;
+  void reportYdAnalyzer({
+    action,
+    actionType: 'exposure',
+    ...getDialogParams(context),
+  });
+};
+
+export const reportDeploymentDialogAction = (
+  context: PublishingAnalyticsDialogContext,
+  options: ReportPublishingDialogActionOptions,
+): string => {
+  const operationId = options.operationId ?? createPublishingAnalyticsOperationId();
+  const action = context.dialogType === PublishingAnalyticsDialogType.DeploymentStatus
+    ? LogReporterAction.DeploymentStatusAction
+    : LogReporterAction.DeploymentEditorAction;
+  void reportYdAnalyzer({
+    action,
+    ...getDialogParams(context),
+    ...options,
+    operationId,
+    dialogVisibleMs: Math.max(0, Date.now() - context.openedAt),
+  });
+  return operationId;
 };
 
 export const getPublishingFeatureResourceKind = (

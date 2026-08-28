@@ -1,10 +1,13 @@
+import { HtmlShareStatus } from '../../../shared/htmlShare/constants';
 import {
   LibraryChangeReason,
+  LibraryItemKind,
   LibrarySharedStatusFilter,
   type LibrarySharedStatusFilter as LibrarySharedStatusFilterValue,
 } from '../../../shared/library/constants';
 import type {
   LibraryChangedPayload,
+  LibraryCloudItem,
   LibraryCloudListData,
   LibraryItem,
   LibraryLocalListData,
@@ -100,3 +103,43 @@ export const hideLibraryCloudItems = (
   sharedStatusCounts: data.sharedStatusCounts,
   ...(data.serverNow === undefined ? {} : { serverNow: data.serverNow }),
 });
+
+export const removeLibraryCloudItem = (
+  data: LibraryCloudListData,
+  target: LibraryCloudItem,
+): LibraryCloudListData => {
+  const containsTarget = data.list.some(item => isSameLibraryItem(item, target));
+  if (!containsTarget) return data;
+
+  if (target.itemKind === LibraryItemKind.DeployedSite) {
+    return {
+      ...data,
+      list: data.list.filter(item => !isSameLibraryItem(item, target)),
+      counts: {
+        ...data.counts,
+        deployedSite: Math.max(0, data.counts.deployedSite - 1),
+      },
+    };
+  }
+
+  const statusCountKey = target.status === HtmlShareStatus.Live
+    ? 'live'
+    : target.status === HtmlShareStatus.Disabled
+      ? 'disabled'
+      : undefined;
+  return {
+    ...data,
+    list: data.list.filter(item => !isSameLibraryItem(item, target)),
+    counts: {
+      ...data.counts,
+      sharedFile: Math.max(0, data.counts.sharedFile - 1),
+    },
+    sharedStatusCounts: {
+      ...data.sharedStatusCounts,
+      all: Math.max(0, data.sharedStatusCounts.all - 1),
+      ...(statusCountKey
+        ? { [statusCountKey]: Math.max(0, data.sharedStatusCounts[statusCountKey] - 1) }
+        : {}),
+    },
+  };
+};

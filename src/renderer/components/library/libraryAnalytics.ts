@@ -8,7 +8,7 @@ import {
 
 import { LogReporterAction, reportYdAnalyzer } from '@/services/logReporter';
 
-export const LibraryAnalyticsEventVersion = 1;
+export const LibraryAnalyticsEventVersion = 2;
 
 export const LibraryAnalyticsSurface = {
   MyFiles: 'my_files',
@@ -44,12 +44,20 @@ export type LibraryAnalyticsControl =
 
 export const LibraryAnalyticsResult = {
   Success: 'success',
-  Failure: 'failure',
+  Failure: 'fail',
   AuthRequired: 'auth_required',
 } as const;
 
 export type LibraryAnalyticsResult =
   typeof LibraryAnalyticsResult[keyof typeof LibraryAnalyticsResult];
+
+export const LibraryAnalyticsEventPhase = {
+  Start: 'start',
+  Result: 'result',
+} as const;
+
+export type LibraryAnalyticsEventPhase =
+  typeof LibraryAnalyticsEventPhase[keyof typeof LibraryAnalyticsEventPhase];
 
 export interface LibraryAnalyticsContext {
   pageViewId: string;
@@ -72,6 +80,8 @@ export interface ReportLibraryActionOptions {
   result?: LibraryAnalyticsResult;
   loadedItemCount?: number;
   hasMore?: boolean;
+  operationId?: string;
+  eventPhase?: LibraryAnalyticsEventPhase;
 }
 
 const createId = (): string => (
@@ -80,6 +90,7 @@ const createId = (): string => (
 );
 
 export const createLibraryAnalyticsPageViewId = createId;
+export const createLibraryAnalyticsOperationId = createId;
 
 export const getLibrarySearchLengthBucket = (keyword: string): string => {
   const length = keyword.trim().length;
@@ -128,5 +139,7 @@ export const reportLibraryAction = (
     result: options.result,
     loadedItemCountBucket: getLibraryLoadedItemCountBucket(options.loadedItemCount),
     hasMore: options.hasMore,
+    operationId: options.operationId,
+    eventPhase: options.eventPhase,
   });
 };
