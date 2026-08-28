@@ -91,6 +91,15 @@ export async function executeWebSearch(options: {
       'Content-Type': 'application/json',
       'Content-Length': Buffer.byteLength(body),
     };
+    try {
+      const version = app?.getVersion?.();
+      if (version) {
+        reqHeaders['X-Client-Version'] = version;
+        reqHeaders['X-App-Platform'] = process.platform;
+      }
+    } catch {
+      // 容错处理：版本号获取失败不影响搜索请求
+    }
     if (authVal) {
       reqHeaders['Authorization'] = authVal;
     }
