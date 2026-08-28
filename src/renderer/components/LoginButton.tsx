@@ -29,6 +29,7 @@ import { LogReporterAction, reportYdAnalyzer } from '../services/logReporter';
 import { RootState } from '../store';
 import type { FreeCreditsReward } from '../store/slices/authSlice';
 import {
+  getAccountMenuDisplayName,
   getAccountPlanPresentation,
   getFinalRewards,
 } from './accountMenuState';
@@ -307,8 +308,6 @@ const UserMenu: React.FC<UserMenuProps> = ({
     onOpenFinalReward(reward.campaignCode);
   };
 
-  const phoneSuffix = user?.phone ? user.phone.slice(-4) : '';
-
   const totalCredits = profileSummary?.totalCreditsRemaining ?? 0;
   const creditsUnavailable = !profileSummary && !summaryLoading;
   let creditsTrailingContent: React.ReactNode;
@@ -333,9 +332,12 @@ const UserMenu: React.FC<UserMenuProps> = ({
   }
   const creditItems = profileSummary?.creditItems ?? [];
   const hasCredits = creditItems.length > 0;
-  const accountName = profileSummary?.nickname
-    || user?.nickname
-    || (phoneSuffix ? `****${phoneSuffix}` : i18nService.t('myAccount'));
+  const accountName = getAccountMenuDisplayName({
+    fallback: i18nService.t('myAccount'),
+    profileNickname: profileSummary?.nickname,
+    userNickname: user?.nickname,
+    userPhone: user?.phone,
+  });
   const accountPlan = getAccountPlanPresentation(creditItems, isEn);
   const availableResetCount = profileSummary?.availableResetCount ?? 0;
   const availablePromoSubscriptionCount = profileSummary?.availablePromoSubscriptionCount ?? 0;
