@@ -1140,7 +1140,7 @@ describe('Windows installer hardening contracts', () => {
     // The expected size comes from the generated build fragment; packaging
     // builds fail loudly when it is missing.
     expect(installerInclude).toContain(
-      '!include "${PROJECT_DIR}/build-tar/win-installer-payload-size.nsh"',
+      '!include "${PROJECT_DIR}\\build-tar\\win-installer-payload-size.nsh"',
     );
   });
 

@@ -554,7 +554,7 @@ function directoryTotalFileBytes(rootDir) {
 
 /**
  * Emit the build-time payload size metadata consumed by scripts/nsis-installer.nsh
- * (via `!include "${PROJECT_DIR}/build-tar/win-installer-payload-size.nsh"`).
+ * (via `!include "${PROJECT_DIR}\build-tar\win-installer-payload-size.nsh"`).
  *
  * The NSIS installer needs two numbers that only exist at packaging time:
  *  - the exact byte size of win-resources.tar, so the installer can detect a

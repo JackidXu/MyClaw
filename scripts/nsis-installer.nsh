@@ -8,7 +8,7 @@
 ; without PROJECT_DIR compile with size validation degraded to
 ; existence-only checks and the staging-drive preflight disabled.
 !ifdef PROJECT_DIR
-  !include "${PROJECT_DIR}/build-tar/win-installer-payload-size.nsh"
+  !include "${PROJECT_DIR}\build-tar\win-installer-payload-size.nsh"
 !endif
 
 ; Free-space headroom on top of the measured payload sizes: NTFS cluster
