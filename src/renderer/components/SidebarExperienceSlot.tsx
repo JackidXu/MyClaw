@@ -11,7 +11,6 @@ import React, {
 } from 'react';
 
 import { i18nService } from '../services/i18n';
-import { startDailyCheckInAutoRefresh } from './dailyCheckInAutoRefresh';
 import SidebarAdBanner from './SidebarAdBanner';
 import {
   type ClientBanner,
@@ -43,7 +42,6 @@ const SidebarExperienceSlot: React.FC<SidebarExperienceSlotProps> = ({
   const {
     visibleBanners,
     loading,
-    refresh,
     dismissGroup,
   } = useSidebarAdBanners();
   const [activeItemKey, setActiveItemKey] = useState<string | null>(null);
@@ -76,11 +74,6 @@ const SidebarExperienceSlot: React.FC<SidebarExperienceSlotProps> = ({
     onVisibleChange?.(displayed);
     return () => onVisibleChange?.(false);
   }, [displayed, onVisibleChange]);
-
-  useEffect(
-    () => startDailyCheckInAutoRefresh(refresh),
-    [refresh],
-  );
 
   const changeActiveItem = useCallback((offset: number) => {
     setActiveItemKey(currentKey => getAdjacentSidebarCarouselKey(

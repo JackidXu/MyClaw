@@ -1,3 +1,4 @@
+import { AuthSubscriptionStatus } from '@shared/auth/constants';
 import { describe, expect, test } from 'vitest';
 
 import type {
@@ -6,7 +7,9 @@ import type {
   FreeCreditsReward,
 } from '../store/slices/authSlice';
 import {
+  AccountPlanAnalyticsTier,
   getAccountMenuDisplayName,
+  getAccountPlanAnalyticsContext,
   getAccountPlanPresentation,
   getFinalRewards,
   maskPhoneLikeAccountName,
@@ -79,8 +82,22 @@ describe('accountMenuState', () => {
     ], false);
 
     expect(plan).toEqual({
-      label: '标准',
+      label: '标准套餐',
       expiresAt: '2026-08-06',
+      canUpgrade: true,
+    });
+  });
+
+  test('hides the upgrade action for the highest excellent plan', () => {
+    expect(getAccountPlanPresentation([
+      creditItem({
+        type: 'subscription',
+        label: '卓越套餐',
+        labelEn: 'Excellent',
+      }),
+    ], false)).toMatchObject({
+      label: '卓越套餐',
+      canUpgrade: false,
     });
   });
 
@@ -93,6 +110,90 @@ describe('accountMenuState', () => {
       }),
     ], true)?.label).toBe('Standard');
     expect(getAccountPlanPresentation([creditItem()], false)).toBeNull();
+  });
+
+  test('does not duplicate the plan suffix for Chinese subscription labels', () => {
+    expect(getAccountPlanPresentation([
+      creditItem({
+        type: 'subscription',
+        label: '进阶套餐',
+        labelEn: 'Advanced',
+      }),
+    ], false)?.label).toBe('进阶套餐');
+  });
+
+  test('reports basic tier analytics when no subscription plan is present', () => {
+    expect(getAccountPlanAnalyticsContext({
+      accountMode: 'personal',
+      creditItems: [creditItem()],
+      planName: '免费',
+      subscriptionStatus: AuthSubscriptionStatus.Free,
+    })).toEqual({
+      accountMode: 'personal',
+      subscriptionStatus: AuthSubscriptionStatus.Free,
+      planTier: AccountPlanAnalyticsTier.Basic,
+      hasSubscriptionPlan: false,
+      canUpgrade: true,
+    });
+  });
+
+  test('reports subscription tier analytics without exposing the display label', () => {
+    expect(getAccountPlanAnalyticsContext({
+      accountMode: 'personal',
+      creditItems: [
+        creditItem({
+          type: 'subscription',
+          label: '进阶套餐',
+          labelEn: 'Advanced',
+        }),
+      ],
+      planName: '进阶',
+      subscriptionStatus: AuthSubscriptionStatus.Active,
+    })).toEqual({
+      accountMode: 'personal',
+      subscriptionStatus: AuthSubscriptionStatus.Active,
+      planTier: AccountPlanAnalyticsTier.Advanced,
+      hasSubscriptionPlan: true,
+      canUpgrade: true,
+    });
+  });
+
+  test('marks excellent tier analytics as not upgradeable', () => {
+    expect(getAccountPlanAnalyticsContext({
+      accountMode: 'personal',
+      creditItems: [
+        creditItem({
+          type: 'subscription',
+          label: '卓越套餐',
+          labelEn: 'Excellent',
+        }),
+      ],
+      planName: 'Excellent',
+      subscriptionStatus: AuthSubscriptionStatus.Active,
+    })).toMatchObject({
+      planTier: AccountPlanAnalyticsTier.Excellent,
+      hasSubscriptionPlan: true,
+      canUpgrade: false,
+    });
+  });
+
+  test('falls back to unknown tier for unrecognized active subscriptions', () => {
+    expect(getAccountPlanAnalyticsContext({
+      accountMode: 'personal',
+      creditItems: [
+        creditItem({
+          type: 'subscription',
+          label: '内部套餐',
+          labelEn: 'Internal',
+        }),
+      ],
+      planName: null,
+      subscriptionStatus: AuthSubscriptionStatus.Active,
+    })).toMatchObject({
+      subscriptionStatus: AuthSubscriptionStatus.Active,
+      planTier: AccountPlanAnalyticsTier.Unknown,
+      hasSubscriptionPlan: true,
+    });
   });
 
   test('returns every available final reward ordered by claim deadline', () => {
