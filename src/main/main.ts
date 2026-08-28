@@ -288,6 +288,7 @@ import {
   setStoreGetter,
   updateServerModelMetadata,
 } from './libs/claudeSettings';
+import { appendClientBannerVersion } from './libs/clientBannerRequest';
 import {
   clearCopilotTokenState,
   initCopilotTokenManager,
@@ -7113,7 +7114,10 @@ if (!gotTheLock) {
   ipcMain.handle(AuthIpcChannel.GetActiveClientBanner, async () => {
     try {
       const serverBaseUrl = getServerApiBaseUrl();
-      const url = appendKeyfromQuery(`${serverBaseUrl}/api/client-banners/active?placement=desktop_sidebar`);
+      const url = appendKeyfromQuery(appendClientBannerVersion(
+        `${serverBaseUrl}/api/client-banners/active?placement=desktop_sidebar`,
+        app.getVersion(),
+      ));
       const resp = await net.fetch(url, { cache: 'no-store' });
       if (!resp.ok) return { success: false };
       const body = (await resp.json()) as { code: number; data: Record<string, unknown> | null };
@@ -7127,7 +7131,10 @@ if (!gotTheLock) {
   ipcMain.handle(AuthIpcChannel.GetActiveClientBanners, async () => {
     try {
       const serverBaseUrl = getServerApiBaseUrl();
-      const url = appendKeyfromQuery(`${serverBaseUrl}/api/client-banners/active-list?placement=desktop_sidebar`);
+      const url = appendKeyfromQuery(appendClientBannerVersion(
+        `${serverBaseUrl}/api/client-banners/active-list?placement=desktop_sidebar`,
+        app.getVersion(),
+      ));
       const resp = await net.fetch(url, { cache: 'no-store' });
       if (!resp.ok) return { success: false };
       const body = (await resp.json()) as { code: number; data: Record<string, unknown>[] | null };
@@ -7142,7 +7149,10 @@ if (!gotTheLock) {
     const serverBaseUrl = getServerApiBaseUrl();
     try {
       const snapshotUrl = appendKeyfromQuery(
-        `${serverBaseUrl}/api/client-banners/snapshot?placement=desktop_sidebar`,
+        appendClientBannerVersion(
+          `${serverBaseUrl}/api/client-banners/snapshot?placement=desktop_sidebar`,
+          app.getVersion(),
+        ),
       );
       const snapshotResponse = await net.fetch(snapshotUrl, { cache: 'no-store' });
       if (snapshotResponse.ok) {
@@ -7163,6 +7173,7 @@ if (!gotTheLock) {
             data: {
               serverTime: snapshotBody.data.serverTime,
               nextRefreshAt: snapshotBody.data.nextRefreshAt ?? null,
+              clientVersion: app.getVersion(),
               banners: snapshotBody.data.banners,
             },
           };
@@ -7174,7 +7185,10 @@ if (!gotTheLock) {
 
     try {
       const legacyUrl = appendKeyfromQuery(
-        `${serverBaseUrl}/api/client-banners/active-list?placement=desktop_sidebar`,
+        appendClientBannerVersion(
+          `${serverBaseUrl}/api/client-banners/active-list?placement=desktop_sidebar`,
+          app.getVersion(),
+        ),
       );
       const legacyResponse = await net.fetch(legacyUrl, { cache: 'no-store' });
       if (!legacyResponse.ok) return { success: false };
@@ -7188,6 +7202,7 @@ if (!gotTheLock) {
         data: {
           serverTime: new Date().toISOString(),
           nextRefreshAt: null,
+          clientVersion: app.getVersion(),
           banners: Array.isArray(legacyBody.data) ? legacyBody.data : [],
         },
       };
