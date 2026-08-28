@@ -396,6 +396,8 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
   const dropdownRef = React.useRef<HTMLDivElement>(null);
   const scrollContainerRef = React.useRef<HTMLDivElement>(null);
   const selectedItemRef = React.useRef<HTMLButtonElement>(null);
+  const moreModelsSectionRef = React.useRef<HTMLDivElement>(null);
+  const revealMoreModelsOnExpandRef = React.useRef(false);
   const [hoveredModel, setHoveredModel] = React.useState<Model | null>(null);
   const [hoverCardStyle, setHoverCardStyle] = React.useState<React.CSSProperties>({});
   const [hoverCardSide, setHoverCardSide] = React.useState<CascadeSide>(CascadeSide.Right);
@@ -566,7 +568,30 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
     const targetScrollTop = selectedOffsetTop - ((scrollContainer.clientHeight - selectedItem.offsetHeight) / 2);
     const maxScrollTop = Math.max(0, scrollContainer.scrollHeight - scrollContainer.clientHeight);
     scrollContainer.scrollTop = Math.min(Math.max(0, targetScrollTop), maxScrollTop);
-  }, [isOpen, selectedModelKey, visibleGroup, visibleModels.length, listMaxHeight, moreModelsExpanded]);
+  }, [isOpen, selectedModelKey, visibleGroup, visibleModels.length, listMaxHeight]);
+
+  React.useLayoutEffect(() => {
+    if (!isOpen || !moreModelsExpanded || !revealMoreModelsOnExpandRef.current) return;
+
+    const scrollContainer = scrollContainerRef.current;
+    const moreModelsSection = moreModelsSectionRef.current;
+    if (!scrollContainer || !moreModelsSection) return;
+    revealMoreModelsOnExpandRef.current = false;
+
+    const containerRect = scrollContainer.getBoundingClientRect();
+    const sectionRect = moreModelsSection.getBoundingClientRect();
+    const sectionTop = sectionRect.top - containerRect.top + scrollContainer.scrollTop;
+    const sectionBottom = sectionTop + sectionRect.height;
+    const viewportTop = scrollContainer.scrollTop;
+    const viewportBottom = viewportTop + scrollContainer.clientHeight;
+    if (sectionTop >= viewportTop && sectionBottom <= viewportBottom) return;
+
+    const targetScrollTop = sectionRect.height <= scrollContainer.clientHeight
+      ? sectionBottom - scrollContainer.clientHeight
+      : sectionTop;
+    const maxScrollTop = Math.max(0, scrollContainer.scrollHeight - scrollContainer.clientHeight);
+    scrollContainer.scrollTop = Math.min(Math.max(0, targetScrollTop), maxScrollTop);
+  }, [isOpen, moreModelsExpanded]);
 
   const toggleOpen = () => {
     if (disabled) return;
@@ -888,7 +913,7 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
         )}
         {model.costMultiplier != null && model.costMultiplier > 0 && (
           <span className="shrink-0 text-[11px] text-secondary whitespace-nowrap">
-            x{model.costMultiplier} {i18nService.t('authCreditsUnit')}
+            x{model.costMultiplier}
           </span>
         )}
         <span className="flex-1" />
@@ -928,13 +953,18 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
 
   const renderMoreModelsSection = () => {
     if (visibleSections.moreModels.length === 0) return null;
+    const handleToggle = () => {
+      const nextExpanded = !moreModelsExpanded;
+      revealMoreModelsOnExpandRef.current = nextExpanded;
+      setMoreModelsExpanded(nextExpanded);
+    };
     return (
-      <div>
+      <div ref={moreModelsSectionRef}>
         <button
           type="button"
           aria-expanded={moreModelsExpanded}
-          onClick={() => setMoreModelsExpanded(expanded => !expanded)}
-          className="mx-2 flex items-center justify-between rounded-lg bg-surface-raised px-3 py-2 text-left text-[13px] font-semibold leading-5 text-foreground transition-colors hover:bg-surface-hover"
+          onClick={handleToggle}
+          className="mx-2 flex w-[calc(100%-1rem)] items-center justify-between rounded-lg bg-surface-raised px-3 py-2 text-left text-[13px] font-semibold leading-5 text-foreground transition-colors hover:bg-surface-hover"
         >
           <span>{i18nService.t('modelSelectorMoreModels')}</span>
           <ChevronDownIcon
