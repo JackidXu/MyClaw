@@ -6,7 +6,6 @@ import { useSelector } from 'react-redux';
 import { agentService } from '../services/agent';
 import { configService } from '../services/config';
 import { coworkService } from '../services/cowork';
-import { getUserProfileUrl } from '../services/endpoints';
 import { httpClient } from '../services/httpClient';
 import { i18nService } from '../services/i18n';
 import { LogReporterAction, reportYdAnalyzer } from '../services/logReporter';
@@ -334,10 +333,8 @@ const Sidebar: React.FC<SidebarProps> = ({
       let remainQuota = 0;
 
       const fetchPromise = (async () => {
-        const targetUrl = getUserProfileUrl();
-
         // 统一通过管理后台后端代理查询用户最新配额与昵称 (携带用户访问令牌)
-        const selfResp = await httpClient.get<{
+        const selfResp = await httpClient.admin.get<{
           success: boolean;
           data?: {
             id: number;
@@ -347,7 +344,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             usedQuota: number;
           };
           error?: string;
-        }>(targetUrl);
+        }>('/api/client/user-profile');
 
         if (selfResp.ok && selfResp.data && selfResp.data.success) {
           const userProfile = selfResp.data.data;

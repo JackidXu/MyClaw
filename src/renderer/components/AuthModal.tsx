@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 
 import { configService } from '../services/config';
-import { getServerApiBaseUrl } from '../services/endpoints';
+import { httpClient } from '../services/httpClient';
 import { fetchAndFilterOneApiChatModels } from '../services/oneapiModels';
 import { vipService } from '../services/vipService';
 
@@ -40,39 +40,37 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
         throw new Error('注册需要输入有效的激活码');
       }
 
-      const adminBaseUrl = getServerApiBaseUrl();
-
       if (!isLogin) {
         // 1. 注册逻辑
-        const registerRes = await window.electron.api.fetch({
-          url: `${adminBaseUrl}/api/register`,
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+        const registerRes = await httpClient.admin.post<{ success: boolean; error?: string }>(
+          '/api/register',
+          {
             activeCode: activeCode.trim(),
             username: username.trim(),
             password: password.trim(),
-          }),
-        }) as any;
+          },
+        );
 
         if (!registerRes.ok || !registerRes.data || !registerRes.data.success) {
-          throw new Error(registerRes.data?.error || '激活注册失败，请检查激活码或账号');
+          throw new Error(registerRes.data?.error || registerRes.error || '激活注册失败，请检查激活码或账号');
         }
       }
 
       // 2. 登录逻辑 (安全获取后端托管生成的对话令牌)
-      const loginRes = await window.electron.api.fetch({
-        url: `${adminBaseUrl}/api/client/login`,
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const loginRes = await httpClient.admin.post<{
+        success: boolean;
+        data?: { id: number; token: string; session?: string; name?: string; quota?: number };
+        error?: string;
+      }>(
+        '/api/client/login',
+        {
           username: username.trim(),
           password: password.trim(),
-        }),
-      }) as any;
+        },
+      );
 
       if (!loginRes.ok || !loginRes.data || !loginRes.data.success) {
-        throw new Error(loginRes.data?.error || '登录失败，请检查账号密码');
+        throw new Error(loginRes.data?.error || loginRes.error || '登录失败，请检查账号密码');
       }
 
       const userId = loginRes.data.data?.id;

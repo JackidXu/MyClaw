@@ -47,7 +47,7 @@ export async function fetchBillingLogs(): Promise<BillingLogsResult> {
 
   const url = `${apiRoot}/api/log/token?key=${apiKey}&page_size=200`;
 
-  const resp = await httpClient.get(url, {
+  const resp = await httpClient.admin.get(url, {
     Authorization: `Bearer ${apiKey}`,
   });
 

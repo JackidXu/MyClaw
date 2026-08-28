@@ -318,9 +318,7 @@ import { DesktopNotificationManager } from './libs/desktopNotificationManager';
 import { getDeviceInfo } from './libs/deviceId';
 import {
   getHtmlSharePublicBaseUrl,
-  getKitStoreUrl,
   getServerApiBaseUrl,
-  getSkillStoreUrl,
   refreshEndpointsTestMode,
 } from './libs/endpoints';
 import {
@@ -350,6 +348,11 @@ import {
 import { packageHtmlFile } from './libs/htmlShare/htmlSharePackager';
 import { getKeyfromAttribution, initializeKeyfromAttribution } from './libs/keyfromAttribution';
 import { exportLogsZip } from './libs/logExport';
+import {
+  resolveTargetUrl,
+  setMainHttpClientStoreGetter,
+  setUnauthorizedBroadcastHandler,
+} from './libs/mainHttpClient';
 import { MainLogReporter } from './libs/mainLogReporter';
 import { inferImageMimeTypeFromDataUrl, type PersistedGeneratedImageAsset, persistGeneratedImageAssets, type PersistGeneratedImageAssetsResult, persistGeneratedVideoAssets, type RemoteGeneratedMediaAsset } from './libs/mediaAssetPersistence';
 import {
@@ -495,7 +498,7 @@ import {
 } from './openclawSessionPolicy/store';
 import { registerVoiceInputPermissionHandler } from './permissions/voiceInputPermission';
 import { isHiddenUserPluginId } from './plugins/pluginManager';
-import { updateSecondBrainAuthHeaders, updateSecondBrainToolDefinitions } from './secondBrain/secondBrainBridge';
+import { updateSecondBrainToolDefinitions } from './secondBrain/secondBrainBridge';
 import { SkillManager } from './skills/skillManager';
 import { getSkillServiceManager } from './skills/skillServices';
 import {
@@ -8438,14 +8441,12 @@ if (!gotTheLock) {
   // Skills IPC handlers
   registerSkillHandlers({
     getSkillManager,
-    getSkillStoreUrl,
     getOpenClawRuntimeAdapter: () => openClawRuntimeAdapter,
   });
 
   // Kits IPC handlers
   registerKitHandlers({
     getStore,
-    getKitStoreUrl,
     getSkillManager,
     syncOpenClawConfig,
   });
@@ -8949,8 +8950,6 @@ if (!gotTheLock) {
         mediaReferences?: MediaAttachmentRefMain[];
         selectedTextSnippets?: CoworkSelectedTextSnippet[];
         browserAnnotations?: CoworkBrowserAnnotationMessageBatch[];
-        /** 第二大脑认证头 */
-        fmpAuthHeaders?: { Authorization?: string };
       },
     ) => {
       try {
@@ -9048,11 +9047,6 @@ if (!gotTheLock) {
             secondBrainEnabled: (options as { secondBrainEnabled?: boolean }).secondBrainEnabled,
           },
         );
-
-        if (options.fmpAuthHeaders) {
-          updateSecondBrainAuthHeaders(session.id, options.fmpAuthHeaders);
-        }
-
 
         if (options.modelOverride) {
           console.log(
@@ -9221,14 +9215,9 @@ if (!gotTheLock) {
         mediaReferences?: MediaAttachmentRefMain[];
         selectedTextSnippets?: CoworkSelectedTextSnippet[];
         browserAnnotations?: CoworkBrowserAnnotationMessageBatch[];
-        /** 第二大脑认证头 */
-        fmpAuthHeaders?: { Authorization?: string };
       },
     ) => {
       try {
-        if (options.fmpAuthHeaders) {
-          updateSecondBrainAuthHeaders(options.sessionId, options.fmpAuthHeaders);
-        }
         const ipcStartedAtMs = Date.now();
 
         const requestAccountScope = getCurrentMediaAccountScope();
@@ -12967,10 +12956,13 @@ if (!gotTheLock) {
       options: {
         url: string;
         method: string;
-        headers: Record<string, string>;
+        headers?: Record<string, string>;
         body?: string;
+        target?: 'admin' | 'biz';
+        skipAuth?: boolean;
       },
     ) => {
+      const resolvedUrl = resolveTargetUrl(options.url, options.target || 'admin');
       const reqId = `ipc_fetch_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
       let parsedBody: any = undefined;
       if (options.body) {
@@ -12994,24 +12986,34 @@ if (!gotTheLock) {
       };
 
       const finalRequestHeaders: Record<string, string> = {
+        'Content-Type': 'application/json',
         ...getSafeAppVersionHeader(),
         ...options.headers,
       };
+
+      // 自动从主进程 Store 附加用户令牌 (除非显式 skipAuth)
+      if (!options.skipAuth && !finalRequestHeaders['Authorization']) {
+        const store = getStore();
+        const token = store?.get<string>('user_access_token');
+        if (token && typeof token === 'string' && token.trim()) {
+          finalRequestHeaders['Authorization'] = `Bearer ${token.trim()}`;
+        }
+      }
 
       recordApiTraffic({
         id: reqId,
         type: 'request',
         timestamp: Date.now(),
         method: (options.method || 'GET').toUpperCase(),
-        url: options.url,
+        url: resolvedUrl,
         headers: finalRequestHeaders,
         body: parsedBody,
       });
 
-      const sanitizedUrl = sanitizeUrlForLog(options.url);
+      const sanitizedUrl = sanitizeUrlForLog(resolvedUrl);
       // Analytics beacons are traced by the reporter itself ([LogReporter]
       // lines); logging them here again would only add noise.
-      const logTraffic = !isAnalyticsEndpointUrl(options.url);
+      const logTraffic = !isAnalyticsEndpointUrl(resolvedUrl);
       if (logTraffic) {
         console.log(
           `[api:fetch] ${options.method} ${sanitizedUrl}, headers: ${serializeForLog(finalRequestHeaders)}, body: ${options.body}`,
@@ -13019,7 +13021,7 @@ if (!gotTheLock) {
       }
 
       const doFetch = async (headers: Record<string, string>) => {
-        const response = await session.defaultSession.fetch(options.url, {
+        const response = await session.defaultSession.fetch(resolvedUrl, {
           method: options.method,
           headers,
           body: options.body,
@@ -13062,7 +13064,10 @@ if (!gotTheLock) {
         ) {
           console.log('[api:fetch] Copilot auth error, attempting token refresh and retry');
           const { headers: refreshedHeaders, retried } =
-            await retryCopilotWithRefreshedToken(options);
+            await retryCopilotWithRefreshedToken({
+              ...options,
+              headers: finalRequestHeaders,
+            });
           if (retried) {
             result = await doFetch(refreshedHeaders);
           }
@@ -14092,6 +14097,15 @@ if (!gotTheLock) {
     }
     // Inject store getter into claudeSettings
     setStoreGetter(() => store);
+    // Inject store getter into mainHttpClient (unified for all main process HTTP calls)
+    setMainHttpClientStoreGetter(() => store);
+    setUnauthorizedBroadcastHandler(() => {
+      try {
+        mainWindow?.webContents.send('app:unauthorized');
+      } catch {
+        // 容错
+      }
+    });
     // Inject auth getters for lobsterai-server provider routing
     // The getter proactively triggers a background token refresh when the
     // accessToken is within 5 minutes of expiry, so that the SDK always

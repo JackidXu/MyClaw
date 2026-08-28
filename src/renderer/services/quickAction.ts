@@ -4,7 +4,7 @@ import type {
   QuickAction,
   QuickActionsConfig,
 } from '../types/quickAction';
-import { getQuickActionsUrl } from './endpoints';
+import { httpClient } from './httpClient';
 import { i18nService } from './i18n';
 
 class QuickActionService {
@@ -20,15 +20,11 @@ class QuickActionService {
     }
 
     try {
-      const response = await window.electron.api.fetch({
-        url: getQuickActionsUrl(),
-        method: 'GET',
-        headers: {},
-      });
-      if (!response.ok) {
-        throw new Error(`Failed to load quick actions config: ${response.statusText}`);
+      const response = await httpClient.admin.get<QuickActionsConfig>('/api/quick-actions');
+      if (!response.ok || !response.data) {
+        throw new Error(`Failed to load quick actions config: ${response.error || `HTTP ${response.status}`}`);
       }
-      this.config = response.data as QuickActionsConfig;
+      this.config = response.data;
       return this.config;
     } catch (error) {
       console.error('Failed to load quick actions config:', error);

@@ -1,5 +1,3 @@
-import { app } from 'electron';
-
 import { HtmlSharePublicRoute } from '../../shared/htmlShare/constants';
 import type { SqliteStore } from '../sqliteStore';
 
@@ -23,15 +21,12 @@ export const isTestModeEnabled = (): boolean => {
 };
 
 /**
- * Server API base URL.
- * In development (unpackaged app) or when testMode is enabled, routes to local server.
- * Otherwise uses production server.
+ * 有道自建服务器基础端点 (有道账号/刷新/分享等)
  */
 export const getServerApiBaseUrl = (): string => {
-  if (isTestModeEnabled() || !app?.isPackaged) {
-    return 'http://localhost:8082';
-  }
-  return 'https://admin.claw.chaohui.ai';
+  return isTestModeEnabled()
+    ? 'https://lobsterai-server.inner.youdao.com'
+    : 'https://lobsterai-server.youdao.com';
 };
 
 export const getHtmlSharePublicBaseUrl = (): string => {
@@ -50,8 +45,6 @@ export const getFallbackDownloadUrl = (): string => (
   'https://claw.chaohui.ai/'
 );
 
-export const getSkillStoreUrl = (): string => `${getServerApiBaseUrl()}/api/skills`;
-
 // Portal 页面
 const PORTAL_BASE_TEST = 'https://lobsterai.inner.youdao.com/portal#';
 const PORTAL_BASE_PROD = 'https://lobsterai.youdao.com/portal#';
@@ -59,7 +52,3 @@ const PORTAL_BASE_PROD = 'https://lobsterai.youdao.com/portal#';
 const getPortalBase = (): string => isTestModeEnabled() ? PORTAL_BASE_TEST : PORTAL_BASE_PROD;
 
 export const getPortalTasksUrl = (): string => `${getPortalBase()}/profile/detail?tab=tasks`;
-
-export const getKitStoreUrl = (): string => `${getServerApiBaseUrl()}/api/kits`;
-
-export const getQuickActionsUrl = (): string => `${getServerApiBaseUrl()}/api/quick-actions`;

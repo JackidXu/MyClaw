@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 
-import { getChangePasswordUrl } from '../services/endpoints';
 import { httpClient } from '../services/httpClient';
 
 interface PasswordModalProps {
@@ -46,13 +45,11 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({ isOpen, onClose, o
       }
 
       // 通过管理后台代理修改密码
-      const targetUrl = getChangePasswordUrl();
-
-      const res = await httpClient.post<{
+      const res = await httpClient.admin.post<{
         success: boolean;
         message?: string;
         error?: string;
-      }>(targetUrl, {
+      }>('/api/client/change-password', {
         oldPassword: oldPassword.trim(),
         newPassword: newPassword.trim(),
       });

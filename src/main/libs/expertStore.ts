@@ -1,7 +1,5 @@
-import { app } from 'electron';
-
 import { PresetAgent } from '../presetAgents';
-import { getServerApiBaseUrl } from './endpoints';
+import { mainHttpClient } from './mainHttpClient';
 
 // 付费专家数据结构（不含 department、level 字段）
 export interface PaidExpert {
@@ -54,28 +52,19 @@ export async function fetchExpertsFromCloud(): Promise<{
   expertTeams: ExpertTeam[];
 }> {
   try {
-    const url = `${getServerApiBaseUrl()}/api/experts`;
-    const headers: Record<string, string> = {};
-    try {
-      const version = app?.getVersion?.();
-      if (version) {
-        headers['X-Client-Version'] = version;
-        headers['X-App-Platform'] = process.platform;
-      }
-    } catch {
-      // 容错处理：版本获取失败不影响正常请求
-    }
-    const res = await fetch(url, { method: 'GET', headers });
-    if (!res.ok) {
-      console.error(`[ExpertStore] HTTP ${res.status} fetching experts`);
-      return { presetExperts: [], paidExperts: [], expertTeams: [] };
-    }
-    const data = await res.json() as {
+    const res = await mainHttpClient.admin.get<{
       success: boolean;
       presetExperts?: PresetAgent[];
       paidExperts?: PaidExpert[];
       expertTeams?: ExpertTeam[];
-    };
+    }>('/api/experts');
+
+    if (!res.ok || !res.data) {
+      console.warn('[ExpertStore] fetchExpertsFromCloud failed:', res.error || `HTTP ${res.status}`);
+      return { presetExperts: [], paidExperts: [], expertTeams: [] };
+    }
+
+    const data = res.data;
     if (!data.success) {
       console.error('[ExpertStore] Server returned success=false');
       return { presetExperts: [], paidExperts: [], expertTeams: [] };

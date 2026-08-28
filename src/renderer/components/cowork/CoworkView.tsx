@@ -234,18 +234,14 @@ const CoworkView: React.FC<CoworkViewProps> = ({
     isHomeView,
   ]);
 
-  // App 级工具注册：具有第二大脑权限且开关开启时一次性加载工具列表
-  // 使用 ref 防止重复请求
-  const secondBrainToolsRegisteredRef = useRef(false);
+  // App 级工具元数据同步（应用初始化时拉取一次动态工具描述）
   useEffect(() => {
-    if (!homeDraftSecondBrainEnabled || !vipService.hasSecondBrainPermission() || secondBrainToolsRegisteredRef.current) return;
-    secondBrainToolsRegisteredRef.current = true;
     fetchCognitionTools().then((result) => {
       if (result.tools.length > 0) {
-        window.electron.secondBrain.registerTools(result.tools);
+        void window.electron.secondBrain.registerTools(result.tools);
       }
     });
-  }, [homeDraftSecondBrainEnabled]);
+  }, []);
 
   const buildCapabilitySelection = useCallback((skillIds: string[], kitIds: string[]) => {
     return buildCoworkCapabilitySelection(
@@ -548,9 +544,6 @@ const CoworkView: React.FC<CoworkViewProps> = ({
         mediaReferences,
         selectedTextSnippets,
         browserAnnotations,
-        fmpAuthHeaders: isSecondBrainEffective
-          ? { Authorization: `Bearer ${localStorage.getItem('heyclaw_session') ?? ''}` }
-          : undefined,
       });
 
 
@@ -680,9 +673,6 @@ const CoworkView: React.FC<CoworkViewProps> = ({
         mediaReferences,
         selectedTextSnippets,
         browserAnnotations,
-        fmpAuthHeaders: {
-          Authorization: `Bearer ${localStorage.getItem('heyclaw_session') ?? ''}`,
-        },
       });
 
       if (sent && (sessionSkillIds.length > 0 || sessionKitIds.length > 0)) {

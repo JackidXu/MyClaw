@@ -1,12 +1,8 @@
 /**
- * 充值与交易业务服务 (接入统一 httpClient)
+ * 充值与交易业务服务 (接入统一 httpClient.biz)
  */
 
 import { httpClient } from './httpClient';
-
-const TRADE_API_BASE = import.meta.env.DEV
-  ? 'https://dev-zhike.banchengyun.com'
-  : 'https://zhike.banchengyun.com';
 
 export interface RechargeSpecItem {
   version_id: number;
@@ -24,8 +20,7 @@ export interface PayOrderResult {
  * 1. 获取充值规格列表
  */
 export async function fetchRechargeSpecs(): Promise<{ success: boolean; data: RechargeSpecItem[]; error?: string }> {
-  const url = `${TRADE_API_BASE}/api/chaohuixie/claw/trade/versionList`;
-  const res = await httpClient.get(url);
+  const res = await httpClient.biz.get('/api/chaohuixie/claw/trade/versionList');
 
   if (res.ok && res.data && res.data.code === 1) {
     return {
@@ -37,7 +32,7 @@ export async function fetchRechargeSpecs(): Promise<{ success: boolean; data: Re
   return {
     success: false,
     data: [],
-    error: res.data?.message || '获取充值规格失败',
+    error: res.data?.message || res.error || '获取充值规格失败',
   };
 }
 
@@ -49,8 +44,7 @@ export async function createPayOrder(params: {
   payChannel: 1 | 2; // 1: 微信, 2: 支付宝
   userId: number | string;
 }): Promise<{ success: boolean; data?: PayOrderResult; error?: string }> {
-  const url = `${TRADE_API_BASE}/api/chaohuixie/claw/trade/pay`;
-  const res = await httpClient.post(url, {
+  const res = await httpClient.biz.post('/api/chaohuixie/claw/trade/pay', {
     versionId: params.versionId,
     payChannel: params.payChannel,
     goodsAttach: Number(params.userId),
@@ -65,7 +59,7 @@ export async function createPayOrder(params: {
 
   return {
     success: false,
-    error: res.data?.message || '获取付款码失败，请重试',
+    error: res.data?.message || res.error || '获取付款码失败，请重试',
   };
 }
 
@@ -74,8 +68,7 @@ export async function createPayOrder(params: {
  */
 export async function queryPayStatus(orderId: number | string): Promise<{ success: boolean; paymentStatus: number; error?: string }> {
   const query = new URLSearchParams({ orderId: String(orderId) }).toString();
-  const url = `${TRADE_API_BASE}/api/chaohuixie/claw/trade/payState?${query}`;
-  const res = await httpClient.get(url);
+  const res = await httpClient.biz.get(`/api/chaohuixie/claw/trade/payState?${query}`);
 
   if (res.ok && res.data && res.data.code === 1) {
     const statusData = res.data.data || {};
@@ -88,6 +81,6 @@ export async function queryPayStatus(orderId: number | string): Promise<{ succes
   return {
     success: false,
     paymentStatus: 0,
-    error: res.data?.message || '查询订单状态失败',
+    error: res.data?.message || res.error || '查询支付状态失败',
   };
 }

@@ -214,8 +214,10 @@ contextBridge.exposeInMainWorld('electron', {
     fetch: async (options: {
       url: string;
       method: string;
-      headers: Record<string, string>;
+      headers?: Record<string, string>;
       body?: string;
+      target?: 'admin' | 'biz';
+      skipAuth?: boolean;
     }) => {
       return ipcRenderer.invoke('api:fetch', options);
     },
@@ -462,8 +464,6 @@ contextBridge.exposeInMainWorld('electron', {
       secondBrainEnabled?: boolean;
       imageAttachments?: Array<{ name: string; mimeType: string; base64Data: string; sizeBytes?: number; localPath?: string; previewMimeType?: string; previewBase64Data?: string }>;
       mediaSelection?: { mode: string; modelId?: string; modelName?: string; imageModelId?: string; videoModelId?: string }; mediaReferences?: Array<{ token: string; mediaType: string; index: number; fileId: string; fileName: string; mimeType: string; localPath?: string; remoteUrl?: string; dataUrl?: string; role?: string }>;
-      /** 第二大脑认证头，供主进程调用 retrieve 接口 */
-      fmpAuthHeaders?: { Authorization?: string };
     }) => ipcRenderer.invoke('cowork:session:start', options),
 
     continueSession: (options: {
@@ -490,8 +490,6 @@ contextBridge.exposeInMainWorld('electron', {
         remoteUrl?: string;
         dataUrl?: string; role?: string;
       }>;
-      /** 第二大脑认证头，供主进程调用 retrieve 接口 */
-      fmpAuthHeaders?: { Authorization?: string };
     }) => ipcRenderer.invoke('cowork:session:continue', options),
 
     submitBtw: (options: CoworkBtwSubmitRequest): Promise<CoworkBtwSubmitResponse> =>

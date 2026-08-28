@@ -1,21 +1,11 @@
 /**
  * 第二大脑（第二大脑）接口封装
  *
- * 域名说明：
- *   - 本地开发（npm run electron:dev）：https://dev-zhike.banchengyun.com
- *   - 正式打包：https://zhike.banchengyun.com
- *
  * 认证头：
  *   - Authorization: Bearer <session> (取 localStorage.heyclaw_session)
  */
 
 import { httpClient } from './httpClient';
-
-/** 动态获取接口基础域名（import.meta.env.DEV 在开发环境为 true，打包后为 false） */
-const getBaseUrl = () =>
-  import.meta.env.DEV
-    ? 'https://dev-zhike.banchengyun.com'
-    : 'https://zhike.banchengyun.com';
 
 /** 接口路径前缀 */
 const API_PREFIX = '/api/chaohuixie/claw';
@@ -181,12 +171,11 @@ export const MATERIAL_TAB_TYPE: Record<string, string> = {
   '对话': 'chat',
 };
 
-/** 构建完整 URL */
-function buildUrl(path: string): string {
-  const base = getBaseUrl().replace(/\/+$/, '');
+/** 构建 API 路径 */
+function buildPath(path: string): string {
   const prefix = API_PREFIX.replace(/\/+$/, '');
   const pathname = path.startsWith('/') ? path : `/${path}`;
-  return `${base}${prefix}${pathname}`;
+  return `${prefix}${pathname}`;
 }
 
 /**
@@ -194,16 +183,16 @@ function buildUrl(path: string): string {
  * 成功条件：status === 'success' 且 code === 1
  */
 async function get<T>(path: string): Promise<T> {
-  const url = buildUrl(path);
-  const resp = await httpClient.get<SecondBrainResponse<T>>(url);
+  const apiPath = buildPath(path);
+  const resp = await httpClient.biz.get<SecondBrainResponse<T>>(apiPath);
 
   if (!resp.ok) {
-    throw new Error(`[SecondBrainApi] 请求失败 ${resp.status}: ${url}`);
+    throw new Error(`[SecondBrainApi] 请求失败 ${resp.status}: ${apiPath}`);
   }
 
   const body = resp.data;
   if (!body || body.status !== 'success' || body.code !== 1) {
-    throw new Error(`[SecondBrainApi] 业务错误: ${body?.message ?? '未知错误'}`);
+    throw new Error(`[SecondBrainApi] 业务错误: ${body?.message ?? resp.error ?? '未知错误'}`);
   }
 
   return body.data;
@@ -213,16 +202,16 @@ async function get<T>(path: string): Promise<T> {
  * 通用 POST 请求（JSON body）
  */
 async function post<T>(path: string, payload?: unknown): Promise<T> {
-  const url = buildUrl(path);
-  const resp = await httpClient.post<SecondBrainResponse<T>>(url, payload);
+  const apiPath = buildPath(path);
+  const resp = await httpClient.biz.post<SecondBrainResponse<T>>(apiPath, payload);
 
   if (!resp.ok) {
-    throw new Error(`[SecondBrainApi] 请求失败 ${resp.status}: ${url}`);
+    throw new Error(`[SecondBrainApi] 请求失败 ${resp.status}: ${apiPath}`);
   }
 
   const body = resp.data;
   if (!body || body.status !== 'success' || body.code !== 1) {
-    throw new Error(`[SecondBrainApi] 业务错误: ${body?.message ?? '未知错误'}`);
+    throw new Error(`[SecondBrainApi] 业务错误: ${body?.message ?? resp.error ?? '未知错误'}`);
   }
 
   return body.data;

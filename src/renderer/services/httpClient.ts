@@ -1,12 +1,15 @@
-/**
- * HeyClaw 统一 HTTP 请求客户端与全局错误拦截服务
- */
+import { getAdminBaseUrl } from '../../shared/endpoints';
+
+export type HttpTarget = 'admin' | 'biz';
 
 export interface RequestOptions {
+  /** 相对路径 (如 /api/vip/status) 或完整 URL */
   url: string;
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
   headers?: Record<string, string>;
   body?: any;
+  /** 目标后端：'admin' (Node admin-claw) 或 'biz' (PHP scrm)，默认 'admin' */
+  target?: HttpTarget;
   /** 是否跳过自动附带 Authorization 头，默认 false */
   skipAuth?: boolean;
   /** 是否跳过 401 全局拦截处理，默认 false */
@@ -17,6 +20,7 @@ export interface ApiResponse<T = any> {
   ok: boolean;
   status: number;
   data: T;
+  error?: string;
 }
 
 // 401 全局防抖锁（3秒内只触发一次 Toast 和登录弹窗，防止并发风暴）
@@ -44,53 +48,12 @@ export function handleUnauthorized() {
   window.dispatchEvent(new CustomEvent('app:unauthorized'));
 }
 
-let cachedAppVersion = '';
-
-async function getClientAppVersion(): Promise<string> {
-  if (cachedAppVersion) {
-    return cachedAppVersion;
-  }
-  try {
-    if (typeof window !== 'undefined' && window.electron?.appInfo?.getVersion) {
-      cachedAppVersion = await window.electron.appInfo.getVersion();
-    }
-  } catch {
-    // 静默容错
-  }
-  return cachedAppVersion;
-}
-
 export class HttpClient {
   /**
    * 通用请求核心方法
    */
   public async request<T = any>(options: RequestOptions): Promise<ApiResponse<T>> {
-    const { url, method = 'GET', headers = {}, body, skipAuth = false, skip401Handler = false } = options;
-
-    const finalHeaders: Record<string, string> = {
-      ...headers,
-    };
-
-    try {
-      const appVersion = await getClientAppVersion();
-      if (appVersion && !finalHeaders['X-Client-Version'] && !finalHeaders['x-client-version']) {
-        finalHeaders['X-Client-Version'] = appVersion;
-      }
-    } catch {
-      // 容错兜底：版本号附加失败绝不阻碍请求正常发出
-    }
-
-    // 若非 GET 请求且有 body 且未显式指定 Content-Type，默认为 JSON
-    if (method !== 'GET' && body !== undefined && !finalHeaders['Content-Type'] && !finalHeaders['content-type']) {
-      finalHeaders['Content-Type'] = 'application/json';
-    }
-
-    if (!skipAuth && !finalHeaders['Authorization'] && !finalHeaders['authorization']) {
-      const session = localStorage.getItem('heyclaw_session');
-      if (session) {
-        finalHeaders['Authorization'] = `Bearer ${session}`;
-      }
-    }
+    const { url, method = 'GET', headers = {}, body, target = 'admin', skipAuth = false, skip401Handler = false } = options;
 
     let payloadBody: any = undefined;
     if (body !== undefined && body !== null) {
@@ -101,8 +64,10 @@ export class HttpClient {
       const resp = (await window.electron.api.fetch({
         url,
         method,
-        headers: finalHeaders,
+        headers,
         body: payloadBody,
+        target,
+        skipAuth,
       })) as { ok: boolean; status?: number; data?: any };
 
       const status = resp.status || (resp.ok ? 200 : 500);
@@ -117,7 +82,7 @@ export class HttpClient {
           data.code === 401 ||
           (typeof data.message === 'string' && (data.message.includes('认证失败') || data.message.includes('未登录'))));
 
-      if ((status === 401 || status === 403 || isAuthErrorBody) && !skip401Handler) {
+      if ((status === 401 || status === 403 || isAuthErrorBody) && !skip401Handler && !skipAuth) {
         handleUnauthorized();
       }
 
@@ -125,59 +90,80 @@ export class HttpClient {
         ok: resp.ok,
         status,
         data: resp.data,
+        error: !resp.ok ? (typeof data === 'object' && (data?.error || data?.message) ? (data.error || data.message) : `HTTP ${status}`) : undefined,
       };
     } catch (err: any) {
-      console.error(`[HttpClient] Request failed: ${method} ${url}`, err);
+      console.error(`[HttpClient] Request failed: ${method} [${target}] ${url}`, err);
       return {
         ok: false,
         status: 0,
         data: { success: false, error: err?.message || '网络连接异常' } as any,
+        error: err?.message || '网络连接异常',
       };
     }
   }
 
-  public get<T = any>(url: string, headers?: Record<string, string>): Promise<ApiResponse<T>> {
-    return this.request<T>({ url, method: 'GET', headers });
-  }
+  /**
+   * Admin 中枢服务接口 (Node: admin-claw)
+   * 自动路由到 Node 端，无需关心域名拼接
+   */
+  public readonly admin = {
+    get: <T = any>(path: string, headers?: Record<string, string>): Promise<ApiResponse<T>> =>
+      this.request<T>({ url: path, method: 'GET', headers, target: 'admin' }),
+    post: <T = any>(path: string, body?: any, headers?: Record<string, string>): Promise<ApiResponse<T>> =>
+      this.request<T>({ url: path, method: 'POST', body, headers, target: 'admin' }),
+    put: <T = any>(path: string, body?: any, headers?: Record<string, string>): Promise<ApiResponse<T>> =>
+      this.request<T>({ url: path, method: 'PUT', body, headers, target: 'admin' }),
+    delete: <T = any>(path: string, headers?: Record<string, string>): Promise<ApiResponse<T>> =>
+      this.request<T>({ url: path, method: 'DELETE', headers, target: 'admin' }),
+  };
 
-  public post<T = any>(url: string, body?: any, headers?: Record<string, string>): Promise<ApiResponse<T>> {
-    return this.request<T>({ url, method: 'POST', body, headers });
-  }
-
-  public put<T = any>(url: string, body?: any, headers?: Record<string, string>): Promise<ApiResponse<T>> {
-    return this.request<T>({ url, method: 'PUT', body, headers });
-  }
-
-  public delete<T = any>(url: string, headers?: Record<string, string>): Promise<ApiResponse<T>> {
-    return this.request<T>({ url, method: 'DELETE', headers });
-  }
+  /**
+   * Biz 业务后端接口 (PHP: scrm)
+   * 自动路由到 PHP 端，无需关心域名拼接
+   */
+  public readonly biz = {
+    get: <T = any>(path: string, headers?: Record<string, string>): Promise<ApiResponse<T>> =>
+      this.request<T>({ url: path, method: 'GET', headers, target: 'biz' }),
+    post: <T = any>(path: string, body?: any, headers?: Record<string, string>): Promise<ApiResponse<T>> =>
+      this.request<T>({ url: path, method: 'POST', body, headers, target: 'biz' }),
+    put: <T = any>(path: string, body?: any, headers?: Record<string, string>): Promise<ApiResponse<T>> =>
+      this.request<T>({ url: path, method: 'PUT', body, headers, target: 'biz' }),
+    delete: <T = any>(path: string, headers?: Record<string, string>): Promise<ApiResponse<T>> =>
+      this.request<T>({ url: path, method: 'DELETE', headers, target: 'biz' }),
+  };
 
   /**
    * 通用二进制/文件上传方法 (支持附带用户凭据及自动未授权拦截)
    */
   public async uploadFile<T = any>(
-    url: string,
+    pathOrUrl: string,
     file: File | Blob,
     options?: {
       headers?: Record<string, string>;
       skipAuth?: boolean;
+      target?: HttpTarget;
     },
   ): Promise<ApiResponse<T>> {
+    // 渲染端如果传入相对路径，由 Electron 统一解析或者走相对路径
+    const session = localStorage.getItem('heyclaw_session');
+    const headers: Record<string, string> = {
+      'Content-Type': file.type || 'application/octet-stream',
+      ...(options?.headers || {}),
+    };
+
+    if (!options?.skipAuth && !headers['Authorization'] && session) {
+      headers['Authorization'] = `Bearer ${session}`;
+    }
+
     return new Promise((resolve) => {
       const xhr = new XMLHttpRequest();
-      xhr.open('POST', url, true);
+      // 如果不是 http(s) 开头，默认拼接 Admin 服务器端点
+      const finalUrl = /^https?:\/\//i.test(pathOrUrl)
+        ? pathOrUrl
+        : `${getAdminBaseUrl()}${pathOrUrl.startsWith('/') ? pathOrUrl : `/${pathOrUrl}`}`;
 
-      const headers: Record<string, string> = {
-        'Content-Type': file.type || 'application/octet-stream',
-        ...(options?.headers || {}),
-      };
-
-      if (!options?.skipAuth && !headers['Authorization']) {
-        const session = localStorage.getItem('heyclaw_session');
-        if (session) {
-          headers['Authorization'] = `Bearer ${session}`;
-        }
-      }
+      xhr.open('POST', finalUrl, true);
 
       Object.entries(headers).forEach(([k, v]) => {
         xhr.setRequestHeader(k, v);
@@ -194,7 +180,6 @@ export class HttpClient {
         const isSuccess = xhr.status >= 200 && xhr.status < 300;
         const isAuthError =
           xhr.status === 401 ||
-          xhr.status === 403 ||
           (parsedData &&
             typeof parsedData === 'object' &&
             (parsedData.code === 10001 ||
@@ -202,7 +187,7 @@ export class HttpClient {
               parsedData.error?.includes('未授权') ||
               parsedData.error?.includes('请先登录')));
 
-        if (isAuthError) {
+        if (isAuthError && !options?.skipAuth) {
           handleUnauthorized();
         }
 
@@ -210,6 +195,7 @@ export class HttpClient {
           ok: isSuccess,
           status: xhr.status,
           data: parsedData,
+          error: !isSuccess ? (parsedData?.error || parsedData?.message || `HTTP ${xhr.status}`) : undefined,
         });
       };
 
@@ -218,6 +204,7 @@ export class HttpClient {
           ok: false,
           status: 0,
           data: { success: false, error: '网络请求异常，请检查网络连接' } as any,
+          error: '网络请求异常，请检查网络连接',
         });
       };
 

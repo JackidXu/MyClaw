@@ -30,6 +30,7 @@ import {
   uninstallComputerUseRuntime,
 } from '../../computerUse/computerUseRuntime';
 import { cpRecursiveSync } from '../../fsCompat';
+import { mainHttpClient } from '../../libs/mainHttpClient';
 import { OpenClawConfigImpact } from '../../libs/openclawConfigImpact';
 import type { SkillManager } from '../../skills/skillManager';
 import { createSkinPackKitLifecycle } from '../../skins/skinPackKitLifecycle';
@@ -69,7 +70,6 @@ function downloadBuffer(url: string): Promise<Buffer> {
 
 export interface KitHandlerDeps {
   getStore: () => SqliteStore;
-  getKitStoreUrl: () => string;
   getSkillManager: () => SkillManager;
   syncOpenClawConfig: (options: {
     reason: string;
@@ -212,7 +212,7 @@ function notifySkillsChanged(): void {
 }
 
 export function registerKitHandlers(deps: KitHandlerDeps): void {
-  const { getStore, getKitStoreUrl, getSkillManager, syncOpenClawConfig } = deps;
+  const { getStore, getSkillManager, syncOpenClawConfig } = deps;
   const skinPackKitLifecycle = createSkinPackKitLifecycle({
     getStore,
     getSkillManager,
@@ -223,33 +223,17 @@ export function registerKitHandlers(deps: KitHandlerDeps): void {
     isComputerUseKitSupportedPlatform() ? [buildComputerUseMarketplaceKit()] : []
   );
 
-  // Fetch kit store catalog from overmind
+  // Fetch kit store catalog from admin-claw
   ipcMain.handle('kits:fetchStore', async () => {
-    const url = getKitStoreUrl()
-    console.log(`[KitStore] fetching from: ${url}`);
     try {
-      const http = await import('http');
-      const https = await import('https');
-      const mod = url.startsWith('https:') ? https : http;
-      const data = await new Promise<string>((resolve, reject) => {
-        const req = mod.get(url, { timeout: 10000 }, (res) => {
-          if (res.statusCode !== 200) {
-            reject(new Error(`HTTP ${res.statusCode}`));
-            res.resume();
-            return;
-          }
-          let body = '';
-          res.setEncoding('utf8');
-          res.on('data', (chunk: string) => { body += chunk; });
-          res.on('end', () => resolve(body));
-          res.on('error', reject);
-        });
-        req.on('error', reject);
-        req.on('timeout', () => { req.destroy(); reject(new Error('Request timeout')); });
-      });
+      const res = await mainHttpClient.admin.get('/api/kits');
+      if (!res.ok) {
+        throw new Error(res.error || `HTTP ${res.status}`);
+      }
+      const rawData = typeof res.data === 'string' ? res.data : JSON.stringify(res.data);
       return {
         success: true,
-        data: skinPackKitLifecycle.appendToStoreResponse(data, getAdditionalBuiltInKits()),
+        data: skinPackKitLifecycle.appendToStoreResponse(rawData, getAdditionalBuiltInKits()),
       };
     } catch (error) {
       console.error('[KitStore] fetch failed:', error);

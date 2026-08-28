@@ -1,7 +1,6 @@
 import { ArrowPathIcon, CheckIcon, PaperClipIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
-import { getFeedbackUrl, getUploadUrl } from '../services/endpoints';
 import { httpClient } from '../services/httpClient';
 import Modal from './common/Modal';
 
@@ -61,8 +60,8 @@ const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ onClose }) => {
 
   // 上传文件至 OSS
   const uploadFile = async (file: File): Promise<string | null> => {
-    const targetUrl = getUploadUrl('feedback', file.name);
-    const resp = await httpClient.uploadFile<{ success: boolean; url?: string; error?: string }>(targetUrl, file);
+    const targetPath = `/api/upload?folder=feedback&filename=${encodeURIComponent(file.name)}`;
+    const resp = await httpClient.uploadFile<{ success: boolean; url?: string; error?: string }>(targetPath, file);
     if (resp.ok && resp.data && resp.data.success && resp.data.url) {
       return resp.data.url;
     }
@@ -162,8 +161,8 @@ const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ onClose }) => {
         diagnostics: includeDiagnostics ? diagnosticsData : {},
       };
 
-      const res = await httpClient.post<{ success: boolean; id?: number; message?: string; error?: string }>(
-        getFeedbackUrl(),
+      const res = await httpClient.admin.post<{ success: boolean; id?: number; message?: string; error?: string }>(
+        '/api/feedback',
         payload,
       );
 

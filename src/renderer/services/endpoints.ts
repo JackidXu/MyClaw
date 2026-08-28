@@ -1,6 +1,5 @@
 /**
  * 集中管理所有业务 API 端点。
- * 后续新增的业务接口也应在此文件中配置。
  */
 
 import { configService } from './config';
@@ -19,31 +18,6 @@ export const getManualUpdateCheckUrl = () =>
 
 export const getFallbackDownloadUrl = () =>
   'https://claw.chaohui.ai/';
-
-// Skill 商店
-export const getSkillStoreUrl = () => `${getServerApiBaseUrl()}/api/skills`;
-
-// Kit 商店
-export const getKitStoreUrl = () => `${getServerApiBaseUrl()}/api/kits`;
-
-// 快速发问
-export const getQuickActionsUrl = () => `${getServerApiBaseUrl()}/api/quick-actions`;
-
-// 用户个人信息与余额 (基于 Bearer 令牌鉴权)
-export const getUserProfileUrl = () =>
-  `${getServerApiBaseUrl()}/api/client/user-profile`;
-
-// 修改密码
-export const getChangePasswordUrl = () =>
-  `${getServerApiBaseUrl()}/api/client/change-password`;
-
-// 问题反馈
-export const getFeedbackUrl = () =>
-  `${getServerApiBaseUrl()}/api/feedback`;
-
-// 文件上传
-export const getUploadUrl = (folder = 'feedback', filename = '') =>
-  `${getServerApiBaseUrl()}/api/upload?folder=${encodeURIComponent(folder)}&filename=${encodeURIComponent(filename)}`;
 
 // 登录地址
 export const getLoginOvermindUrl = () => isTestModeEnabled()
@@ -75,14 +49,13 @@ export const getPortalCreditsResetActivityUrl = (campaignCode?: string) => (
   `${getPortalBase()}/profile?activity=credits_reset${campaignCode ? `&campaignCode=${encodeURIComponent(campaignCode)}` : ''}`
 );
 
+/**
+ * 有道自建服务器基础端点 (有道账号/刷新/分享等)
+ */
 export const getServerApiBaseUrl = (): string => {
-  if (isTestModeEnabled()) {
-    return 'http://localhost:8082';
-  }
-  if (import.meta.env.DEV && import.meta.env.MODE !== 'test') {
-    return 'http://localhost:8082';
-  }
-  return 'https://admin.claw.chaohui.ai';
+  return isTestModeEnabled()
+    ? 'https://lobsterai-server.inner.youdao.com'
+    : 'https://lobsterai-server.youdao.com';
 };
 
 export const getEnterpriseMemberProfileUrl = (enterpriseId: number) => (

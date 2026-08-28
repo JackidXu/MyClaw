@@ -2,12 +2,12 @@ import { ipcMain } from 'electron';
 import fs from 'fs';
 import path from 'path';
 
+import { mainHttpClient } from '../../libs/mainHttpClient';
 import { updatePluginSkillIdsFromReport } from '../../skills';
 import type { SkillManager } from '../../skills/skillManager';
 
 export interface SkillHandlerDeps {
   getSkillManager: () => SkillManager;
-  getSkillStoreUrl: () => string;
   getOpenClawRuntimeAdapter: () => {
     connectGatewayIfNeeded: () => Promise<void>;
     getGatewayClient: () => {
@@ -21,7 +21,7 @@ export interface SkillHandlerDeps {
 }
 
 export function registerSkillHandlers(deps: SkillHandlerDeps): void {
-  const { getSkillManager, getSkillStoreUrl, getOpenClawRuntimeAdapter } = deps;
+  const { getSkillManager, getOpenClawRuntimeAdapter } = deps;
 
   ipcMain.handle('skills:list', () => {
     try {
@@ -179,29 +179,13 @@ export function registerSkillHandlers(deps: SkillHandlerDeps): void {
   });
 
   ipcMain.handle('skills:fetchMarketplace', async () => {
-    const url = getSkillStoreUrl();
-    console.log(`[SkillMarketplace] fetching from: ${url}`);
     try {
-      const http = await import('http');
-      const https = await import('https');
-      const mod = url.startsWith('https:') ? https : http;
-      const data = await new Promise<string>((resolve, reject) => {
-        const req = mod.get(url, { timeout: 10000 }, (res) => {
-          if (res.statusCode !== 200) {
-            reject(new Error(`HTTP ${res.statusCode}`));
-            res.resume();
-            return;
-          }
-          let body = '';
-          res.setEncoding('utf8');
-          res.on('data', (chunk: string) => { body += chunk; });
-          res.on('end', () => resolve(body));
-          res.on('error', reject);
-        });
-        req.on('error', reject);
-        req.on('timeout', () => { req.destroy(); reject(new Error('Request timeout')); });
-      });
-      return { success: true, data };
+      const res = await mainHttpClient.admin.get('/api/skills');
+      if (!res.ok) {
+        throw new Error(res.error || `HTTP ${res.status}`);
+      }
+      const rawData = typeof res.data === 'string' ? res.data : JSON.stringify(res.data);
+      return { success: true, data: rawData };
     } catch (error) {
       console.error('[SkillMarketplace] fetch failed:', error);
       return { success: false, error: error instanceof Error ? error.message : 'Failed to fetch skill marketplace' };

@@ -766,8 +766,10 @@ interface IElectronAPI {
     fetch: (options: {
       url: string;
       method: string;
-      headers: Record<string, string>;
+      headers?: Record<string, string>;
       body?: string;
+      target?: 'admin' | 'biz';
+      skipAuth?: boolean;
     }) => Promise<ApiResponse>;
     stream: (options: {
       url: string;
@@ -880,7 +882,6 @@ interface IElectronAPI {
       imageAttachments?: Array<{ name: string; mimeType: string; base64Data: string; sizeBytes?: number; localPath?: string; previewMimeType?: string; previewBase64Data?: string }>;
       mediaSelection?: { mode: string; modelId?: string; modelName?: string; imageModelId?: string; videoModelId?: string };
       mediaReferences?: Array<{ token: string; mediaType: string; index: number; fileId: string; fileName: string; mimeType: string; localPath?: string; remoteUrl?: string; dataUrl?: string; role?: string }>;
-      fmpAuthHeaders?: { Authorization?: string };
     }) => Promise<{
       success: boolean;
       session?: CoworkSession;
@@ -902,7 +903,6 @@ interface IElectronAPI {
       imageAttachments?: Array<{ name: string; mimeType: string; base64Data: string; sizeBytes?: number; localPath?: string; previewMimeType?: string; previewBase64Data?: string }>;
       mediaSelection?: { mode: string; modelId?: string; modelName?: string; imageModelId?: string; videoModelId?: string };
       mediaReferences?: Array<{ token: string; mediaType: string; index: number; fileId: string; fileName: string; mimeType: string; localPath?: string; remoteUrl?: string; dataUrl?: string; role?: string }>;
-      fmpAuthHeaders?: { Authorization?: string };
     }) => Promise<{
       success: boolean;
       session?: CoworkSession;

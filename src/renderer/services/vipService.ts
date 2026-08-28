@@ -1,7 +1,6 @@
 import { store } from '../store';
 import { agentService } from './agent';
 import { coworkService } from './cowork';
-import { getServerApiBaseUrl } from './endpoints';
 import { expertService } from './expertService';
 import { httpClient } from './httpClient';
 
@@ -109,16 +108,13 @@ class VipService {
       // 获取设备指纹
       const deviceInfo = await window.electron.getDeviceInfo();
 
-      // 获取 admin-claw 统一服务地址
-      const adminBaseUrl = getServerApiBaseUrl();
-
-      const res = await httpClient.post<{
+      const res = await httpClient.admin.post<{
         authorized?: boolean;
         reason?: string;
         expiredAt?: string;
         subscriptions?: VipSubscription[];
         permissions?: string[];
-      }>(`${adminBaseUrl}/api/vip/status`, {
+      }>('/api/vip/status', {
         deviceId: deviceInfo.deviceId,
         platform: deviceInfo.platform,
         hostname: deviceInfo.hostname,
