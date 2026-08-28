@@ -141,6 +141,9 @@ export const getToolDisplayName = (toolName: string | undefined): string => {
       return 'WebFetch';
     case 'browser':
       return 'Browser';
+    case 'heyclawwebsearch':
+    case 'websearch':
+      return 'WebSearch';
     default:
       return toolName;
   }

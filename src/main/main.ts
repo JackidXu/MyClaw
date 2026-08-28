@@ -2357,6 +2357,7 @@ const getOpenClawConfigSync = (): OpenClawConfigSync => {
       getAskUserCallbackUrl: () => getMcpRuntime().getAskUserCallbackUrl(),
       getMediaCallbackUrl: () => getMcpRuntime().getMediaCallbackUrl(),
       getSecondBrainCallbackUrl: () => getMcpRuntime().getSecondBrainCallbackUrl(),
+      getWebSearchCallbackUrl: () => getMcpRuntime().getWebSearchCallbackUrl(),
       getMcpBridgeSecret: () => getMcpRuntime().getBridgeSecret(),
 
       getAgents: () => getCoworkStore().listAgents(),

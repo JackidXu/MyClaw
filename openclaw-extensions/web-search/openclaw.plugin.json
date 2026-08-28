@@ -1,0 +1,29 @@
+{
+  "id": "web-search",
+  "name": "WebSearch",
+  "description": "Real-time web search powered by HeyClaw and Volcano Engine.",
+  "contracts": {
+    "tools": [
+      "heyclaw_web_search"
+    ]
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "callbackUrl": {
+        "type": "string",
+        "description": "HeyClaw HTTP callback URL for web search requests"
+      },
+      "secret": {
+        "type": "string",
+        "description": "Shared secret for callback authentication"
+      },
+      "requestTimeoutMs": {
+        "type": "number",
+        "minimum": 1000,
+        "description": "Request timeout in milliseconds"
+      }
+    }
+  }
+}

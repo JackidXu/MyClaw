@@ -100,6 +100,10 @@ export class McpRuntime {
     return this.bridgeServer?.secondBrainCallbackUrl ?? null;
   }
 
+  getWebSearchCallbackUrl(): string | null {
+    return this.bridgeServer?.webSearchCallbackUrl ?? null;
+  }
+
 
   getBridgeSecret(): string {
     return this.bridgeSecret;

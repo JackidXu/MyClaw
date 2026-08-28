@@ -9,6 +9,7 @@ import http from 'http';
 import net from 'net';
 
 import { executeSecondBrainRetrieve } from '../secondBrain/secondBrainBridge';
+import { executeWebSearch } from '../webSearch/webSearchBridge';
 import { serializeForLog } from './sanitizeForLog';
 
 
@@ -90,6 +91,10 @@ export class McpBridgeServer {
 
   get secondBrainCallbackUrl(): string | null {
     return this._port ? `http://127.0.0.1:${this._port}/second-brain/retrieve` : null;
+  }
+
+  get webSearchCallbackUrl(): string | null {
+    return this._port ? `http://127.0.0.1:${this._port}/web-search/search` : null;
   }
 
 
@@ -251,6 +256,11 @@ export class McpBridgeServer {
       return;
     }
 
+    if (req.url?.startsWith('/web-search/search')) {
+      await this.handleWebSearch(req, res);
+      return;
+    }
+
     res.writeHead(404, { 'Content-Type': 'application/json' });
 
     res.end(JSON.stringify({ error: 'Not found' }));
@@ -386,6 +396,32 @@ export class McpBridgeServer {
       if (!res.writableEnded) {
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ content: [{ type: 'text', text: `第二大脑检索失败: ${errMsg}` }], isError: true }));
+      }
+    }
+  }
+
+  private async handleWebSearch(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    const t0 = Date.now();
+    try {
+      const body = await this.readBody(req);
+      const payload = JSON.parse(body) as { query?: string; count?: number; sessionKey?: string; toolCallId?: string };
+      log('INFO', `Web search request received: query="${payload.query ?? ''}" count=${payload.count ?? 5} toolCallId=${payload.toolCallId ?? ''}`);
+
+      const result = await executeWebSearch({
+        query: typeof payload.query === 'string' ? payload.query : '',
+        count: typeof payload.count === 'number' ? payload.count : undefined,
+        sessionKey: typeof payload.sessionKey === 'string' ? payload.sessionKey : undefined,
+      });
+
+      log('INFO', `Web search completed in ${Date.now() - t0}ms, isError=${result.isError ?? false}`);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(result));
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      log('ERROR', `Web search request failed after ${Date.now() - t0}ms: ${errMsg}`);
+      if (!res.writableEnded) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ content: [{ type: 'text', text: `联网搜索失败: ${errMsg}` }], isError: true }));
       }
     }
   }

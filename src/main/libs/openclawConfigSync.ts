@@ -381,19 +381,14 @@ const providerApiKeyEnvVar = (providerName: string): string => {
 const MANAGED_WEB_SEARCH_POLICY_PROMPT = [
   '## Web Search & Information Retrieval Policy',
   '',
-  'Built-in `web_search` is disabled in this workspace. Do not ask for or rely on the Brave Search API.',
-  '',
-  'When you need live web information or research:',
-  '- **Reading User-Provided URLs / Content Fetching**: When the user asks you to read, summarize, analyze, or process a URL (e.g. shared articles, audio sharing links, API docs, public web pages), ALWAYS FIRST use `web_fetch` to silently fetch and extract the markdown/text in the background.',
+  'When you need live web information, keyword search, news, industry research, public persona methodology, or real-time data:',
+  '- **Primary Full-Web Search Tool (`heyclaw_web_search`)**: ALWAYS FIRST use `heyclaw_web_search` for all keyword queries, current events, market research, WeChat article searching, and online information discovery. It runs natively and returns clean structured web snippets instantly.',
+  '- **Reading User-Provided URLs / Content Fetching**: When the user explicitly asks you to read, summarize, analyze, or process a specific URL (e.g. shared direct article links, audio sharing links, API docs, public web pages), use `web_fetch` to silently fetch and extract the markdown/text in the background.',
   '- **NEVER Launch External System Browsers**: NEVER run shell/terminal commands (such as `open <url>`, `start <url>`, `xdg-open`, `curl`, `wget`) via `exec`/`bash` to open web pages in the user\'s desktop browser. Web content extraction must happen internally and silently.',
-  '- **Keyword Search & Discovery**: NEVER use `web_fetch` on search engine result pages (e.g. `baidu.com/s?wd=...`, `google.com/search`, `bing.com/search`, `sogou.com`). Search engines strictly block HTTP scrapers with CAPTCHAs. Use the `web-search` skill or the built-in `browser` tool instead.',
-  '- **Dynamic, SPA & Anti-Scraping Pages**: For websites requiring JavaScript rendering or strict bot verification (e.g. Xiaohongshu/小红书, WeChat articles/微信公众号, Zhihu, Weibo, major news portals), ALWAYS use `browser` (`target="host"`). Do not attempt `web_fetch`. The browser runs in headless mode silently.',
-  '- **Direct Static URLs**: Only use `web_fetch` for known, static, public direct article/API URLs without CAPTCHAs.',
-  '- If a `web_fetch` call fails or gets blocked by a CAPTCHA/WAF, immediately switch to the `browser` tool or `web-search` skill instead of continuously guessing alternative HTTP URLs.',
-  '- Only use the HeyClaw `web-search` skill when local command execution is available. Native channel sessions may deny `exec`, so prefer `browser` or `web_fetch` there.',
-  '- Exception: the `imap-smtp-email` skill must always use `exec` to run its scripts, even in native channel sessions. Do not skip it because of exec restrictions.',
+  '- **NEVER Use Search Engines in `browser` / `web_fetch`**: NEVER use `web_fetch` or `browser` to crawl search engine result pages (e.g. `baidu.com`, `google.com`, `bing.com`, `sogou.com`) as they trigger anti-bot verification CAPTCHAs. Use `heyclaw_web_search` instead.',
+  '- **Dynamic, SPA & Anti-Scraping Direct Pages**: For specific direct non-search URLs requiring JavaScript rendering (e.g. Xiaohongshu/小红书, Zhihu), use `browser` (`target="host"`).',
   '',
-  'Do not claim you searched the web unless you actually used `browser`, `web_fetch`, or the HeyClaw `web-search` skill.',
+  'Do not claim you searched the web unless you actually called `heyclaw_web_search`, `web_fetch`, or `browser`.',
 ].join('\n');
 
 const MANAGED_LARGE_FILE_CREATION_POLICY_PROMPT = [
@@ -1882,6 +1877,7 @@ type OpenClawConfigSyncDeps = {
   getAskUserCallbackUrl?: () => string | null;
   getMediaCallbackUrl?: () => string | null;
   getSecondBrainCallbackUrl?: () => string | null;
+  getWebSearchCallbackUrl?: () => string | null;
   getMcpBridgeSecret?: () => string;
 
   getSkillsList?: () => Array<{ id: string; name: string; enabled: boolean }>;
@@ -1912,6 +1908,7 @@ export class OpenClawConfigSync {
   private readonly getAskUserCallbackUrl?: () => string | null;
   private readonly getMediaCallbackUrl?: () => string | null;
   private readonly getSecondBrainCallbackUrl?: () => string | null;
+  private readonly getWebSearchCallbackUrl?: () => string | null;
   private readonly getMcpBridgeSecret?: () => string;
 
   private readonly getSkillsList?: () => Array<{ id: string; name: string; enabled: boolean }>;
@@ -1943,6 +1940,7 @@ export class OpenClawConfigSync {
     this.getAskUserCallbackUrl = deps.getAskUserCallbackUrl;
     this.getMediaCallbackUrl = deps.getMediaCallbackUrl;
     this.getSecondBrainCallbackUrl = deps.getSecondBrainCallbackUrl;
+    this.getWebSearchCallbackUrl = deps.getWebSearchCallbackUrl;
     this.getMcpBridgeSecret = deps.getMcpBridgeSecret;
 
     this.getSkillsList = deps.getSkillsList;
@@ -2359,6 +2357,7 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
     const hasAskUserPlugin = isBundledPluginAvailable('ask-user-question');
     const hasMediaGenPlugin = isBundledPluginAvailable('lobster-media-generation');
     const hasSecondBrainPlugin = isBundledPluginAvailable('second-brain');
+    const hasWebSearchPlugin = isBundledPluginAvailable('web-search');
 
     // Runtime-bundled xai extension (dist/extensions/xai): provides the Grok
     // model compat hooks (e.g. only grok-4.3 accepts reasoningEffort) plus the
@@ -2608,6 +2607,7 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
           ...(hasAskUserPlugin ? { 'ask-user-question': { enabled: true } } : {}),
           ...(hasMediaGenPlugin ? { 'lobster-media-generation': { enabled: true } } : {}),
           ...(hasSecondBrainPlugin ? { 'second-brain': { enabled: true } } : {}),
+          ...(hasWebSearchPlugin ? { 'web-search': { enabled: true } } : {}),
 
           ...(hasModelCompatConfig
             ? {
@@ -2658,6 +2658,7 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
           ...(hasAskUserPlugin ? ['ask-user-question'] : []),
           ...(hasMediaGenPlugin ? ['lobster-media-generation'] : []),
           ...(hasSecondBrainPlugin ? ['second-brain'] : []),
+          ...(hasWebSearchPlugin ? ['web-search'] : []),
           ...(hasModelCompatConfig
             ? [OPENCLAW_MODEL_COMPAT_PLUGIN_ID]
             : []),
@@ -2757,6 +2758,21 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
             tools: dynamicTools.map(t => t.function),
             tool: dynamicTools[0].function,
           } : {}),
+        },
+      };
+    }
+
+    // Sync WebSearch plugin config
+    const webSearchCallbackUrl = this.getWebSearchCallbackUrl?.();
+    if (hasWebSearchPlugin && webSearchCallbackUrl && managedConfig.plugins) {
+      const plugins = managedConfig.plugins as Record<string, unknown>;
+      const entries = plugins.entries as Record<string, Record<string, unknown>>;
+      entries['web-search'] = {
+        enabled: true,
+        config: {
+          callbackUrl: webSearchCallbackUrl,
+          secret: '${LOBSTER_MCP_BRIDGE_SECRET}',
+          requestTimeoutMs: 60000,
         },
       };
     }
