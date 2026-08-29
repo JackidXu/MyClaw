@@ -16,7 +16,6 @@ export type LibraryItemAction =
   (typeof LibraryItemAction)[keyof typeof LibraryItemAction];
 
 const LOCAL_ACTIONS = [
-  LibraryItemAction.ShareLocal,
   LibraryItemAction.ToggleFavorite,
   LibraryItemAction.OpenWithApp,
   LibraryItemAction.RevealLocal,
@@ -38,7 +37,6 @@ const SITE_ACTIONS = [
 ] as const;
 
 const PREVIEW_PROMOTED_ACTIONS = new Set<LibraryItemAction>([
-  LibraryItemAction.ShareLocal,
   LibraryItemAction.ToggleFavorite,
 ]);
 

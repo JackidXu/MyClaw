@@ -53,7 +53,6 @@ describe('library item action policy', () => {
   test('uses the overflow menu for local file management instead of preview', () => {
     const actions = getLibraryCardActionIds(makeItem(LibraryItemKind.LocalArtifact));
     expect(actions).toEqual([
-      LibraryItemAction.ShareLocal,
       LibraryItemAction.ToggleFavorite,
       LibraryItemAction.OpenWithApp,
       LibraryItemAction.RevealLocal,
@@ -97,8 +96,7 @@ describe('library item action policy', () => {
     const cardActions = getLibraryCardActionIds(item);
     const previewActions = getLibraryPreviewActionIds(item);
     expect(cardActions.filter(action => (
-      action !== LibraryItemAction.ShareLocal
-      && action !== LibraryItemAction.ToggleFavorite
+      action !== LibraryItemAction.ToggleFavorite
     ))).toEqual(previewActions);
   });
 

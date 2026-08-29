@@ -25,15 +25,6 @@ import type {
 import { loadDetectedFileArtifact } from '../../services/artifactDetection';
 import { i18nService } from '../../services/i18n';
 import type { Artifact } from '../../types/artifact';
-import {
-  ArtifactPreviewActionSource,
-  ArtifactPublishEntryPoint,
-} from '../artifacts/artifactAnalytics';
-import {
-  ArtifactFileShareProvider,
-  useOptionalArtifactFileShare,
-} from '../artifacts/ArtifactFileShareController';
-import { isArtifactFileShareable } from '../artifacts/artifactFileSharePolicy';
 import ArtifactRenderer from '../artifacts/ArtifactRenderer';
 import {
   CARD_OVERFLOW_MENU_ITEM_CLASSNAME,
@@ -52,7 +43,6 @@ import FileTypeIcon from '../icons/fileTypes/FileTypeIcon';
 import ShareUploadIcon from '../icons/ShareUploadIcon';
 import Tooltip, { TooltipAlign, TooltipPosition } from '../ui/Tooltip';
 import { LIBRARY_ACTION_MENU_WIDTH_PX } from './libraryActionMenuPresentation';
-import { LibraryAnalyticsSurface } from './libraryAnalytics';
 import { createLibraryArtifactCandidate } from './libraryArtifactCandidate';
 import {
   getLibraryPreviewActionIds,
@@ -168,9 +158,9 @@ const PreviewHeaderAction: React.FC<PreviewHeaderActionProps> = ({
   </Tooltip>
 );
 
-const LibraryPreviewModalContent: React.FC<LibraryPreviewModalProps> = ({
+const LibraryPreviewModal: React.FC<LibraryPreviewModalProps> = ({
   item,
-  analyticsPageViewId,
+  analyticsPageViewId: _analyticsPageViewId,
   detail,
   detailLoading,
   onClose,
@@ -182,7 +172,6 @@ const LibraryPreviewModalContent: React.FC<LibraryPreviewModalProps> = ({
   onOpenSession,
   onShowSites,
 }) => {
-  const artifactFileShare = useOptionalArtifactFileShare();
   const [artifact, setArtifact] = useState<Artifact | null>(null);
   const [loading, setLoading] = useState(false);
   const [activePopover, setActivePopover] = useState<HeaderPopover>();
@@ -235,22 +224,6 @@ const LibraryPreviewModalContent: React.FC<LibraryPreviewModalProps> = ({
     ? Math.max(localItem.relatedSessionCount, sessions.length)
     : sessions.length;
   const hasPreviewMenuItems = previewActions.length > 0;
-  const canShare = Boolean(
-    localItem
-    && artifact
-    && artifactFileShare
-    && isArtifactFileShareable(artifact),
-  );
-
-  const handleShare = (): void => {
-    if (!artifact || !artifactFileShare || !canShare) return;
-    void artifactFileShare.openShare(artifact, {
-      source: ArtifactPreviewActionSource.LibraryPreview,
-      entryPoint: ArtifactPublishEntryPoint.LibraryToolbar,
-      surface: LibraryAnalyticsSurface.MyFiles,
-      pageViewId: analyticsPageViewId,
-    });
-  };
 
   const runAction = (action: LibraryItemActionValue): void => {
     setActivePopover(undefined);
@@ -267,13 +240,11 @@ const LibraryPreviewModalContent: React.FC<LibraryPreviewModalProps> = ({
     setActivePopover(current => current === 'actions' ? undefined : 'actions');
     setIsSessionsExpanded(false);
   };
-  const handleEscape = artifactFileShare?.isOverlayOpen
-    ? undefined
-    : isSessionsExpanded
-      ? () => setIsSessionsExpanded(false)
-      : activePopover
-        ? () => setActivePopover(undefined)
-        : onClose;
+  const handleEscape = isSessionsExpanded
+    ? () => setIsSessionsExpanded(false)
+    : activePopover
+      ? () => setActivePopover(undefined)
+      : onClose;
 
   return (
     <Modal
@@ -303,15 +274,6 @@ const LibraryPreviewModalContent: React.FC<LibraryPreviewModalProps> = ({
           </div>
 
           <div className="flex shrink-0 items-center gap-1" data-library-preview-popover>
-            {localItem && (
-              <PreviewHeaderAction
-                label={i18nService.t('htmlShare')}
-                onClick={handleShare}
-                disabled={!canShare}
-              >
-                <ShareUploadIcon className="h-4 w-4" />
-              </PreviewHeaderAction>
-            )}
             <PreviewHeaderAction
               label={item.isFavorite
                 ? i18nService.t('libraryRemoveFavorite')
@@ -475,37 +437,15 @@ const LibraryPreviewModalContent: React.FC<LibraryPreviewModalProps> = ({
                 <GlobeAltIcon className="h-8 w-8 text-primary" />
               </div>
               <div>
-                <h3 className={`${MANAGEMENT_TITLE_TEXT} font-semibold text-foreground`}>
+                <h3 className={`text-base font-semibold text-foreground`}>
                   {item.title}
                 </h3>
-                <p className={`${MANAGEMENT_BODY_TEXT} mt-1 max-w-md leading-[var(--lobster-leading-sm)] text-secondary`}>
-                  {i18nService.t('libraryCloudPreviewDescription')}
-                </p>
               </div>
-              <button
-                type="button"
-                onClick={onOpenLink}
-                className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-4 text-xs font-medium text-white hover:opacity-90"
-              >
-                <ArrowTopRightOnSquareIcon className="h-4 w-4" />
-                {i18nService.t('libraryOpenLink')}
-              </button>
             </div>
           )}
         </div>
       </section>
     </Modal>
-  );
-};
-
-const LibraryPreviewModal: React.FC<LibraryPreviewModalProps> = props => {
-  if (props.item.itemKind !== LibraryItemKind.LocalArtifact) {
-    return <LibraryPreviewModalContent {...props} />;
-  }
-  return (
-    <ArtifactFileShareProvider sessionId={props.item.latestSession.sessionId}>
-      <LibraryPreviewModalContent {...props} />
-    </ArtifactFileShareProvider>
   );
 };
 

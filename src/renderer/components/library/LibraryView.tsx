@@ -34,7 +34,6 @@ import {
   LibraryViewMode,
 } from '../../../shared/library/constants';
 import type {
-  LibraryCloudItem,
   LibraryCloudListData,
   LibraryItem,
   LibraryLocalDetailData,
@@ -42,21 +41,10 @@ import type {
   LibrarySessionRef,
   LocalArtifactItem,
 } from '../../../shared/library/types';
-import { loadDetectedFileArtifact } from '../../services/artifactDetection';
 import { copyTextToClipboard } from '../../services/clipboard';
 import { i18nService } from '../../services/i18n';
 import { startLibraryBackfill } from '../../services/libraryBackfill';
 import type { RootState } from '../../store';
-import {
-  ArtifactPreviewActionSource,
-  ArtifactPublishEntryPoint,
-} from '../artifacts/artifactAnalytics';
-import {
-  ArtifactFileShareProvider,
-  useOptionalArtifactFileShare,
-} from '../artifacts/ArtifactFileShareController';
-import { isArtifactFileShareable } from '../artifacts/artifactFileSharePolicy';
-import { shouldShowFreePublishingDeleteQuotaNotice } from '../artifacts/publishingDeleteNoticePolicy';
 import CardOverflowMenu, { type CardOverflowMenuItem } from '../common/CardOverflowMenu';
 import {
   MANAGEMENT_BODY_TEXT,
@@ -65,7 +53,6 @@ import {
   MANAGEMENT_TITLE_TEXT,
 } from '../common/managementTypography';
 import FileTypeIcon from '../icons/fileTypes/FileTypeIcon';
-import ShareUploadIcon from '../icons/ShareUploadIcon';
 import SidebarToggleIcon from '../icons/SidebarToggleIcon';
 import Tooltip, { TooltipAlign, TooltipPosition } from '../ui/Tooltip';
 import { LIBRARY_ACTION_MENU_WIDTH_PX } from './libraryActionMenuPresentation';
@@ -78,13 +65,8 @@ import {
   LibraryAnalyticsControl,
   LibraryAnalyticsEventPhase,
   LibraryAnalyticsResult,
-  LibraryAnalyticsSurface,
   reportLibraryAction,
 } from './libraryAnalytics';
-import {
-  canShareLibraryArtifact,
-  createLibraryArtifactCandidate,
-} from './libraryArtifactCandidate';
 import LibraryCategoryDropdown from './LibraryCategoryDropdown';
 import {
   formatLibraryDateGroupTitle,
@@ -105,7 +87,6 @@ import {
 } from './libraryItemPresentation';
 import {
   applyLibraryFavoriteState,
-  removeLibraryCloudItem,
   restoreLibraryFavoriteState,
   sanitizeLibraryLocalListData,
 } from './libraryListState';
@@ -123,7 +104,6 @@ import {
   type LibraryRefreshBatch,
   LibraryRefreshCoordinator,
 } from './libraryRefreshCoordinator';
-import LibraryCloudView from './LibrarySharedFilesView';
 import {
   createLibraryThumbnailCacheKey,
   getCachedLibraryThumbnail,
@@ -208,11 +188,6 @@ const CATEGORY_FILTERS = [
   LibraryCategory.Image,
   LibraryCategory.Media,
   LibraryCategory.Other,
-] as const;
-
-const SOURCE_FILTERS = [
-  LibrarySourceFilter.Local,
-  LibrarySourceFilter.Cloud,
 ] as const;
 
 const getLibrarySessionKey = (item: LibraryItem): string => {
@@ -314,24 +289,6 @@ const LibraryThumbnail: React.FC<{ item: LibraryItem }> = ({ item }) => {
   );
 };
 
-const SourceTab: React.FC<{
-  source: LibrarySourceFilter;
-  active: boolean;
-  onClick: () => void;
-}> = ({ source, active, onClick }) => (
-  <button
-    type="button"
-    role="tab"
-    aria-selected={active}
-    onClick={onClick}
-    className={`non-draggable inline-flex h-8 items-center gap-1.5 rounded-lg px-3 ${MANAGEMENT_PAGE_TITLE_TEXT} font-semibold transition-colors ${
-      active ? 'bg-surface-raised text-foreground' : 'text-secondary hover:text-foreground'
-    }`}
-  >
-    {i18nService.t(`librarySource_${source}`)}
-  </button>
-);
-
 const LibraryListItemIcon: React.FC<{ item: LibraryItem }> = ({ item }) => {
   const isWebsite = isLibraryWebsiteItem(item);
   return (
@@ -420,22 +377,18 @@ const LibraryItemCard: React.FC<{
   );
 };
 
-const LibraryViewContent: React.FC<LibraryViewProps> = ({
+const LibraryView: React.FC<LibraryViewProps> = ({
   isAuthenticated,
   isSidebarCollapsed,
   onToggleSidebar,
   onOpenSession,
   sitesHidden = false,
-  sitesReadOnly = false,
+  sitesReadOnly: _sitesReadOnly = false,
   updateBadge,
   requestedSource = LibrarySourceFilter.Local,
   navigationRequestId = 0,
 }) => {
-  const artifactFileShare = useOptionalArtifactFileShare();
   const ownerAccountKey = useSelector((state: RootState) => state.auth.ownerAccountKey);
-  const showFreeShareDeleteQuotaNotice = useSelector((state: RootState) => (
-    shouldShowFreePublishingDeleteQuotaNotice(state.auth.quota?.subscriptionStatus)
-  ));
   const favoriteOwnerScope = ownerAccountKey ?? undefined;
   const [analyticsPageViewId] = useState(createLibraryAnalyticsPageViewId);
   const [source, setSource] = useState<LibrarySourceFilter>(requestedSource);
@@ -443,7 +396,7 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
   const [keywordInput, setKeywordInput] = useState('');
   const [keyword, setKeyword] = useState('');
   const [favoritesOnly, setFavoritesOnly] = useState(false);
-  const [cloudAvailability, setCloudAvailability] = useState<LibraryCloudAvailabilityFilter>(
+  const [cloudAvailability, _setCloudAvailability] = useState<LibraryCloudAvailabilityFilter>(
     LibraryCloudAvailabilityFilter.All,
   );
   const [viewMode, setViewMode] = useState<LibraryViewMode>(LibraryViewMode.List);
@@ -532,7 +485,6 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
     ? localResolvedQueryKey === localQueryKey
     : activeCloudResolvedQuery?.queryKey === cloudQueryKey;
   const visibleCloudData = activeCloudResolvedQuery ? cloudData : EMPTY_CLOUD;
-  const cloudDisplayAvailability = activeCloudResolvedQuery?.availability ?? cloudAvailability;
   localQueryKeyRef.current = localQueryKey;
   currentQueryKeyRef.current = queryKey;
   const loading = shouldShowLibraryInitialSkeleton(
@@ -662,20 +614,6 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
     setKeyword('');
   }, []);
 
-  const handleSourceChange = (nextSource: LibrarySourceFilter): void => {
-    if (nextSource === source) return;
-    reportLibraryAction(analyticsContext, {
-      actionType: LibraryAnalyticsActionType.SourceChange,
-      control: LibraryAnalyticsControl.Source,
-      targetValue: nextSource,
-    });
-    setActiveItem(undefined);
-    setCategory(LibraryCategory.All);
-    setKeywordInput('');
-    setKeyword('');
-    setSource(nextSource);
-    scrollContainerRef.current?.scrollTo({ top: 0 });
-  };
 
   const handleCategoryChange = (nextCategory: LibraryCategory): void => {
     if (nextCategory === category) return;
@@ -685,19 +623,6 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
       targetValue: nextCategory,
     });
     setCategory(nextCategory);
-  };
-
-  const handleAvailabilityChange = (
-    nextAvailability: LibraryCloudAvailabilityFilter,
-  ): void => {
-    if (nextAvailability === cloudAvailability) return;
-    reportLibraryAction(analyticsContext, {
-      actionType: LibraryAnalyticsActionType.FilterChange,
-      control: LibraryAnalyticsControl.Availability,
-      targetValue: nextAvailability,
-    });
-    setCloudAvailability(nextAvailability);
-    scrollContainerRef.current?.scrollTo({ top: 0 });
   };
 
   const handleFavoritesOnlyToggle = (): void => {
@@ -1273,22 +1198,6 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
     }
   };
 
-  const updateCloudItem = useCallback((updatedItem: LibraryCloudItem): void => {
-    setCloudData(current => ({
-      ...current,
-      list: current.list.map(item => (
-        item.itemKind === updatedItem.itemKind
-          && item.shareId === updatedItem.shareId
-          ? updatedItem
-          : item
-      )),
-    }));
-  }, []);
-
-  const deleteCloudItem = useCallback((deletedItem: LibraryCloudItem): void => {
-    setCloudData(current => removeLibraryCloudItem(current, deletedItem));
-  }, []);
-
   const openItem = (item: LibraryItem): void => {
     reportLibraryAction(analyticsContext, {
       actionType: LibraryAnalyticsActionType.ItemPreviewOpen,
@@ -1296,15 +1205,6 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
       itemCategory: item.category,
     });
     setActiveItem(item);
-  };
-
-  const handleCloudDetailOpen = (item: LibraryCloudItem): void => {
-    reportLibraryAction(analyticsContext, {
-      actionType: LibraryAnalyticsActionType.ItemPreviewOpen,
-      itemKind: item.itemKind,
-      itemCategory: item.category,
-    });
-    scrollContainerRef.current?.scrollTo({ top: 0 });
   };
 
   const openLocalWithApp = (item: LocalArtifactItem): void => {
@@ -1365,34 +1265,6 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
     }).finally(() => {
       cardDetailRequestIdsRef.current.delete(item.itemId);
     });
-  };
-
-  const shareLocalItem = async (item: LocalArtifactItem): Promise<void> => {
-    if (
-      !canShareLibraryArtifact(item)
-      || !artifactFileShare
-    ) {
-      setError(i18nService.t('artifactShareSourceUnavailable'));
-      return;
-    }
-    try {
-      const artifact = await loadDetectedFileArtifact(createLibraryArtifactCandidate(item));
-      if (!artifact || !isArtifactFileShareable(artifact)) {
-        setError(i18nService.t('artifactShareSourceUnavailable'));
-        return;
-      }
-      await artifactFileShare.openShare(artifact, {
-        source: ArtifactPreviewActionSource.LibraryList,
-        entryPoint: ArtifactPublishEntryPoint.LibraryMenu,
-        surface: LibraryAnalyticsSurface.MyFiles,
-        pageViewId: analyticsPageViewId,
-      });
-    } catch (shareError) {
-      const message = shareError instanceof Error
-        ? shareError.message
-        : i18nService.t('htmlShareFailed');
-      setError(message);
-    }
   };
 
   const getRelatedSessionMenuItems = (item: LibraryItem): CardOverflowMenuItem[] => {
@@ -1457,7 +1329,6 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
         ? i18nService.t('libraryRemoveFavorite')
         : i18nService.t('libraryAddFavorite');
     }
-    if (action === LibraryItemAction.ShareLocal) return i18nService.t('htmlShare');
     if (action === LibraryItemAction.OpenWithApp) return i18nService.t('libraryOpenWithApp');
     if (action === LibraryItemAction.RevealLocal) return i18nService.t('libraryRevealFile');
     if (action === LibraryItemAction.CopyLink) return i18nService.t('libraryCopyLink');
@@ -1477,7 +1348,6 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
         ? <StarSolidIcon className="h-4 w-4 text-amber-500" />
         : <StarIcon className="h-4 w-4" />;
     }
-    if (action === LibraryItemAction.ShareLocal) return <ShareUploadIcon className="h-4 w-4" />;
     if (action === LibraryItemAction.RelatedSessions) {
       return <ChatBubbleLeftRightIcon className="h-4 w-4" />;
     }
@@ -1494,9 +1364,6 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
       key: action,
       label: getCardActionLabel(item, action),
       icon: getCardActionIcon(item, action),
-      disabled: action === LibraryItemAction.ShareLocal
-        && item.itemKind === LibraryItemKind.LocalArtifact
-        && !canShareLibraryArtifact(item),
       ...(action === LibraryItemAction.RelatedSessions
         ? {
             children: getRelatedSessionMenuItems(item),
@@ -1515,8 +1382,7 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
           return;
         }
         if (item.itemKind === LibraryItemKind.LocalArtifact) {
-          if (action === LibraryItemAction.ShareLocal) void shareLocalItem(item);
-          else if (action === LibraryItemAction.OpenWithApp) openLocalWithApp(item);
+          if (action === LibraryItemAction.OpenWithApp) openLocalWithApp(item);
           else if (action === LibraryItemAction.RevealLocal) revealLocal(item);
           return;
         }
@@ -1567,28 +1433,24 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
       data-skin-management-page="true"
       className="relative z-10 flex h-full min-h-0 flex-col bg-background text-foreground"
     >
-      <div className="draggable flex h-12 shrink-0 items-center border-b border-border px-4">
-        {isSidebarCollapsed && !isWindows && (
-          <div className={`non-draggable mr-2 flex items-center gap-1 ${isMac ? 'pl-[68px]' : ''}`}>
-            <button type="button" onClick={onToggleSidebar} aria-label={i18nService.t('expand')} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-secondary hover:bg-surface-raised">
-              <SidebarToggleIcon className="h-4 w-4" isCollapsed />
-            </button>
-            {updateBadge}
-          </div>
-        )}
-        <div
-          role="tablist"
-          aria-label={i18nService.t('libraryTitle')}
-          className="non-draggable flex items-center gap-1"
-        >
-          {SOURCE_FILTERS.map(value => (
-            <SourceTab
-              key={value}
-              source={value}
-              active={source === value}
-              onClick={() => handleSourceChange(value)}
-            />
-          ))}
+      <div className="draggable flex h-12 shrink-0 items-center justify-between border-b border-border px-4">
+        <div className="flex items-center space-x-3 h-8">
+          {isSidebarCollapsed && !isWindows && (
+            <div className={`non-draggable flex items-center gap-1 ${isMac ? 'pl-[68px]' : ''}`}>
+              <button
+                type="button"
+                onClick={onToggleSidebar}
+                aria-label={i18nService.t('expand')}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-secondary hover:bg-surface-raised transition-colors"
+              >
+                <SidebarToggleIcon className="h-4 w-4" isCollapsed />
+              </button>
+              {updateBadge}
+            </div>
+          )}
+          <h1 className={`${MANAGEMENT_PAGE_TITLE_TEXT} font-semibold text-foreground`}>
+            {i18nService.t('libraryTitle')}
+          </h1>
         </div>
       </div>
 
@@ -1597,37 +1459,6 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
         aria-busy={isBusy}
         className="min-h-0 flex-1 overflow-auto [scrollbar-gutter:stable]"
       >
-          {wantsCloud ? (
-            <LibraryCloudView
-              analyticsPageViewId={analyticsPageViewId}
-              data={visibleCloudData}
-              loading={loading}
-              refreshing={refreshing}
-              loadingMore={loadingMore}
-              error={cloudError}
-              isAuthenticated={isAuthenticated}
-              showFreeShareDeleteQuotaNotice={showFreeShareDeleteQuotaNotice}
-              category={category}
-              status={cloudAvailability}
-              displayStatus={cloudDisplayAvailability}
-              favoritesOnly={favoritesOnly}
-              keywordInput={keywordInput}
-              loadMoreSentinelRef={loadMoreSentinelRef}
-              onCategoryChange={handleCategoryChange}
-              onStatusChange={handleAvailabilityChange}
-              onToggleFavoritesOnly={handleFavoritesOnlyToggle}
-              onKeywordInputChange={setKeywordInput}
-              onKeywordClear={clearKeyword}
-              onRefresh={handleRefresh}
-              onDetailOpen={handleCloudDetailOpen}
-              onOpenSession={onOpenSession}
-              onItemUpdated={updateCloudItem}
-              onItemDeleted={deleteCloudItem}
-              onToggleFavorite={item => void updateFavorite(item)}
-              hideSites={sitesHidden}
-              sitesReadOnly={sitesReadOnly}
-            />
-          ) : (
         <div className="mx-auto w-full max-w-[1120px] px-4 py-6 sm:px-8">
           <div
             data-skin-management-toolbar="true"
@@ -1839,7 +1670,6 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
             )}
           </div>
         </div>
-          )}
       </main>
 
       {wantsLocal && activeItem && (
@@ -1880,11 +1710,5 @@ const LibraryViewContent: React.FC<LibraryViewProps> = ({
     </div>
   );
 };
-
-const LibraryView: React.FC<LibraryViewProps> = props => (
-  <ArtifactFileShareProvider sessionId="library">
-    <LibraryViewContent {...props} />
-  </ArtifactFileShareProvider>
-);
 
 export default LibraryView;
