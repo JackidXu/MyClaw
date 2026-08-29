@@ -1532,10 +1532,10 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
         document.body
       )}
 
-      {/* 人设信息编辑弹窗 */}
-      {showPersonaModal && createPortal(
+      {/* 人设信息编辑弹窗（限制在页面容器内部，不阻塞左侧侧边栏导航） */}
+      {showPersonaModal && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          className="absolute inset-0 z-40 flex items-center justify-center bg-black/50 p-4"
           onClick={() => {
             if (!savingPersona && hasValidPersona) {
               setShowPersonaModal(false);
@@ -1638,8 +1638,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
               </button>
             </div>
           </div>
-        </div>,
-        document.body
+        </div>
       )}
 
       {/* 全局 Toast */}
