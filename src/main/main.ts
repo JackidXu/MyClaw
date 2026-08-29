@@ -115,6 +115,7 @@ import {
   DataMigrationRestoreStatus,
 } from '../shared/dataMigration/constants';
 import { DialogIpc } from '../shared/dialog/constants';
+import { getAdminBaseUrl } from '../shared/endpoints';
 import {
   EnterpriseAccountIpcChannel,
   EnterpriseAccountMode,
@@ -5776,7 +5777,7 @@ if (!gotTheLock) {
         const queryParams = new URLSearchParams({ type });
         if (clothClassStr) queryParams.set('clothClass', clothClassStr);
 
-        const serverBaseUrl = getServerApiBaseUrl();
+        const adminBaseUrl = getAdminBaseUrl();
         const sqliteStore = getStore();
         const userSession = sqliteStore?.get<string>('user_access_token');
         if (!userSession) {
@@ -5784,7 +5785,7 @@ if (!gotTheLock) {
         }
 
         // 直接将 buffer 以二进制流 POST 到分割接口，由后端调用阿里云视觉智能并写入 OSS
-        const segmentResp = await fetch(`${serverBaseUrl}/api/image/segment?${queryParams}`, {
+        const segmentResp = await fetch(`${adminBaseUrl}/api/image/segment?${queryParams}`, {
           method: 'POST',
           body: new Uint8Array(imageBuffer),
           headers: {
