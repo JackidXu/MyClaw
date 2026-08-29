@@ -393,11 +393,12 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
   }, [itemsPage]);
 
   /** 拉取资料列表（根据当前 Tab 区分文档/对话/录音卡） */
-  const loadDocs = (tab: MaterialTab, page: number) => {
+  const loadDocs = React.useCallback((tab: MaterialTab, page: number) => {
     setDocsLoading(true);
     if (tab === '对话') {
       fetchChatList({ page, pageSize: 10 })
         .then((res) => {
+          if (materialTab !== '对话') return;
           const list: DocumentItem[] = (res.data || []).map((item) => ({
             type: 'chat',
             id: item.chat_id,
@@ -415,6 +416,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
     } else if (tab === '录音卡') {
       fetchAudioList({ page, pageSize: 10 })
         .then((res) => {
+          if (materialTab !== '录音卡') return;
           const rawList = res.data || [];
           setBackendAudioList(rawList);
           const list: DocumentItem[] = rawList.map((item) => ({
@@ -442,6 +444,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
     } else {
       fetchDocumentList({ page, pageSize: 10 })
         .then((res) => {
+          if (materialTab !== '文档') return;
           const list: DocumentItem[] = (res.data || []).map((item) => ({
             type: 'document',
             id: item.document_id,
@@ -457,16 +460,20 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
         .catch((err) => { console.warn('[SecondBrainView] 资料文档列表接口失败:', err); })
         .finally(() => { setDocsLoading(false); });
     }
-  };
+  }, [materialTab]);
 
   /** 资料 Tab 或页码切换时拉取资料列表 */
   useEffect(() => {
     loadDocs(materialTab, docsPage);
-  }, [materialTab, docsPage]);
+  }, [loadDocs, materialTab, docsPage]);
 
-  /** Tab 切换处理（重置回第 1 页） */
+  /** Tab 切换处理（即刻清空历史列表，重置回第 1 页） */
   const handleTabChange = (tab: MaterialTab) => {
     if (tab === materialTab) return;
+    setDocs([]);
+    setDocsTotal(0);
+    setDocsLastPage(1);
+    setDocsLoading(true);
     setMaterialTab(tab);
     if (docsPage !== 1) {
       setDocsPage(1);
@@ -1454,154 +1461,167 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                 </div>
               )}
 
-              {/* 空状态 */}
-              {!docsLoading && docs.length === 0 && (
-                <div className="flex flex-col items-center justify-center py-10 text-center">
-                  <div className="h-10 w-10 rounded-full bg-surface-raised border border-border flex items-center justify-center mb-2 text-secondary text-base">
-                    {materialTab === '录音卡' ? '🎙' : '📄'}
-                  </div>
-                  <p className="text-xs font-semibold text-foreground">
-                    {materialTab === '对话' ? '暂无对话' : materialTab === '录音卡' ? '暂无已同步音频' : '暂无资料'}
-                  </p>
-                  <p className="text-[11px] text-secondary mt-0.5">
-                    {materialTab === '对话'
-                      ? '与智能体进行日常业务对话，系统将自动从对话中提炼出你的决策逻辑'
-                      : materialTab === '录音卡'
-                      ? '通过录音卡同步音频后，系统将自动转写并萃取决策原则'
-                      : '上传个人笔记、项目总结等第一手资料，系统将自动萃取决策原则'}
-                  </p>
-                </div>
-              )}
+              {/* 当前 Tab 匹配的有效资料列表（防止旧 Tab 残留闪烁） */}
+              {(() => {
+                const currentDocs = docs.filter((d) => {
+                  if (materialTab === '录音卡') return (d.type as any) === 'audio';
+                  if (materialTab === '对话') return d.type === 'chat';
+                  return d.type === 'document';
+                });
 
-              {/* 资料列表 (.mlist & .mitem) */}
-              {!docsLoading && docs.length > 0 && (
-                <div className="space-y-2.5">
-                  {docs.map((doc) => (
-                    <div
-                      key={`${doc.type}-${doc.id}`}
-                      className="group flex items-center gap-3.5 p-3 rounded-xl border border-border/80 bg-background/40 hover:bg-surface hover:border-primary/40 transition-all shadow-2xs"
-                    >
-                      {/* 图标 .mic */}
-                      <div className="w-8 h-8 rounded-lg bg-surface-raised border border-border flex items-center justify-center text-sm shrink-0">
-                        {doc.type === 'document' ? '📄' : (doc.type as any) === 'audio' ? '🎧' : '💬'}
-                      </div>
-
-                      {/* 主信息 .mbody */}
-                      <div className="flex-1 min-w-0">
-                        <div className="text-xs md:text-[13px] font-semibold text-foreground truncate">{doc.name}</div>
-                        <div className="text-[11px] text-secondary mt-0.5 flex items-center gap-1.5">
-                          <span>{formatDate(doc.create_time)}</span>
-                          <span>·</span>
-                          {doc.extract_status === DOCUMENT_STATUS.Pending && (
-                            <span className="text-[#f5a623] font-semibold">待萃取</span>
-                          )}
-                          {doc.extract_status === DOCUMENT_STATUS.Processing && (
-                            <span className="text-[#4a8fe7] font-semibold">萃取中</span>
-                          )}
-                          {doc.extract_status === DOCUMENT_STATUS.Done && (
-                            <span className="text-[#2d8a5f] dark:text-emerald-400 font-semibold">
-                              已萃取 {doc.extract_count} 条认知
-                            </span>
-                          )}
-                          {doc.extract_status === DOCUMENT_STATUS.Failed && (
-                            <span className="text-destructive font-semibold">萃取失败</span>
-                          )}
+                return (
+                  <>
+                    {/* 空状态 */}
+                    {!docsLoading && currentDocs.length === 0 && (
+                      <div className="flex flex-col items-center justify-center py-10 text-center">
+                        <div className="h-10 w-10 rounded-full bg-surface-raised border border-border flex items-center justify-center mb-2 text-secondary text-base">
+                          {materialTab === '录音卡' ? '🎙' : materialTab === '对话' ? '💬' : '📄'}
                         </div>
+                        <p className="text-xs font-semibold text-foreground">
+                          {materialTab === '对话' ? '暂无对话' : materialTab === '录音卡' ? '暂无已沉淀音频' : '暂无资料'}
+                        </p>
+                        <p className="text-[11px] text-secondary mt-0.5">
+                          {materialTab === '对话'
+                            ? '与智能体进行日常业务对话，系统将自动从对话中提炼出你的决策逻辑'
+                            : materialTab === '录音卡'
+                            ? '通过录音卡同步音频后，系统将自动转写并萃取决策原则'
+                            : '上传个人笔记、项目总结等第一手资料，系统将自动萃取决策原则'}
+                        </p>
                       </div>
+                    )}
 
-                      {/* 右侧操作 .mops */}
-                      <div
-                        className={`flex items-center gap-2 shrink-0 transition-opacity ${
-                          moreMenuDocId === doc.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-                        }`}
-                      >
-                        {(doc.type === 'document' || (doc.type as any) === 'audio') && (
-                          <div className="relative group/re">
-                            <button
-                              type="button"
-                              disabled={
-                                reExtractingId === doc.id ||
-                                doc.extract_status === DOCUMENT_STATUS.Pending ||
-                                doc.extract_status === DOCUMENT_STATUS.Processing
-                              }
-                              onClick={() => handleReExtract(doc.id, (doc.type as any) === 'audio')}
-                              className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs font-semibold text-foreground hover:bg-surface-raised transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-                            >
-                              {reExtractingId === doc.id || doc.extract_status === DOCUMENT_STATUS.Processing
-                                ? '萃取中…'
-                                : doc.extract_status === DOCUMENT_STATUS.Pending
-                                ? '排队中…'
-                                : '重新萃取'}
-                            </button>
-                            <div className="pointer-events-none absolute right-0 bottom-full mb-2 z-20 whitespace-nowrap rounded-xl bg-black/90 dark:bg-black px-3.5 py-1.5 text-xs font-medium text-white shadow-lg opacity-0 group-hover/re:opacity-100 transition-all duration-200">
-                              {doc.extract_status === DOCUMENT_STATUS.Pending || doc.extract_status === DOCUMENT_STATUS.Processing
-                                ? '当前正在处理中，暂不可重新萃取'
-                                : '将同步删除已萃取的认知'}
+                    {/* 资料列表 (.mlist & .mitem) */}
+                    {!docsLoading && currentDocs.length > 0 && (
+                      <div className="space-y-2.5">
+                        {currentDocs.map((doc) => (
+                          <div
+                            key={`${doc.type}-${doc.id}`}
+                            className="group flex items-center gap-3.5 p-3 rounded-xl border border-border/80 bg-background/40 hover:bg-surface hover:border-primary/40 transition-all shadow-2xs"
+                          >
+                            {/* 图标 .mic */}
+                            <div className="w-8 h-8 rounded-lg bg-surface-raised border border-border flex items-center justify-center text-sm shrink-0">
+                              {doc.type === 'document' ? '📄' : (doc.type as any) === 'audio' ? '🎧' : '💬'}
                             </div>
-                          </div>
-                        )}
 
-                        {doc.type === 'document' ? (
-                          <div className="relative">
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setMoreMenuDocId(moreMenuDocId === doc.id ? null : doc.id);
-                              }}
-                              className={`h-7 w-7 inline-flex items-center justify-center rounded-lg border border-border text-xs text-secondary hover:bg-surface-raised hover:text-foreground transition-colors cursor-pointer ${
-                                moreMenuDocId === doc.id ? 'bg-surface-raised text-foreground' : ''
+                            {/* 主信息 .mbody */}
+                            <div className="flex-1 min-w-0">
+                              <div className="text-xs md:text-[13px] font-semibold text-foreground truncate">{doc.name}</div>
+                              <div className="text-[11px] text-secondary mt-0.5 flex items-center gap-1.5">
+                                <span>{formatDate(doc.create_time)}</span>
+                                <span>·</span>
+                                {doc.extract_status === DOCUMENT_STATUS.Pending && (
+                                  <span className="text-[#f5a623] font-semibold">待萃取</span>
+                                )}
+                                {doc.extract_status === DOCUMENT_STATUS.Processing && (
+                                  <span className="text-[#4a8fe7] font-semibold">萃取中</span>
+                                )}
+                                {doc.extract_status === DOCUMENT_STATUS.Done && (
+                                  <span className="text-[#2d8a5f] dark:text-emerald-400 font-semibold">
+                                    已萃取 {doc.extract_count} 条认知
+                                  </span>
+                                )}
+                                {doc.extract_status === DOCUMENT_STATUS.Failed && (
+                                  <span className="text-destructive font-semibold">萃取失败</span>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* 右侧操作 .mops */}
+                            <div
+                              className={`flex items-center gap-2 shrink-0 transition-opacity ${
+                                moreMenuDocId === doc.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
                               }`}
-                              title="更多操作"
                             >
-                              ···
-                            </button>
-                            {moreMenuDocId === doc.id && (
-                              <div
-                                onClick={(e) => e.stopPropagation()}
-                                className="absolute right-0 top-full mt-1 z-30 min-w-[88px] rounded-xl border border-border bg-surface p-1 shadow-lg animate-in fade-in"
-                              >
+                              {(doc.type === 'document' || (doc.type as any) === 'audio') && (
+                                <div className="relative group/re">
+                                  <button
+                                    type="button"
+                                    disabled={
+                                      reExtractingId === doc.id ||
+                                      doc.extract_status === DOCUMENT_STATUS.Pending ||
+                                      doc.extract_status === DOCUMENT_STATUS.Processing
+                                    }
+                                    onClick={() => handleReExtract(doc.id, (doc.type as any) === 'audio')}
+                                    className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs font-semibold text-foreground hover:bg-surface-raised transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                                  >
+                                    {reExtractingId === doc.id || doc.extract_status === DOCUMENT_STATUS.Processing
+                                      ? '萃取中…'
+                                      : doc.extract_status === DOCUMENT_STATUS.Pending
+                                      ? '排队中…'
+                                      : '重新萃取'}
+                                  </button>
+                                  <div className="pointer-events-none absolute right-0 bottom-full mb-2 z-20 whitespace-nowrap rounded-xl bg-black/90 dark:bg-black px-3.5 py-1.5 text-xs font-medium text-white shadow-lg opacity-0 group-hover/re:opacity-100 transition-all duration-200">
+                                    {doc.extract_status === DOCUMENT_STATUS.Pending || doc.extract_status === DOCUMENT_STATUS.Processing
+                                      ? '当前正在处理中，暂不可重新萃取'
+                                      : '将同步删除已萃取的认知'}
+                                  </div>
+                                </div>
+                              )}
+
+                              {doc.type === 'document' ? (
+                                <div className="relative">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setMoreMenuDocId(moreMenuDocId === doc.id ? null : doc.id);
+                                    }}
+                                    className={`h-7 w-7 inline-flex items-center justify-center rounded-lg border border-border text-xs text-secondary hover:bg-surface-raised hover:text-foreground transition-colors cursor-pointer ${
+                                      moreMenuDocId === doc.id ? 'bg-surface-raised text-foreground' : ''
+                                    }`}
+                                    title="更多操作"
+                                  >
+                                    ···
+                                  </button>
+                                  {moreMenuDocId === doc.id && (
+                                    <div
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="absolute right-0 top-full mt-1 z-30 min-w-[88px] rounded-xl border border-border bg-surface p-1 shadow-lg animate-in fade-in"
+                                    >
+                                      <button
+                                        type="button"
+                                        disabled={downloadingId === doc.id}
+                                        onClick={() => {
+                                          setMoreMenuDocId(null);
+                                          handleDownload(doc.id);
+                                        }}
+                                        className="w-full rounded-lg px-2.5 py-1.5 text-left text-xs text-foreground hover:bg-surface-raised transition-colors disabled:opacity-50 cursor-pointer"
+                                      >
+                                        {downloadingId === doc.id ? '获取中…' : '下载'}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setMoreMenuDocId(null);
+                                          setDeletingDoc(doc);
+                                        }}
+                                        className="w-full rounded-lg px-2.5 py-1.5 text-left text-xs text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
+                                      >
+                                        删除
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
                                 <button
                                   type="button"
-                                  disabled={downloadingId === doc.id}
-                                  onClick={() => {
-                                    setMoreMenuDocId(null);
-                                    handleDownload(doc.id);
-                                  }}
-                                  className="w-full rounded-lg px-2.5 py-1.5 text-left text-xs text-foreground hover:bg-surface-raised transition-colors disabled:opacity-50 cursor-pointer"
-                                >
-                                  {downloadingId === doc.id ? '获取中…' : '下载'}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setMoreMenuDocId(null);
-                                    setDeletingDoc(doc);
-                                  }}
-                                  className="w-full rounded-lg px-2.5 py-1.5 text-left text-xs text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
+                                  onClick={() => setDeletingDoc(doc)}
+                                  className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs font-semibold text-secondary hover:bg-surface-raised hover:text-destructive transition-colors cursor-pointer"
                                 >
                                   删除
                                 </button>
-                              </div>
-                            )}
+                              )}
+                            </div>
                           </div>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => setDeletingDoc(doc)}
-                            className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs font-semibold text-secondary hover:bg-surface-raised hover:text-destructive transition-colors cursor-pointer"
-                          >
-                            删除
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                        ))}
 
-                  {/* 分页器 */}
-                  {renderPager(docsPage, docsLastPage, docsTotal, setDocsPage, materialTab === '对话' ? '份对话' : materialTab === '录音卡' ? '份音频' : '份资料')}
-                </div>
-              )}
+                        {/* 分页器 */}
+                        {renderPager(docsPage, docsLastPage, docsTotal, setDocsPage, materialTab === '对话' ? '份对话' : materialTab === '录音卡' ? '份音频' : '份资料')}
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           </div>
 
