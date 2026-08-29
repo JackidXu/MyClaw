@@ -2,15 +2,25 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 import {
+  recordingCardBle,
+  type RecordingCardDevice,
+  type RecordingCardFile,
+} from '../../services/recordingCardBle';
+import {
   adoptCognitionItem,
+  type AudioListItem,
   type CognitionItem,
   type CognitionStats,
+  createAudio,
   createDocument,
+  deleteAudio,
   deleteChat,
   deleteDocument,
   DOCUMENT_STATUS,
   type DocumentItem,
   downloadDocument,
+  fetchAudioList,
+  fetchAudioUploadPresignedUrl,
   fetchChatList,
   fetchCognitionItemList,
   fetchCognitionStats,
@@ -20,6 +30,7 @@ import {
   fetchUploadPresignedUrl,
   LAYER_LABEL,
   type PersonaData,
+  reExtractAudio,
   reExtractDocument,
   rejectCognitionItem,
   type TrendWeekItem,
@@ -39,7 +50,7 @@ interface SecondBrainViewProps {
 }
 
 /** 资料 Tab */
-const MATERIAL_TABS = ['文档', '对话'] as const;
+const MATERIAL_TABS = ['文档', '对话', '录音卡'] as const;
 type MaterialTab = typeof MATERIAL_TABS[number];
 
 /** 单个上传文档最大限制：2MB */
@@ -163,6 +174,16 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
       window.removeEventListener('click', handleOutsideClick);
     };
   }, []);
+
+  /** 录音卡 BLE 相关状态 */
+  const [bleDevice, setBleDevice] = useState<RecordingCardDevice | null>(null);
+  const [bleConnecting, setBleConnecting] = useState(false);
+  const [bleFiles, setBleFiles] = useState<RecordingCardFile[]>([]);
+  const [bleLoadingFiles, setBleLoadingFiles] = useState(false);
+  const [syncingFileNames, setSyncingFileNames] = useState<Set<string>>(new Set());
+  const [syncProgress, setSyncProgress] = useState<Record<string, number>>({});
+  const [syncedFileNames, setSyncedFileNames] = useState<Set<string>>(new Set());
+  const [backendAudioList, setBackendAudioList] = useState<AudioListItem[]>([]);
 
   /** Toast 提示状态 */
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -371,7 +392,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
     loadItems(itemsPage);
   }, [itemsPage]);
 
-  /** 拉取资料列表（根据当前 Tab 区分文档/对话） */
+  /** 拉取资料列表（根据当前 Tab 区分文档/对话/录音卡） */
   const loadDocs = (tab: MaterialTab, page: number) => {
     setDocsLoading(true);
     if (tab === '对话') {
@@ -390,6 +411,33 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
           setDocsTotal(Number(res.total) || 0);
         })
         .catch((err) => { console.warn('[SecondBrainView] 对话列表接口失败:', err); })
+        .finally(() => { setDocsLoading(false); });
+    } else if (tab === '录音卡') {
+      fetchAudioList({ page, pageSize: 10 })
+        .then((res) => {
+          const rawList = res.data || [];
+          setBackendAudioList(rawList);
+          const list: DocumentItem[] = rawList.map((item) => ({
+            type: 'audio' as any,
+            id: item.audio_id,
+            name: item.name,
+            extract_status: item.extract_status,
+            extract_count: item.extract_count,
+            create_time: Number(item.create_time) || 0,
+          }));
+          setDocs(list);
+          setDocsLastPage(Number(res.last_page) || 1);
+          setDocsTotal(Number(res.total) || 0);
+
+          // 更新已同步文件名集合
+          const names = new Set(rawList.map((a) => a.name));
+          setSyncedFileNames((prev) => {
+            const next = new Set(prev);
+            names.forEach((n) => next.add(n));
+            return next;
+          });
+        })
+        .catch((err) => { console.warn('[SecondBrainView] 音频列表接口失败:', err); })
         .finally(() => { setDocsLoading(false); });
     } else {
       fetchDocumentList({ page, pageSize: 10 })
@@ -516,12 +564,16 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
     }
   };
 
-  /** 重新萃取资料 */
-  const handleReExtract = async (docId: number) => {
+  /** 重新萃取资料/音频 */
+  const handleReExtract = async (docId: number, isAudio = false) => {
     if (reExtractingId === docId) return;
     setReExtractingId(docId);
     try {
-      await reExtractDocument(docId);
+      if (isAudio) {
+        await reExtractAudio(docId);
+      } else {
+        await reExtractDocument(docId);
+      }
       loadDocs(materialTab, docsPage);
       loadStats();
       showToast('success', '已发起重新萃取，系统正自动处理中');
@@ -539,21 +591,162 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
     setDeleting(true);
     const docName = deletingDoc.name;
     const isChat = deletingDoc.type === 'chat';
+    const isAudio = (deletingDoc.type as any) === 'audio';
     try {
       if (isChat) {
         await deleteChat(deletingDoc.id);
+      } else if (isAudio) {
+        await deleteAudio(deletingDoc.id);
       } else {
         await deleteDocument(deletingDoc.id);
       }
       setDeletingDoc(null);
       loadDocs(materialTab, docsPage);
       loadStats();
-      showToast('success', `${isChat ? '对话' : '资料'} "${docName}" 已成功删除`);
+      showToast('success', `${isChat ? '对话' : isAudio ? '音频' : '资料'} "${docName}" 已成功删除`);
     } catch (err: any) {
       console.warn('[SecondBrainView] 删除失败:', err);
       showToast('error', `删除失败: ${err?.message || '未知错误'}`);
     } finally {
       setDeleting(false);
+    }
+  };
+
+  /** 连接录音卡 */
+  const handleConnectBle = async () => {
+    if (bleConnecting) return;
+    setBleConnecting(true);
+    try {
+      const dev = await recordingCardBle.connect(() => {
+        setBleDevice(null);
+        setBleFiles([]);
+        showToast('error', '录音卡已断开连接，请重新连接');
+      });
+      setBleDevice(dev);
+      showToast('success', `已成功连接录音卡：${dev.name}`);
+      // 连接后自动拉取文件列表
+      loadBleFiles();
+    } catch (err: any) {
+      console.warn('[SecondBrainView] 连接录音卡失败:', err);
+      showToast('error', `连接录音卡失败: ${err?.message || '请确认蓝牙已开启并靠近设备'}`);
+    } finally {
+      setBleConnecting(false);
+    }
+  };
+
+  /** 断开录音卡连接 */
+  const handleDisconnectBle = () => {
+    recordingCardBle.disconnect();
+    setBleDevice(null);
+    setBleFiles([]);
+    showToast('success', '录音卡已断开连接');
+  };
+
+  /** 读取录音卡内文件列表 */
+  const loadBleFiles = async () => {
+    setBleLoadingFiles(true);
+    try {
+      const list = await recordingCardBle.getFileList();
+      setBleFiles(list);
+    } catch (err: any) {
+      console.warn('[SecondBrainView] 获取录音卡文件列表失败:', err);
+      showToast('error', `获取录音卡文件列表失败: ${err?.message || '未知错误'}`);
+    } finally {
+      setBleLoadingFiles(false);
+    }
+  };
+
+  /** 格式化秒数 (mm:ss) */
+  const formatDurationSec = (seconds: number) => {
+    const s = Math.max(0, Math.floor(seconds));
+    const m = Math.floor(s / 60);
+    const rem = s % 60;
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${pad(m)}:${pad(rem)}`;
+  };
+
+  /** 格式化字节数 */
+  const formatBytes = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  /** 判断录音卡文件是否已同步 */
+  const isFileSynced = (fileName: string) => {
+    const base = fileName.replace(/\.[^.]*$/, '');
+    return (
+      syncedFileNames.has(fileName) ||
+      syncedFileNames.has(`${base}.wav`) ||
+      syncedFileNames.has(`${base}.opus`) ||
+      syncedFileNames.has(base) ||
+      backendAudioList.some((a) => a.name.startsWith(base))
+    );
+  };
+
+  /** 单个文件同步：下载 -> 上传 TOS -> 创建音频记录 */
+  const handleSyncOneBleFile = async (file: RecordingCardFile) => {
+    if (syncingFileNames.has(file.name)) return;
+    const base = file.name.replace(/\.[^.]*$/, '');
+    const uploadFileName = `${base}.wav`;
+
+    setSyncingFileNames((prev) => new Set(prev).add(file.name));
+    setSyncProgress((prev) => ({ ...prev, [file.name]: 1 }));
+
+    try {
+      // 1. 从录音卡通过 BLE 下载
+      const wavBytes = await recordingCardBle.downloadFile(file.name, (progress) => {
+        setSyncProgress((prev) => ({ ...prev, [file.name]: Math.min(95, Math.max(1, progress)) }));
+      });
+
+      // 2. 获取预签名上传参数
+      const { upload_url, tos_url, key } = await fetchAudioUploadPresignedUrl();
+
+      // 3. 上传到 TOS
+      const wavBlob = new Blob([wavBytes], { type: 'audio/wav' });
+      const wavFile = new File([wavBlob], uploadFileName, { type: 'audio/wav' });
+      await uploadFileToTos(upload_url, wavFile);
+
+      // 4. 创建音频记录并触发 ASR 萃取
+      await createAudio({
+        name: uploadFileName,
+        tosUrl: tos_url,
+        tosKey: key,
+      });
+
+      setSyncProgress((prev) => ({ ...prev, [file.name]: 100 }));
+      setSyncedFileNames((prev) => new Set(prev).add(file.name).add(uploadFileName));
+      showToast('success', `录音 "${uploadFileName}" 同步成功，系统已自动排队萃取`);
+      loadDocs('录音卡', 1);
+      loadStats();
+    } catch (err: any) {
+      console.warn(`[SecondBrainView] 同步录音 "${file.name}" 失败:`, err);
+      showToast('error', `同步 "${file.name}" 失败: ${err?.message || '未知错误'}`);
+    } finally {
+      setSyncingFileNames((prev) => {
+        const next = new Set(prev);
+        next.delete(file.name);
+        return next;
+      });
+      setTimeout(() => {
+        setSyncProgress((prev) => {
+          const next = { ...prev };
+          delete next[file.name];
+          return next;
+        });
+      }, 2000);
+    }
+  };
+
+  /** 全部同步 */
+  const handleSyncAllBleFiles = async () => {
+    const unsynced = bleFiles.filter((f) => !isFileSynced(f.name) && !syncingFileNames.has(f.name));
+    if (unsynced.length === 0) {
+      showToast('success', '所有录音文件均已同步完成');
+      return;
+    }
+    for (const f of unsynced) {
+      await handleSyncOneBleFile(f);
     }
   };
 
@@ -823,7 +1016,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                           </p>
                         )}
                         <div className="text-[10.5px] text-secondary/70 pt-0.5">
-                          📥 {item.source_type === 1 ? '来自文档' : item.source_type === 2 ? '来自对话' : '来自日常业务'} · 已写入商业第二大脑
+                          📥 {item.source_type === 1 ? '来自文档' : item.source_type === 2 ? '来自对话' : item.source_type === 3 ? '来自音频' : '来自日常业务'} · 已写入商业第二大脑
                         </div>
                       </div>
                     ))}
@@ -900,7 +1093,8 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                         <span className="text-[11px] text-secondary ml-auto">
                           {item.source_type === 1 && (item.source_name ? `来源：${item.source_name}` : '来源：文档')}
                           {item.source_type === 2 && (item.source_name ? `来源：${item.source_name}` : '来源：对话')}
-                          {item.source_type === 3 && (item.source_name ? `来源：${item.source_name}` : '来源：归纳')}
+                          {item.source_type === 3 && (item.source_name ? `来源：${item.source_name}` : '来源：音频')}
+                          {item.source_type === 9 && (item.source_name ? `来源：${item.source_name}` : '来源：归纳')}
                           {` · ${formatTimestamp(item.create_time)}`}
                         </span>
                       </div>
@@ -1098,18 +1292,182 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                 </div>
               )}
 
+              {/* 录音卡专属区域 */}
+              {materialTab === '录音卡' && (
+                <div className="space-y-4 pt-1">
+                  {/* 设备信息卡 */}
+                  {bleDevice ? (
+                    <div className="flex items-center justify-between gap-3 p-3.5 rounded-xl border border-border bg-surface-raised/40">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-10 h-10 rounded-lg bg-[#FF6B35]/10 text-[#FF6B35] flex items-center justify-center text-lg shrink-0">
+                          🎙
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs md:text-sm font-bold text-foreground truncate">{bleDevice.name}</span>
+                            <span className="text-[10px] font-bold text-[#2d8a5f] bg-[#2d8a5f]/12 px-1.5 py-0.5 rounded">已连接</span>
+                          </div>
+                          <div className="text-[11px] text-secondary mt-0.5">
+                            电量 {bleDevice.battery === 110 ? '充电中' : `${bleDevice.battery}%`} · 剩余存储 {(bleDevice.remainKb / (1024 * 1024)).toFixed(1)}GB · 固件 {bleDevice.firmware || 'v1.0.0'}
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleDisconnectBle}
+                        className="rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-secondary hover:bg-surface-raised hover:text-destructive transition-colors shrink-0 cursor-pointer"
+                      >
+                        断开连接
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between gap-3 p-3.5 rounded-xl border border-dashed border-border bg-surface-raised/20">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-lg bg-surface-raised border border-border flex items-center justify-center text-lg text-secondary shrink-0">
+                          🎙
+                        </div>
+                        <div>
+                          <div className="text-xs md:text-sm font-bold text-foreground">录音卡未连接</div>
+                          <div className="text-[11px] text-secondary mt-0.5">连接后可直接读取设备内录音并一键萃取</div>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={bleConnecting}
+                        onClick={handleConnectBle}
+                        className="rounded-lg bg-primary hover:bg-primary-hover px-3.5 py-1.5 text-xs font-bold text-white shadow-2xs transition-colors shrink-0 disabled:opacity-50 cursor-pointer"
+                      >
+                        {bleConnecting ? '连接中…' : '连接录音卡'}
+                      </button>
+                    </div>
+                  )}
+
+                  {/* 录音卡文件列表工具栏（当有设备连接且有文件时） */}
+                  {bleDevice && (
+                    <div className="space-y-2.5">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <div className="text-xs text-secondary">
+                          录音卡内 <b className="text-foreground font-bold">{bleFiles.length}</b> 个文件 ·{' '}
+                          <b className="text-[#FF6B35] font-bold">
+                            {bleFiles.filter((f) => !isFileSynced(f.name)).length}
+                          </b>{' '}
+                          个待同步
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={bleLoadingFiles}
+                            onClick={loadBleFiles}
+                            className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs font-semibold text-secondary hover:bg-surface-raised transition-colors cursor-pointer"
+                          >
+                            {bleLoadingFiles ? '刷新中…' : '刷新列表'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleSyncAllBleFiles}
+                            className="rounded-lg bg-[#FF6B35] hover:bg-[#E85A28] px-3 py-1 text-xs font-bold text-white shadow-2xs transition-colors cursor-pointer"
+                          >
+                            全部同步
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* 录音卡内文件项列表 */}
+                      {bleLoadingFiles ? (
+                        <div className="py-6 text-center text-xs text-secondary/60">读取录音卡文件列表中…</div>
+                      ) : bleFiles.length === 0 ? (
+                        <div className="py-6 text-center text-xs text-secondary">录音卡内暂无录音文件</div>
+                      ) : (
+                        <div className="space-y-2">
+                          {bleFiles.map((file) => {
+                            const isSynced = isFileSynced(file.name);
+                            const isSyncing = syncingFileNames.has(file.name);
+                            const prog = syncProgress[file.name] ?? 0;
+
+                            return (
+                              <div
+                                key={file.name}
+                                className="flex items-center gap-3 p-3 rounded-xl border border-border/80 bg-background/40 hover:bg-surface transition-all"
+                              >
+                                <div className="w-8 h-8 rounded-lg bg-[#FF6B35]/10 text-[#FF6B35] flex items-center justify-center text-sm shrink-0">
+                                  🎧
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-xs md:text-[13px] font-semibold text-foreground truncate">
+                                    {file.name}
+                                  </div>
+                                  <div className="text-[11px] text-secondary mt-0.5 flex items-center gap-1.5">
+                                    <span>{formatDurationSec(file.duration)}</span>
+                                    <span>·</span>
+                                    <span>{formatBytes(file.size)}</span>
+                                  </div>
+                                  {isSyncing && (
+                                    <div className="mt-1.5 h-1 w-full bg-border rounded-full overflow-hidden">
+                                      <div
+                                        className="h-full bg-[#FF6B35] rounded-full transition-all duration-200"
+                                        style={{ width: `${prog}%` }}
+                                      />
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0">
+                                  {isSyncing ? (
+                                    <span className="text-[11px] font-bold text-[#1e6ba8] bg-[#1e6ba8]/10 px-2 py-0.5 rounded">
+                                      同步中 {prog}%
+                                    </span>
+                                  ) : isSynced ? (
+                                    <span className="text-[11px] font-bold text-[#2d8a5f] bg-[#2d8a5f]/12 px-2 py-0.5 rounded">
+                                      已同步 · 进萃取
+                                    </span>
+                                  ) : (
+                                    <span className="text-[11px] font-bold text-secondary bg-surface-raised border border-border px-2 py-0.5 rounded">
+                                      待同步
+                                    </span>
+                                  )}
+                                  <button
+                                    type="button"
+                                    disabled={isSynced || isSyncing}
+                                    onClick={() => handleSyncOneBleFile(file)}
+                                    className={`rounded-lg px-2.5 py-1 text-xs font-bold transition-colors cursor-pointer ${
+                                      isSynced
+                                        ? 'border border-border text-secondary/40 cursor-not-allowed'
+                                        : 'border border-[#FF6B35] text-[#FF6B35] hover:bg-[#FF6B35]/10'
+                                    }`}
+                                  >
+                                    {isSynced ? '已同步' : isSyncing ? '同步中…' : '同步'}
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* 分割线与历史已同步音频列表 */}
+                  <div className="pt-3 border-t border-border space-y-2">
+                    <div className="text-xs font-bold text-foreground">
+                      已沉淀音频资料 ({docsTotal})
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* 空状态 */}
               {!docsLoading && docs.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-10 text-center">
                   <div className="h-10 w-10 rounded-full bg-surface-raised border border-border flex items-center justify-center mb-2 text-secondary text-base">
-                    📄
+                    {materialTab === '录音卡' ? '🎙' : '📄'}
                   </div>
                   <p className="text-xs font-semibold text-foreground">
-                    {materialTab === '对话' ? '暂无对话' : '暂无资料'}
+                    {materialTab === '对话' ? '暂无对话' : materialTab === '录音卡' ? '暂无已同步音频' : '暂无资料'}
                   </p>
                   <p className="text-[11px] text-secondary mt-0.5">
                     {materialTab === '对话'
                       ? '与智能体进行日常业务对话，系统将自动从对话中提炼出你的决策逻辑'
+                      : materialTab === '录音卡'
+                      ? '通过录音卡同步音频后，系统将自动转写并萃取决策原则'
                       : '上传个人笔记、项目总结等第一手资料，系统将自动萃取决策原则'}
                   </p>
                 </div>
@@ -1125,7 +1483,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                     >
                       {/* 图标 .mic */}
                       <div className="w-8 h-8 rounded-lg bg-surface-raised border border-border flex items-center justify-center text-sm shrink-0">
-                        {doc.type === 'document' ? '📄' : '💬'}
+                        {doc.type === 'document' ? '📄' : (doc.type as any) === 'audio' ? '🎧' : '💬'}
                       </div>
 
                       {/* 主信息 .mbody */}
@@ -1157,7 +1515,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                           moreMenuDocId === doc.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
                         }`}
                       >
-                        {doc.type === 'document' && (
+                        {(doc.type === 'document' || (doc.type as any) === 'audio') && (
                           <div className="relative group/re">
                             <button
                               type="button"
@@ -1166,7 +1524,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                                 doc.extract_status === DOCUMENT_STATUS.Pending ||
                                 doc.extract_status === DOCUMENT_STATUS.Processing
                               }
-                              onClick={() => handleReExtract(doc.id)}
+                              onClick={() => handleReExtract(doc.id, (doc.type as any) === 'audio')}
                               className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs font-semibold text-foreground hover:bg-surface-raised transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                             >
                               {reExtractingId === doc.id || doc.extract_status === DOCUMENT_STATUS.Processing
@@ -1241,7 +1599,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                   ))}
 
                   {/* 分页器 */}
-                  {renderPager(docsPage, docsLastPage, docsTotal, setDocsPage, materialTab === '对话' ? '份对话' : '份资料')}
+                  {renderPager(docsPage, docsLastPage, docsTotal, setDocsPage, materialTab === '对话' ? '份对话' : materialTab === '录音卡' ? '份音频' : '份资料')}
                 </div>
               )}
             </div>

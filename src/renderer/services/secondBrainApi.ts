@@ -83,7 +83,8 @@ export const LAYER_LABEL: Record<number, string> = {
 export const SOURCE_TYPE_LABEL: Record<number, string> = {
   1: '文档',
   2: '会话',
-  3: '归纳',
+  3: '音频',
+  9: '归纳',
 };
 
 /** 资料 status 枚举：0=待萃取 1=萃取中 2=已萃取 3=萃取失败 */
@@ -163,6 +164,28 @@ export interface ChatListResponse {
   current_page: number | string;
   last_page: number | string;
   data: ChatListItem[];
+}
+
+/** 音频列表单项（后端实际返回字段） */
+export interface AudioListItem {
+  audio_id: number;
+  name: string;
+  /** 时长（毫秒） */
+  duration: number;
+  /** 0=待萃取 1=萃取中 2=已萃取 3=萃取失败 */
+  extract_status: number;
+  /** 已萃取认知条数 */
+  extract_count: number;
+  create_time: string | number;
+}
+
+/** 音频列表响应（分页） */
+export interface AudioListResponse {
+  total: number | string;
+  per_page: number | string;
+  current_page: number | string;
+  last_page: number | string;
+  data: AudioListItem[];
 }
 
 /** Tab 对应的 type 参数 */
@@ -368,6 +391,42 @@ export async function deleteChat(chatId: string | number): Promise<void> {
 /** 重新萃取资料 */
 export async function reExtractDocument(documentId: number): Promise<void> {
   await post<unknown>('/fmp/document/reExtract', { documentId });
+}
+
+/** 获取音频预签名上传参数 */
+export async function fetchAudioUploadPresignedUrl(): Promise<UploadPresignResponse> {
+  return get<UploadPresignResponse>('/fmp/audio/upload');
+}
+
+/** 创建音频记录（触发 ASR + 萃取） */
+export async function createAudio(params: {
+  name: string;
+  tosUrl: string;
+  tosKey: string;
+}): Promise<void> {
+  await post<unknown>('/fmp/audio/create', params);
+}
+
+/** 获取音频列表（分页） */
+export async function fetchAudioList(params: {
+  page: number;
+  pageSize: number;
+}): Promise<AudioListResponse> {
+  const query = new URLSearchParams({
+    page: String(params.page),
+    pageSize: String(params.pageSize),
+  });
+  return get<AudioListResponse>(`/fmp/audio/list?${query.toString()}`);
+}
+
+/** 删除音频 */
+export async function deleteAudio(audioId: number): Promise<void> {
+  await post<unknown>('/fmp/audio/delete', { audioId });
+}
+
+/** 重新萃取音频 */
+export async function reExtractAudio(audioId: number): Promise<void> {
+  await post<unknown>('/fmp/audio/reExtract', { audioId });
 }
 
 /** 工具函数定义（来自 /fmp/injectTools） */

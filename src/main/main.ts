@@ -13753,6 +13753,37 @@ if (!gotTheLock) {
       });
     });
 
+    // 处理 Web Bluetooth 设备选择（录音卡连接入口）
+    let bluetoothScanTimer: ReturnType<typeof setTimeout> | null = null;
+    let bluetoothCallback: ((deviceId: string) => void) | null = null;
+
+    mainWindow.webContents.on('select-bluetooth-device', (event, deviceList, callback) => {
+      event.preventDefault();
+      bluetoothCallback = callback;
+
+      if (deviceList.length > 0) {
+        if (bluetoothScanTimer) {
+          clearTimeout(bluetoothScanTimer);
+          bluetoothScanTimer = null;
+        }
+        bluetoothCallback = null;
+        callback(deviceList[0].deviceId);
+        return;
+      }
+
+      // 初次触发时如果暂未扫描到外设，保持等待 10 秒（后续每次收到新外设会再次触发此事件）
+      if (!bluetoothScanTimer) {
+        bluetoothScanTimer = setTimeout(() => {
+          bluetoothScanTimer = null;
+          if (bluetoothCallback) {
+            const cb = bluetoothCallback;
+            bluetoothCallback = null;
+            cb('');
+          }
+        }, 10000);
+      }
+    });
+
     // 设置窗口的最小尺寸
     mainWindow.setMinimumSize(MIN_APP_WINDOW_WIDTH, MIN_APP_WINDOW_HEIGHT);
     if (shouldRestoreMaximized) {
