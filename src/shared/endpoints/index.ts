@@ -3,10 +3,10 @@
  * 供主进程与渲染进程共同导入，内部自动适配开发与生产环境，调用无需任何入参。
  */
 
-export const HEYCLAW_ADMIN_BASE_DEV = 'https://admin.claw.chaohui.ai';
+export const HEYCLAW_ADMIN_BASE_DEV = 'http://localhost:8082';
 export const HEYCLAW_ADMIN_BASE_PROD = 'https://admin.claw.chaohui.ai';
 
-export const HEYCLAW_BIZ_BASE_DEV = 'https://zhike.banchengyun.com';
+export const HEYCLAW_BIZ_BASE_DEV = 'https://dev-zhike.banchengyun.com';
 export const HEYCLAW_BIZ_BASE_PROD = 'https://zhike.banchengyun.com';
 
 /** 判断当前是否处于本地开发/测试环境 (兼容 Node/CommonJS 与浏览器环境) */
