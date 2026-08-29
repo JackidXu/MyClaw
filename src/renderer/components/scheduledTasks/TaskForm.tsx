@@ -17,11 +17,14 @@ import type {
   ScheduledTaskDelivery,
   ScheduledTaskInput,
 } from '../../../scheduledTask/types';
+import { agentService } from '../../services/agent';
 import { i18nService } from '../../services/i18n';
 import { scheduledTaskService } from '../../services/scheduledTask';
 import { RootState } from '../../store';
 import type { Model } from '../../store/slices/modelSlice';
+import { getAgentDisplayName, isDefaultAgentId } from '../../utils/agentDisplay';
 import { resolveOpenClawModelRef, toOpenClawModelRef } from '../../utils/openclawModelRef';
+import AgentAvatarIcon from '../agent/AgentAvatarIcon';
 import Modal from '../common/Modal';
 import ModelSelector from '../ModelSelector';
 import {
@@ -86,6 +89,7 @@ function exprToCronBuilder(expr: string): CronBuilder | null {
 interface FormState {
   name: string;
   description: string;
+  agentId: string;
   planType: PlanType;
   year: number;
   month: number;
@@ -121,6 +125,7 @@ function nowDefaults() {
 const DEFAULT_FORM_STATE: FormState = {
   name: '',
   description: '',
+  agentId: 'main',
   planType: 'daily',
   ...nowDefaults(),
   weekdays: [1, 2, 3, 4, 5],
@@ -192,6 +197,7 @@ export function createScheduledTaskFormState(
   return {
     name: task.name,
     description: task.description,
+    agentId: task.agentId?.trim() || 'main',
     planType: planInfo.planType,
     year: planInfo.year,
     month: planInfo.month,
@@ -330,6 +336,28 @@ const TaskForm: React.FC<TaskFormProps> = ({
   );
   const [payloadEditorOpen, setPayloadEditorOpen] = useState(false);
   const payloadEditorTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const allAgents = useSelector((state: RootState) => state.agent.agents.filter(a => a.enabled !== false));
+  const [agentDropdownOpen, setAgentDropdownOpen] = useState(false);
+  const agentDropdownRef = useRef<HTMLDivElement>(null);
+
+  const selectedAgent = allAgents.find(a => a.id === (form.agentId || 'main'))
+    || (isDefaultAgentId(form.agentId || 'main') ? { id: 'main', name: '主专家', avatar: undefined } : null);
+
+  useEffect(() => {
+    if (!allAgents || allAgents.length === 0) {
+      void agentService.loadAgents();
+    }
+  }, [allAgents]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (agentDropdownRef.current && !agentDropdownRef.current.contains(event.target as Node)) {
+        setAgentDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   useEffect(() => {
     if (!payloadEditorOpen) return;
@@ -651,6 +679,7 @@ const TaskForm: React.FC<TaskFormProps> = ({
                 ...(form.notifyTo ? { to: form.notifyTo } : {}),
                 ...(form.notifyAccountId ? { accountId: form.notifyAccountId } : {}),
               },
+        agentId: form.agentId?.trim() || 'main',
       };
 
       if (mode === 'create') {
@@ -1520,24 +1549,113 @@ const TaskForm: React.FC<TaskFormProps> = ({
             )}
           </div>
 
-          {/* Task name */}
-          <div>
-            <label className={labelClass}>{i18nService.t('scheduledTasksFormName')}<span className="text-red-500 dark:text-red-400 ml-0.5">*</span></label>
-            <input
-              type="text"
-              value={form.name}
-              onChange={event => updateForm({ name: event.target.value })}
-              className={inputClass}
-              placeholder={i18nService.t('scheduledTasksFormNamePlaceholder')}
-            />
-            {errors.name && <p className={errorClass}>{errors.name}</p>}
-          </div>
+            {/* Task name */}
+            <div>
+              <label className={labelClass}>{i18nService.t('scheduledTasksFormName')}<span className="text-red-500 dark:text-red-400 ml-0.5">*</span></label>
+              <input
+                type="text"
+                value={form.name}
+                onChange={event => updateForm({ name: event.target.value })}
+                className={inputClass}
+                placeholder={i18nService.t('scheduledTasksFormNamePlaceholder')}
+              />
+              {errors.name && <p className={errorClass}>{errors.name}</p>}
+            </div>
 
-          {/* Schedule */}
-          <div>
-            {renderScheduleRow()}
-            {errors.schedule && <p className={errorClass}>{errors.schedule}</p>}
-          </div>
+            {/* Agent selector */}
+            <div>
+              <label className={labelClass}>{i18nService.t('scheduledTasksFormAgentId')}</label>
+              <div className="relative w-full" ref={agentDropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => setAgentDropdownOpen(!agentDropdownOpen)}
+                  className={`${inputClass} w-full flex items-center justify-between cursor-pointer`}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <AgentAvatarIcon
+                      avatar={selectedAgent?.avatar}
+                      agentId={selectedAgent?.id || 'main'}
+                      isMain={isDefaultAgentId(selectedAgent?.id || 'main')}
+                      className="w-5 h-5 rounded-full object-cover shrink-0"
+                    />
+                    <span className="truncate text-foreground text-sm font-medium">
+                      {selectedAgent ? getAgentDisplayName(selectedAgent) : (form.agentId || 'main')}
+                    </span>
+                    {selectedAgent?.level && (
+                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-primary/10 text-primary shrink-0">
+                        {selectedAgent.level}
+                      </span>
+                    )}
+                  </div>
+                  <svg
+                    className={`w-4 h-4 ml-2 flex-shrink-0 text-secondary transition-transform ${
+                      agentDropdownOpen ? 'rotate-180' : ''
+                    }`}
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+
+                {agentDropdownOpen && (
+                  <div className="absolute top-full z-50 mt-1 w-full rounded-xl border border-border bg-surface shadow-popover popover-enter overflow-hidden">
+                    <div className="max-h-60 overflow-y-auto py-1">
+                      {allAgents.map((ag) => {
+                        const isSelected = (form.agentId || 'main') === ag.id;
+                        const isMain = isDefaultAgentId(ag.id);
+                        return (
+                          <button
+                            type="button"
+                            key={ag.id}
+                            className={`w-full flex items-center gap-2.5 px-3 py-2 text-left text-foreground hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover transition-colors ${
+                              isSelected ? 'bg-claude-surfaceHover/50 dark:bg-claude-darkSurfaceHover/50' : ''
+                            }`}
+                            onClick={() => {
+                              updateForm({ agentId: ag.id });
+                              setAgentDropdownOpen(false);
+                            }}
+                          >
+                            <AgentAvatarIcon
+                              avatar={ag.avatar}
+                              agentId={ag.id}
+                              isMain={isMain}
+                              className="w-6 h-6 rounded-full object-cover shrink-0"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className="truncate text-sm font-medium text-foreground">
+                                  {getAgentDisplayName(ag)}
+                                </span>
+                                {ag.level && (
+                                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-primary/10 text-primary shrink-0">
+                                    {ag.level}
+                                  </span>
+                                )}
+                              </div>
+                              {ag.description && (
+                                <p className="truncate text-xs text-secondary mt-0.5">{ag.description}</p>
+                              )}
+                            </div>
+                            {isSelected && (
+                              <CheckIcon className="h-4 w-4 shrink-0 text-emerald-500" />
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+              <p className={hintClass}>{i18nService.t('scheduledTasksFormAgentSelectorHint')}</p>
+            </div>
+
+            {/* Schedule */}
+            <div>
+              {renderScheduleRow()}
+              {errors.schedule && <p className={errorClass}>{errors.schedule}</p>}
+            </div>
 
           {/* Prompt / payload */}
           <div>

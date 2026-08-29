@@ -102,6 +102,12 @@ describe('createScheduledTaskFormState', () => {
     expect(form.minute).toBe(0);
     expect(form.monthDay).toBe(1);
     expect(form.modelId).toBe(fallbackModelRef);
+    expect(form.agentId).toBe('main');
+  });
+
+  test('preserves agentId from existing task', () => {
+    const form = createScheduledTaskFormState(makeTask({ agentId: 'agent-custom-1' }), fallbackModelRef);
+    expect(form.agentId).toBe('agent-custom-1');
   });
 });
 

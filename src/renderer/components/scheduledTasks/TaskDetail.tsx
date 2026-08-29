@@ -13,6 +13,8 @@ import { i18nService } from '../../services/i18n';
 import { scheduledTaskService } from '../../services/scheduledTask';
 import { RootState } from '../../store';
 import { setViewMode } from '../../store/slices/scheduledTaskSlice';
+import { getAgentDisplayName, isDefaultAgentId } from '../../utils/agentDisplay';
+import AgentAvatarIcon from '../agent/AgentAvatarIcon';
 import EditIcon from '../icons/EditIcon';
 import TrashIcon from '../icons/TrashIcon';
 import { getTaskAnalyticsParams, reportScheduledTaskAction } from './analytics';
@@ -187,6 +189,12 @@ const TaskDetail: React.FC<TaskDetailProps> = ({ task, onRequestDelete }) => {
     }
   }, [analyticsParams, task.enabled, task.id]);
 
+  const allAgents = useSelector((state: RootState) => state.agent.agents);
+  const targetAgentId = task.agentId?.trim() || 'main';
+  const taskAgent = allAgents.find(a => a.id === targetAgentId)
+    || (isDefaultAgentId(targetAgentId) ? { id: 'main', name: '主智能体', avatar: undefined } : null);
+  const taskAgentName = taskAgent ? getAgentDisplayName(taskAgent) : targetAgentId;
+
   const promptText = task.payload.kind === 'systemEvent' ? task.payload.text : task.payload.message;
   const deliveryLabel = formatDeliveryLabel(task.delivery, {
     conversations: deliveryConversations,
@@ -288,6 +296,18 @@ const TaskDetail: React.FC<TaskDetailProps> = ({ task, onRequestDelete }) => {
           <div>
             <div className={labelClass}>{i18nService.t('scheduledTasksSchedule')}</div>
             <div className={valueClass}>{formatScheduleLabel(task.schedule)}</div>
+          </div>
+          <div>
+            <div className={labelClass}>{i18nService.t('scheduledTasksDetailAgent')}</div>
+            <div className={`${valueClass} flex items-center gap-1.5 min-w-0`}>
+              <AgentAvatarIcon
+                avatar={taskAgent?.avatar}
+                agentId={taskAgent?.id || 'main'}
+                isMain={isDefaultAgentId(taskAgent?.id || 'main')}
+                className="w-4 h-4 rounded-full object-cover shrink-0"
+              />
+              <span className="truncate">{taskAgentName}</span>
+            </div>
           </div>
           {taskModelLabel && (
             <div>

@@ -14,6 +14,8 @@ import { i18nService } from '../../services/i18n';
 import { scheduledTaskService } from '../../services/scheduledTask';
 import { RootState } from '../../store';
 import { selectTask, setViewMode } from '../../store/slices/scheduledTaskSlice';
+import { getAgentDisplayName, isDefaultAgentId } from '../../utils/agentDisplay';
+import AgentAvatarIcon from '../agent/AgentAvatarIcon';
 import { MANAGEMENT_BODY_TEXT, MANAGEMENT_TITLE_TEXT } from '../common/managementTypography';
 import EditIcon from '../icons/EditIcon';
 import TrashIcon from '../icons/TrashIcon';
@@ -58,6 +60,11 @@ interface TaskCardProps {
 const TaskCard: React.FC<TaskCardProps> = ({ task, onRequestDelete }) => {
   const dispatch = useDispatch();
   const availableModels = useSelector((state: RootState) => state.model.availableModels);
+  const allAgents = useSelector((state: RootState) => state.agent.agents);
+  const targetAgentId = task.agentId?.trim() || 'main';
+  const taskAgent = allAgents.find(a => a.id === targetAgentId)
+    || (isDefaultAgentId(targetAgentId) ? { id: 'main', name: '主智能体', avatar: undefined } : null);
+  const taskAgentName = taskAgent ? getAgentDisplayName(taskAgent) : targetAgentId;
   const [showMenu, setShowMenu] = React.useState(false);
   const [menuPosition, setMenuPosition] = React.useState<MenuPosition | null>(null);
   const menuButtonRef = React.useRef<HTMLButtonElement>(null);
@@ -311,12 +318,24 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onRequestDelete }) => {
       </p>
 
       <div className="mt-3 flex items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-1.5 text-xs text-secondary">
-          <ClockIcon className="h-3.5 w-3.5 shrink-0" />
-          <span className="truncate">
-            {formatScheduleLabel(task.schedule)}
-            {nextRunLabel && <span className="text-secondary/60"> · {nextRunLabel}</span>}
-          </span>
+        <div className="flex min-w-0 items-center gap-2 text-xs text-secondary">
+          <div className="flex items-center gap-1 shrink-0">
+            <AgentAvatarIcon
+              avatar={taskAgent?.avatar}
+              agentId={taskAgent?.id || 'main'}
+              isMain={isDefaultAgentId(taskAgent?.id || 'main')}
+              className="w-3.5 h-3.5 rounded-full object-cover shrink-0"
+            />
+            <span className="truncate max-w-[90px] font-medium text-foreground/80">{taskAgentName}</span>
+          </div>
+          <span className="text-secondary/40">·</span>
+          <div className="flex min-w-0 items-center gap-1 text-secondary">
+            <ClockIcon className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">
+              {formatScheduleLabel(task.schedule)}
+              {nextRunLabel && <span className="text-secondary/60"> · {nextRunLabel}</span>}
+            </span>
+          </div>
         </div>
         <TaskStatusChip
           status={displayStatus}
