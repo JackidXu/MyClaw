@@ -393,7 +393,6 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
             <div className="border-b border-dashed border-border pb-2.5 text-sm font-semibold text-foreground">
               {i18nService.t(category.titleKey)}
             </div>
-
             {/* 分类下的模版卡片列表 */}
             <div className="flex flex-col gap-3">
               {categoryTemplates.map(template => (

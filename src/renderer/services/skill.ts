@@ -1,3 +1,4 @@
+import { BUNDLED_SKILL_DISPLAY_NAMES } from '../components/skills/bundledSkillNames';
 import { LocalizedText, LocalSkillInfo, MarketplaceSkill, MarketTag, Skill } from '../types/skill';
 import { i18nService } from './i18n';
 import { LogReporterAction, reportYdAnalyzer } from './logReporter';
@@ -413,6 +414,7 @@ class SkillService {
       // 存储本地技能的描述和名称，用于国际化与别名查找
       const localSkills: LocalSkillInfo[] = Array.isArray(value?.localSkill) ? value.localSkill : [];
       this.localSkillDescriptions.clear();
+      this.localSkillNames.clear();
       this.skillIcons.clear();
       for (const ls of localSkills) {
         this.localSkillDescriptions.set(ls.name, ls.description);
@@ -469,11 +471,6 @@ class SkillService {
     }
   }
 
-  /**
-   * Resolve a human-friendly skill title. Order of preference:
-   * server `displayName` (local → marketplace → kit) →
-   * prettified raw name (`canvas-design` → `Canvas Design`).
-   */
   getLocalizedSkillName(skillOrId: string | { id: string; name: string }, skillName?: string): string {
     const id = typeof skillOrId === 'string' ? skillOrId : skillOrId.id;
     const name = typeof skillOrId === 'string' ? (skillName ?? skillOrId) : skillOrId.name;
@@ -487,6 +484,9 @@ class SkillService {
       const mp = this.marketplaceCache.skills.find(s => s.id === id);
       if (mp && mp.name) return mp.name;
     }
+
+    const bundled = BUNDLED_SKILL_DISPLAY_NAMES[id];
+    if (bundled) return resolveLocalizedText(bundled);
 
     return prettifySkillName(name);
   }

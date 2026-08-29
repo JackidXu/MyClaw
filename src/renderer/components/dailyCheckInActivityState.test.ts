@@ -17,6 +17,7 @@ import {
   isDailyCheckInContext,
   isDailyCheckInDescriptor,
   isDailyCheckInState,
+  shouldShowDailyCheckInAccountMenuEntry,
   shouldShowDailyCheckInEntry,
 } from './dailyCheckInActivityState';
 
@@ -64,6 +65,7 @@ describe('dailyCheckInActivityState', () => {
 
     expect(canClaimDailyCheckIn(claimed)).toBe(false);
     expect(shouldShowDailyCheckInEntry(claimed)).toBe(false);
+    expect(shouldShowDailyCheckInAccountMenuEntry(claimed)).toBe(true);
     expect(isDailyCheckInState(claimed.state)).toBe(true);
   });
 
@@ -81,7 +83,20 @@ describe('dailyCheckInActivityState', () => {
 
     expect(canClaimDailyCheckIn(completed)).toBe(false);
     expect(shouldShowDailyCheckInEntry(completed)).toBe(false);
+    expect(shouldShowDailyCheckInAccountMenuEntry(completed)).toBe(false);
     expect(isDailyCheckInState(completed.state)).toBe(true);
+  });
+
+  test('hides the account menu entry when the campaign is completed after today is claimed', () => {
+    const completed = context({
+      completed: true,
+      claimedToday: true,
+      remainingDays: 0,
+      claimedDays: 7,
+    });
+
+    expect(shouldShowDailyCheckInEntry(completed)).toBe(false);
+    expect(shouldShowDailyCheckInAccountMenuEntry(completed)).toBe(false);
   });
 
   test('rejects malformed remote state and formats decimal credits', () => {

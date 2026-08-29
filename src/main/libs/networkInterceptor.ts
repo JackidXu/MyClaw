@@ -20,11 +20,17 @@ const pendingTrafficQueue: ApiTrafficEntry[] = [];
 let isInterceptorInstalled = false;
 
 // 注册渲染进程就绪主动拉取通道
-ipcMain.handle('api:traffic-log:ready', () => {
-  const buffered = [...pendingTrafficQueue];
-  pendingTrafficQueue.length = 0;
-  return buffered;
-});
+try {
+  if (typeof ipcMain !== 'undefined' && typeof ipcMain?.handle === 'function') {
+    ipcMain.handle('api:traffic-log:ready', () => {
+      const buffered = [...pendingTrafficQueue];
+      pendingTrafficQueue.length = 0;
+      return buffered;
+    });
+  }
+} catch {
+  // Ignore in testing environments where ipcMain mock is not defined
+}
 
 /**
  * 关联主窗口，窗口就绪时自动清空并投递缓冲的请求日志

@@ -23,6 +23,7 @@ const MAX_CLIENT_TEXT_ASSET_COUNT = 100;
 const MAX_REMOTE_REDIRECTS = 3;
 const MARKDOWN_ASSET_PREFIX = '_lobster_assets/';
 const MARKDOWN_MANIFEST_FILE = '_lobster_share_manifest.json';
+const INVALID_ARCHIVE_FILE_NAME_CHARS = /[\u0000-\u001f\u007f<>:"/\\|?*]/g;
 
 const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp']);
 const MARKDOWN_IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg']);
@@ -96,9 +97,9 @@ function extensionFromName(fileName: string | undefined): string {
 }
 
 function cleanFileName(fileName: string, fallback: string): string {
-  const baseName = path.basename(fileName).replace(/[\\/]/g, '').trim();
-  const cleaned = baseName.replace(/[^A-Za-z0-9._-]/g, '_');
-  return cleaned || fallback;
+  const baseName = path.basename(fileName.replace(/\\/g, '/')).normalize('NFC').trim();
+  const cleaned = baseName.replace(INVALID_ARCHIVE_FILE_NAME_CHARS, '_');
+  return cleaned && cleaned !== '.' && cleaned !== '..' ? cleaned : fallback;
 }
 
 function imageMagicExtension(bytes: Buffer): string | null {

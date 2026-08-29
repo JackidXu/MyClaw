@@ -1,4 +1,10 @@
 import type { HtmlShareAccessMode, HtmlShareConfigurableStatus } from '../htmlShare/constants';
+import type {
+  PublishingCountMode,
+  PublishingIdentityType,
+  PublishingQuotaErrorData,
+  PublishingResourceKind,
+} from '../publishing/constants';
 
 export const SiteIpc = {
   List: 'site:list',
@@ -178,6 +184,7 @@ export interface SiteResult<T> {
   data?: T;
   error?: string;
   code?: number;
+  quota?: PublishingQuotaErrorData;
 }
 
 export interface SiteUpdateTitleInput {
@@ -214,6 +221,10 @@ export interface SiteDeploymentQuotaOptions {
 
 export interface SiteDeploymentQuota {
   allowed: boolean;
+  identityType: PublishingIdentityType;
+  resourceKind: PublishingResourceKind;
+  countMode: PublishingCountMode;
+  canReleaseByClosing: boolean;
   plan: {
     name: string;
     displayName: string;

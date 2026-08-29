@@ -44,6 +44,10 @@ import {
 } from '../store/slices/modelSlice';
 import { i18nService } from './i18n';
 import { LogReporterAction, reportYdAnalyzer } from './logReporter';
+import {
+  clearPendingPublishingConversionAttribution,
+  reportPendingPublishingSubscriptionObserved,
+} from './publishingConversionAttribution';
 
 interface AuthStateRefreshResult {
   isLoggedIn: boolean;
@@ -57,23 +61,37 @@ interface AuthQuotaCheckResult {
   enterpriseQuotaAvailable: boolean;
 }
 
-export interface PricingCatalogTextModel {
+export interface PricingCatalogBaseModel {
   modelId?: string;
   modelName?: string;
   provider?: string;
   providerLabel?: string;
   description?: string;
+  capabilities?: string | null;
+}
+
+export interface PricingCatalogTextModel extends PricingCatalogBaseModel {
   supportsImage?: boolean;
   supportsThinking?: boolean;
   thinkingConfig?: ModelThinkingConfig;
   contextWindow?: number | null;
   costMultiplier?: number;
+  moreModel?: boolean;
+}
+
+export interface PricingCatalogMediaModel extends PricingCatalogBaseModel {
+  mediaType?: string;
+  billingUnit?: string;
+  unitLabel?: string;
+  unitCredits?: number;
+  unitPriceYuan?: number;
+  pricingDescription?: string | null;
 }
 
 export interface PricingCatalogResponse {
   textModels?: PricingCatalogTextModel[];
-  imageModels?: unknown[];
-  videoModels?: unknown[];
+  imageModels?: PricingCatalogMediaModel[];
+  videoModels?: PricingCatalogMediaModel[];
 }
 
 export interface AvailableServerModelEntry {
@@ -94,6 +112,7 @@ export interface AvailableServerModelEntry {
   explicitContextCache?: boolean;
   costMultiplier?: number;
   description?: string;
+  moreModel?: boolean;
   accessible?: boolean;
   restrictionHint?: string;
 }
@@ -196,6 +215,7 @@ export function mapPricingCatalogTextModelsToServerModels(
       description: readString(model.description) || undefined,
       costMultiplier,
       contextWindow,
+      moreModel: model.moreModel === true,
       accessible: false,
     }];
   });
@@ -237,6 +257,7 @@ export function mapAvailableServerModelsToModels(
       explicitContextCache: model.explicitContextCache ?? false,
       description: model.description,
       costMultiplier: model.costMultiplier,
+      moreModel: model.moreModel === true,
       accessible: model.accessible ?? true,
       restrictionHint: model.restrictionHint ?? undefined,
     };
@@ -318,6 +339,7 @@ class AuthService {
       quota: quota ?? null,
       ownerAccountKey,
     }));
+    void reportPendingPublishingSubscriptionObserved(quota?.subscriptionStatus);
     const context = applyEnterpriseAccountContext(enterpriseContext);
     this.scheduleEnterpriseQuotaBoundary(context);
     if (context) {
@@ -588,6 +610,7 @@ class AuthService {
    * Logout.
    */
   async logout() {
+    clearPendingPublishingConversionAttribution();
     await window.electron.auth.logout();
     await this.applyLoggedOutState(false);
   }
@@ -618,6 +641,7 @@ class AuthService {
       if (result.success) {
         if (result.quota) {
           store.dispatch(updateQuota(result.quota));
+          void reportPendingPublishingSubscriptionObserved(result.quota.subscriptionStatus);
         }
         if (result.enterpriseContext !== undefined) {
           const context = applyEnterpriseAccountContext(result.enterpriseContext);

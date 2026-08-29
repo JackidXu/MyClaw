@@ -50,11 +50,16 @@ function isWebInstallerEnabled() {
   return value === '1' || value === 'true';
 }
 
+function isTruthyBuildEnv(name) {
+  const value = (process.env[name] || '').trim().toLowerCase();
+  return value === '1' || value === 'true';
+}
+
 // Name of the .nsis.7z app package that electron-builder produces; fixed as
 // <productName>-<version>-x64.nsis.7z.
 function expectedPackageFileName() {
   const version = require('../package.json').version;
-  return `${config.productName}-${version}-x64.nsis.7z`;
+  return `${config.productName.toLowerCase()}-${version}-x64.nsis.7z`;
 }
 
 // Returns the complete package download URL baked into the web installer.
@@ -122,6 +127,8 @@ function mergeExtraResources(platformName) {
 }
 
 const keyfrom = readBuildKeyfrom();
+const isChannelBuild = isTruthyBuildEnv(BuildEnv.ChannelBuild);
+const silentOnDoubleClick = isChannelBuild && isTruthyBuildEnv(BuildEnv.SilentOnDoubleClick);
 
 for (const platformName of ['mac', 'win', 'linux']) {
   mergeExtraResources(platformName);
@@ -146,7 +153,7 @@ config.dmg = {
 
 config.nsis = {
   ...(config.nsis || {}),
-  artifactName: `HeyClaw-win-\${arch}-\${version}-${keyfrom}.\${ext}`,
+  artifactName: `HeyClaw-win-\${arch}-\${version}-${keyfrom}${silentOnDoubleClick ? '-silent' : ''}.\${ext}`,
 };
 
 if (isWebInstallerEnabled()) {
@@ -159,12 +166,13 @@ if (isWebInstallerEnabled()) {
   };
   config.nsisWeb = {
     appPackageUrl: resolveWebPackageUrl(keyfrom),
-    artifactName: `LobsterAI-WebSetup-\${arch}-\${version}-${keyfrom}.\${ext}`,
+    artifactName: `HeyClaw-WebSetup-\${arch}-\${version}-${keyfrom}${silentOnDoubleClick ? '-silent' : ''}.\${ext}`,
   };
   console.log(`[WebInstaller] nsis-web target enabled, app package url: ${config.nsisWeb.appPackageUrl}`);
 }
 
 console.log(`[Keyfrom] configured artifact keyfrom as ${keyfrom}`);
+console.log(`[ChannelBuild] silentOnDoubleClick=${silentOnDoubleClick}`);
 
 if (!process.env.CSC_LINK) {
   console.log('[Codesign] CSC_LINK is not set, disabling Mac code signing identity to prevent signature conflicts');

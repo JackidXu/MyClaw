@@ -686,126 +686,110 @@ function main() {
       const source = resolvePluginInstallSource(plugin);
       log(`Installing ${source.pinnedDisplaySpec} via OpenClaw CLI...`);
 
-      const maxRetries = 5;
-      let attempt = 0;
-      let success = false;
-      let lastError = null;
+      // Use a temporary OPENCLAW_STATE_DIR so the CLI installs plugins
+      // into a staging directory rather than the user's global config.
+      const stagingDir = fs.mkdtempSync(path.join(os.tmpdir(), `openclaw-plugin-staging-`));
+      let installFailure = null;
 
-      while (attempt < maxRetries && !success) {
-        attempt++;
-        if (attempt > 1) {
-          const delayMs = Math.pow(2, attempt - 2) * 4000;
-          log(`Retrying plugin install for ${id} (attempt ${attempt}/${maxRetries}) after waiting ${delayMs / 1000}s...`);
-          // 在重试前进行指数退避等待，以避免连续触发 Rate Limit（子进程同步等待）
-          spawnSync(process.execPath, ['-e', `Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ${delayMs})`]);
-        }
+      try {
+        let installSpec;
 
-        // Use a temporary OPENCLAW_STATE_DIR so the CLI installs plugins
-        // into a staging directory rather than the user's global config.
-        const stagingDir = fs.mkdtempSync(path.join(os.tmpdir(), `openclaw-plugin-staging-`));
-
-        try {
-          let installSpec;
-
-          if (source.kind === 'git') {
-            log('  Cloning plugin from Git source before install.');
-            installSpec = gitCloneAndPack(npmSpec, version, stagingDir);
-          } else if (source.kind === 'packed') {
-            if (source.registry) {
-              log(`  Packing from custom registry: ${source.registry}`);
-            } else {
-              log('  Packing pinned npm package before OpenClaw installation.');
-            }
-            installSpec = npmPack(source.packSpec, source.registry, stagingDir);
+        if (source.kind === 'git') {
+          log('  Cloning plugin from Git source before install.');
+          installSpec = gitCloneAndPack(npmSpec, version, stagingDir);
+        } else if (source.kind === 'packed') {
+          if (source.registry) {
+            log(`  Packing from custom registry: ${source.registry}`);
           } else {
-            installSpec = source.installSpec;
+            log('  Packing pinned npm package before OpenClaw installation.');
           }
-
-          if (id === BEE_PACKAGE_NAME || npmSpec === BEE_PACKAGE_NAME) {
-            log('  Preparing NetEase Bee package for OpenClaw 2026.6 runtime install.');
-            if (!fs.existsSync(installSpec) || fs.statSync(installSpec).isDirectory()) {
-              installSpec = npmPack(`${BEE_PACKAGE_NAME}@${version}`, plugin.registry, stagingDir);
-            }
-            installSpec = prepareOpenClawNeteaseBeePackage(installSpec, stagingDir, { log });
-          }
-
-          if (id === NIM_PLUGIN_PACKAGE_ID) {
-            log('  Preparing NIM package for OpenClaw 2026.6 runtime install.');
-            installSpec = prepareOpenClawNimPackage(installSpec, stagingDir, { log });
-          }
-
-          const installEnv = buildPluginInstallEnv(plugin);
-          if (installEnv.npm_config_allow_git === 'all') {
-            log('  Allowing Git dependencies for this NetEase Bee installation only.');
-          }
-
-          runOpenClawCli(
-            ['plugins', 'install', installSpec, '--force', '--dangerously-force-unsafe-install'],
-            {
-              env: {
-                OPENCLAW_STATE_DIR: stagingDir,
-                // Prevent npm from auto-installing peerDependencies (npm v7+).
-                // Channel plugins declare openclaw as a peerDep, but the host
-                // gateway already provides the SDK at runtime.  Without this,
-                // npm installs the full openclaw SDK + transitive deps (~738 MB)
-                // into each plugin's node_modules.
-                ...installEnv,
-              },
-              stdio: 'inherit',
-            }
-          );
-
-          const installedDir = findInstalledPluginDir(stagingDir, plugin);
-          if (!installedDir) {
-            throw new Error('No plugin found in staging directory after install');
-          }
-
-          // Replace cache dir with new content
-          if (fs.existsSync(cacheDir)) {
-            fs.rmSync(cacheDir, { recursive: true, force: true });
-          }
-          ensureDir(path.dirname(cacheDir));
-          copyInstalledPluginToCache(installedDir, cacheDir);
-          fixBinSymlinks(cacheDir);
-
-          // Write install info for cache validation
-          fs.writeFileSync(
-            installInfoPath,
-            JSON.stringify(
-              {
-                pluginId: id,
-                npmSpec,
-                version,
-                installedAt: new Date().toISOString(),
-              },
-              null,
-              2
-            ) + '\n',
-            'utf-8'
-          );
-
-          log(`Downloaded and cached ${id}@${version}.`);
-          success = true;
-        } catch (err) {
-          lastError = err;
-          log(`Attempt ${attempt} failed for plugin ${id}: ${getErrorMessage(err)}`);
-        } finally {
-          // Clean up staging directory
-          try {
-            fs.rmSync(stagingDir, { recursive: true, force: true });
-          } catch {
-            // best-effort cleanup
-          }
+          installSpec = npmPack(source.packSpec, source.registry, stagingDir);
+        } else {
+          installSpec = source.installSpec;
         }
-      }
 
-      if (!success) {
+        if (id === BEE_PACKAGE_NAME || npmSpec === BEE_PACKAGE_NAME) {
+          log('  Preparing NetEase Bee package for OpenClaw 2026.6 runtime install.');
+          if (!fs.existsSync(installSpec) || fs.statSync(installSpec).isDirectory()) {
+            installSpec = npmPack(`${BEE_PACKAGE_NAME}@${version}`, plugin.registry, stagingDir);
+          }
+          installSpec = prepareOpenClawNeteaseBeePackage(installSpec, stagingDir, { log });
+        }
+
+        if (id === NIM_PLUGIN_PACKAGE_ID) {
+          log('  Preparing NIM package for OpenClaw 2026.6 runtime install.');
+          installSpec = prepareOpenClawNimPackage(installSpec, stagingDir, { log });
+        }
+
+        const installEnv = buildPluginInstallEnv(plugin);
+        if (installEnv.npm_config_allow_git === 'all') {
+          log('  Allowing Git dependencies for this NetEase Bee installation only.');
+        }
+
+        runOpenClawCli(
+          ['plugins', 'install', installSpec, '--force', '--dangerously-force-unsafe-install'],
+          {
+            env: {
+              OPENCLAW_STATE_DIR: stagingDir,
+              // Prevent npm from auto-installing peerDependencies (npm v7+).
+              // Channel plugins declare openclaw as a peerDep, but the host
+              // gateway already provides the SDK at runtime.  Without this,
+              // npm installs the full openclaw SDK + transitive deps (~738 MB)
+              // into each plugin's node_modules.
+              ...installEnv,
+            },
+            stdio: 'inherit',
+          }
+        );
+
+        const installedDir = findInstalledPluginDir(stagingDir, plugin);
+        if (!installedDir) {
+          throw new Error('No plugin found in staging directory after install');
+        }
+
+        // Replace cache dir with new content
+        if (fs.existsSync(cacheDir)) {
+          fs.rmSync(cacheDir, { recursive: true, force: true });
+        }
+        ensureDir(path.dirname(cacheDir));
+        copyInstalledPluginToCache(installedDir, cacheDir);
+        fixBinSymlinks(cacheDir);
+
+        // Write install info for cache validation
+        fs.writeFileSync(
+          installInfoPath,
+          JSON.stringify(
+            {
+              pluginId: id,
+              npmSpec,
+              version,
+              installedAt: new Date().toISOString(),
+            },
+            null,
+            2
+          ) + '\n',
+          'utf-8'
+        );
+
+        log(`Downloaded and cached ${id}@${version}.`);
+      } catch (err) {
         if (optional) {
-          log(`WARNING: Failed to install optional plugin ${id} after ${maxRetries} attempts: ${getErrorMessage(lastError)}`);
+          log(`WARNING: Failed to install optional plugin ${id}: ${getErrorMessage(err)}`);
           log(`Skipping ${id} — it may not be available from this network.`);
           continue;
         }
-        die(`Failed to install plugin ${id} after ${maxRetries} attempts: ${getErrorMessage(lastError)}`);
+        installFailure = err;
+      } finally {
+        // Clean up staging directory
+        try {
+          fs.rmSync(stagingDir, { recursive: true, force: true });
+        } catch {
+          // best-effort cleanup
+        }
+      }
+
+      if (installFailure !== null) {
+        die(`Failed to install plugin ${id}: ${getErrorMessage(installFailure)}`);
       }
     }
 

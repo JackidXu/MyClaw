@@ -2,9 +2,18 @@ import React, { useMemo } from 'react';
 
 import type { SiteAnalytics } from '../../../shared/site/constants';
 import { i18nService } from '../../services/i18n';
+import {
+  MANAGEMENT_META_TEXT,
+  MANAGEMENT_TITLE_TEXT,
+} from '../common/managementTypography';
 
 interface SiteAnalyticsChartProps {
   trend: SiteAnalytics['trend'];
+  title?: string;
+  subtitle?: string;
+  uniqueVisitorsLabel?: string;
+  volumeLabel?: string;
+  ariaLabel?: string;
 }
 
 const WIDTH = 820;
@@ -39,7 +48,14 @@ export const smoothPath = (points: Array<[number, number]>): string => {
   }, `M ${points[0][0]} ${points[0][1]}`);
 };
 
-const SiteAnalyticsChart: React.FC<SiteAnalyticsChartProps> = ({ trend }) => {
+const SiteAnalyticsChart: React.FC<SiteAnalyticsChartProps> = ({
+  trend,
+  title = i18nService.t('sitesTraffic'),
+  subtitle = i18nService.t('sitesDailyGranularity'),
+  uniqueVisitorsLabel = i18nService.t('sitesUniqueVisitors'),
+  volumeLabel = i18nService.t('sitesPageViews'),
+  ariaLabel = i18nService.t('sitesTrafficTrend'),
+}) => {
   const chart = useMemo(() => {
     const rawMax = Math.max(1, ...trend.flatMap(item => [item.pageViews, item.uniqueVisitors]));
     const step = rawMax <= 12 ? 3 : Math.ceil(rawMax / 4);
@@ -77,8 +93,10 @@ const SiteAnalyticsChart: React.FC<SiteAnalyticsChartProps> = ({ trend }) => {
     <div className="rounded-xl border border-border bg-surface p-4">
       <div className="mb-3 flex items-center justify-between gap-4">
         <div>
-          <h3 className="text-sm font-semibold text-foreground">{i18nService.t('sitesTraffic')}</h3>
-          <p className="mt-0.5 text-xs text-secondary">{i18nService.t('sitesDailyGranularity')}</p>
+          <h3 className={`${MANAGEMENT_TITLE_TEXT} font-semibold text-foreground`}>{title}</h3>
+          <p className={`${MANAGEMENT_META_TEXT} mt-0.5 leading-[var(--lobster-leading-xs)] text-secondary`}>
+            {subtitle}
+          </p>
         </div>
         <div className="flex items-center gap-4 text-xs text-secondary">
           <span className="inline-flex items-center gap-1.5">
@@ -86,14 +104,14 @@ const SiteAnalyticsChart: React.FC<SiteAnalyticsChartProps> = ({ trend }) => {
               className="size-2 rounded-full"
               style={{ backgroundColor: SERIES_COLORS.uniqueVisitors }}
             />
-            {i18nService.t('sitesUniqueVisitors')}
+            {uniqueVisitorsLabel}
           </span>
           <span className="inline-flex items-center gap-1.5">
             <span
               className="size-2 rounded-full"
               style={{ backgroundColor: SERIES_COLORS.pageViews }}
             />
-            {i18nService.t('sitesPageViews')}
+            {volumeLabel}
           </span>
         </div>
       </div>
@@ -102,7 +120,7 @@ const SiteAnalyticsChart: React.FC<SiteAnalyticsChartProps> = ({ trend }) => {
           viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
           className="block h-auto w-full"
           role="img"
-          aria-label={i18nService.t('sitesTrafficTrend')}
+          aria-label={ariaLabel}
         >
           <defs>
             <linearGradient id="sitePvFill" x1="0" y1="0" x2="0" y2="1">

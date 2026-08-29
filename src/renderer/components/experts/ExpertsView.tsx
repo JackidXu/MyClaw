@@ -13,7 +13,8 @@ import AgentSettingsPanel from '../agent/AgentSettingsPanel';
 import Modal from '../common/Modal';
 import ComposeIcon from '../icons/ComposeIcon';
 import SidebarToggleIcon from '../icons/SidebarToggleIcon';
-import SkillsView from '../skills/SkillsView';
+import McpManager from '../mcp/McpManager';
+import SkillsManager from '../skills/SkillsManager';
 
 interface PresetAgent {
   id: string;
@@ -414,21 +415,17 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
 
       {/* 主体渲染区 */}
       {activeTab === 'skills' ? (
-        <SkillsView
-          activeTab="skills"
-          hideHeader={true}
-          isSidebarCollapsed={isSidebarCollapsed}
-          onToggleSidebar={onToggleSidebar}
-          onNewChat={onNewChat}
-        />
+        <div className="flex-1 overflow-y-auto min-h-0 [scrollbar-gutter:stable] bg-background">
+          <div className="mx-auto w-full max-w-[1120px] px-6 py-6">
+            <SkillsManager />
+          </div>
+        </div>
       ) : activeTab === 'mcp' ? (
-        <SkillsView
-          activeTab="mcp"
-          hideHeader={true}
-          isSidebarCollapsed={isSidebarCollapsed}
-          onToggleSidebar={onToggleSidebar}
-          onNewChat={onNewChat}
-        />
+        <div className="flex-1 overflow-y-auto min-h-0 [scrollbar-gutter:stable] bg-background">
+          <div className="mx-auto w-full max-w-[1120px] px-6 py-6">
+            <McpManager />
+          </div>
+        </div>
       ) : (
         <div className="flex-1 overflow-y-auto min-h-0 [scrollbar-gutter:stable] bg-surface-raised/40">
           <div className="mx-auto w-full max-w-[1240px] px-6 py-6">

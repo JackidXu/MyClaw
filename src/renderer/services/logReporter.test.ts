@@ -1,9 +1,10 @@
-import { afterEach, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 
 vi.mock('../store', () => ({
   store: {
     getState: () => ({
       auth: {
+        isLoggedIn: true,
         user: {
           yid: 'stored-user',
         },
@@ -37,8 +38,14 @@ import {
   reportYdAnalyzer,
 } from './logReporter';
 
+beforeEach(() => {
+  vi.mocked(configService.getConfig).mockReturnValue({
+    language: 'zh',
+    usageAnalyticsEnabled: true,
+  } as ReturnType<typeof configService.getConfig>);
+});
+
 afterEach(() => {
-  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
@@ -52,6 +59,8 @@ test('builds a Youdao Analyzer URL with common action parameters', () => {
     {
       appVersion: '2026.6.18',
       arch: 'arm64',
+      environment: 'test',
+      eventId: 'event-1',
       firstKeyfrom: 'bilibili',
       installationId: 'installation-uuid',
       language: 'en',
@@ -69,6 +78,8 @@ test('builds a Youdao Analyzer URL with common action parameters', () => {
   expect(result.searchParams.get('os_platform')).toBe('darwin');
   expect(result.searchParams.get('os_arch')).toBe('arm64');
   expect(result.searchParams.get('language')).toBe('en');
+  expect(result.searchParams.get('environment')).toBe('test');
+  expect(result.searchParams.get('eventId')).toBe('event-1');
   expect(result.searchParams.get('uuid')).toBe('installation-uuid');
   expect(result.searchParams.get('firstKeyfrom')).toBe('bilibili');
   expect(result.searchParams.get('latestKeyfrom')).toBe('partner_a');
@@ -77,6 +88,8 @@ test('builds a Youdao Analyzer URL with common action parameters', () => {
   expect(result.searchParams.get('skillId')).toBe('xlsx');
   expect(result.searchParams.get('enabled')).toBe('true');
   expect(result.searchParams.get('log_Usid')).toBe('test-user');
+  expect(result.searchParams.get('identityType')).toBe('free');
+  expect(result.searchParams.get('is_subscriber')).toBe('false');
   expect(result.searchParams.get('uts')).toBe('123456789');
 });
 
@@ -90,21 +103,31 @@ test('does not allow event parameters to override common parameters', () => {
       os_platform: 'unexpected-platform',
       os_arch: 'unexpected-arch',
       language: 'unexpected-language',
+      environment: 'unexpected-environment',
+      eventId: 'unexpected-event',
       uuid: 'unexpected-uuid',
       firstKeyfrom: 'unexpected-first-keyfrom',
       latestKeyfrom: 'unexpected-latest-keyfrom',
       is_logged_in: false,
+      identityType: 'free',
+      is_subscriber: false,
+      subscriptionStatus: 'free',
       log_Usid: 'unexpected-user',
       uts: 1,
     },
     {
       appVersion: 'trusted-version',
       arch: 'trusted-arch',
+      environment: 'trusted-environment',
+      eventId: 'trusted-event',
       firstKeyfrom: 'trusted-first-keyfrom',
       installationId: 'trusted-uuid',
+      identityType: 'subscription',
+      isSubscriber: true,
       language: 'trusted-language',
       latestKeyfrom: 'trusted-latest-keyfrom',
       platform: 'trusted-platform',
+      subscriptionStatus: 'active',
       userId: 'trusted-user',
       timestamp: 2,
     },
@@ -116,10 +139,15 @@ test('does not allow event parameters to override common parameters', () => {
   expect(result.searchParams.get('os_platform')).toBe('trusted-platform');
   expect(result.searchParams.get('os_arch')).toBe('trusted-arch');
   expect(result.searchParams.get('language')).toBe('trusted-language');
+  expect(result.searchParams.get('environment')).toBe('trusted-environment');
+  expect(result.searchParams.get('eventId')).toBe('trusted-event');
   expect(result.searchParams.get('uuid')).toBe('trusted-uuid');
   expect(result.searchParams.get('firstKeyfrom')).toBe('trusted-first-keyfrom');
   expect(result.searchParams.get('latestKeyfrom')).toBe('trusted-latest-keyfrom');
   expect(result.searchParams.get('is_logged_in')).toBe('true');
+  expect(result.searchParams.get('identityType')).toBe('subscription');
+  expect(result.searchParams.get('is_subscriber')).toBe('true');
+  expect(result.searchParams.get('subscriptionStatus')).toBe('active');
   expect(result.searchParams.get('log_Usid')).toBe('trusted-user');
   expect(result.searchParams.get('uts')).toBe('2');
 });
@@ -163,6 +191,10 @@ test('marks anonymous events when no user is logged in', () => {
 });
 
 test('reports are disabled and reportYdAnalyzer returns false without network requests', async () => {
+  vi.mocked(configService.getConfig).mockReturnValue({
+    language: 'zh',
+    usageAnalyticsEnabled: false,
+  } as ReturnType<typeof configService.getConfig>);
   const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 });
   vi.stubGlobal('window', {
     electron: {

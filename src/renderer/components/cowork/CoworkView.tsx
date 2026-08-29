@@ -905,13 +905,13 @@ const CoworkView: React.FC<CoworkViewProps> = ({
           <button
             type="button"
             onClick={() => openStartupCreditCampaign()}
-            className="mr-2 inline-flex h-8 max-w-[240px] items-center gap-1.5 rounded-full border border-border bg-surface/90 px-3 text-xs font-medium text-foreground shadow-subtle transition-colors hover:bg-surface-raised"
+            className="mr-2 inline-flex h-8 max-w-[240px] items-center gap-2 rounded-full border border-[#F0B58E] bg-[#FFF7F0] px-3 text-xs font-medium text-[#7C351C] shadow-[0_3px_12px_rgba(235,94,40,0.16)] transition-colors hover:border-[#E89C6C] hover:bg-[#FFEBDD] dark:border-[#704530] dark:bg-[#352A25] dark:text-[#F5C4A5] dark:shadow-[0_3px_14px_rgba(0,0,0,0.32)] dark:hover:bg-[#403029]"
           >
             <img
               src={startupCreditEntryGiftUrl}
               alt=""
               aria-hidden="true"
-              className="h-4 w-4 shrink-0"
+              className="startup-credit-entry-gift h-5 w-5 shrink-0"
             />
             <span className="truncate">
               {startupCreditEntry.label || i18nService.t('startupCreditMenuEntry')}

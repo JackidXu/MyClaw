@@ -161,4 +161,32 @@ describe('siteClient', () => {
       { method: 'DELETE' },
     );
   });
+
+  test('preserves structured quota data on a rejected reservation', async () => {
+    const fetchWithAuth = vi.fn(async () => apiResponse({
+      identityType: 'free',
+      resourceKind: 'site',
+      countMode: 'total',
+      used: 1,
+      limit: 1,
+      canReleaseByClosing: false,
+    }, 41609));
+
+    const result = await createSiteQuotaReservation(
+      'https://server.example',
+      fetchWithAuth,
+      { requestKey: 'request-2' },
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.code).toBe(41609);
+    expect(result.quota).toEqual({
+      identityType: 'free',
+      resourceKind: 'site',
+      countMode: 'total',
+      used: 1,
+      limit: 1,
+      canReleaseByClosing: false,
+    });
+  });
 });

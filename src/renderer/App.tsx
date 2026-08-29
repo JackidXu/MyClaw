@@ -10,8 +10,13 @@ import {
   AppUpdateStatus,
   isManualDownloadUrl,
 } from '../shared/appUpdate/constants';
+import {
+  LibraryNavigationEvent,
+  LibrarySourceFilter,
+} from '../shared/library/constants';
+import type { LibrarySessionRef } from '../shared/library/types';
+import { OpenClawEnginePhase } from '../shared/openclawEngine/constants';
 import { ProviderAuthType, ProviderName, ProviderRegistry } from '../shared/providers';
-import { SIDEBAR_TASK_FILTER_ENABLED } from './components/agentSidebar/SidebarTaskFilterButton';
 import { AuthModal } from './components/AuthModal';
 import { CoworkView } from './components/cowork';
 import {
@@ -30,11 +35,13 @@ import EngineFailureOverlay from './components/cowork/EngineFailureOverlay';
 import EngineStartupOverlay from './components/cowork/EngineStartupOverlay';
 import ExpertsView from './components/experts/ExpertsView';
 import KitsView from './components/kits/KitsView';
+import LibraryView from './components/library/LibraryView';
 import { ScheduledTasksView } from './components/scheduledTasks';
 import SecondBrainView from './components/secondBrain/SecondBrainView';
 import Settings, { type SettingsOpenOptions } from './components/Settings';
 import Sidebar from './components/Sidebar';
 import { SitesView } from './components/sites';
+import { SIDEBAR_TASK_FILTER_ENABLED } from './components/agentSidebar/SidebarTaskFilterButton';
 import { SkillsAndConnectorsView, SkillsConnectorsSection } from './components/skillsAndConnectors';
 import SkinBackdrop, { SkinBackdropVariant } from './components/skin/SkinBackdrop';
 import SkinPresentationScope from './components/skin/SkinPresentationScope';
@@ -79,6 +86,7 @@ import {
   selectFirstCurrentSessionPendingPermission,
   selectPendingPermissions,
 } from './store/selectors/coworkSelectors';
+import { openArtifactPreviewTab } from './store/slices/artifactSlice';
 import {
   clearDraftAttachments,
   clearDraftSelectedTextSnippets,
@@ -88,6 +96,7 @@ import {
 } from './store/slices/coworkSlice';
 import { setAvailableModels, setDefaultSelectedModel } from './store/slices/modelSlice';
 import { clearSelection } from './store/slices/quickActionSlice';
+import { setActiveKitIds } from './store/slices/kitSlice';
 import { setActiveSkillIds } from './store/slices/skillSlice';
 import { CoworkCollaborationMode, type CoworkPermissionResult } from './types/cowork';
 
@@ -160,10 +169,17 @@ const logAppUpdateRendererLifecycle = (
 const App: React.FC = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [settingsOptions, setSettingsOptions] = useState<SettingsOpenOptions & { requestId: number }>({ requestId: 0 });
-  const [mainView, setMainView] = useState<'cowork' | 'skills' | 'scheduledTasks' | 'kits' | 'mcp' | 'sites' | 'experts' | 'secondBrain'>('cowork');
+  const [mainView, setMainView] = useState<'cowork' | 'skills' | 'scheduledTasks' | 'kits' | 'mcp' | 'sites' | 'experts' | 'secondBrain' | 'library'>('cowork');
   const [skillsActiveTab, setSkillsActiveTab] = useState<'skills' | 'mcp'>('skills');
   void skillsActiveTab;
   void setSkillsActiveTab;
+  const [libraryNavigationRequest, setLibraryNavigationRequest] = useState<{
+    source: LibrarySourceFilter;
+    requestId: number;
+  }>({
+    source: LibrarySourceFilter.Local,
+    requestId: 0,
+  });
   const [isInitialized, setIsInitialized] = useState(false);
   const [isActivated, setIsActivated] = useState<boolean>(true);
   const [initError, setInitError] = useState<string | null>(null);
@@ -175,6 +191,9 @@ const App: React.FC = () => {
   const [isTaskFilterActive, setIsTaskFilterActive] = useState(false);
   const [hasUnreadCompletedTasks, setHasUnreadCompletedTasks] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(244);
+  const [isEngineStartupOverlayVisible, setIsEngineStartupOverlayVisible] = useState(
+    () => coworkService.getOpenClawEngineStatusSnapshot()?.phase === OpenClawEnginePhase.Starting,
+  );
   const [appUpdateState, setAppUpdateState] = useState<AppUpdateRuntimeState>({
     status: AppUpdateStatus.Idle,
     source: null,
@@ -256,6 +275,30 @@ const App: React.FC = () => {
     }
     return providerModels;
   }, [dispatch]);
+
+  useEffect(() => {
+    let isCurrent = true;
+    const resolveOverlayVisible = (phase?: string | null) =>
+      phase === OpenClawEnginePhase.Starting;
+
+    coworkService.getOpenClawEngineStatus()
+      .then((status) => {
+        if (!isCurrent) return;
+        setIsEngineStartupOverlayVisible(resolveOverlayVisible(status?.phase));
+      })
+      .catch((error) => {
+        console.debug('[App] failed to refresh OpenClaw engine status for sidebar promo timing:', error);
+      });
+
+    const unsubscribe = coworkService.onOpenClawEngineStatus((status) => {
+      setIsEngineStartupOverlayVisible(resolveOverlayVisible(status.phase));
+    });
+
+    return () => {
+      isCurrent = false;
+      unsubscribe();
+    };
+  }, []);
 
   const waitWithTimeout = useCallback(
     async <T,>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> => {
@@ -581,7 +624,6 @@ const App: React.FC = () => {
       // 默认开启隐私协议同意状态
       setPrivacyAgreed(true);
       mark('privacy check done');
-
       finishShell(
         providerModels.length,
         configReady ? 'shell ready' : 'shell ready (degraded: default config)',
@@ -804,9 +846,38 @@ const App: React.FC = () => {
     setSkillsActiveTab('mcp');
   }, []);
 
-  const handleShowSites = useCallback(() => {
-    setMainView('sites');
+  const handleShowLibrary = useCallback(() => {
+    setLibraryNavigationRequest(current => ({
+      source: LibrarySourceFilter.Local,
+      requestId: current.requestId + 1,
+    }));
+    setMainView('library');
   }, []);
+
+  useEffect(() => {
+    const handleOpenCloudLibrary = (): void => {
+      setLibraryNavigationRequest(current => ({
+        source: LibrarySourceFilter.Cloud,
+        requestId: current.requestId + 1,
+      }));
+      setMainView('library');
+    };
+    window.addEventListener(LibraryNavigationEvent.OpenCloud, handleOpenCloudLibrary);
+    return () => {
+      window.removeEventListener(LibraryNavigationEvent.OpenCloud, handleOpenCloudLibrary);
+    };
+  }, []);
+
+  const handleOpenLibrarySession = useCallback((session: LibrarySessionRef) => {
+    setMainView('cowork');
+    void coworkService.loadSession(session.sessionId).then(loaded => {
+      if (!loaded || !session.sessionArtifactId) return;
+      dispatch(openArtifactPreviewTab({
+        sessionId: session.sessionId,
+        artifactId: session.sessionArtifactId,
+      }));
+    });
+  }, [dispatch]);
 
   const handleShowKits = useCallback(() => {
     setMainView('kits');
@@ -824,7 +895,9 @@ const App: React.FC = () => {
     }
   }, [handleShowMcp, handleShowSkills]);
 
-
+  const handleShowSites = useCallback(() => {
+    setMainView('sites');
+  }, []);
 
   const handleShowSecondBrain = useCallback(() => {
     if (!vipService.hasSecondBrainPermission()) {
@@ -833,6 +906,30 @@ const App: React.FC = () => {
     }
     setMainView('secondBrain');
   }, []);
+
+  const openHomeWithKit = useCallback((kitId: string, text?: string) => {
+    dispatch(setActiveKitIds([kitId]));
+    coworkService.clearSession({ restoreAgentSkills: true });
+    dispatch(clearSelection());
+    dispatch(setDraftSkillIds({ draftKey: '__home__', skillIds: [] }));
+    if (text) {
+      dispatch(setDraftPrompt({ sessionId: '__home__', draft: text }));
+    }
+    setMainView('cowork');
+    window.setTimeout(() => {
+      window.dispatchEvent(new CustomEvent(CoworkUiEvent.FocusInput, {
+        detail: { clear: false },
+      }));
+    }, 0);
+  }, [dispatch]);
+
+  const handleKitTryAsking = useCallback((text: string, kitId: string) => {
+    openHomeWithKit(kitId, text);
+  }, [openHomeWithKit]);
+
+  const handleKitUse = useCallback((kitId: string) => {
+    openHomeWithKit(kitId);
+  }, [openHomeWithKit]);
 
   const handleSkillUse = useCallback((skillId: string) => {
     dispatch(setActiveSkillIds([skillId]));
@@ -945,7 +1042,6 @@ const App: React.FC = () => {
       }));
     }, 0);
   }, [dispatch]);
-
   const showToast = useCallback((toast: string | ToastEventDetail) => {
     const detail = typeof toast === 'string' ? { message: toast } : toast;
     if (!detail.message) return;
@@ -1061,15 +1157,18 @@ const App: React.FC = () => {
     setIsActivated(false);
   }, []);
 
-  const runUpdateCheck = useCallback(async () => {
+  const runUpdateCheck = useCallback(async (): Promise<boolean> => {
     try {
       const result = await window.electron.appUpdate.checkNow({ userId: authUser?.yid });
       setAppUpdateState(result.state);
       if (!result.success) {
         console.error('[App] app update check failed:', result.error);
+        return false;
       }
+      return true;
     } catch (error) {
       console.error('Failed to check app update:', error);
+      return false;
     }
   }, [authUser]);
 
@@ -1658,13 +1757,24 @@ const App: React.FC = () => {
     let cancelled = false;
     let lastCheckTime = 0;
 
-    const maybeCheck = async (reason: 'startup' | 'heartbeat' | 'visibility') => {
+    const maybeCheck = async (reason: 'startup' | 'heartbeat' | 'visibility' | 'online') => {
       if (cancelled) return;
       const now = Date.now();
       if (lastCheckTime > 0 && now - lastCheckTime < APP_UPDATE_POLL_INTERVAL_MS) return;
+      // 离线时不发起注定失败的检查（休眠唤醒后网络栈尚未恢复的窗口会返回
+      // ERR_NETWORK_IO_SUSPENDED），等 'online' 事件再补查。
+      if (!navigator.onLine) {
+        console.log(`[App] auto update check skipped while offline, reason=${reason}`);
+        return;
+      }
       lastCheckTime = now;
       console.log(`[App] auto update check triggered, reason=${reason}, at=${new Date(now).toISOString()}`);
-      await runUpdateCheck();
+      const ok = await runUpdateCheck();
+      // 失败的检查不占用 2 小时轮询窗口：释放门槛让 30 分钟心跳、
+      // 窗口重新可见或网络恢复时能尽快重试。
+      if (!ok && !cancelled && lastCheckTime === now) {
+        lastCheckTime = 0;
+      }
     };
 
     // 启动时立即检查
@@ -1683,10 +1793,18 @@ const App: React.FC = () => {
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
+    // 网络恢复时补一次检查（唤醒场景下网络恢复晚于窗口可见，
+    // 离线跳过的那次检查在这里补上）
+    const handleOnline = () => {
+      void maybeCheck('online');
+    };
+    window.addEventListener('online', handleOnline);
+
     return () => {
       cancelled = true;
       window.clearInterval(timer);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('online', handleOnline);
     };
   }, [isInitialized, runUpdateCheck, enterpriseConfig]);
 
@@ -1921,6 +2039,7 @@ const App: React.FC = () => {
           onShowSecondBrain={handleShowSecondBrain}
           onShowMcp={handleShowMcp}
           onShowSites={handleShowSites}
+          onShowLibrary={handleShowLibrary}
           onNewChat={handleNewChat}
           isCollapsed={isSidebarCollapsed}
           onToggleCollapse={handleToggleSidebar}
@@ -1934,6 +2053,7 @@ const App: React.FC = () => {
           hideAdBanner={isUpdateCardExpanded}
           hideLogin={enterpriseConfig?.ui?.login === 'hide'}
           hideSites={true}
+          isEngineStartupOverlayVisible={isEngineStartupOverlayVisible}
         />
         <div className={`flex-1 min-w-0 transition-[padding] duration-200 ease-out ${isSidebarCollapsed ? 'pl-1.5' : ''}`}>
           <div
@@ -1989,6 +2109,8 @@ const App: React.FC = () => {
                 onToggleSidebar={handleToggleSidebar}
                 onNewChat={handleNewChat}
                 updateBadge={collapsedHeaderUpdateBadge}
+                onTryAsking={handleKitTryAsking}
+                onUseKit={handleKitUse}
               />
             ) : mainView === 'experts' ? (
               <ExpertsView
@@ -2007,11 +2129,23 @@ const App: React.FC = () => {
             ) : mainView === 'sites' ? (
               <SitesView
                 isAuthenticated={Boolean(authUser)}
-                onCreateSiteByChat={handleCreateSiteByChat}
                 isSidebarCollapsed={isSidebarCollapsed}
                 onToggleSidebar={handleToggleSidebar}
+                onCreateSiteByChat={handleCreateSiteByChat}
                 updateBadge={collapsedHeaderUpdateBadge}
                 readOnly={enterpriseConfig?.ui?.sites === 'readonly'}
+              />
+            ) : mainView === 'library' ? (
+              <LibraryView
+                isAuthenticated={Boolean(authUser)}
+                isSidebarCollapsed={isSidebarCollapsed}
+                onToggleSidebar={handleToggleSidebar}
+                onOpenSession={handleOpenLibrarySession}
+                sitesHidden={enterpriseConfig?.ui?.sites === 'hide'}
+                sitesReadOnly={enterpriseConfig?.ui?.sites === 'readonly'}
+                updateBadge={collapsedHeaderUpdateBadge}
+                requestedSource={libraryNavigationRequest.source}
+                navigationRequestId={libraryNavigationRequest.requestId}
               />
             ) : (
               <CoworkView

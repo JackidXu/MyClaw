@@ -16,8 +16,8 @@ import {
 } from 'react';
 import { useSelector } from 'react-redux';
 
-import { authService } from '../services/auth';
 import { i18nService } from '../services/i18n';
+import { vipService } from '../services/vipService';
 import type { RootState } from '../store';
 import {
   canClaimDailyCheckIn,
@@ -27,7 +27,6 @@ import {
   isDailyCheckInDescriptor,
 } from './dailyCheckInActivityState';
 import {
-  getDailyCheckInDayBoundaryDelay,
   startDailyCheckInAutoRefresh,
 } from './dailyCheckInAutoRefresh';
 import { logSidebarExperienceDiagnostic } from './sidebarExperienceDiagnostics';
@@ -39,10 +38,30 @@ interface DailyCheckInLoadOptions {
   silent?: boolean;
 }
 
+export const DailyCheckInLoadResultStatus = {
+  Ready: 'ready',
+  Unavailable: 'unavailable',
+  Failed: 'failed',
+} as const;
+
 export interface DailyCheckInSnapshot {
   descriptor: DailyCheckInDescriptor;
   context: DailyCheckInContextResponse;
 }
+
+type DailyCheckInLoadResult =
+  | {
+      status: typeof DailyCheckInLoadResultStatus.Ready;
+      snapshot: DailyCheckInSnapshot;
+    }
+  | {
+      status: typeof DailyCheckInLoadResultStatus.Unavailable;
+      code?: number;
+    }
+  | {
+      status: typeof DailyCheckInLoadResultStatus.Failed;
+      code?: number;
+    };
 
 interface ScopedDailyCheckInSnapshot {
   accountScope: string;
@@ -52,6 +71,8 @@ interface ScopedDailyCheckInSnapshot {
 export interface UseDailyCheckInActivityOptions {
   enabled?: boolean;
   autoRefresh?: boolean;
+  initialSnapshot?: DailyCheckInSnapshot | null;
+  loadOnMount?: boolean;
 }
 
 export interface UseDailyCheckInActivityResult {
@@ -65,10 +86,10 @@ export interface UseDailyCheckInActivityResult {
 export class DailyCheckInRequestError extends Error {
   readonly code?: number;
 
-  constructor(result: Extract<ActivityResult<never>, { success: false }>) {
-    super(result.error);
+  constructor(message: string, code?: number) {
+    super(message);
     this.name = 'DailyCheckInRequestError';
-    this.code = result.code;
+    this.code = code;
   }
 }
 
@@ -77,6 +98,51 @@ export class DailyCheckInStaleRequestError extends Error {
     super('Daily check-in request no longer belongs to the active account');
     this.name = 'DailyCheckInStaleRequestError';
   }
+}
+
+export async function loadDailyCheckInSnapshot({
+  retryRevision = true,
+}: Pick<DailyCheckInLoadOptions, 'retryRevision'> = {}): Promise<DailyCheckInLoadResult> {
+  const slot = await window.electron.activity.getSlot({
+    placement: ActivityPlacement.DesktopSidebar,
+  });
+  if (!slot.success) {
+    return {
+      status: DailyCheckInLoadResultStatus.Failed,
+      code: slot.code,
+    };
+  }
+  if (!slot.data
+      || slot.data.slotState !== ActivitySlotState.Available
+      || !isDailyCheckInDescriptor(slot.data.activity)) {
+    return { status: DailyCheckInLoadResultStatus.Unavailable };
+  }
+
+  const descriptor = slot.data.activity;
+  const context = await window.electron.activity.getContext({
+    placement: ActivityPlacement.DesktopSidebar,
+    activityCode: descriptor.activityCode,
+    configRevision: descriptor.configRevision,
+  });
+  if (!context.success) {
+    if (retryRevision
+        && context.code === ActivityServerErrorCode.RevisionMismatch) {
+      return loadDailyCheckInSnapshot({ retryRevision: false });
+    }
+    return {
+      status: DailyCheckInLoadResultStatus.Failed,
+      code: context.code,
+    };
+  }
+  if (!isActiveDailyCheckInContext(context.data)
+      || context.data.activityCode !== descriptor.activityCode
+      || context.data.configRevision !== descriptor.configRevision) {
+    return { status: DailyCheckInLoadResultStatus.Unavailable };
+  }
+  return {
+    status: DailyCheckInLoadResultStatus.Ready,
+    snapshot: { descriptor, context: context.data },
+  };
 }
 
 function createIdempotencyKey(): string {
@@ -89,6 +155,8 @@ export function useDailyCheckInActivity(
   {
     enabled = true,
     autoRefresh = true,
+    initialSnapshot = null,
+    loadOnMount = true,
   }: UseDailyCheckInActivityOptions = {},
 ): UseDailyCheckInActivityResult {
   const authAccountScope = useSelector(
@@ -97,37 +165,31 @@ export function useDailyCheckInActivity(
       state.auth.accountGeneration,
     ),
   );
-  const [scopedSnapshot, setScopedSnapshot] = useState<ScopedDailyCheckInSnapshot | null>(null);
+  const [scopedSnapshot, setScopedSnapshot] = useState<ScopedDailyCheckInSnapshot | null>(
+    () => (initialSnapshot
+      ? {
+          accountScope: authAccountScope,
+          snapshot: initialSnapshot,
+        }
+      : null),
+  );
   const snapshot = scopedSnapshot?.accountScope === authAccountScope
     ? scopedSnapshot.snapshot
     : null;
-  const [loading, setLoading] = useState(enabled);
+  const [loading, setLoading] = useState(
+    () => enabled && loadOnMount && !initialSnapshot,
+  );
   const [claiming, setClaiming] = useState(false);
-  const loadRequestIdRef = useRef(0);
-  const claimingRef = useRef(false);
-  const mountedRef = useRef(true);
-  const authAccountScopeRef = useRef(authAccountScope);
-  authAccountScopeRef.current = authAccountScope;
+  const activeLoadRequestIdRef = useRef(0);
+  const activeClaimRequestIdRef = useRef(0);
 
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-      loadRequestIdRef.current += 1;
-    };
-  }, []);
-
-  const load = useCallback(async ({
-    retryRevision = true,
-    silent = false,
-  }: DailyCheckInLoadOptions = {}): Promise<void> => {
+  const load = useCallback(async (
+    { retryRevision = true, silent = false }: DailyCheckInLoadOptions = {},
+  ): Promise<void> => {
+    const requestId = ++activeLoadRequestIdRef.current;
     const requestAccountScope = authAccountScope;
-    const requestId = ++loadRequestIdRef.current;
-    const isCurrentRequest = () => (
-      mountedRef.current
-      && loadRequestIdRef.current === requestId
-      && authAccountScopeRef.current === requestAccountScope
-    );
+    const isCurrentRequest = () => requestId === activeLoadRequestIdRef.current;
+
     if (!enabled) {
       if (isCurrentRequest()) {
         setScopedSnapshot(null);
@@ -137,51 +199,24 @@ export function useDailyCheckInActivity(
     }
     if (isCurrentRequest() && !silent) setLoading(true);
     try {
-      const slot = await window.electron.activity.getSlot({
-        placement: ActivityPlacement.DesktopSidebar,
-      });
+      const result = await loadDailyCheckInSnapshot({ retryRevision });
       if (!isCurrentRequest()) return;
-      if (!slot.success) {
-        if (!silent) setScopedSnapshot(null);
+      if (result.status === DailyCheckInLoadResultStatus.Ready) {
+        setScopedSnapshot({
+          accountScope: requestAccountScope,
+          snapshot: result.snapshot,
+        });
         return;
       }
-      if (!slot.data
-          || slot.data.slotState !== ActivitySlotState.Available
-          || !isDailyCheckInDescriptor(slot.data.activity)) {
+      if (result.status === DailyCheckInLoadResultStatus.Unavailable) {
         setScopedSnapshot(null);
         return;
       }
-
-      const descriptor = slot.data.activity;
-      const context = await window.electron.activity.getContext({
-        placement: ActivityPlacement.DesktopSidebar,
-        activityCode: descriptor.activityCode,
-        configRevision: descriptor.configRevision,
-      });
-      if (!isCurrentRequest()) return;
-      if (!context.success) {
-        if (retryRevision
-            && context.code === ActivityServerErrorCode.RevisionMismatch) {
-          await load({ retryRevision: false, silent });
-          return;
-        }
-        if (!silent
-            || context.code === ActivityServerErrorCode.NotActive
-            || context.code === ActivityServerErrorCode.NotFound) {
-          setScopedSnapshot(null);
-        }
-        return;
-      }
-      if (!isActiveDailyCheckInContext(context.data)
-          || context.data.activityCode !== descriptor.activityCode
-          || context.data.configRevision !== descriptor.configRevision) {
+      if (!silent
+          || result.code === ActivityServerErrorCode.NotActive
+          || result.code === ActivityServerErrorCode.NotFound) {
         setScopedSnapshot(null);
-        return;
       }
-      setScopedSnapshot({
-        accountScope: requestAccountScope,
-        snapshot: { descriptor, context: context.data },
-      });
     } catch (error) {
       if (isCurrentRequest()) {
         logSidebarExperienceDiagnostic(
@@ -202,8 +237,12 @@ export function useDailyCheckInActivity(
   );
 
   useEffect(() => {
+    if (!loadOnMount) {
+      setLoading(false);
+      return;
+    }
     void load();
-  }, [authAccountScope, load]);
+  }, [authAccountScope, load, loadOnMount]);
 
   useEffect(() => {
     if (!enabled) return undefined;
@@ -223,78 +262,62 @@ export function useDailyCheckInActivity(
     return startDailyCheckInAutoRefresh(refresh);
   }, [autoRefresh, enabled, refresh]);
 
-  useEffect(() => {
-    if (!enabled || !autoRefresh || !snapshot) return undefined;
-    const delay = getDailyCheckInDayBoundaryDelay(
-      snapshot.context.serverTime,
-      snapshot.context.state.timezone,
-    );
-    if (delay === null) return undefined;
-    const timer = setTimeout(() => void refresh(), delay);
-    return () => clearTimeout(timer);
-  }, [autoRefresh, enabled, refresh, snapshot]);
-
   const claim = useCallback(async (): Promise<DailyCheckInActionResponse> => {
-    const target = snapshot;
-    if (!target || !canClaimDailyCheckIn(target.context)) {
-      throw new Error(i18nService.t('dailyCheckInClaimFailed'));
-    }
-    if (claimingRef.current) {
-      throw new Error(i18nService.t('dailyCheckInClaimFailed'));
-    }
+    const claimRequestId = ++activeClaimRequestIdRef.current;
     const requestAccountScope = authAccountScope;
-    claimingRef.current = true;
-    if (mountedRef.current) setClaiming(true);
+    const isCurrentClaim = () => claimRequestId === activeClaimRequestIdRef.current;
+
+    if (!snapshot || !canClaimDailyCheckIn(snapshot.context)) {
+      throw new DailyCheckInRequestError(
+        i18nService.t('dailyCheckInClaimFailed'),
+      );
+    }
+
+    setClaiming(true);
     try {
-      const result = await window.electron.activity.executeAction({
+      const response = (await window.electron.activity.executeAction({
         placement: ActivityPlacement.DesktopSidebar,
-        activityCode: target.descriptor.activityCode,
-        configRevision: target.descriptor.configRevision,
+        activityCode: snapshot.descriptor.activityCode,
+        configRevision: snapshot.descriptor.configRevision,
         actionId: DailyCheckInAction.CheckIn,
         idempotencyKey: createIdempotencyKey(),
-      });
-      if (!mountedRef.current
-          || authAccountScopeRef.current !== requestAccountScope) {
+      })) as ActivityResult<DailyCheckInActionResponse>;
+
+      if (!isCurrentClaim() || requestAccountScope !== authAccountScope) {
         throw new DailyCheckInStaleRequestError();
       }
-      if (!result.success) {
-        if (result.code === ActivityServerErrorCode.AlreadyClaimed
-            || result.code === ActivityServerErrorCode.RevisionMismatch
-            || result.code === ActivityServerErrorCode.LoginRequired) {
-          await refresh();
-        } else if (result.code === ActivityServerErrorCode.NotActive
-            || result.code === ActivityServerErrorCode.NotFound) {
-          loadRequestIdRef.current += 1;
-          setScopedSnapshot(null);
-        }
-        throw new DailyCheckInRequestError(result);
+
+      if (!response.success) {
+        throw new DailyCheckInRequestError(
+          response.error || i18nService.t('dailyCheckInClaimFailed'),
+          response.code,
+        );
       }
-      if (!result.data
-          || !isDailyCheckInContext(result.data.context)
-          || result.data.context.activityCode !== target.descriptor.activityCode
-          || result.data.context.configRevision !== target.descriptor.configRevision
-          || !result.data.result
-          || result.data.result.activityCode !== target.descriptor.activityCode
-          || result.data.result.actionId !== DailyCheckInAction.CheckIn
-          || !Number.isFinite(result.data.result.creditsGranted)
-          || result.data.result.creditsGranted <= 0) {
-        await refresh();
-        throw new Error(i18nService.t('dailyCheckInClaimFailed'));
+
+      if (response.data?.context && isDailyCheckInContext(response.data.context)) {
+        setScopedSnapshot({
+          accountScope: requestAccountScope,
+          snapshot: {
+            descriptor: snapshot.descriptor,
+            context: response.data.context,
+          },
+        });
+      } else {
+        void refresh();
       }
-      loadRequestIdRef.current += 1;
-      setScopedSnapshot({
-        accountScope: requestAccountScope,
-        snapshot: {
-          descriptor: target.descriptor,
-          context: result.data.context,
-        },
+
+      window.dispatchEvent(new CustomEvent(DAILY_CHECK_IN_UPDATED_EVENT));
+      void vipService.refreshStatus().catch((error: unknown) => {
+        logSidebarExperienceDiagnostic(
+          'warn',
+          'failed to refresh credits after daily check-in claim',
+          error,
+        );
       });
-      window.dispatchEvent(new Event(DAILY_CHECK_IN_UPDATED_EVENT));
-      void authService.fetchProfileSummary();
-      return result.data as DailyCheckInActionResponse;
+
+      return response.data;
     } finally {
-      claimingRef.current = false;
-      if (mountedRef.current) setClaiming(false);
+      if (isCurrentClaim()) setClaiming(false);
     }
   }, [authAccountScope, refresh, snapshot]);
 

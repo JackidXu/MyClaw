@@ -39,6 +39,7 @@ import ComposeIcon from './icons/ComposeIcon';
 import SidebarAutomationIcon from './icons/SidebarAutomationIcon';
 import SidebarKitsIcon from './icons/SidebarKitsIcon';
 import SidebarSitesIcon from './icons/SidebarSitesIcon';
+import SidebarLibraryIcon from './icons/SidebarLibraryIcon';
 import SidebarToggleIcon from './icons/SidebarToggleIcon';
 import TrashIcon from './icons/TrashIcon';
 import { PasswordModal } from './PasswordModal';
@@ -48,15 +49,16 @@ import ReportIssueModal from './ReportIssueModal';
 interface SidebarProps {
   onShowSettings: () => void;
   onShowLogin?: () => void;
-  activeView: 'cowork' | 'skills' | 'scheduledTasks' | 'kits' | 'mcp' | 'sites' | 'experts' | 'secondBrain';
+  activeView: 'cowork' | 'skills' | 'scheduledTasks' | 'kits' | 'mcp' | 'sites' | 'experts' | 'secondBrain' | 'library';
   onShowSkills: () => void;
   onShowCowork: () => void;
   onShowScheduledTasks: () => void;
   onShowKits?: () => void;
   onShowExperts: () => void;
   onShowSecondBrain: () => void;
-  onShowMcp: () => void;
+  onShowMcp?: () => void;
   onShowSites: () => void;
+  onShowLibrary?: () => void;
   onNewChat: () => void;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
@@ -72,18 +74,22 @@ interface SidebarProps {
   hideAdBanner?: boolean;
   hideLogin?: boolean;
   hideSites?: boolean;
+  isEngineStartupOverlayVisible?: boolean;
 }
 
 const DEFAULT_SIDEBAR_WIDTH = 244;
 const MIN_SIDEBAR_WIDTH = 220;
 const MAX_SIDEBAR_WIDTH = 420;
 const SIDEBAR_COLLAPSE_TRANSITION_MS = 200;
+const SIDEBAR_LOGIN_PROMO_TIP_DURATION_MS = 5000;
+const SIDEBAR_LOGIN_PROMO_TIP_FADE_MS = 220;
+
 const normalizeAgentId = (agentId?: string | null) => agentId?.trim() || AgentId.Main;
 const SidebarNewFeatureBadge = {
   KitsDismissedVersionKey: 'sidebar.kitsNewFeatureBadge.dismissedVersion',
-  // Bump this value in a release when the kits entry should show the badge again.
   KitsVersion: '2026-06-05',
 } as const;
+
 const sidebarNavItemClassName =
   'w-full inline-flex h-[34px] items-center gap-2.5 rounded-lg px-2.5 text-left text-[13px] font-normal text-foreground/85 transition-all duration-150 hover:bg-foreground/[0.04] hover:text-foreground dark:hover:bg-white/[0.05]';
 const activeSidebarNavItemClassName =
@@ -146,6 +152,18 @@ const reportSidebarAction = (
   });
 };
 
+const writeSidebarRendererLog = (
+  level: 'debug' | 'warn',
+  message: string,
+  error?: unknown,
+): void => {
+  try {
+    window.electron?.log?.fromRenderer?.(level, 'Sidebar', message);
+  } catch (logError) {
+    const logErrorMessage = logError instanceof Error ? logError.message : String(logError);
+    console.debug(`[Sidebar] renderer log unavailable: ${logErrorMessage}`, error);
+  }
+};
 const logTaskSearchRequest = (
   source: CoworkTaskSearchRequestSource,
   activeView: SidebarProps['activeView'],
@@ -153,7 +171,7 @@ const logTaskSearchRequest = (
   try {
     const message = `task search requested source=${source} activeView=${activeView} platform=${window.electron?.platform ?? 'unknown'}`;
     console.debug(`[Sidebar] ${message}`);
-    window.electron?.log?.fromRenderer?.('debug', 'Sidebar', message);
+    writeSidebarRendererLog('debug', message);
   } catch (error) {
     // Task search must remain available when renderer diagnostic logging fails.
     console.debug('[Sidebar] task search diagnostic logging unavailable:', error);
@@ -171,6 +189,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onShowExperts,
   onShowSecondBrain,
   onShowSites,
+  onShowLibrary,
   onNewChat,
   isCollapsed,
   onToggleCollapse,
@@ -181,11 +200,18 @@ const Sidebar: React.FC<SidebarProps> = ({
   onWidthChange,
   updateNotice,
   hideSites,
+  hideAdBanner,
+  hideLogin,
+  isEngineStartupOverlayVisible = false,
 }) => {
+  void hideSites;
+  void hideAdBanner;
   void onShowKits;
   void onShowSkills;
   const currentAgentId = useSelector((state: RootState) => state.agent.currentAgentId);
   const agents = useSelector((state: RootState) => state.agent.agents);
+  const isLoggedIn = useSelector((state: RootState) => state.auth.isLoggedIn);
+  const isAuthLoading = useSelector((state: RootState) => state.auth.isLoading);
   const sessions = useSelector(selectCoworkSessions);
   const currentSessionId = useSelector(selectCurrentSessionId);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -456,12 +482,18 @@ const Sidebar: React.FC<SidebarProps> = ({
   const [isResizing, setIsResizing] = useState(false);
   const [agentScrollEdges, setAgentScrollEdges] = useState({ top: false, bottom: false });
   const [showKitsNewBadge, setShowKitsNewBadge] = useState(false);
+  const [showLoginPromoTip, setShowLoginPromoTip] = useState(true);
+  const [isLoginPromoTipFading, setIsLoginPromoTipFading] = useState(false);
   const isResizingRef = useRef(false);
   const resizeStartXRef = useRef(0);
   const resizeStartWidthRef = useRef(DEFAULT_SIDEBAR_WIDTH);
   const agentScrollContainerRef = useRef<HTMLDivElement>(null);
   const isWindows = window.electron.platform === 'win32';
   const showHeaderRow = !isWindows;
+  const showLoginPromo = !hideLogin && !isAuthLoading && !isLoggedIn;
+  const shouldShowLoginPromoTip = showLoginPromo && showLoginPromoTip;
+  void isLoginPromoTipFading;
+  void shouldShowLoginPromoTip;
   const batchSelectableKeySet = useMemo(
     () => new Set(batchSelectableItems.map((item) => item.key)),
     [batchSelectableItems],
@@ -515,6 +547,49 @@ const Sidebar: React.FC<SidebarProps> = ({
     };
   }, []);
 
+  useEffect(() => {
+    if (!showLoginPromo) {
+      setShowLoginPromoTip(true);
+      setIsLoginPromoTipFading(false);
+      return undefined;
+    }
+
+    if (isEngineStartupOverlayVisible) {
+      if (showLoginPromoTip) {
+        const message = 'pausing login promo tip auto-hide while engine startup overlay is visible';
+        console.debug(`[Sidebar] ${message}`);
+        writeSidebarRendererLog('debug', message);
+        setIsLoginPromoTipFading(false);
+      }
+      return undefined;
+    }
+
+    if (!showLoginPromoTip) {
+      return undefined;
+    }
+
+    const startMessage = 'starting login promo tip auto-hide timer';
+    console.debug(`[Sidebar] ${startMessage}`);
+    writeSidebarRendererLog('debug', startMessage);
+
+    const hideTimer = window.setTimeout(() => {
+      const message = 'auto hiding login promo tip';
+      console.debug(`[Sidebar] ${message}`);
+      writeSidebarRendererLog('debug', message);
+      setIsLoginPromoTipFading(true);
+    }, SIDEBAR_LOGIN_PROMO_TIP_DURATION_MS);
+
+    const removeTimer = window.setTimeout(() => {
+      setShowLoginPromoTip(false);
+      setIsLoginPromoTipFading(false);
+    }, SIDEBAR_LOGIN_PROMO_TIP_DURATION_MS + SIDEBAR_LOGIN_PROMO_TIP_FADE_MS);
+
+    return () => {
+      window.clearTimeout(hideTimer);
+      window.clearTimeout(removeTimer);
+    };
+  }, [isEngineStartupOverlayVisible, showLoginPromo, showLoginPromoTip]);
+
   const dismissKitsNewBadge = useCallback(() => {
     if (!showKitsNewBadge) return;
     setShowKitsNewBadge(false);
@@ -529,7 +604,6 @@ const Sidebar: React.FC<SidebarProps> = ({
   }, [showKitsNewBadge]);
 
   void dismissKitsNewBadge;
-
   const openTaskSearch = useCallback((source: CoworkTaskSearchRequestSource) => {
     logTaskSearchRequest(source, activeView);
     onShowCowork();
@@ -964,6 +1038,21 @@ const Sidebar: React.FC<SidebarProps> = ({
             >
               <SidebarSitesIcon className="h-4 w-4 shrink-0" />
               {i18nService.t('sitesTitle')}
+            </button>
+          )}
+          {onShowLibrary && (
+            <button
+              type="button"
+              onClick={() => {
+                reportSidebarAction('open_library', { activeView, isCollapsed });
+                setIsSearchOpen(false);
+                onShowLibrary();
+              }}
+              className={activeView === 'library' ? activeSidebarNavItemClassName : sidebarNavItemClassName}
+              aria-current={activeView === 'library' ? 'page' : undefined}
+            >
+              <SidebarLibraryIcon className="h-4 w-4 shrink-0" />
+              <span className="min-w-0 truncate">{i18nService.t('librarySidebarTitle')}</span>
             </button>
           )}
         </div>

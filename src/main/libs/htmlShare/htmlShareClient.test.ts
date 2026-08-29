@@ -11,7 +11,11 @@ import {
 } from '../../../shared/htmlShare/constants';
 import {
   buildHtmlSharePublicUrl,
+  deleteHtmlSharePermanently,
+  getHtmlShareAnalytics,
   getHtmlShareBySource,
+  getHtmlShareQuota,
+  getPublishingTrialPolicy,
   updateHtmlShare,
   updateHtmlShareAccessMode,
   updateHtmlShareStatus,
@@ -35,6 +39,47 @@ afterEach(async () => {
 });
 
 describe('htmlShareClient', () => {
+  test('permanently deletes a stopped shared file through the dedicated endpoint', async () => {
+    let requestedUrl = '';
+    let requestedMethod = '';
+    const result = await deleteHtmlSharePermanently(
+      'https://lobsterai-server.inner.youdao.com',
+      async (url, options) => {
+        requestedUrl = url;
+        requestedMethod = options?.method || '';
+        return new Response(JSON.stringify({ code: 0, data: null }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      },
+      'shr_file/with space',
+    );
+
+    expect(requestedUrl).toBe(
+      'https://lobsterai-server.inner.youdao.com/api/html-shares/shr_file%2Fwith%20space/permanent',
+    );
+    expect(requestedMethod).toBe('DELETE');
+    expect(result).toEqual({ success: true, httpStatus: 200 });
+  });
+
+  test('preserves server deletion errors for renderer recovery', async () => {
+    const result = await deleteHtmlSharePermanently(
+      'https://lobsterai-server.inner.youdao.com',
+      async () => new Response(JSON.stringify({
+        code: 41315,
+        message: '请先停止分享，再永久删除',
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+      'shr_live',
+    );
+
+    expect(result).toEqual({
+      success: false,
+      error: '请先停止分享，再永久删除',
+      code: 41315,
+      httpStatus: 200,
+    });
+  });
+
   test('builds environment-specific public share URLs', () => {
     expect(buildHtmlSharePublicUrl('https://lobsterai-server.inner.youdao.com/s', 'shr_123')).toBe(
       'https://lobsterai-server.inner.youdao.com/s/shr_123/',
@@ -42,6 +87,131 @@ describe('htmlShareClient', () => {
     expect(buildHtmlSharePublicUrl('https://lobsterai-server.youdao.com/s/', 'shr_123')).toBe(
       'https://lobsterai-server.youdao.com/s/shr_123/',
     );
+  });
+
+  test('uses the server quota snapshot without client-side limit defaults', async () => {
+    const result = await getHtmlShareQuota(
+      'https://lobsterai-server.inner.youdao.com',
+      async () => new Response(JSON.stringify({
+        code: 0,
+        data: {
+          allowed: false,
+          identityType: 'free',
+          resourceKind: 'file',
+          countMode: 'total',
+          used: 3,
+          limit: 3,
+          remaining: 0,
+          canReleaseByClosing: false,
+        },
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    );
+
+    expect(result).toEqual({
+      success: true,
+      data: {
+        allowed: false,
+        identityType: 'free',
+        resourceKind: 'file',
+        countMode: 'total',
+        used: 3,
+        limit: 3,
+        remaining: 0,
+        canReleaseByClosing: false,
+      },
+    });
+  });
+
+  test('loads free publishing limits and validity from the public server policy', async () => {
+    let requestedUrl = '';
+    let requestedOptions: RequestInit | undefined;
+    const result = await getPublishingTrialPolicy(
+      'https://lobsterai-server.inner.youdao.com',
+      async (url, options) => {
+        requestedUrl = url;
+        requestedOptions = options;
+        return new Response(JSON.stringify({
+          code: 0,
+          data: {
+            identityType: 'free',
+            file: {
+              resourceKind: 'file',
+              countMode: 'total',
+              limit: 12,
+              accessTtlSeconds: 10_800,
+              canReleaseByClosing: false,
+            },
+            site: {
+              resourceKind: 'site',
+              countMode: 'total',
+              limit: 2,
+              accessTtlSeconds: 10_800,
+              canReleaseByClosing: false,
+            },
+          },
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      },
+    );
+
+    expect(requestedUrl).toBe(
+      'https://lobsterai-server.inner.youdao.com/api/publishing/trial-policy',
+    );
+    expect(requestedOptions).toEqual({ cache: 'no-store' });
+    expect(result).toEqual({
+      success: true,
+      data: {
+        identityType: 'free',
+        file: {
+          resourceKind: 'file',
+          countMode: 'total',
+          limit: 12,
+          accessTtlSeconds: 10_800,
+          canReleaseByClosing: false,
+        },
+        site: {
+          resourceKind: 'site',
+          countMode: 'total',
+          limit: 2,
+          accessTtlSeconds: 10_800,
+          canReleaseByClosing: false,
+        },
+      },
+    });
+  });
+
+  test('loads owner analytics for the requested date range', async () => {
+    let requestedUrl = '';
+    const result = await getHtmlShareAnalytics(
+      'https://lobsterai-server.inner.youdao.com',
+      async url => {
+        requestedUrl = url;
+        return new Response(JSON.stringify({
+          code: 0,
+          data: {
+            summary: { accesses: 8, uniqueVisitors: 3 },
+            trend: [{ date: '2026-08-19', accesses: 8, uniqueVisitors: 3 }],
+            meta: {
+              from: '2026-08-13',
+              to: '2026-08-19',
+              granularity: 'day',
+              timeZone: 'Asia/Shanghai',
+              dataScope: 'share_lifetime',
+              visitorMetric: 'ip_hash_estimate',
+              retentionDays: 180,
+              dataAvailableFrom: '2026-08-01',
+            },
+          },
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      },
+      'shr_123',
+      { from: '2026-08-13', to: '2026-08-19' },
+    );
+
+    expect(requestedUrl).toBe(
+      'https://lobsterai-server.inner.youdao.com/api/html-shares/shr_123/analytics?from=2026-08-13&to=2026-08-19',
+    );
+    expect(result.success).toBe(true);
+    expect(result.analytics?.summary.accesses).toBe(8);
   });
 
   test('uploads to the selected server and returns the server share URL', async () => {

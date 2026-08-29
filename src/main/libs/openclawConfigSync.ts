@@ -1879,7 +1879,6 @@ type OpenClawConfigSyncDeps = {
   getSecondBrainCallbackUrl?: () => string | null;
   getWebSearchCallbackUrl?: () => string | null;
   getMcpBridgeSecret?: () => string;
-
   getSkillsList?: () => Array<{ id: string; name: string; enabled: boolean }>;
   getAgents?: () => Agent[];
   getUserPlugins?: () => Array<{ pluginId: string; enabled: boolean; config?: Record<string, unknown> }>;
@@ -1910,7 +1909,6 @@ export class OpenClawConfigSync {
   private readonly getSecondBrainCallbackUrl?: () => string | null;
   private readonly getWebSearchCallbackUrl?: () => string | null;
   private readonly getMcpBridgeSecret?: () => string;
-
   private readonly getSkillsList?: () => Array<{ id: string; name: string; enabled: boolean }>;
   private readonly getAgents?: () => Agent[];
   private readonly getUserPlugins: () => Array<{ pluginId: string; enabled: boolean; config?: Record<string, unknown> }>;
@@ -2504,9 +2502,9 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
             },
           },
           heartbeat: {
-            every: coworkConfig.openClawHeartbeatEnabled === false
-              ? OPENCLAW_HEARTBEAT_EVERY_DISABLED
-              : OPENCLAW_HEARTBEAT_EVERY_ENABLED,
+            every: coworkConfig.openClawHeartbeatEnabled === true
+              ? OPENCLAW_HEARTBEAT_EVERY_ENABLED
+              : OPENCLAW_HEARTBEAT_EVERY_DISABLED,
             target: 'none',
             lightContext: true,
             isolatedSession: true,

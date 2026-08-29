@@ -26,6 +26,7 @@ import { selectCurrentSessionId } from '../../store/selectors/coworkSelectors';
 import { setDraftCollaborationMode } from '../../store/slices/coworkSlice';
 import { CoworkCollaborationMode } from '../../types/cowork';
 import { getAgentDisplayName, isDefaultAgentId } from '../../utils/agentDisplay';
+
 import AgentSettingsPanel from '../agent/AgentSettingsPanel';
 import {
   type CoworkOpenAgentTaskSlotEventDetail,
@@ -282,11 +283,13 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
     };
 
     const handleShowCurrentAgentTasks = () => {
+      // Equivalent to clicking the agent title while collapsed: reveal the preview task list only.
       expandAgent(currentAgentId);
       onShowCowork();
     };
 
     const handleCollapseCurrentAgentTasks = () => {
+      // Fold every expansion under the agent: the "show more" state and the agent node itself.
       collapseTasks(currentAgentId);
       collapseAgent(currentAgentId);
       onShowCowork();
@@ -643,7 +646,6 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
           ) : null}
         </div>
       )}
-
       <AgentSettingsPanel
         agentId={settingsAgentId}
         onClose={() => setSettingsAgentId(null)}

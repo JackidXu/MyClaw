@@ -521,6 +521,8 @@ const KitsManager: React.FC<KitsManagerProps> = ({ onTryAsking }) => {
             </div>
           </div>
         </div>
+
+        {uninstallConfirmModal}
       </div>
     );
   };
@@ -792,19 +794,19 @@ const KitsManager: React.FC<KitsManagerProps> = ({ onTryAsking }) => {
           {/* 滚动主体 */}
           <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
             {/* 擅长技能 */}
-            {selectedKit.skills && selectedKit.skills.list.length > 0 && (
+            {selectedKit.skills?.list && selectedKit.skills.list.length > 0 && (
               <div>
                 <h4 className="text-xs font-semibold text-secondary mb-2.5 flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-primary" />
                   擅长技能
                 </h4>
                 <div className="flex flex-wrap gap-2">
-                  {selectedKit.skills.list.map((skill) => (
+                  {selectedKit.skills.list.map((skillRef) => (
                     <span
-                      key={skill.id}
+                      key={skillRef.id || resolveLocalizedText(skillRef.name)}
                       className="inline-flex items-center rounded-lg border border-border bg-surface-raised px-2.5 py-1 text-xs font-medium text-secondary"
                     >
-                      {resolveLocalizedText(skill.name).replace(/^\//, '')}
+                      {resolveLocalizedText(skillRef.name).replace(/^\//, '')}
                     </span>
                   ))}
                 </div>

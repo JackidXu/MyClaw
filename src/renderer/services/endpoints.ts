@@ -32,15 +32,28 @@ const getPortalBase = () => isTestModeEnabled() ? PORTAL_BASE_TEST : PORTAL_BASE
 
 export const PortalPricingKeyfrom = {
   HtmlShare: 'html_share',
+  SiteDeployment: 'site_deployment',
 } as const;
 
 export type PortalPricingKeyfrom =
   (typeof PortalPricingKeyfrom)[keyof typeof PortalPricingKeyfrom];
 
+export interface PortalPricingUrlOptions {
+  traceId?: string;
+}
+
 export const getPortalLoginUrl = () => `${getPortalBase()}/login`;
-export const getPortalPricingUrl = (keyfrom?: PortalPricingKeyfrom) => (
-  `${getPortalBase()}/pricing${keyfrom ? `?keyfrom=${encodeURIComponent(keyfrom)}` : ''}`
-);
+export const getPortalPricingUrl = (
+  keyfrom?: PortalPricingKeyfrom,
+  options: PortalPricingUrlOptions = {},
+) => {
+  const query = new URLSearchParams();
+  if (keyfrom) query.set('keyfrom', keyfrom);
+  if (options.traceId) query.set('trace_id', options.traceId);
+  const queryString = query.toString();
+  const suffix = queryString ? `?${queryString}` : '';
+  return `${getPortalBase()}/pricing${suffix}`;
+};
 export const getPortalProfileUrl = () => `${getPortalBase()}/profile`;
 export const getPortalCreditsDetailUrl = () => `${getPortalBase()}/profile/detail`;
 export const getPortalRechargeUrl = () => `${getPortalBase()}/`;

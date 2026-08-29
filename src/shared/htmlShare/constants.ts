@@ -5,10 +5,15 @@ export const HtmlShareIpc = {
   CreateFromArtifactFile: 'htmlShare:createFromArtifactFile',
   UpdateFromArtifactFile: 'htmlShare:updateFromArtifactFile',
   GetByArtifactFile: 'htmlShare:getByArtifactFile',
+  GetBySource: 'htmlShare:getBySource',
   UpdateStatus: 'htmlShare:updateStatus',
   UpdateAccessMode: 'htmlShare:updateAccessMode',
   Disable: 'htmlShare:disable',
+  DeletePermanently: 'htmlShare:deletePermanently',
   Get: 'htmlShare:get',
+  GetQuota: 'htmlShare:getQuota',
+  GetTrialPolicy: 'htmlShare:getTrialPolicy',
+  GetAnalytics: 'htmlShare:getAnalytics',
 } as const;
 
 export type HtmlShareIpc = (typeof HtmlShareIpc)[keyof typeof HtmlShareIpc];
@@ -44,6 +49,48 @@ export type HtmlShareConfigurableStatus =
   | typeof HtmlShareStatus.Live
   | typeof HtmlShareStatus.Disabled;
 
+export interface HtmlShareAnalytics {
+  summary: {
+    accesses: number;
+    uniqueVisitors: number;
+  };
+  trend: Array<{
+    date: string;
+    accesses: number;
+    uniqueVisitors: number;
+  }>;
+  meta: {
+    from: string;
+    to: string;
+    granularity: 'day';
+    timeZone: string;
+    dataScope: 'share_lifetime';
+    visitorMetric: 'ip_hash_estimate';
+    retentionDays: number;
+    dataAvailableFrom?: string | null;
+  };
+}
+
+export interface HtmlShareAnalyticsInput {
+  shareId: string;
+  from?: string;
+  to?: string;
+}
+
+export interface HtmlShareAnalyticsResult {
+  success: boolean;
+  analytics?: HtmlShareAnalytics;
+  error?: string;
+  code?: number;
+}
+
+export interface HtmlSharePermanentDeleteResult {
+  success: boolean;
+  error?: string;
+  code?: number;
+  httpStatus?: number;
+}
+
 export const HtmlShareDisabledSource = {
   User: 'user',
   Admin: 'admin',
@@ -63,6 +110,10 @@ export const HtmlShareErrorCode = {
   AccessModeInvalid: 41310,
   ActiveShareLimitReached: 41311,
   UnsafeSvg: 41312,
+  AccessExpired: 41313,
+  QuotaConfigInvalid: 41314,
+  DeleteRequiresDisabled: 41315,
+  ActionConflict: 41316,
   FeatureUnavailable: 49001,
   DisabledCannotUpdate: 49002,
 } as const;
