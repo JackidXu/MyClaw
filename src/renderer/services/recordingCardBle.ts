@@ -6,6 +6,47 @@
  */
 
 // ─────────────────────────────────────────────
+// Web Bluetooth API 类型兼容声明（tsconfig DOM lib 扩展）
+// ─────────────────────────────────────────────
+interface BluetoothRemoteGATTCharacteristic extends EventTarget {
+  value?: DataView;
+  writeValueWithoutResponse(value: BufferSource): Promise<void>;
+  startNotifications(): Promise<BluetoothRemoteGATTCharacteristic>;
+}
+
+interface BluetoothRemoteGATTService {
+  getCharacteristic(characteristic: string | number): Promise<BluetoothRemoteGATTCharacteristic>;
+}
+
+interface BluetoothRemoteGATTServer {
+  connected: boolean;
+  connect(): Promise<BluetoothRemoteGATTServer>;
+  disconnect(): void;
+  getPrimaryService(service: string | number): Promise<BluetoothRemoteGATTService>;
+}
+
+interface BluetoothDevice extends EventTarget {
+  name?: string;
+  gatt?: BluetoothRemoteGATTServer;
+}
+
+interface BluetoothRequestDeviceFilter {
+  services?: Array<string | number>;
+  name?: string;
+  namePrefix?: string;
+}
+
+interface RequestDeviceOptions {
+  filters?: BluetoothRequestDeviceFilter[];
+  optionalServices?: Array<string | number>;
+  acceptAllDevices?: boolean;
+}
+
+interface BluetoothNavigator {
+  requestDevice(options?: RequestDeviceOptions): Promise<BluetoothDevice>;
+}
+
+// ─────────────────────────────────────────────
 // BLE UUID 常量
 // ─────────────────────────────────────────────
 const SERVICE_UUID = 0xae20;
@@ -211,7 +252,7 @@ function dispatchFrame(s: BleSession, type: number, cmd: number, payload: Uint8A
 // 写命令帧到 AE21
 // ─────────────────────────────────────────────
 async function writeCommand(s: BleSession, frame: Uint8Array): Promise<void> {
-  await s.charWrite.writeValueWithoutResponse(frame.buffer);
+  await s.charWrite.writeValueWithoutResponse(frame.buffer as ArrayBuffer);
 }
 
 // ─────────────────────────────────────────────
@@ -229,7 +270,12 @@ export async function connect(onDisconnected?: () => void): Promise<RecordingCar
 
   disconnectCallback = onDisconnected || null;
 
-  const device = await navigator.bluetooth.requestDevice({
+  const bluetooth = (navigator as unknown as { bluetooth?: BluetoothNavigator }).bluetooth;
+  if (!bluetooth) {
+    throw new Error('当前运行环境不支持 Web Bluetooth API');
+  }
+
+  const device = await bluetooth.requestDevice({
     filters: [{ services: [SERVICE_UUID] }],
     optionalServices: [SERVICE_UUID],
   });
@@ -256,7 +302,7 @@ export async function connect(onDisconnected?: () => void): Promise<RecordingCar
 
   // 订阅 AE22（数据通道）
   await charData.startNotifications();
-  charData.addEventListener('characteristicvaluechanged', (e) => {
+  charData.addEventListener('characteristicvaluechanged', (e: Event) => {
     const val = (e.target as BluetoothRemoteGATTCharacteristic).value;
     if (val) s.parserData.feed(val);
   });
@@ -264,7 +310,7 @@ export async function connect(onDisconnected?: () => void): Promise<RecordingCar
   // 订阅 AE23（按键状态）
   try {
     await charKey.startNotifications();
-    charKey.addEventListener('characteristicvaluechanged', (e) => {
+    charKey.addEventListener('characteristicvaluechanged', (e: Event) => {
       const val = (e.target as BluetoothRemoteGATTCharacteristic).value;
       if (val) s.parserKey.feed(val);
     });

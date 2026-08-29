@@ -341,7 +341,7 @@ const TaskForm: React.FC<TaskFormProps> = ({
   const agentDropdownRef = useRef<HTMLDivElement>(null);
 
   const selectedAgent = allAgents.find(a => a.id === (form.agentId || 'main'))
-    || (isDefaultAgentId(form.agentId || 'main') ? { id: 'main', name: '主专家', avatar: undefined } : null);
+    || (isDefaultAgentId(form.agentId || 'main') ? { id: 'main', name: '主专家', avatar: undefined, level: undefined } : null);
 
   useEffect(() => {
     if (!allAgents || allAgents.length === 0) {

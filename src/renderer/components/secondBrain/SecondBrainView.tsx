@@ -703,7 +703,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
       const { upload_url, tos_url, key } = await fetchAudioUploadPresignedUrl();
 
       // 3. 上传到 TOS
-      const wavBlob = new Blob([wavBytes], { type: 'audio/wav' });
+      const wavBlob = new Blob([wavBytes.buffer as ArrayBuffer], { type: 'audio/wav' });
       const wavFile = new File([wavBlob], uploadFileName, { type: 'audio/wav' });
       await uploadFileToTos(upload_url, wavFile);
 
