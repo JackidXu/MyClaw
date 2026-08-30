@@ -38,18 +38,7 @@ import {
 } from './accountMenuState';
 import { ACCOUNT_MENU_COMPACT_CTA_CLASS_NAME } from './accountMenuStyles';
 import CreditsFinalRewardModal from './CreditsFinalRewardModal';
-import { DailyCheckInAccountMenuEntry } from './DailyCheckInActivity';
-import { getDailyCheckInAuthScopeKey } from './dailyCheckInActivityState';
 import UserAvatarIcon from './icons/UserAvatarIcon';
-import {
-  type StartupCreditCampaignEntry,
-  useStartupCreditCampaignEntry,
-} from './startupCreditCampaignBridge';
-import {
-  DailyCheckInLoadResultStatus,
-  type DailyCheckInSnapshot,
-  loadDailyCheckInSnapshot,
-} from './useDailyCheckInActivity';
 
 const ACCOUNT_MENU_ANALYTICS_SOURCE = 'home_account_menu';
 const reportAccountMenuAction = (
@@ -274,17 +263,13 @@ const PointsStackIcon: React.FC = () => (
 );
 
 interface UserMenuProps {
-  dailyCheckInSnapshot: DailyCheckInSnapshot | null;
   onClose: () => void;
   onOpenFinalReward: (campaignCode: string) => void;
-  startupCreditEntry: StartupCreditCampaignEntry;
 }
 
 const UserMenu: React.FC<UserMenuProps> = ({
-  dailyCheckInSnapshot,
   onClose,
   onOpenFinalReward,
-  startupCreditEntry,
 }) => {
   const user = useSelector((state: RootState) => state.auth.user);
   const quota = useSelector((state: RootState) => state.auth.quota);
@@ -575,14 +560,6 @@ const UserMenu: React.FC<UserMenuProps> = ({
             onUpgrade={handleUpgradePlan}
           />
         )}
-        <DailyCheckInAccountMenuEntry
-          enabled={startupCreditEntry.resolved
-            && !startupCreditEntry.available}
-          initialSnapshot={dailyCheckInSnapshot}
-          loadOnMount={false}
-          suppressed={!startupCreditEntry.resolved
-            || startupCreditEntry.available}
-        />
         <AccountMenuAction
           icon={<PointsStackIcon />}
           label={i18nService.t('authCreditsRemaining')}
@@ -660,28 +637,17 @@ const LoginButton: React.FC<LoginButtonProps> = ({
   loggedOutVariant = 'default',
 }) => {
   const {
-    accountGeneration,
     isLoggedIn,
     isLoading,
-    ownerAccountKey,
     profileSummary,
     user,
   } = useSelector((state: RootState) => state.auth);
   const enterpriseAccountContext = useSelector(selectEnterpriseAccountContext);
-  const startupCreditEntry = useStartupCreditCampaignEntry();
   const [showMenu, setShowMenu] = useState(false);
-  const [menuOpening, setMenuOpening] = useState(false);
-  const [menuStartupCreditEntry, setMenuStartupCreditEntry] = useState<StartupCreditCampaignEntry>(
-    startupCreditEntry,
-  );
-  const [menuDailyCheckInSnapshot, setMenuDailyCheckInSnapshot] = useState<DailyCheckInSnapshot | null>(null);
   const [selectedFinalRewardCode, setSelectedFinalRewardCode] = useState<string | null>(null);
   const [finalRewardLoading, setFinalRewardLoading] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const menuOpenRequestRef = useRef(0);
   const mountedRef = useRef(true);
-  const authAccountScope = getDailyCheckInAuthScopeKey(ownerAccountKey, accountGeneration);
-  const authAccountScopeRef = useRef(authAccountScope);
   const finalRewards = useMemo(
     () => getFinalRewards(profileSummary?.creditsResetCampaign),
     [profileSummary?.creditsResetCampaign],
@@ -691,7 +657,6 @@ const LoginButton: React.FC<LoginButtonProps> = ({
   );
   const finalRewardText = getFinalRewardText(finalReward);
   const finalRewardOpen = finalReward !== undefined;
-  authAccountScopeRef.current = authAccountScope;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -728,19 +693,13 @@ const LoginButton: React.FC<LoginButtonProps> = ({
     }
   }, [finalReward, isLoggedIn, selectedFinalRewardCode]);
   useEffect(() => {
-    if (!isLoggedIn) return;
-    menuOpenRequestRef.current += 1;
-    setMenuOpening(false);
-    setShowMenu(false);
-    setMenuDailyCheckInSnapshot(null);
-  }, [authAccountScope, isLoggedIn]);
+    if (!isLoggedIn || (selectedFinalRewardCode && !finalReward)) {
+      setSelectedFinalRewardCode(null);
+    }
+  }, [finalReward, isLoggedIn, selectedFinalRewardCode]);
 
   useEffect(() => {
-    if (isLoggedIn) return;
-    menuOpenRequestRef.current += 1;
-    setMenuOpening(false);
     setShowMenu(false);
-    setMenuDailyCheckInSnapshot(null);
   }, [isLoggedIn]);
 
   if (isLoading) {
@@ -751,8 +710,6 @@ const LoginButton: React.FC<LoginButtonProps> = ({
     if (isLoggedIn) {
       const creditItemCount = profileSummary?.creditItems?.length ?? 0;
       if (showMenu) {
-        menuOpenRequestRef.current += 1;
-        setMenuOpening(false);
         setShowMenu(false);
         reportAccountMenuAction('close_menu', {
           creditItemCount,
@@ -761,51 +718,12 @@ const LoginButton: React.FC<LoginButtonProps> = ({
         });
         return;
       }
-      if (menuOpening) return;
-
-      const requestId = ++menuOpenRequestRef.current;
-      const requestAccountScope = authAccountScope;
-      const selectedStartupCreditEntry = startupCreditEntry;
-      const shouldLoadDailyCheckIn = !enterpriseAccountContext
-        && selectedStartupCreditEntry.resolved
-        && !selectedStartupCreditEntry.available;
-      setMenuOpening(true);
-      setMenuStartupCreditEntry(selectedStartupCreditEntry);
-      setMenuDailyCheckInSnapshot(null);
+      setShowMenu(true);
       reportAccountMenuAction('open_menu', {
         creditItemCount,
         hasCredits: creditItemCount > 0,
         isLoggedIn: true,
       });
-      let dailyCheckInSnapshot: DailyCheckInSnapshot | null = null;
-      try {
-        if (shouldLoadDailyCheckIn) {
-          const result = await loadDailyCheckInSnapshot();
-          if (result.status === DailyCheckInLoadResultStatus.Ready) {
-            dailyCheckInSnapshot = result.snapshot;
-          } else if (result.status === DailyCheckInLoadResultStatus.Failed) {
-            const message = `daily check-in preload failed before opening account menu code=${result.code ?? 'unknown'}`;
-            console.warn(`[LoginButton] ${message}`);
-            writeAccountMenuRendererLog('warn', message);
-          }
-        }
-      } catch (error) {
-        console.warn('[LoginButton] failed to preload daily check-in before opening account menu:', error);
-        writeAccountMenuRendererLog(
-          'warn',
-          'failed to preload daily check-in before opening account menu',
-        );
-      } finally {
-        if (
-          mountedRef.current
-          && menuOpenRequestRef.current === requestId
-          && authAccountScopeRef.current === requestAccountScope
-        ) {
-          setMenuDailyCheckInSnapshot(dailyCheckInSnapshot);
-          setShowMenu(true);
-          setMenuOpening(false);
-        }
-      }
       return;
     }
     const loginVariant = useSidebarPromoLogin ? 'sidebar_promo' : 'default';
@@ -895,10 +813,8 @@ const LoginButton: React.FC<LoginButtonProps> = ({
           )
           : (
             <UserMenu
-              dailyCheckInSnapshot={menuDailyCheckInSnapshot}
               onClose={() => setShowMenu(false)}
               onOpenFinalReward={setSelectedFinalRewardCode}
-              startupCreditEntry={menuStartupCreditEntry}
             />
           )
       )}

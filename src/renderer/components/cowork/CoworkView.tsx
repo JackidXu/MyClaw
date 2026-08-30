@@ -7,7 +7,6 @@ import { buildGoalSettingMessageMetadata } from '../../../common/goalCommandDisp
 import { buildSessionTitleFromInput } from '../../../common/sessionTitle';
 import { buildCoworkImageAttachmentPreviews } from '../../../shared/cowork/imageAttachments';
 import type { CoworkSelectedTextSnippet } from '../../../shared/cowork/selectedText';
-import startupCreditEntryGiftUrl from '../../assets/startup-credit-entry-gift.svg';
 import { EnterpriseQuotaPrompt } from '../../features/enterpriseAccount/components/EnterpriseQuotaPrompt';
 import { refreshEnterpriseAccountContext } from '../../features/enterpriseAccount/context';
 import {
@@ -16,7 +15,6 @@ import {
 } from '../../features/enterpriseAccount/modelQuotaGate';
 import {
   selectEnterpriseAccountContext,
-  selectIsEnterpriseAccount,
 } from '../../features/enterpriseAccount/selectors';
 import { agentService } from '../../services/agent';
 import { coworkService } from '../../services/cowork';
@@ -51,7 +49,6 @@ import { applyOptimisticGoalCommand } from '../../utils/goalCommand';
 import { toOpenClawModelRef } from '../../utils/openclawModelRef';
 import AgentAvatarIcon from '../agent/AgentAvatarIcon';
 import CreditsResetCampaignFloat from '../CreditsResetCampaignFloat';
-import { DailyCheckInHeaderEntry } from '../DailyCheckInActivity';
 import ComposeIcon from '../icons/ComposeIcon';
 import SidebarToggleIcon from '../icons/SidebarToggleIcon';
 import { ModelAccessPromptKind, ModelAccessPromptModal } from '../ModelSelector';
@@ -60,10 +57,6 @@ import type { SettingsOpenOptions } from '../Settings';
 import HomeSkinEmblem from '../skin/HomeSkinEmblem';
 import SkinAmbientEffects from '../skin/SkinAmbientEffects';
 import SkinBackdrop, { SkinBackdropVariant } from '../skin/SkinBackdrop';
-import {
-  openStartupCreditCampaign,
-  useStartupCreditCampaignEntry,
-} from '../startupCreditCampaignBridge';
 import { resolveModelThinkingLevel, useAgentSelectedModel } from './agentModelSelection';
 import { CoworkUiEvent } from './constants';
 import CoworkPromptInput, { type CoworkPromptInputRef } from './CoworkPromptInput';
@@ -144,7 +137,6 @@ const CoworkView: React.FC<CoworkViewProps> = ({
   const isStreaming = useSelector(selectIsStreaming);
   const isLoggedIn = useSelector((state: RootState) => state.auth.isLoggedIn);
   const enterpriseAccountContext = useSelector(selectEnterpriseAccountContext);
-  const isEnterpriseAccount = useSelector(selectIsEnterpriseAccount);
   const enterpriseAccountId = enterpriseAccountContext?.enterpriseId;
   const hasEnterpriseAccount = enterpriseAccountContext !== null;
   const homeQuotaReason = enterpriseAccountContext?.quotaStatus.available === false
@@ -171,7 +163,6 @@ const CoworkView: React.FC<CoworkViewProps> = ({
   const selectedActionId = useSelector((state: RootState) => state.quickAction.selectedActionId);
   const selectedPromptId = useSelector((state: RootState) => state.quickAction.selectedPromptId);
   const currentAgentId = useSelector((state: RootState) => state.agent.currentAgentId);
-  const startupCreditEntry = useStartupCreditCampaignEntry();
   const agents = useSelector((state: RootState) => state.agent.agents);
   const currentAgent = agents.find((agent) => agent.id === currentAgentId);
   const activeExpert = useMemo(() => {
@@ -900,30 +891,7 @@ const CoworkView: React.FC<CoworkViewProps> = ({
           </div>
         )}
       </div>
-      <div className="non-draggable flex items-center">
-        {!isEnterpriseAccount && startupCreditEntry.available && (
-          <button
-            type="button"
-            onClick={() => openStartupCreditCampaign()}
-            className="mr-2 inline-flex h-8 max-w-[240px] items-center gap-2 rounded-full border border-[#F0B58E] bg-[#FFF7F0] px-3 text-xs font-medium text-[#7C351C] shadow-[0_3px_12px_rgba(235,94,40,0.16)] transition-colors hover:border-[#E89C6C] hover:bg-[#FFEBDD] dark:border-[#704530] dark:bg-[#352A25] dark:text-[#F5C4A5] dark:shadow-[0_3px_14px_rgba(0,0,0,0.32)] dark:hover:bg-[#403029]"
-          >
-            <img
-              src={startupCreditEntryGiftUrl}
-              alt=""
-              aria-hidden="true"
-              className="startup-credit-entry-gift h-5 w-5 shrink-0"
-            />
-            <span className="truncate">
-              {startupCreditEntry.label || i18nService.t('startupCreditMenuEntry')}
-            </span>
-          </button>
-        )}
-        <DailyCheckInHeaderEntry
-          enabled={!isEnterpriseAccount}
-          suppressed={!startupCreditEntry.resolved
-            || startupCreditEntry.available}
-        />
-      </div>
+      <div className="non-draggable flex items-center" />
     </div>
   );
 

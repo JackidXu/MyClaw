@@ -17,6 +17,7 @@ import {
 import type { LibrarySessionRef } from '../shared/library/types';
 import { OpenClawEnginePhase } from '../shared/openclawEngine/constants';
 import { ProviderAuthType, ProviderName, ProviderRegistry } from '../shared/providers';
+import { SIDEBAR_TASK_FILTER_ENABLED } from './components/agentSidebar/SidebarTaskFilterButton';
 import { AuthModal } from './components/AuthModal';
 import { CoworkView } from './components/cowork';
 import {
@@ -41,11 +42,9 @@ import SecondBrainView from './components/secondBrain/SecondBrainView';
 import Settings, { type SettingsOpenOptions } from './components/Settings';
 import Sidebar from './components/Sidebar';
 import { SitesView } from './components/sites';
-import { SIDEBAR_TASK_FILTER_ENABLED } from './components/agentSidebar/SidebarTaskFilterButton';
 import { SkillsAndConnectorsView, SkillsConnectorsSection } from './components/skillsAndConnectors';
 import SkinBackdrop, { SkinBackdropVariant } from './components/skin/SkinBackdrop';
 import SkinPresentationScope from './components/skin/SkinPresentationScope';
-import StartupCreditCampaign from './components/StartupCreditCampaign';
 import Toast, { type ToastEventDetail } from './components/Toast';
 import AppUpdateBadge from './components/update/AppUpdateBadge';
 import AppUpdateBlockingPanel from './components/update/AppUpdateBlockingPanel';
@@ -60,7 +59,6 @@ import AppUpdateModal from './components/update/AppUpdateModal';
 import WindowsAppTitleBar from './components/window/WindowsAppTitleBar';
 import WindowTitleBar from './components/window/WindowTitleBar';
 import { defaultConfig, getProviderDisplayName, ShortcutAction } from './config';
-import { selectIsEnterpriseAccount } from './features/enterpriseAccount/selectors';
 import { SkinProvider } from './providers/SkinProvider';
 import type { ApiConfig } from './services/api';
 import { apiService } from './services/api';
@@ -94,9 +92,9 @@ import {
   setDraftPrompt,
   setDraftSkillIds,
 } from './store/slices/coworkSlice';
+import { setActiveKitIds } from './store/slices/kitSlice';
 import { setAvailableModels, setDefaultSelectedModel } from './store/slices/modelSlice';
 import { clearSelection } from './store/slices/quickActionSlice';
-import { setActiveKitIds } from './store/slices/kitSlice';
 import { setActiveSkillIds } from './store/slices/skillSlice';
 import { CoworkCollaborationMode, type CoworkPermissionResult } from './types/cowork';
 
@@ -233,7 +231,6 @@ const App: React.FC = () => {
   const pendingPermission = useSelector(selectFirstCurrentSessionPendingPermission);
   const pendingPermissions = useSelector(selectPendingPermissions);
   const authUser = useSelector((state: RootState) => state.auth.user);
-  const isEnterpriseAccount = useSelector(selectIsEnterpriseAccount);
   const isWindows = window.electron.platform === 'win32';
   const [minimizedPermissionIds, setMinimizedPermissionIds] = useState<string[]>([]);
   const isPendingPermissionMinimized = pendingPermission
@@ -2017,11 +2014,6 @@ const App: React.FC = () => {
           onClose={() => setToastMessage(null)}
         />
       )}
-      {/* The welcome screen renders via the early return above, so agreement
-          alone gates the campaign here (no separate showWelcome flag). */}
-      <StartupCreditCampaign
-        enabled={privacyAgreed === true && !isEnterpriseAccount}
-      />
       {windowsStandaloneTitleBar}
       <div
         className="relative flex flex-1 min-h-0 overflow-hidden"
