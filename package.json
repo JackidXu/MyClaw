@@ -5,7 +5,7 @@
     "name": "HeyClaw",
     "email": "contact@heyclaw.com"
   },
-  "version": "1.3.1-alpha",
+  "version": "1.3.2-alpha",
   "openclaw": {
     "version": "v2026.6.1",
     "repo": "https://github.com/openclaw/openclaw.git",
