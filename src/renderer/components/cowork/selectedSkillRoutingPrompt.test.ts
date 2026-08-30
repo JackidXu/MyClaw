@@ -40,11 +40,11 @@ describe('buildSelectedSkillRoutingPrompt', () => {
     ])).toBeUndefined();
   });
 
-  test('includes lightweight metadata and inlines the SKILL.md body', () => {
+  test('includes lightweight metadata without inlining the SKILL.md body', () => {
     const prompt = buildSelectedSkillRoutingPrompt([
       makeSkill({
         id: 'imagegen',
-        prompt: 'FULL SKILL BODY SHOULD BE INLINED',
+        prompt: 'FULL SKILL BODY SHOULD NOT BE INLINED',
       }),
     ]);
 
@@ -53,8 +53,8 @@ describe('buildSelectedSkillRoutingPrompt', () => {
     expect(prompt).toContain('<name>Image Gen</name>');
     expect(prompt).toContain('<location>/Users/example/SKILLs/imagegen/SKILL.md</location>');
     expect(prompt).toContain('<directory>/Users/example/SKILLs/imagegen</directory>');
-    expect(prompt).toContain('read the provided <content> directly');
-    expect(prompt).toContain('FULL SKILL BODY SHOULD BE INLINED');
+    expect(prompt).toContain('read its SKILL.md at <location>');
+    expect(prompt).not.toContain('FULL SKILL BODY SHOULD NOT BE INLINED');
   });
 
   test('escapes XML-like metadata values', () => {
@@ -73,7 +73,7 @@ describe('buildSelectedSkillRoutingPrompt', () => {
     expect(prompt).toContain('<location>/tmp/a&amp;b/SKILL.md</location>');
   });
 
-  test('lists multiple selected skills with inlining their bodies', () => {
+  test('lists multiple selected skills without inlining their bodies', () => {
     const prompt = buildSelectedSkillRoutingPrompt([
       makeSkill({ id: 'docx', name: 'Docx', prompt: 'DOCX BODY' }),
       makeSkill({ id: 'xlsx', name: 'Xlsx', prompt: 'XLSX BODY' }),
@@ -82,7 +82,7 @@ describe('buildSelectedSkillRoutingPrompt', () => {
     expect(prompt).toContain('<id>docx</id>');
     expect(prompt).toContain('<id>xlsx</id>');
     expect(prompt).toContain('Do not read every selected skill up front.');
-    expect(prompt).toContain('DOCX BODY');
-    expect(prompt).toContain('XLSX BODY');
+    expect(prompt).not.toContain('DOCX BODY');
+    expect(prompt).not.toContain('XLSX BODY');
   });
 });
