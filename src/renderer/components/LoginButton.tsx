@@ -662,7 +662,6 @@ const LoginButton: React.FC<LoginButtonProps> = ({
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
-      menuOpenRequestRef.current += 1;
     };
   }, []);
 

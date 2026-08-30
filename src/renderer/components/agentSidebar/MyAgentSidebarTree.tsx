@@ -26,7 +26,6 @@ import { selectCurrentSessionId } from '../../store/selectors/coworkSelectors';
 import { setDraftCollaborationMode } from '../../store/slices/coworkSlice';
 import { CoworkCollaborationMode } from '../../types/cowork';
 import { getAgentDisplayName, isDefaultAgentId } from '../../utils/agentDisplay';
-
 import AgentSettingsPanel from '../agent/AgentSettingsPanel';
 import {
   type CoworkOpenAgentTaskSlotEventDetail,
