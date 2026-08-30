@@ -53,6 +53,9 @@ interface SecondBrainViewProps {
 const MATERIAL_TABS = ['文档', '对话', '录音卡'] as const;
 type MaterialTab = typeof MATERIAL_TABS[number];
 
+/** 录音卡功能暂未对客户开放（TODO: 硬件正式发布上线后改为 false 即可放开） */
+const SHOW_RECORDING_CARD_COMING_SOON = true;
+
 /** 单个上传文档最大限制：2MB */
 const MAX_DOCUMENT_FILE_SIZE = 2 * 1024 * 1024;
 
@@ -1300,169 +1303,187 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
               )}
 
               {/* 录音卡专属区域 */}
-              {materialTab === '录音卡' && (
-                <div className="space-y-4 pt-1">
-                  {/* 设备信息卡 */}
-                  {bleDevice ? (
-                    <div className="flex items-center justify-between gap-3 p-3.5 rounded-xl border border-border bg-surface-raised/40">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-10 h-10 rounded-lg bg-[#FF6B35]/10 text-[#FF6B35] flex items-center justify-center text-lg shrink-0">
-                          🎙
-                        </div>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-xs md:text-sm font-bold text-foreground truncate">{bleDevice.name}</span>
-                            <span className="text-[10px] font-bold text-[#2d8a5f] bg-[#2d8a5f]/12 px-1.5 py-0.5 rounded">已连接</span>
-                          </div>
-                          <div className="text-[11px] text-secondary mt-0.5">
-                            电量 {bleDevice.battery === 110 ? '充电中' : `${bleDevice.battery}%`} · 剩余存储 {(bleDevice.remainKb / (1024 * 1024)).toFixed(1)}GB · 固件 {bleDevice.firmware || 'v1.0.0'}
-                          </div>
-                        </div>
+              {materialTab === '录音卡' && (() => {
+                if (SHOW_RECORDING_CARD_COMING_SOON) {
+                  return (
+                    <div className="flex flex-col items-center justify-center py-14 text-center rounded-xl border border-dashed border-border bg-surface-raised/20">
+                      <div className="w-10 h-10 rounded-full bg-[#FF6B35]/10 text-[#FF6B35] flex items-center justify-center text-lg mb-2">
+                        🎙
                       </div>
-                      <button
-                        type="button"
-                        onClick={handleDisconnectBle}
-                        className="rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-secondary hover:bg-surface-raised hover:text-destructive transition-colors shrink-0 cursor-pointer"
-                      >
-                        断开连接
-                      </button>
+                      <p className="text-xs font-semibold text-foreground">敬请期待</p>
+                      <p className="text-[11px] text-secondary mt-0.5">硬件录音卡连接与一键同步萃取功能即将开放</p>
                     </div>
-                  ) : (
-                    <div className="flex items-center justify-between gap-3 p-3.5 rounded-xl border border-dashed border-border bg-surface-raised/20">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-lg bg-surface-raised border border-border flex items-center justify-center text-lg text-secondary shrink-0">
-                          🎙
+                  );
+                }
+
+                return (
+                  <div className="space-y-4 pt-1">
+                    {/* 设备信息卡 */}
+                    {bleDevice ? (
+                      <div className="flex items-center justify-between gap-3 p-3.5 rounded-xl border border-border bg-surface-raised/40">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-10 h-10 rounded-lg bg-[#FF6B35]/10 text-[#FF6B35] flex items-center justify-center text-lg shrink-0">
+                            🎙
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs md:text-sm font-bold text-foreground truncate">{bleDevice.name}</span>
+                              <span className="text-[10px] font-bold text-[#2d8a5f] bg-[#2d8a5f]/12 px-1.5 py-0.5 rounded">已连接</span>
+                            </div>
+                            <div className="text-[11px] text-secondary mt-0.5">
+                              电量 {bleDevice.battery === 110 ? '充电中' : `${bleDevice.battery}%`} · 剩余存储 {(bleDevice.remainKb / (1024 * 1024)).toFixed(1)}GB · 固件 {bleDevice.firmware || 'v1.0.0'}
+                            </div>
+                          </div>
                         </div>
-                        <div>
-                          <div className="text-xs md:text-sm font-bold text-foreground">录音卡未连接</div>
-                          <div className="text-[11px] text-secondary mt-0.5">连接后可直接读取设备内录音并一键萃取</div>
-                        </div>
+                        <button
+                          type="button"
+                          onClick={handleDisconnectBle}
+                          className="rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-secondary hover:bg-surface-raised hover:text-destructive transition-colors shrink-0 cursor-pointer"
+                        >
+                          断开连接
+                        </button>
                       </div>
-                      <button
-                        type="button"
-                        disabled={bleConnecting}
-                        onClick={handleConnectBle}
-                        className="rounded-lg bg-primary hover:bg-primary-hover px-3.5 py-1.5 text-xs font-bold text-white shadow-2xs transition-colors shrink-0 disabled:opacity-50 cursor-pointer"
-                      >
-                        {bleConnecting ? '连接中…' : '连接录音卡'}
-                      </button>
-                    </div>
-                  )}
-
-                  {/* 录音卡文件列表工具栏（当有设备连接且有文件时） */}
-                  {bleDevice && (
-                    <div className="space-y-2.5">
-                      <div className="flex items-center justify-between gap-2 flex-wrap">
-                        <div className="text-xs text-secondary">
-                          录音卡内 <b className="text-foreground font-bold">{bleFiles.length}</b> 个文件 ·{' '}
-                          <b className="text-[#FF6B35] font-bold">
-                            {bleFiles.filter((f) => !isFileSynced(f.name)).length}
-                          </b>{' '}
-                          个待同步
+                    ) : (
+                      <div className="flex items-center justify-between gap-3 p-3.5 rounded-xl border border-dashed border-border bg-surface-raised/20">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-lg bg-surface-raised border border-border flex items-center justify-center text-lg text-secondary shrink-0">
+                            🎙
+                          </div>
+                          <div>
+                            <div className="text-xs md:text-sm font-bold text-foreground">录音卡未连接</div>
+                            <div className="text-[11px] text-secondary mt-0.5">连接后可直接读取设备内录音并一键萃取</div>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            disabled={bleLoadingFiles}
-                            onClick={loadBleFiles}
-                            className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs font-semibold text-secondary hover:bg-surface-raised transition-colors cursor-pointer"
-                          >
-                            {bleLoadingFiles ? '刷新中…' : '刷新列表'}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={handleSyncAllBleFiles}
-                            className="rounded-lg bg-[#FF6B35] hover:bg-[#E85A28] px-3 py-1 text-xs font-bold text-white shadow-2xs transition-colors cursor-pointer"
-                          >
-                            全部同步
-                          </button>
-                        </div>
+                        <button
+                          type="button"
+                          disabled={bleConnecting}
+                          onClick={handleConnectBle}
+                          className="rounded-lg bg-primary hover:bg-primary-hover px-3.5 py-1.5 text-xs font-bold text-white shadow-2xs transition-colors shrink-0 disabled:opacity-50 cursor-pointer"
+                        >
+                          {bleConnecting ? '连接中…' : '连接录音卡'}
+                        </button>
                       </div>
+                    )}
 
-                      {/* 录音卡内文件项列表 */}
-                      {bleLoadingFiles ? (
-                        <div className="py-6 text-center text-xs text-secondary/60">读取录音卡文件列表中…</div>
-                      ) : bleFiles.length === 0 ? (
-                        <div className="py-6 text-center text-xs text-secondary">录音卡内暂无录音文件</div>
-                      ) : (
-                        <div className="space-y-2">
-                          {bleFiles.map((file) => {
-                            const isSynced = isFileSynced(file.name);
-                            const isSyncing = syncingFileNames.has(file.name);
-                            const prog = syncProgress[file.name] ?? 0;
+                    {/* 录音卡文件列表工具栏（当有设备连接且有文件时） */}
+                    {bleDevice && (
+                      <div className="space-y-2.5">
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <div className="text-xs text-secondary">
+                            录音卡内 <b className="text-foreground font-bold">{bleFiles.length}</b> 个文件 ·{' '}
+                            <b className="text-[#FF6B35] font-bold">
+                              {bleFiles.filter((f) => !isFileSynced(f.name)).length}
+                            </b>{' '}
+                            个待同步
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              disabled={bleLoadingFiles}
+                              onClick={loadBleFiles}
+                              className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs font-semibold text-secondary hover:bg-surface-raised transition-colors cursor-pointer"
+                            >
+                              {bleLoadingFiles ? '刷新中…' : '刷新列表'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleSyncAllBleFiles}
+                              className="rounded-lg bg-[#FF6B35] hover:bg-[#E85A28] px-3 py-1 text-xs font-bold text-white shadow-2xs transition-colors cursor-pointer"
+                            >
+                              全部同步
+                            </button>
+                          </div>
+                        </div>
 
-                            return (
-                              <div
-                                key={file.name}
-                                className="flex items-center gap-3 p-3 rounded-xl border border-border/80 bg-background/40 hover:bg-surface transition-all"
-                              >
-                                <div className="w-8 h-8 rounded-lg bg-[#FF6B35]/10 text-[#FF6B35] flex items-center justify-center text-sm shrink-0">
-                                  🎧
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <div className="text-xs md:text-[13px] font-semibold text-foreground truncate">
-                                    {file.name}
+                        {/* 录音卡内文件项列表 */}
+                        {bleLoadingFiles ? (
+                          <div className="py-6 text-center text-xs text-secondary/60">读取录音卡文件列表中…</div>
+                        ) : bleFiles.length === 0 ? (
+                          <div className="py-6 text-center text-xs text-secondary">录音卡内暂无录音文件</div>
+                        ) : (
+                          <div className="space-y-2">
+                            {bleFiles.map((file) => {
+                              const isSynced = isFileSynced(file.name);
+                              const isSyncing = syncingFileNames.has(file.name);
+                              const prog = syncProgress[file.name] ?? 0;
+
+                              return (
+                                <div
+                                  key={file.name}
+                                  className="flex items-center gap-3 p-3 rounded-xl border border-border/80 bg-background/40 hover:bg-surface transition-all"
+                                >
+                                  <div className="w-8 h-8 rounded-lg bg-[#FF6B35]/10 text-[#FF6B35] flex items-center justify-center text-sm shrink-0">
+                                    🎧
                                   </div>
-                                  <div className="text-[11px] text-secondary mt-0.5 flex items-center gap-1.5">
-                                    <span>{formatDurationSec(file.duration)}</span>
-                                    <span>·</span>
-                                    <span>{formatBytes(file.size)}</span>
-                                  </div>
-                                  {isSyncing && (
-                                    <div className="mt-1.5 h-1 w-full bg-border rounded-full overflow-hidden">
-                                      <div
-                                        className="h-full bg-[#FF6B35] rounded-full transition-all duration-200"
-                                        style={{ width: `${prog}%` }}
-                                      />
+                                  <div className="flex-1 min-w-0">
+                                    <div className="text-xs md:text-[13px] font-semibold text-foreground truncate">
+                                      {file.name}
                                     </div>
-                                  )}
+                                    <div className="text-[11px] text-secondary mt-0.5 flex items-center gap-1.5">
+                                      <span>{formatDurationSec(file.duration)}</span>
+                                      <span>·</span>
+                                      <span>{formatBytes(file.size)}</span>
+                                    </div>
+                                    {isSyncing && (
+                                      <div className="mt-1.5 h-1 w-full bg-border rounded-full overflow-hidden">
+                                        <div
+                                          className="h-full bg-[#FF6B35] rounded-full transition-all duration-200"
+                                          style={{ width: `${prog}%` }}
+                                        />
+                                      </div>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    {isSyncing ? (
+                                      <span className="text-[11px] font-bold text-[#1e6ba8] bg-[#1e6ba8]/10 px-2 py-0.5 rounded">
+                                        同步中 {prog}%
+                                      </span>
+                                    ) : isSynced ? (
+                                      <span className="text-[11px] font-bold text-[#2d8a5f] bg-[#2d8a5f]/12 px-2 py-0.5 rounded">
+                                        已同步 · 进萃取
+                                      </span>
+                                    ) : (
+                                      <span className="text-[11px] font-bold text-secondary bg-surface-raised border border-border px-2 py-0.5 rounded">
+                                        待同步
+                                      </span>
+                                    )}
+                                    <button
+                                      type="button"
+                                      disabled={isSynced || isSyncing}
+                                      onClick={() => handleSyncOneBleFile(file)}
+                                      className={`rounded-lg px-2.5 py-1 text-xs font-bold transition-colors cursor-pointer ${
+                                        isSynced
+                                          ? 'border border-border text-secondary/40 cursor-not-allowed'
+                                          : 'border border-[#FF6B35] text-[#FF6B35] hover:bg-[#FF6B35]/10'
+                                      }`}
+                                    >
+                                      {isSynced ? '已同步' : isSyncing ? '同步中…' : '同步'}
+                                    </button>
+                                  </div>
                                 </div>
-                                <div className="flex items-center gap-2 shrink-0">
-                                  {isSyncing ? (
-                                    <span className="text-[11px] font-bold text-[#1e6ba8] bg-[#1e6ba8]/10 px-2 py-0.5 rounded">
-                                      同步中 {prog}%
-                                    </span>
-                                  ) : isSynced ? (
-                                    <span className="text-[11px] font-bold text-[#2d8a5f] bg-[#2d8a5f]/12 px-2 py-0.5 rounded">
-                                      已同步 · 进萃取
-                                    </span>
-                                  ) : (
-                                    <span className="text-[11px] font-bold text-secondary bg-surface-raised border border-border px-2 py-0.5 rounded">
-                                      待同步
-                                    </span>
-                                  )}
-                                  <button
-                                    type="button"
-                                    disabled={isSynced || isSyncing}
-                                    onClick={() => handleSyncOneBleFile(file)}
-                                    className={`rounded-lg px-2.5 py-1 text-xs font-bold transition-colors cursor-pointer ${
-                                      isSynced
-                                        ? 'border border-border text-secondary/40 cursor-not-allowed'
-                                        : 'border border-[#FF6B35] text-[#FF6B35] hover:bg-[#FF6B35]/10'
-                                    }`}
-                                  >
-                                    {isSynced ? '已同步' : isSyncing ? '同步中…' : '同步'}
-                                  </button>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  )}
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
 
-                  {/* 分割线与历史已同步音频列表 */}
-                  <div className="pt-3 border-t border-border space-y-2">
-                    <div className="text-xs font-bold text-foreground">
-                      已沉淀音频资料 ({docsTotal})
+                    {/* 分割线与历史已同步音频列表 */}
+                    <div className="pt-3 border-t border-border space-y-2">
+                      <div className="text-xs font-bold text-foreground">
+                        已沉淀音频资料 ({docsTotal})
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
-              {/* 当前 Tab 匹配的有效资料列表（防止旧 Tab 残留闪烁） */}
+              {/* 当前 Tab 匹配的有效资料列表（防止旧 Tab 残留闪烁；敬请期待模式下不展示音频列表） */}
               {(() => {
+                if (SHOW_RECORDING_CARD_COMING_SOON && materialTab === '录音卡') {
+                  return null;
+                }
+
                 const currentDocs = docs.filter((d) => {
                   if (materialTab === '录音卡') return (d.type as any) === 'audio';
                   if (materialTab === '对话') return d.type === 'chat';
