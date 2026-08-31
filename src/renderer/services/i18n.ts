@@ -420,6 +420,11 @@ const translations: Record<LanguageType, Record<string, string>> = {
     authLogout: '退出登录',
     authLoginRequired: '请先登录后再开始对话。',
     authLoginRequiredBtn: '登录',
+    chatLoginExperienceTitlePrefix: '欢迎使用',
+    chatLoginExperiencePromoLine1: '新朋友限时送百万Token，',
+    chatLoginExperiencePromoLine2: '登录后，获取积分可使用套餐模型。',
+    chatLoginExperienceStart: '开始体验',
+    chatLoginExperienceStarting: '正在打开...',
     authQuotaExhausted:
       '今日免费额度已用完。您可以登录 LobsterAI Portal 购买套餐或积分包继续使用，或在设置中配置自己的 API Key。',
     authTopUpLink: '充值',
@@ -4091,6 +4096,11 @@ const translations: Record<LanguageType, Record<string, string>> = {
     authLogout: 'Log Out',
     authLoginRequired: 'Please log in to start a conversation.',
     authLoginRequiredBtn: 'Log In',
+    chatLoginExperienceTitlePrefix: 'Welcome to',
+    chatLoginExperiencePromoLine1: 'New users get 1M tokens for a limited time.',
+    chatLoginExperiencePromoLine2: 'Sign in to earn credits and use plan models.',
+    chatLoginExperienceStart: 'Start',
+    chatLoginExperienceStarting: 'Opening...',
     authQuotaExhausted:
       'Daily free quota exhausted. Visit LobsterAI Portal to purchase a plan or credits, or configure your own API Key in Settings.',
     authTopUpLink: 'Top Up',
