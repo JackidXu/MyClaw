@@ -25,6 +25,7 @@ import {
   normalizeCoworkBtwQuestion,
   resolveCoworkBtwSelectedTextSnippets,
 } from '../../../shared/cowork/btw';
+import { CoworkOnboardingMessageKind } from '../../../shared/cowork/constants';
 import { CoworkGoalStatus } from '../../../shared/cowork/goal';
 import type { CoworkImageAttachmentPreview } from '../../../shared/cowork/imageAttachments';
 import {
@@ -5091,6 +5092,9 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
 
 
   const messages = currentSession?.messages;
+  const isNewUserWelcomeSession = useMemo(() => (
+    messages?.some(message => message.metadata?.kind === CoworkOnboardingMessageKind.NewUserWelcome) ?? false
+  ), [messages]);
   const displayItems = useMemo(() => messages ? buildDisplayItems(messages) : [], [messages]);
   const turns = useMemo(() => buildConversationTurns(displayItems), [displayItems]);
   const enterpriseQuotaSignal = useMemo(
@@ -7001,6 +7005,7 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
             onManageKits={remoteManaged ? undefined : onManageKits}
             showModelSelector={true}
             showReadOnlyContext={!isArtifactPanelExpanded}
+            showNewUserWelcomeLoginOverlay={isNewUserWelcomeSession}
             readOnlyContextTrailingText={isArtifactPanelExpanded ? undefined : i18nService.t('aiGeneratedDisclaimer')}
             workingDirectory={currentSession?.cwd ?? ''}
             contextAgentId={currentSession?.agentId}

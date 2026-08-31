@@ -456,6 +456,7 @@ interface CoworkPromptInputProps {
   canSteer?: boolean;
   /** When true, hides attachment/skill buttons but keeps the input box visible (disabled) */
   remoteManaged?: boolean;
+  showNewUserWelcomeLoginOverlay?: boolean;
 }
 
 const EMPTY_ATTACHMENTS: CoworkAttachment[] = [];
@@ -492,6 +493,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
       steerPreviewPortalTarget,
       canSteer = false,
       remoteManaged = false,
+      showNewUserWelcomeLoginOverlay = false,
     } = props;
     const dispatch = useDispatch();
     const draftKey = sessionId || '__home__';
@@ -711,12 +713,14 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     isLoggedIn,
   ]);
 
-  const handleChatLoginExperienceStart = useCallback(async () => {
+  const handleChatLoginExperienceStart = useCallback(async (
+    source: 'chat_login_experience_prompt' | 'new_user_welcome_task' = 'chat_login_experience_prompt',
+  ) => {
     if (chatLoginExperiencePending) return;
     setChatLoginExperiencePending(true);
     logPromptModelSelection(
       'debug',
-      'chat login experience prompt primary action clicked; starting login handoff',
+      `${source} primary action clicked; starting login handoff`,
     );
     try {
       const result = await authService.login();
@@ -725,14 +729,14 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
       }
       logPromptModelSelection(
         'debug',
-        'chat login experience prompt login handoff succeeded',
+        `${source} login handoff succeeded`,
       );
       setShowChatLoginExperiencePrompt(false);
       setChatLoginExperiencePending(false);
     } catch (error) {
       logPromptModelSelection(
         'warn',
-        `chat login experience prompt login handoff failed: ${error instanceof Error ? error.message : String(error)}`,
+        `${source} login handoff failed: ${error instanceof Error ? error.message : String(error)}`,
       );
       showToast(i18nService.t('welcomeLoginFailed'));
       setChatLoginExperiencePending(false);
@@ -2774,6 +2778,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     && !isPatchingModel
     && !agentModelIsInvalid
     && (!!activeTextareaValue.trim() || (!steerInputActive && (hasAttachments || browserAnnotationBatches.length > 0)));
+  const showNewUserWelcomeLockOverlay = showNewUserWelcomeLoginOverlay && !isLoggedIn;
   const enhancedContainerClass = isDraggingFiles
     ? `${containerClass} ring-2 ring-primary/50 border-primary/60`
     : containerClass;
@@ -3110,6 +3115,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
   const largeSubmitButton = (
     <button
       type="button"
+      data-onboarding-target={isLarge && useHomeContextLayout ? 'home-prompt-send' : undefined}
       onClick={() => handleSubmit('button')}
       disabled={!canUseSubmitButton}
       className={`flex ${largeSendButtonSizeClass} shrink-0 items-center justify-center rounded-full transition-all ${
@@ -3518,6 +3524,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
       )}
         <textarea
           ref={textareaRef}
+          data-onboarding-target={isLarge && useHomeContextLayout ? 'home-prompt-textarea' : undefined}
           value={activeTextareaValue}
         onChange={handleTextareaChange}
         onFocus={handleTextareaFocus}
@@ -3710,10 +3717,29 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
             {i18nService.t('coworkDropFileHint')}
           </div>
         )}
+        {showNewUserWelcomeLockOverlay && (
+          <div className="absolute inset-0 z-40 flex items-center justify-center rounded-[inherit] bg-white/75 backdrop-blur-[1.5px] dark:bg-black/45">
+            <button
+              type="button"
+              onClick={() => { void handleChatLoginExperienceStart('new_user_welcome_task'); }}
+              disabled={chatLoginExperiencePending}
+              className="relative min-w-[150px] rounded-xl bg-neutral-950 px-8 py-3 text-base font-semibold leading-5 text-white shadow-[0_14px_34px_rgba(0,0,0,0.22)] transition-all hover:bg-neutral-800 active:scale-[0.98] disabled:cursor-wait disabled:opacity-75 dark:bg-white dark:text-neutral-950 dark:hover:bg-neutral-200"
+              aria-label={i18nService.t('newUserWelcomeInputLockedLabel')}
+            >
+              <span className="pointer-events-none absolute inset-x-3 -bottom-1 h-3 rounded-full bg-gradient-to-r from-emerald-400 via-cyan-300 to-pink-400 opacity-80 blur-md" />
+              <span className="relative">
+                {i18nService.t('newUserOnboardingStartExperience')}
+              </span>
+            </button>
+          </div>
+        )}
         {isLarge ? (
           useHomeContextLayout ? (
             <>
-              <div className="relative z-10 rounded-2xl border border-border bg-surface shadow-card transition-[border-color,box-shadow] duration-200 focus-within:border-primary/35 focus-within:shadow-elevated">
+              <div
+                data-onboarding-target="home-prompt"
+                className="relative z-10 rounded-2xl border border-border bg-surface shadow-card transition-[border-color,box-shadow] duration-200 focus-within:border-primary/35 focus-within:shadow-elevated"
+              >
                 {largeAttachmentPreview}
                 {selectedTextSnippetPreview}
                 {browserAnnotationPreview}

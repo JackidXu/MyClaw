@@ -1025,6 +1025,12 @@ interface IElectronAPI {
     setActiveSession: (
       sessionId: string | null,
     ) => Promise<{ success: boolean; error?: string }>;
+    seedNewUserWelcomeTask: (options: { title: string; content: string }) => Promise<{
+      success: boolean;
+      session?: CoworkSession;
+      created?: boolean;
+      error?: string;
+    }>;
     remoteManaged: (
       sessionId: string,
     ) => Promise<{ success: boolean; remoteManaged: boolean; error?: string }>;
