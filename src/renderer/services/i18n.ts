@@ -1848,7 +1848,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     voiceInputQuotaExhausted: '暂无语音输入时长',
     voiceInputQuotaExhaustedTitle: '语音输入时长已用完',
     voiceInputQuotaExhaustedFreeDesc:
-      '今日 {limit} 语音输入时长已用完。升级订阅可获得每日 200 分钟语音输入时长。',
+      '今日 {limit} 免费语音输入时长已用完。升级订阅后，每日可使用 {subscriptionLimit} 语音输入。',
     voiceInputQuotaExhaustedSubscribedDesc: '今日 {limit} 语音输入时长已用完。',
     voiceInputUpgradeSubscription: '升级订阅',
     voiceInputQuotaAcknowledge: '知道了',
@@ -5666,7 +5666,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     voiceInputQuotaExhausted: 'No voice input time available',
     voiceInputQuotaExhaustedTitle: 'Voice input time used up',
     voiceInputQuotaExhaustedFreeDesc:
-      'Today’s {limit} voice input time has been used up. Upgrade to get 200 minutes per day.',
+      'You’ve used today’s {limit} of free voice input. Upgrade to get {subscriptionLimit} per day.',
     voiceInputQuotaExhaustedSubscribedDesc: 'Today’s {limit} voice input time has been used up.',
     voiceInputUpgradeSubscription: 'Upgrade subscription',
     voiceInputQuotaAcknowledge: 'Got it',
