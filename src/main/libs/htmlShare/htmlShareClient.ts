@@ -6,6 +6,7 @@ import {
   type HtmlShareAnalyticsResult,
   type HtmlShareConfigurableStatus,
   type HtmlShareDisabledSource,
+  type HtmlSharePermanentDeleteResult,
   HtmlShareSourceType,
   HtmlShareStatus,
   type HtmlShareStatus as HtmlShareStatusValue,
@@ -367,6 +368,27 @@ export async function updateHtmlShareAccessMode(
     return buildHtmlShareFailure(payload, `Share access mode update failed: ${response.status}`);
   }
   return result;
+}
+
+export async function deleteHtmlSharePermanently(
+  serverBaseUrl: string,
+  fetchWithAuth: FetchWithAuth,
+  shareId: string,
+): Promise<HtmlSharePermanentDeleteResult> {
+  const response = await fetchWithAuth(
+    `${serverBaseUrl}/api/html-shares/${encodeURIComponent(shareId)}/permanent`,
+    { method: 'DELETE' },
+  );
+  const payload = (await response.json().catch((): null => null)) as HtmlShareApiResponse | null;
+  if (!response.ok || payload?.code !== 0) {
+    return {
+      success: false,
+      error: payload?.message || `Share deletion failed: ${response.status}`,
+      code: payload?.code,
+      httpStatus: response.status,
+    };
+  }
+  return { success: true, httpStatus: response.status };
 }
 
 export async function getHtmlShareBySource(

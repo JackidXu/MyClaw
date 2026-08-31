@@ -40,8 +40,11 @@ const ArtifactSubscriptionPromptDialog = ({
   analyticsAttempt,
 }: ArtifactSubscriptionPromptDialogProps) => {
   const initialButtonRef = useRef<HTMLButtonElement>(null);
+  const openedAtRef = useRef(Date.now());
   const [trialPolicy, setTrialPolicy] = useState<PublishingTrialPolicy | null>(null);
-  const [isTrialPolicyLoading, setIsTrialPolicyLoading] = useState(false);
+  const [isTrialPolicyLoading, setIsTrialPolicyLoading] = useState(
+    reason === ArtifactSubscriptionBlockReason.LoginRequired,
+  );
   const titleId = useId();
   const descriptionId = useId();
   const copyKeys = getArtifactSubscriptionPromptCopyKeys(feature, reason);
@@ -52,13 +55,24 @@ const ArtifactSubscriptionPromptDialog = ({
     ? trialPolicy?.file
     : trialPolicy?.site;
   const analyticsDialog = useMemo(() => (
-    analyticsAttempt
-      ? createPublishingAnalyticsDialog(
-          analyticsAttempt,
-          getPublishingDialogTypeForSubscriptionReason(reason),
-        )
+    analyticsAttempt && (!isLoginRequired || !isTrialPolicyLoading)
+      ? {
+          ...createPublishingAnalyticsDialog(
+            analyticsAttempt,
+            getPublishingDialogTypeForSubscriptionReason(reason),
+            undefined,
+            resourcePolicy?.accessTtlSeconds,
+          ),
+          openedAt: openedAtRef.current,
+        }
       : null
-  ), [analyticsAttempt, reason]);
+  ), [
+    analyticsAttempt,
+    isLoginRequired,
+    isTrialPolicyLoading,
+    reason,
+    resourcePolicy?.accessTtlSeconds,
+  ]);
 
   useEffect(() => {
     if (analyticsDialog) reportPublishingDialogExposure(analyticsDialog);

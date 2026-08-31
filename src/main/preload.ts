@@ -897,6 +897,8 @@ contextBridge.exposeInMainWorld('electron', {
     updateAccessMode: (options: { shareId: string; accessMode: HtmlShareAccessMode }) =>
       ipcRenderer.invoke(HtmlShareIpc.UpdateAccessMode, options),
     disable: (shareId: string) => ipcRenderer.invoke(HtmlShareIpc.Disable, shareId),
+    deletePermanently: (shareId: string) =>
+      ipcRenderer.invoke(HtmlShareIpc.DeletePermanently, shareId),
     get: (shareId: string) => ipcRenderer.invoke(HtmlShareIpc.Get, shareId),
     getQuota: () => ipcRenderer.invoke(HtmlShareIpc.GetQuota),
     getTrialPolicy: () => ipcRenderer.invoke(HtmlShareIpc.GetTrialPolicy),
@@ -1295,6 +1297,7 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.invoke(AuthIpcChannel.ClaimCreditsFinalReward, { campaignCode }),
     getActiveClientBanner: () => ipcRenderer.invoke(AuthIpcChannel.GetActiveClientBanner),
     getActiveClientBanners: () => ipcRenderer.invoke(AuthIpcChannel.GetActiveClientBanners),
+    getClientBannerSnapshot: () => ipcRenderer.invoke(AuthIpcChannel.GetClientBannerSnapshot),
     getPendingCallback: () => ipcRenderer.invoke(AuthIpcChannel.GetPendingCallback),
     onCallback: (callback: (data: { code: string }) => void) => {
       const handler = (_event: any, data: { code: string }) => callback(data);

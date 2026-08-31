@@ -56,6 +56,7 @@ describe('pricing catalog model mapping', () => {
         },
         contextWindow: 1_000_000,
         costMultiplier: 1.6,
+        moreModel: true,
       },
     ]);
 
@@ -79,6 +80,7 @@ describe('pricing catalog model mapping', () => {
       },
       contextWindow: 1_000_000,
       costMultiplier: 1.6,
+      moreModel: true,
     });
   });
 
@@ -133,6 +135,7 @@ describe('authenticated server model mapping', () => {
       agenticReady: false,
       contextWindow: 1_048_576,
       maxTokens: 8_192,
+      moreModel: true,
       accessible: true,
     }]);
 
@@ -158,6 +161,7 @@ describe('authenticated server model mapping', () => {
       agenticReady: false,
       contextWindow: 1_048_576,
       maxTokens: 8_192,
+      moreModel: true,
       accessible: true,
     });
   });

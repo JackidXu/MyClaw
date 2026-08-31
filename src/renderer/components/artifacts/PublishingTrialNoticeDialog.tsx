@@ -59,41 +59,38 @@ const PublishingTrialNoticeDialog: React.FC<PublishingTrialNoticeDialogProps> = 
   const titleId = useId();
   const descriptionId = useId();
   const initialButtonRef = useRef<HTMLButtonElement>(null);
+  const openedAtRef = useRef(Date.now());
   const [trialPolicy, setTrialPolicy] = useState<PublishingTrialPolicy | null>(null);
   const [isTrialPolicyLoading, setIsTrialPolicyLoading] = useState(true);
   const isShare = feature === ArtifactSubscriptionFeature.Share;
   const resourcePolicy = isShare ? trialPolicy?.file : trialPolicy?.site;
-  const exposureAnalyticsDialog = useMemo(() => (
-    analyticsAttempt
-      ? createPublishingAnalyticsDialog(
-          analyticsAttempt,
-          PublishingAnalyticsDialogType.TrialNotice,
-          quota,
-        )
-      : null
-  ), [analyticsAttempt, quota]);
-  const actionAnalyticsDialog = useMemo(() => (
-    exposureAnalyticsDialog
+  const analyticsDialog = useMemo(() => (
+    analyticsAttempt && !isTrialPolicyLoading
       ? {
-          ...exposureAnalyticsDialog,
-          trialAccessTtlSeconds: resourcePolicy?.accessTtlSeconds,
+          ...createPublishingAnalyticsDialog(
+            analyticsAttempt,
+            PublishingAnalyticsDialogType.TrialNotice,
+            quota,
+            resourcePolicy?.accessTtlSeconds,
+          ),
+          openedAt: openedAtRef.current,
         }
       : null
-  ), [exposureAnalyticsDialog, resourcePolicy?.accessTtlSeconds]);
+  ), [analyticsAttempt, isTrialPolicyLoading, quota, resourcePolicy?.accessTtlSeconds]);
 
   useEffect(() => {
-    if (exposureAnalyticsDialog) reportPublishingDialogExposure(exposureAnalyticsDialog);
-  }, [exposureAnalyticsDialog]);
+    if (analyticsDialog) reportPublishingDialogExposure(analyticsDialog);
+  }, [analyticsDialog]);
 
   const reportAction = useCallback((
     actionType: PublishingAnalyticsActionType,
     ctaId: PublishingAnalyticsCtaId,
     target: PublishingAnalyticsTarget,
   ) => {
-    if (actionAnalyticsDialog) {
-      reportPublishingDialogAction(actionAnalyticsDialog, { actionType, ctaId, target });
+    if (analyticsDialog) {
+      reportPublishingDialogAction(analyticsDialog, { actionType, ctaId, target });
     }
-  }, [actionAnalyticsDialog]);
+  }, [analyticsDialog]);
 
   const handleClose = useCallback(() => {
     reportAction(

@@ -41,6 +41,7 @@ import {
   CoworkSteerStatus,
 } from '../../../shared/cowork/steer';
 import { agentService } from '../../services/agent';
+import { authService } from '../../services/auth';
 import { configService, ConfigServiceEvent } from '../../services/config';
 import { coworkService } from '../../services/cowork';
 import { buildCoworkCapabilitySelection } from '../../services/coworkCapabilitySelection';
@@ -135,6 +136,7 @@ import {
 } from './agentModelSelection';
 import AttachmentCard from './AttachmentCard';
 import BrowserAnnotationAttachmentBadge from './BrowserAnnotationAttachmentBadge';
+import ChatLoginExperienceModal from './ChatLoginExperienceModal';
 import { getClipboardAttachmentFiles } from './clipboardAttachments';
 import { CoworkUiEvent } from './constants';
 import FolderSelectorPopover from './FolderSelectorPopover';
@@ -546,6 +548,8 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     const [goalEditDraft, setGoalEditDraft] = useState('');
     const [goalEditSaving, setGoalEditSaving] = useState(false);
     const [modelAccessPrompt, setModelAccessPrompt] = useState<ModelAccessPromptKind | null>(null);
+    const [showChatLoginExperiencePrompt, setShowChatLoginExperiencePrompt] = useState(false);
+    const [chatLoginExperiencePending, setChatLoginExperiencePending] = useState(false);
     const [showVoiceLoginPrompt, setShowVoiceLoginPrompt] = useState(false);
     const [showVoiceQuotaPrompt, setShowVoiceQuotaPrompt] = useState(false);
     const [isLargeToolbarCompact, setIsLargeToolbarCompact] = useState(false);
@@ -682,11 +686,12 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
       : currentAgent?.thinkingLevel,
   );
   const modelSupportsImage = !!effectiveSelectedModel?.supportsImage;
+  const hasAccessibleUserModel = useMemo(
+    () => availableModels.some(model => !model.isServerModel && model.accessible !== false),
+    [availableModels],
+  );
 
   const resolveSubmitModelAccessPrompt = useCallback((): ModelAccessPromptKind | null => {
-    const hasAccessibleUserModel = availableModels.some(
-      model => !model.isServerModel && model.accessible !== false
-    );
     if (!isLoggedIn && !hasAccessibleUserModel) {
       return ModelAccessPromptKind.Login;
     }
@@ -701,10 +706,44 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     }
     return null;
   }, [
-    availableModels,
     effectiveSelectedModel,
+    hasAccessibleUserModel,
     isLoggedIn,
   ]);
+
+  const handleChatLoginExperienceStart = useCallback(async () => {
+    if (chatLoginExperiencePending) return;
+    setChatLoginExperiencePending(true);
+    logPromptModelSelection(
+      'debug',
+      'chat login experience prompt primary action clicked; starting login handoff',
+    );
+    try {
+      const result = await authService.login();
+      if (!result.success) {
+        throw new Error(result.error || i18nService.t('welcomeLoginFailed'));
+      }
+      logPromptModelSelection(
+        'debug',
+        'chat login experience prompt login handoff succeeded',
+      );
+      setShowChatLoginExperiencePrompt(false);
+      setChatLoginExperiencePending(false);
+    } catch (error) {
+      logPromptModelSelection(
+        'warn',
+        `chat login experience prompt login handoff failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      showToast(i18nService.t('welcomeLoginFailed'));
+      setChatLoginExperiencePending(false);
+    }
+  }, [chatLoginExperiencePending]);
+
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    setShowChatLoginExperiencePrompt(false);
+    setChatLoginExperiencePending(false);
+  }, [isLoggedIn]);
 
   const {
     handleVoiceInput,
@@ -1654,6 +1693,18 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
         ...getPromptTextAnalyticsParams(trimmedValue),
         ...getPromptCapabilityAnalyticsParams(),
       });
+      if (
+        accessPrompt === ModelAccessPromptKind.Login
+        && !isLoggedIn
+        && !hasAccessibleUserModel
+      ) {
+        logPromptModelSelection(
+          'debug',
+          'showing chat login experience prompt because submit requires login and no custom model is configured',
+        );
+        setShowChatLoginExperiencePrompt(true);
+        return;
+      }
       setModelAccessPrompt(accessPrompt);
       return;
     }
@@ -1853,7 +1904,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     resetGoalInput(false);
     draftStartedAnalyticsRef.current = false;
     inputSourceOverrideRef.current = null;
-  }, [value, steerInputActive, steerValue, isVoiceRecording, stopVoiceRecordingAndRecognize, goalInputActive, goalInputMode, resetGoalInput, isStreaming, canSteer, remoteManaged, disabled, submitDisabled, isPatchingModel, onSubmit, onGoalCommand, activeSkillIds, skills, activeKitIds, marketplaceKits, installedKits, attachments, browserAnnotationBatches, showFolderSelector, workingDirectory, dispatch, draftKey, selectedTextSnippets, pendingSteers.length, resolveSubmitModelAccessPrompt, isPlanMode, planConfirmation, reportPromptControl, getPromptCapabilityAnalyticsParams, getPromptContextAnalyticsParams, getPromptInputSource, goal, sessionId, preparePromptPayload, modelSupportsImage, queuedMediaSelection, authOwnerAccountKey, authAccountGeneration]);
+  }, [value, steerInputActive, steerValue, isVoiceRecording, stopVoiceRecordingAndRecognize, goalInputActive, goalInputMode, resetGoalInput, isStreaming, canSteer, remoteManaged, disabled, submitDisabled, isPatchingModel, onSubmit, onGoalCommand, activeSkillIds, skills, activeKitIds, marketplaceKits, installedKits, attachments, browserAnnotationBatches, showFolderSelector, workingDirectory, dispatch, draftKey, selectedTextSnippets, pendingSteers.length, resolveSubmitModelAccessPrompt, isLoggedIn, hasAccessibleUserModel, isPlanMode, planConfirmation, reportPromptControl, getPromptCapabilityAnalyticsParams, getPromptContextAnalyticsParams, getPromptInputSource, goal, sessionId, preparePromptPayload, modelSupportsImage, queuedMediaSelection, authOwnerAccountKey, authAccountGeneration]);
   handleSubmitRef.current = handleSubmit;
 
   const handleSelectSkill = useCallback((skill: Skill) => {
@@ -3948,6 +3999,16 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
         )}
       </div>
       {readOnlyContextRow}
+      {showChatLoginExperiencePrompt && (
+        <ChatLoginExperienceModal
+          loginPending={chatLoginExperiencePending}
+          onClose={() => {
+            setShowChatLoginExperiencePrompt(false);
+            setChatLoginExperiencePending(false);
+          }}
+          onStart={() => { void handleChatLoginExperienceStart(); }}
+        />
+      )}
       {modelAccessPrompt && (
         <ModelAccessPromptModal
           promptKind={modelAccessPrompt}
