@@ -65,6 +65,8 @@ import type {
   HtmlShareAnalyticsResult,
   HtmlShareConfigurableStatus,
   HtmlShareDisabledSource,
+  HtmlShareFailureDetails,
+  HtmlShareFailureKind,
   HtmlSharePermanentDeleteResult,
   HtmlShareSourceType,
   HtmlShareStatus,
@@ -614,6 +616,8 @@ interface HtmlShareResult {
   restoredByUpdate?: boolean;
   error?: string;
   code?: number;
+  failureKind?: HtmlShareFailureKind;
+  details?: HtmlShareFailureDetails;
   quota?: PublishingQuotaErrorData;
   warnings?: string[];
 }
@@ -1259,8 +1263,11 @@ interface IElectronAPI {
       filePath: string,
     ) => Promise<{ success: boolean; canceled?: boolean; path?: string; error?: string }>;
     generateThumbnail: (
-      filePath: string,
-    ) => Promise<{ success: boolean; dataUrl?: string; error?: string }>;
+      request: import('../../shared/library/thumbnail').LibraryThumbnailGenerateRequest,
+    ) => Promise<import('../../shared/library/thumbnail').LibraryThumbnailGenerateResponse>;
+    cancelThumbnail: (
+      requestId: string,
+    ) => Promise<{ success: boolean; canceled: boolean }>;
     showMessageBox: (options: {
       message: string;
       type?: 'none' | 'info' | 'error' | 'question' | 'warning';
