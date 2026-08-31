@@ -3586,9 +3586,11 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
   const voiceQuotaLimitSeconds = asrQuota.limitSecondsToday
     ?? (isAsrSubscribed ? DEFAULT_SUBSCRIBED_ASR_LIMIT_SECONDS : DEFAULT_FREE_ASR_LIMIT_SECONDS);
   const voiceQuotaLimitText = formatVoiceInputQuotaLimit(voiceQuotaLimitSeconds);
+  const voiceSubscribedQuotaLimitText = formatVoiceInputQuotaLimit(DEFAULT_SUBSCRIBED_ASR_LIMIT_SECONDS);
   const voiceQuotaDescription = i18nService
     .t(isAsrSubscribed ? 'voiceInputQuotaExhaustedSubscribedDesc' : 'voiceInputQuotaExhaustedFreeDesc')
-    .replace('{limit}', voiceQuotaLimitText);
+    .replace('{limit}', voiceQuotaLimitText)
+    .replace('{subscriptionLimit}', voiceSubscribedQuotaLimitText);
   const handleVoiceQuotaPrimary = async () => {
     if (isAsrSubscribed) {
       setShowVoiceQuotaPrompt(false);
