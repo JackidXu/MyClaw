@@ -809,8 +809,10 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.invoke(DialogIpc.ReadTextFile, filePath),
     saveFileCopy: (filePath: string) =>
       ipcRenderer.invoke(DialogIpc.SaveFileCopy, filePath),
-    generateThumbnail: (filePath: string) =>
-      ipcRenderer.invoke(DialogIpc.GenerateThumbnail, filePath),
+    generateThumbnail: (request: import('../shared/library/thumbnail').LibraryThumbnailGenerateRequest) =>
+      ipcRenderer.invoke(DialogIpc.GenerateThumbnail, request),
+    cancelThumbnail: (requestId: string) =>
+      ipcRenderer.invoke(DialogIpc.CancelThumbnail, requestId),
     showMessageBox: (options: {
       message: string;
       type?: 'none' | 'info' | 'error' | 'question' | 'warning';
