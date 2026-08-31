@@ -3059,9 +3059,6 @@ const translations: Record<LanguageType, Record<string, string>> = {
     browserWebAccessTitle: '浏览器',
     browserWebAccessDescription: '配置 Agent 浏览器的显示方式和网页访问规则。',
     browserDisplayModeTitle: 'Agent 浏览器显示方式',
-    browserDisplayModeReadOnly: '内置只读观察',
-    browserDisplayModeReadOnlyDescription:
-      '浏览器在后台运行；有活动时在右侧显示只读画面，不弹出独立窗口。',
     browserDisplayModeInApp: '内置浏览器（推荐）',
     browserDisplayModeInAppDescription:
       '在右侧打开真实可交互的浏览器，用户与 Agent 共同使用同一个页面。',
@@ -6924,9 +6921,6 @@ const translations: Record<LanguageType, Record<string, string>> = {
     browserWebAccessTitle: 'Browser',
     browserWebAccessDescription: 'Configure how the Agent Browser is displayed and manage page access rules.',
     browserDisplayModeTitle: 'Agent browser display',
-    browserDisplayModeReadOnly: 'Built-in read-only observer',
-    browserDisplayModeReadOnlyDescription:
-      'Runs the browser in the background and shows a read-only view on the right without opening a separate window.',
     browserDisplayModeInApp: 'Built-in browser (recommended)',
     browserDisplayModeInAppDescription:
       'Opens a real, interactive browser on the right that the user and Agent share.',

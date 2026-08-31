@@ -35,9 +35,6 @@ import type {
   AgentBrowserHostResponse,
   AgentBrowserHostSetViewRequest,
   AgentBrowserHostStateEvent,
-  AgentBrowserObservation,
-  AgentBrowserObservationRequest,
-  AgentBrowserObservationResponse,
   BrowserDiagnosticResult,
   BrowserRuntimeProfile,
 } from '../../shared/browserWebAccess/constants';
@@ -880,9 +877,6 @@ interface IElectronAPI {
       listProfiles: () => Promise<{ success: boolean; profiles?: unknown[]; error?: string }>;
       test: (options?: { profile?: BrowserRuntimeProfile }) => Promise<BrowserDiagnosticResult>;
       resetProfile: (options?: { profile?: BrowserRuntimeProfile }) => Promise<{ success: boolean; result?: Record<string, unknown>; error?: string }>;
-      getObservation: (request: AgentBrowserObservationRequest) => Promise<AgentBrowserObservationResponse>;
-      refreshObservation: (request: AgentBrowserObservationRequest) => Promise<AgentBrowserObservationResponse>;
-      onObservation: (callback: (observation: AgentBrowserObservation) => void) => () => void;
       getHostState: (request?: AgentBrowserHostRequest) => Promise<AgentBrowserHostResponse>;
       setHostView: (request: AgentBrowserHostSetViewRequest) => Promise<AgentBrowserHostResponse>;
       navigateHost: (request: AgentBrowserHostNavigateRequest) => Promise<AgentBrowserHostResponse>;

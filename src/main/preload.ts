@@ -37,9 +37,6 @@ import {
   type AgentBrowserHostResponse,
   type AgentBrowserHostSetViewRequest,
   type AgentBrowserHostStateEvent,
-  type AgentBrowserObservation,
-  type AgentBrowserObservationRequest,
-  type AgentBrowserObservationResponse,
   BrowserIpc,
   type BrowserRuntimeProfile,
 } from '../shared/browserWebAccess/constants';
@@ -376,16 +373,6 @@ contextBridge.exposeInMainWorld('electron', {
       listProfiles: () => ipcRenderer.invoke(BrowserIpc.ListProfiles),
       test: (options?: { profile?: BrowserRuntimeProfile }) => ipcRenderer.invoke(BrowserIpc.Test, options),
       resetProfile: (options?: { profile?: BrowserRuntimeProfile }) => ipcRenderer.invoke(BrowserIpc.ResetProfile, options),
-      getObservation: (request: AgentBrowserObservationRequest): Promise<AgentBrowserObservationResponse> =>
-        ipcRenderer.invoke(BrowserIpc.GetObservation, request),
-      refreshObservation: (request: AgentBrowserObservationRequest): Promise<AgentBrowserObservationResponse> =>
-        ipcRenderer.invoke(BrowserIpc.RefreshObservation, request),
-      onObservation: (callback: (observation: AgentBrowserObservation) => void) => {
-        const handler = (_event: Electron.IpcRendererEvent, observation: AgentBrowserObservation) =>
-          callback(observation);
-        ipcRenderer.on(BrowserIpc.Observation, handler);
-        return () => ipcRenderer.removeListener(BrowserIpc.Observation, handler);
-      },
       getHostState: (request?: AgentBrowserHostRequest): Promise<AgentBrowserHostResponse> =>
         ipcRenderer.invoke(BrowserIpc.GetHostState, request),
       setHostView: (request: AgentBrowserHostSetViewRequest): Promise<AgentBrowserHostResponse> =>

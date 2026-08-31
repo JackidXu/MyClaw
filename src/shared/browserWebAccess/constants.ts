@@ -32,7 +32,6 @@ export type AgentBrowserPartition =
   typeof AgentBrowserPartition[keyof typeof AgentBrowserPartition];
 
 export const BrowserDisplayMode = {
-  ReadOnly: 'embedded',
   InApp: 'in-app',
   External: 'external',
 } as const;
@@ -76,9 +75,6 @@ export const BrowserIpc = {
   ListProfiles: 'openclaw:browser:listProfiles',
   Test: 'openclaw:browser:test',
   ResetProfile: 'openclaw:browser:resetProfile',
-  GetObservation: 'openclaw:browser:getObservation',
-  RefreshObservation: 'openclaw:browser:refreshObservation',
-  Observation: 'openclaw:browser:observation',
   GetHostState: 'openclaw:browser:getHostState',
   SetHostView: 'openclaw:browser:setHostView',
   NavigateHost: 'openclaw:browser:navigateHost',
@@ -148,17 +144,6 @@ export interface BrowserWebAccessConfig {
   webFetch: BrowserWebFetchConfig;
 }
 
-export const AgentBrowserObservationStatus = {
-  Loading: 'loading',
-  Ready: 'ready',
-  Empty: 'empty',
-  Error: 'error',
-  Stopped: 'stopped',
-} as const;
-
-export type AgentBrowserObservationStatus =
-  typeof AgentBrowserObservationStatus[keyof typeof AgentBrowserObservationStatus];
-
 export const AgentBrowserToolPhase = {
   Start: 'start',
   Update: 'update',
@@ -168,28 +153,6 @@ export const AgentBrowserToolPhase = {
 export type AgentBrowserToolPhase =
   typeof AgentBrowserToolPhase[keyof typeof AgentBrowserToolPhase];
 
-export interface AgentBrowserTab {
-  targetId: string;
-  suggestedTargetId?: string;
-  tabId?: string;
-  label?: string;
-  title: string;
-  url: string;
-}
-
-export interface AgentBrowserObservation {
-  sessionId: string;
-  profile: string;
-  status: AgentBrowserObservationStatus;
-  tabs: AgentBrowserTab[];
-  targetId?: string;
-  title?: string;
-  url?: string;
-  screenshotDataUrl?: string;
-  updatedAt: number;
-  error?: string;
-}
-
 export interface AgentBrowserToolEvent {
   sessionId: string;
   phase: AgentBrowserToolPhase;
@@ -197,17 +160,6 @@ export interface AgentBrowserToolEvent {
   profile?: string;
   targetId?: string;
   isError?: boolean;
-}
-
-export interface AgentBrowserObservationRequest {
-  sessionId: string;
-  targetId?: string;
-}
-
-export interface AgentBrowserObservationResponse {
-  success: boolean;
-  observation?: AgentBrowserObservation | null;
-  error?: string;
 }
 
 export interface AgentBrowserHostTab {

@@ -2848,7 +2848,7 @@ describe('OpenClawConfigSync runtime config output', () => {
     } = await import('../../shared/browserWebAccess/constants');
     const { OpenClawConfigSync } = await import('./openclawConfigSync');
     setSystemProxyEnabled(true);
-    let browserDisplayMode = BrowserDisplayMode.ReadOnly;
+    let browserDisplayMode = BrowserDisplayMode.External;
 
     const sync = new OpenClawConfigSync({
       engineManager: {
@@ -2926,7 +2926,7 @@ describe('OpenClawConfigSync runtime config output', () => {
       enabled: true,
       defaultProfile: BrowserRuntimeProfile.Managed,
       evaluateEnabled: false,
-      headless: true,
+      headless: false,
       ssrfPolicy: {
         dangerouslyAllowPrivateNetwork: false,
         allowedHostnames: ['localhost'],
@@ -2953,13 +2953,8 @@ describe('OpenClawConfigSync runtime config output', () => {
     expect(config.tools.web.fetch.useEnvProxy).toBeUndefined();
     expect(config.tools.web.fetch.useTrustedEnvProxy).toBeUndefined();
 
-    browserDisplayMode = BrowserDisplayMode.External;
-    const externalResult = sync.sync('browser-web-access-external');
-    expect(externalResult.ok).toBe(true);
-    const externalConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-    expect(externalConfig.browser.headless).toBe(false);
-
     browserDisplayMode = BrowserDisplayMode.InApp;
+    let browserCallbackUrl: string | null = 'http://127.0.0.1:3210/browser/tool';
     const inAppSync = new OpenClawConfigSync({
       engineManager: {
         getConfigPath: () => configPath,
@@ -2980,7 +2975,7 @@ describe('OpenClawConfigSync runtime config output', () => {
         skipMissedJobs: false,
       }),
       getBrowserWebAccessConfig: () => ({ displayMode: browserDisplayMode }),
-      getBrowserCallbackUrl: () => 'http://127.0.0.1:3210/browser/tool',
+      getBrowserCallbackUrl: () => browserCallbackUrl,
       getLobsterBrowserMcpCommand: () => 'C:/LobsterAI/lobster-browser-mcp.cmd',
       getLobsterBrowserMcpStdioLaunch: () => ({
         command: 'C:/LobsterAI/LobsterAI.exe',
@@ -3021,6 +3016,15 @@ describe('OpenClawConfigSync runtime config output', () => {
       toolFilter: {
         include: [BrowserCredentialLoginTool.Name],
       },
+    });
+
+    browserCallbackUrl = null;
+    const fallbackResult = inAppSync.sync('browser-web-access-in-app-fallback');
+    expect(fallbackResult.ok).toBe(true);
+    const fallbackConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    expect(fallbackConfig.browser).toMatchObject({
+      defaultProfile: BrowserRuntimeProfile.Managed,
+      headless: false,
     });
 
     browserDisplayMode = BrowserDisplayMode.External;

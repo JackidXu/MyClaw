@@ -14,7 +14,6 @@ import { useDispatch, useSelector } from 'react-redux';
 
 import { stripGoalCommandPrefixForDisplay } from '../../../common/sessionTitle';
 import {
-  type AgentBrowserObservation,
   BrowserDisplayMode,
   normalizeBrowserWebAccessConfig,
 } from '../../../shared/browserWebAccess/constants';
@@ -127,7 +126,6 @@ import type { MediaAttachmentRef } from '../../types/mediaGeneration';
 import { parseUserMessageForDisplay } from '../../utils/userMessageDisplay';
 import {
   AgentBrowserInAppPanel,
-  AgentBrowserObserverPanel,
   ArtifactPanel,
   type LocalServiceDeploymentRequest,
   SubagentPanelContent,
@@ -2131,8 +2129,6 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
   const [isFileListPreviewTabOpen, setIsFileListPreviewTabOpen] = useState(isPanelOpen);
   const [isBrowserPreviewTabOpen, setIsBrowserPreviewTabOpen] = useState(false);
   const [isAgentBrowserPreviewTabOpen, setIsAgentBrowserPreviewTabOpen] = useState(false);
-  const [agentBrowserObservation, setAgentBrowserObservation] =
-    useState<AgentBrowserObservation | null>(null);
   const [browserDisplayMode, setBrowserDisplayMode] = useState(
     () => normalizeBrowserWebAccessConfig(
       configService.getConfig().browserWebAccess,
@@ -2172,7 +2168,6 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
   const fileListPreviewTabOpenBySessionRef = useRef<Record<string, boolean>>({});
   const browserPreviewTabOpenBySessionRef = useRef<Record<string, boolean>>({});
   const agentBrowserPreviewTabOpenBySessionRef = useRef<Record<string, boolean>>({});
-  const agentBrowserObservationBySessionRef = useRef<Record<string, AgentBrowserObservation>>({});
   const unreadAgentBrowserActivityBySessionRef = useRef<Record<string, boolean>>({});
   const subagentPreviewTabOpenBySessionRef = useRef<Record<string, boolean>>({});
   const userAttachmentPreviewTabOpenBySessionRef = useRef<Record<string, boolean>>({});
@@ -2498,9 +2493,6 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
     setIsAgentBrowserPreviewTabOpen(sessionId
       ? agentBrowserPreviewTabOpenBySessionRef.current[sessionId] ?? false
       : false);
-    setAgentBrowserObservation(sessionId
-      ? agentBrowserObservationBySessionRef.current[sessionId] ?? null
-      : null);
     setHasUnreadAgentBrowserActivity(sessionId
       ? unreadAgentBrowserActivityBySessionRef.current[sessionId] ?? false
       : false);
@@ -2618,52 +2610,6 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
     window.addEventListener(ConfigServiceEvent.Updated, syncBrowserDisplayMode);
     return () => window.removeEventListener(ConfigServiceEvent.Updated, syncBrowserDisplayMode);
   }, []);
-
-  useEffect(() => {
-    if (browserDisplayMode !== BrowserDisplayMode.ReadOnly) return undefined;
-    if (!sessionId || !window.electron?.openclaw?.browser) return undefined;
-    let cancelled = false;
-    void window.electron.openclaw.browser.getObservation({ sessionId }).then(response => {
-      if (cancelled || !response.success || !response.observation) return;
-      const observation = response.observation;
-      agentBrowserObservationBySessionRef.current[sessionId] = observation;
-      setAgentBrowserObservation(observation);
-      if (!Object.prototype.hasOwnProperty.call(agentBrowserPreviewTabOpenBySessionRef.current, sessionId)) {
-        agentBrowserPreviewTabOpenBySessionRef.current[sessionId] = true;
-        unreadAgentBrowserActivityBySessionRef.current[sessionId] = true;
-        setIsAgentBrowserPreviewTabOpen(true);
-        setHasUnreadAgentBrowserActivity(true);
-      }
-    }).catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [browserDisplayMode, sessionId]);
-
-  useEffect(() => {
-    if (browserDisplayMode !== BrowserDisplayMode.ReadOnly) return undefined;
-    const browserApi = window.electron?.openclaw?.browser;
-    if (!browserApi) return undefined;
-    return browserApi.onObservation(observation => {
-      agentBrowserObservationBySessionRef.current[observation.sessionId] = observation;
-      agentBrowserPreviewTabOpenBySessionRef.current[observation.sessionId] = true;
-      const isActivelyViewing = observation.sessionId === sessionId
-        && isPanelOpen
-        && !activeArtifactPreviewTab
-        && activeSpecialPreviewTab === ArtifactSpecialTab.AgentBrowser;
-      unreadAgentBrowserActivityBySessionRef.current[observation.sessionId] = !isActivelyViewing;
-      if (observation.sessionId !== sessionId) return;
-      setAgentBrowserObservation(observation);
-      setIsAgentBrowserPreviewTabOpen(true);
-      setHasUnreadAgentBrowserActivity(!isActivelyViewing);
-    });
-  }, [
-    activeArtifactPreviewTab,
-    activeSpecialPreviewTab,
-    browserDisplayMode,
-    isPanelOpen,
-    sessionId,
-  ]);
 
   useEffect(() => {
     if (browserDisplayMode !== BrowserDisplayMode.InApp) return undefined;
@@ -7172,14 +7118,7 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
                         && activeSpecialPreviewTab === ArtifactSpecialTab.AgentBrowser}
                     />
                   )
-                : browserDisplayMode === BrowserDisplayMode.ReadOnly
-                  ? (
-                      <AgentBrowserObserverPanel
-                        sessionId={currentSession.id}
-                        observation={agentBrowserObservation}
-                      />
-                    )
-                  : undefined}
+                : undefined}
               subagentPanel={(
                 <SubagentPanelContent
                   subagents={subagents}

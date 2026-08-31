@@ -2006,13 +2006,13 @@ export class OpenClawConfigSync {
           },
         };
       }
-      console.warn('[OpenClawConfigSync] In-app browser bridge is unavailable; falling back to headless browser.');
+      console.warn('[OpenClawConfigSync] In-app browser bridge is unavailable; falling back to external browser.');
     }
 
     return {
       ...commonConfig,
       defaultProfile: BrowserRuntimeProfile.Managed,
-      headless: browserWebAccess.displayMode !== BrowserDisplayMode.External,
+      headless: false,
       ...(extraArgs.length > 0 ? { extraArgs } : {}),
     };
   }

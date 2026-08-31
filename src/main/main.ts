@@ -63,8 +63,6 @@ import {
   type AgentBrowserHostRequest,
   type AgentBrowserHostResponse,
   type AgentBrowserHostSetViewRequest,
-  type AgentBrowserObservationRequest,
-  type AgentBrowserObservationResponse,
   type BrowserDiagnosticResultStep,
   BrowserDiagnosticStatus,
   BrowserDiagnosticStep,
@@ -397,7 +395,6 @@ import {
   shouldSyncServerModelConfig,
   syncServerModelConfigIfNeeded,
 } from './libs/openclawAgentModels';
-import { OpenClawBrowserObserver } from './libs/openclawBrowserObserver';
 import {
   buildManagedSessionKey,
   DEFAULT_MANAGED_AGENT_ID,
@@ -1991,7 +1988,6 @@ let store: SqliteStore | null = null;
 let coworkStore: CoworkStore | null = null;
 let openClawRuntimeAdapter: OpenClawRuntimeAdapter | null = null;
 let coworkEngineRouter: CoworkEngineRouter | null = null;
-let openClawBrowserObserver: OpenClawBrowserObserver | null = null;
 let agentBrowserHost: AgentBrowserHost | null = null;
 let browserCredentialService: BrowserCredentialService | null = null;
 let browserCredentialApprovalService: BrowserCredentialApprovalService | null = null;
@@ -2058,33 +2054,6 @@ const getOpenClawEngineManager = (): OpenClawEngineManager => {
     openClawEngineManager = new OpenClawEngineManager();
   }
   return openClawEngineManager;
-};
-
-const getOpenClawBrowserObserver = (): OpenClawBrowserObserver => {
-  if (!openClawBrowserObserver) {
-    openClawBrowserObserver = new OpenClawBrowserObserver({
-      engineManager: getOpenClawEngineManager(),
-      requestBrowserControl: request => {
-        getCoworkEngineRouter();
-        if (!openClawRuntimeAdapter) {
-          throw new Error('OpenClaw runtime adapter is unavailable.');
-        }
-        return openClawRuntimeAdapter.requestBrowserControl(request);
-      },
-      isEmbeddedMode: () => normalizeBrowserWebAccessConfig(
-        getStore().get<{ browserWebAccess?: Partial<BrowserWebAccessConfig> }>('app_config')
-          ?.browserWebAccess,
-      ).displayMode === BrowserDisplayMode.ReadOnly,
-      emitObservation: observation => {
-        for (const window of BrowserWindow.getAllWindows()) {
-          if (!window.isDestroyed()) {
-            window.webContents.send(BrowserIpc.Observation, observation);
-          }
-        }
-      },
-    });
-  }
-  return openClawBrowserObserver;
 };
 
 const getBrowserCredentialService = (): BrowserCredentialService => {
@@ -3417,9 +3386,7 @@ const getCoworkEngineRouter = () => {
             const displayMode = normalizeBrowserWebAccessConfig(
               getStore().get<AppConfigSettings>('app_config')?.browserWebAccess,
             ).displayMode;
-            if (displayMode === BrowserDisplayMode.ReadOnly) {
-              getOpenClawBrowserObserver().handleToolEvent(event);
-            } else if (displayMode === BrowserDisplayMode.InApp) {
+            if (displayMode === BrowserDisplayMode.InApp) {
               getAgentBrowserHost().handleToolEvent(event);
             }
           },
@@ -8576,42 +8543,6 @@ if (!gotTheLock) {
           request.decision,
         );
       }),
-  );
-
-  ipcMain.handle(
-    BrowserIpc.GetObservation,
-    (_event, request?: AgentBrowserObservationRequest): AgentBrowserObservationResponse => {
-      const sessionId = request?.sessionId?.trim();
-      if (!sessionId) {
-        return { success: false, error: 'Browser observation session ID is required.' };
-      }
-      return {
-        success: true,
-        observation: getOpenClawBrowserObserver().getObservation(sessionId),
-      };
-    },
-  );
-
-  ipcMain.handle(
-    BrowserIpc.RefreshObservation,
-    async (_event, request?: AgentBrowserObservationRequest): Promise<AgentBrowserObservationResponse> => {
-      const sessionId = request?.sessionId?.trim();
-      if (!sessionId) {
-        return { success: false, error: 'Browser observation session ID is required.' };
-      }
-      try {
-        const observation = await getOpenClawBrowserObserver().refreshObservation(
-          sessionId,
-          request?.targetId,
-        );
-        return { success: true, observation };
-      } catch (error) {
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : 'Failed to refresh browser observation.',
-        };
-      }
-    },
   );
 
   ipcMain.handle(BrowserIpc.GetStatus, async (_event, options?: { profile?: BrowserRuntimeProfile }) => {
