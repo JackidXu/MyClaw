@@ -91,6 +91,7 @@ import {
   CoworkContextUsageSource,
   CoworkForkMode,
   CoworkIpcChannel,
+  CoworkOnboardingMessageKind,
 } from '../shared/cowork/constants';
 import {
   buildCoworkImageAttachmentPreviews,
@@ -2258,6 +2259,9 @@ const resolveSessionWorkingDirectory = (options: { cwd?: string; agentId?: strin
   if (explicitWorkingDirectory) return explicitWorkingDirectory;
   return resolveAgentDefaultWorkingDirectory(options.agentId);
 };
+
+const NEW_USER_WELCOME_SESSION_ID_STORE_KEY = 'new_user_welcome_session_id';
+const NEW_USER_WELCOME_CONTENT_MAX_LENGTH = 4000;
 
 const isLobsteraiServerModelRef = (modelRef: string): boolean => {
   const normalized = modelRef.trim();
@@ -9369,6 +9373,73 @@ if (!gotTheLock) {
       };
     }
   });
+
+  ipcMain.handle(
+    CoworkIpcChannel.SeedNewUserWelcomeTask,
+    async (_event, options: { title?: string; content?: string }) => {
+      try {
+        const title = options.title?.trim();
+        const content = options.content?.trim();
+        if (!title || !content) {
+          return { success: false, error: 'Missing new user welcome task content' };
+        }
+        if (content.length > NEW_USER_WELCOME_CONTENT_MAX_LENGTH) {
+          return { success: false, error: 'New user welcome task content is too long' };
+        }
+
+        const existingSessionId = getStore().get<string>(NEW_USER_WELCOME_SESSION_ID_STORE_KEY);
+        if (existingSessionId) {
+          const coworkStoreInstance = getCoworkStore();
+          const existingSession = coworkStoreInstance.getSession(existingSessionId);
+          if (existingSession) {
+            if (existingSession.title !== title) {
+              coworkStoreInstance.updateSession(existingSessionId, { title }, { touchUpdatedAt: false });
+            }
+            const normalizedExistingSession = existingSession.title === title
+              ? existingSession
+              : { ...existingSession, title };
+            console.debug(`[Onboarding] reused seeded new user welcome task session=${existingSessionId}`);
+            return { success: true, session: normalizedExistingSession, created: false };
+          }
+          console.warn(
+            `[Onboarding] stored new user welcome task session was missing; session=${existingSessionId}`,
+          );
+        }
+
+        const coworkStoreInstance = getCoworkStore();
+        const config = coworkStoreInstance.getConfig();
+        const cwd = resolveSessionWorkingDirectory({ agentId: 'main' });
+        const session = coworkStoreInstance.createSession(
+          title,
+          cwd,
+          config.systemPrompt,
+          config.executionMode || 'local',
+          [],
+          'main',
+          '',
+        );
+        coworkStoreInstance.addMessage(session.id, {
+          type: 'assistant',
+          content,
+          metadata: {
+            kind: CoworkOnboardingMessageKind.NewUserWelcome,
+          },
+        });
+        coworkStoreInstance.updateSession(session.id, { status: 'completed' });
+        getStore().set(NEW_USER_WELCOME_SESSION_ID_STORE_KEY, session.id);
+
+        const sessionWithMessages = coworkStoreInstance.getSession(session.id) || session;
+        console.log(`[Onboarding] seeded new user welcome task session=${session.id}`);
+        return { success: true, session: sessionWithMessages, created: true };
+      } catch (error) {
+        console.warn('[Onboarding] failed to seed new user welcome task:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to seed new user welcome task',
+        };
+      }
+    },
+  );
 
   ipcMain.handle(CoworkIpcChannel.OpenSessionFromNotificationReady, async event => {
     if (!mainWindow || mainWindow.isDestroyed() || event.sender.id !== mainWindow.webContents.id) {

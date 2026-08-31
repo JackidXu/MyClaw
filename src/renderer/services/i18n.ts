@@ -316,6 +316,16 @@ const translations: Record<LanguageType, Record<string, string>> = {
     newUserOnboardingStartExperience: '开始体验',
     newUserOnboardingSkip: '跳过',
     newUserOnboardingNext: '下一步',
+    newUserWelcomeTaskTitle: '你好，新朋友',
+    newUserWelcomeTaskContent:
+      '嗨～ 我是 LobsterAI，你的全能办公助手Agent，帮你解决一切问题！\n\n'
+      + '我可以帮你处理数据分析、文档撰写、PPT生成、信息搜索、定时任务等各种工作；\n'
+      + '我还是全能项目助手，轻松搞定网站开发部署与图片视频制作；\n'
+      + '还能帮你拉起一个AI团队：多Agent组队接力干活。\n\n\n'
+      + '最近工作上在忙什么呢？项目推进、信息整理，还是有什么新想法？\n'
+      + '我可以一起帮你拆解拆解😄',
+    newUserWelcomeInputLockedLabel: '登录后继续体验 LobsterAI',
+    newUserWelcomeTaskCreateFailed: '新人任务创建失败，请稍后重试',
     search: '搜索任务',
     openSettings: '打开设置',
     restartApp: '重新启动',
@@ -4006,6 +4016,16 @@ const translations: Record<LanguageType, Record<string, string>> = {
     newUserOnboardingStartExperience: 'Get Started',
     newUserOnboardingSkip: 'Skip',
     newUserOnboardingNext: 'Next',
+    newUserWelcomeTaskTitle: 'Hello, New Friend',
+    newUserWelcomeTaskContent:
+      "Hi, I'm LobsterAI, your all-purpose office Agent, here to help you solve problems.\n\n"
+      + 'I can help with data analysis, document writing, PPT generation, research, scheduled tasks, and more.\n'
+      + 'I can also act as a project assistant for website development, deployment, image creation, and video work.\n'
+      + 'And I can help you spin up an AI team, with multiple Agents taking turns to move work forward.\n\n\n'
+      + 'What has been keeping you busy lately? Project progress, information sorting, or a new idea?\n'
+      + "I can help you break it down together.",
+    newUserWelcomeInputLockedLabel: 'Sign in to continue with LobsterAI',
+    newUserWelcomeTaskCreateFailed: 'Could not create the welcome task. Please try again later.',
     search: 'Search Tasks',
     openSettings: 'Open Settings',
     restartApp: 'Restart',

@@ -68,6 +68,7 @@ export const CoworkIpcChannel = {
   SubagentDelete: 'cowork:subagent:delete',
   MarkSessionViewed: 'cowork:session:markViewed',
   SetActiveSession: 'cowork:session:setActive',
+  SeedNewUserWelcomeTask: 'cowork:session:seedNewUserWelcomeTask',
   ExportSessionDiagnostics: 'cowork:session:exportDiagnostics',
   GetSessionMessageRailIndex: 'cowork:session:getMessageRailIndex',
   GetSessionSearchMessages: 'cowork:session:getSearchMessages',
@@ -93,6 +94,12 @@ export type CoworkIpcChannel = typeof CoworkIpcChannel[keyof typeof CoworkIpcCha
 export interface CoworkSessionsChangedPayload {
   sessionIds: string[];
 }
+
+export const CoworkOnboardingMessageKind = {
+  NewUserWelcome: 'new_user_welcome',
+} as const;
+export type CoworkOnboardingMessageKind =
+  typeof CoworkOnboardingMessageKind[keyof typeof CoworkOnboardingMessageKind];
 
 export const CoworkForkMode = {
   None: 'none',
