@@ -1033,6 +1033,33 @@ describe('Windows installer hardening contracts', () => {
     expect(extractTemplate).not.toContain(String.raw`/oname=$PLUGINSDIR\app-`);
   });
 
+  test('web install runs the staging preflight before extracting the downloaded package', () => {
+    // The web installer never materializes an embedded package, but
+    // extractUsing7za still stages the extracted tree in
+    // $appPackageStagingDir\7z-out, so the same default-init -> selection
+    // hook ordering must run before extraction. This is also what keeps
+    // lobsterSelectPayloadStagingDir referenced in nsis-web compiles: with
+    // the hook only in the embedded path, makensis failed the WebSetup build
+    // with warning 6010 (unreferenced install function) treated as an error.
+    const installFilesStart = installerTemplate.indexOf('!macro installApplicationFiles');
+    const installFilesEnd = installerTemplate.indexOf('!macroend', installFilesStart);
+    const installFilesBody = installerTemplate.slice(installFilesStart, installFilesEnd);
+    const webBranchStart = installFilesBody.indexOf('!ifdef APP_PACKAGE_URL');
+    expect(webBranchStart).toBeGreaterThan(-1);
+    const webBranch = installFilesBody.slice(
+      webBranchStart,
+      installFilesBody.indexOf('!else', webBranchStart),
+    );
+    const defaultInit = webBranch.indexOf('StrCpy $appPackageStagingDir "$PLUGINSDIR"');
+    const selectGuard = webBranch.indexOf('!ifmacrodef customSelectAppPackageStagingDir');
+    const selectHook = webBranch.indexOf('!insertmacro customSelectAppPackageStagingDir');
+    const extract = webBranch.indexOf('!insertmacro extractUsing7za "$packageFile"');
+    expect(defaultInit).toBeGreaterThan(-1);
+    expect(selectGuard).toBeGreaterThan(defaultInit);
+    expect(selectHook).toBeGreaterThan(selectGuard);
+    expect(extract).toBeGreaterThan(selectHook);
+  });
+
   test('preflights staging drive space and relocates or aborts before materialize', () => {
     const start = installerInclude.indexOf('Function lobsterSelectPayloadStagingDir');
     const end = installerInclude.indexOf('FunctionEnd', start);
