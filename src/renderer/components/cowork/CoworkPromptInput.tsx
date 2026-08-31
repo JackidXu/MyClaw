@@ -3110,6 +3110,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
   const largeSubmitButton = (
     <button
       type="button"
+      data-onboarding-target={isLarge && useHomeContextLayout ? 'home-prompt-send' : undefined}
       onClick={() => handleSubmit('button')}
       disabled={!canUseSubmitButton}
       className={`flex ${largeSendButtonSizeClass} shrink-0 items-center justify-center rounded-full transition-all ${
@@ -3518,6 +3519,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
       )}
         <textarea
           ref={textareaRef}
+          data-onboarding-target={isLarge && useHomeContextLayout ? 'home-prompt-textarea' : undefined}
           value={activeTextareaValue}
         onChange={handleTextareaChange}
         onFocus={handleTextareaFocus}
@@ -3711,7 +3713,10 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
         {isLarge ? (
           useHomeContextLayout ? (
             <>
-              <div className="relative z-10 rounded-2xl border border-border bg-surface shadow-card transition-[border-color,box-shadow] duration-200 focus-within:border-primary/35 focus-within:shadow-elevated">
+              <div
+                data-onboarding-target="home-prompt"
+                className="relative z-10 rounded-2xl border border-border bg-surface shadow-card transition-[border-color,box-shadow] duration-200 focus-within:border-primary/35 focus-within:shadow-elevated"
+              >
                 {largeAttachmentPreview}
                 {selectedTextSnippetPreview}
                 {browserAnnotationPreview}

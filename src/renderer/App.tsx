@@ -35,6 +35,10 @@ import EngineFailureOverlay from './components/cowork/EngineFailureOverlay';
 import EngineStartupOverlay from './components/cowork/EngineStartupOverlay';
 import KitsView from './components/kits/KitsView';
 import LibraryView from './components/library/LibraryView';
+import NewUserOnboardingOverlay, {
+  NewUserOnboardingStep,
+  type NewUserOnboardingStep as NewUserOnboardingStepType,
+} from './components/NewUserOnboardingOverlay';
 import { ScheduledTasksView } from './components/scheduledTasks';
 import Settings, { type SettingsOpenOptions } from './components/Settings';
 import Sidebar from './components/Sidebar';
@@ -53,9 +57,7 @@ import {
   shouldBlockAppInteractionForUpdate,
 } from './components/update/appUpdateInteractionState';
 import AppUpdateModal from './components/update/AppUpdateModal';
-import WelcomeDialog from './components/WelcomeDialog';
 import WindowsAppTitleBar from './components/window/WindowsAppTitleBar';
-import WindowTitleBar from './components/window/WindowTitleBar';
 import { defaultConfig, getProviderDisplayName, ShortcutAction } from './config';
 import { selectIsEnterpriseAccount } from './features/enterpriseAccount/selectors';
 import { SkinProvider } from './providers/SkinProvider';
@@ -124,6 +126,8 @@ const SETTINGS_TAB_SHORTCUT_ACTIONS: Array<{
   { action: ShortcutAction.OpenSettingsPlugins, initialTab: 'plugins' },
   { action: ShortcutAction.OpenSettingsAbout, initialTab: 'about' },
 ];
+
+type NewUserOnboardingCompletionSource = 'skip' | 'next' | 'start_experience';
 
 /** Used for config + i18n init; longer on Windows where main-process IPC can stall during cold start. */
 const INIT_STEP_TIMEOUT_MS_WINDOWS = 24_000;
@@ -197,7 +201,9 @@ const App: React.FC = () => {
   const [isUpdateCardExpanded, setIsUpdateCardExpanded] = useState(false);
   const [isUserInitiatedUpdateFlowActive, setIsUserInitiatedUpdateFlowActive] = useState(false);
   const [privacyAgreed, setPrivacyAgreed] = useState<boolean | null>(null);
-  const [welcomeLoginPending, setWelcomeLoginPending] = useState(false);
+  const [newUserOnboardingStep, setNewUserOnboardingStep] =
+    useState<NewUserOnboardingStepType>(NewUserOnboardingStep.NewTask);
+  const [isNewUserOnboardingDismissed, setIsNewUserOnboardingDismissed] = useState(false);
   const [enterpriseConfig, setEnterpriseConfig] = useState<{
     ui?: Record<string, 'hide' | 'disable' | 'readonly'>;
     disableUpdate?: boolean;
@@ -235,6 +241,17 @@ const App: React.FC = () => {
     isUserInitiatedUpdateFlowActive,
     appUpdateState.status,
   );
+  const shouldShowNewUserOnboarding =
+    privacyAgreed === false
+    && !isNewUserOnboardingDismissed
+    && !isUpdateInteractionBlocked;
+
+  useEffect(() => {
+    if (!shouldShowNewUserOnboarding) return;
+    console.log(`[Onboarding] showing new user onboarding step=${newUserOnboardingStep}`);
+    setMainView('cowork');
+    setIsSidebarCollapsed(false);
+  }, [newUserOnboardingStep, shouldShowNewUserOnboarding]);
 
   useEffect(() => {
     let isCurrent = true;
@@ -1101,33 +1118,64 @@ const App: React.FC = () => {
     setPrivacyAgreed(true);
   }, []);
 
-  // Login keeps the welcome gate on screen while the browser flow runs; the
-  // effect below releases the gate only once the user is actually logged in.
-  const handleWelcomeLogin = useCallback(async () => {
-    setWelcomeLoginPending(true);
-    try {
-      await authService.login();
-    } catch (error) {
-      console.error('[App] welcome login failed before browser handoff:', error);
-      setWelcomeLoginPending(false);
-      showToast(i18nService.t('welcomeLoginFailed'));
-    }
-  }, [showToast]);
-  const handleWelcomeCancelLogin = useCallback(() => {
-    setWelcomeLoginPending(false);
-  }, []);
-  const handleWelcomeCustomModel = useCallback(async () => {
-    await acceptPrivacyAgreement();
-    handleShowSettings({ initialTab: 'model' });
-  }, [acceptPrivacyAgreement, handleShowSettings]);
-
-  // Release the first-launch gate once login completes — including when the
-  // browser callback lands after the user tapped back on the welcome screen.
+  // Release the first-launch gate once login completes in an external auth flow.
   useEffect(() => {
     if (privacyAgreed === false && authUser) {
-      void acceptPrivacyAgreement();
+      void acceptPrivacyAgreement().catch((error) => {
+        console.warn('[Onboarding] failed to persist privacy agreement after login callback:', error);
+      });
     }
   }, [privacyAgreed, authUser, acceptPrivacyAgreement]);
+
+  const finishNewUserOnboarding = useCallback((source: NewUserOnboardingCompletionSource) => {
+    console.log(`[Onboarding] completing new user onboarding source=${source}`);
+    setIsNewUserOnboardingDismissed(true);
+    if (privacyAgreed === false) {
+      void acceptPrivacyAgreement()
+        .then(() => {
+          console.log(`[Onboarding] privacy agreement accepted from onboarding source=${source}`);
+        })
+        .catch((error) => {
+          console.warn(
+            `[Onboarding] failed to persist privacy agreement from onboarding source=${source}:`,
+            error,
+          );
+        });
+    }
+  }, [acceptPrivacyAgreement, privacyAgreed]);
+
+  const handleNewUserOnboardingSkip = useCallback(() => {
+    finishNewUserOnboarding('skip');
+  }, [finishNewUserOnboarding]);
+
+  const handleNewUserOnboardingNext = useCallback(() => {
+    if (newUserOnboardingStep === NewUserOnboardingStep.NewTask) {
+      console.log('[Onboarding] advancing new user onboarding step=new-task next=prompt-input');
+      setNewUserOnboardingStep(NewUserOnboardingStep.PromptInput);
+      return;
+    }
+    finishNewUserOnboarding('next');
+  }, [finishNewUserOnboarding, newUserOnboardingStep]);
+
+  const handleNewUserOnboardingStartExperience = useCallback(() => {
+    console.log('[Onboarding] start experience clicked; starting login handoff');
+    finishNewUserOnboarding('start_experience');
+    void authService.login()
+      .then((result) => {
+        if (!result.success) {
+          console.warn(
+            `[Onboarding] login handoff from new user onboarding failed: ${result.error ?? 'unknown error'}`,
+          );
+          showToast(i18nService.t('welcomeLoginFailed'));
+          return;
+        }
+        console.log('[Onboarding] login handoff from new user onboarding succeeded');
+      })
+      .catch((error) => {
+        console.warn('[Onboarding] failed to start login from new user onboarding:', error);
+        showToast(i18nService.t('welcomeLoginFailed'));
+      });
+  }, [finishNewUserOnboarding, showToast]);
 
   const handlePermissionResponse = useCallback(async (result: CoworkPermissionResult) => {
     if (!pendingPermission) return;
@@ -1629,7 +1677,8 @@ const App: React.FC = () => {
   const isOverlayActive = showSettings
     || showUpdateModal
     || isPermissionModalOpen
-    || isUpdateInteractionBlocked;
+    || isUpdateInteractionBlocked
+    || shouldShowNewUserOnboarding;
   // Keep the badge visible while downloading so the collapsed-sidebar layouts
   // still surface progress; only a plain re-check hides nothing new.
   const shouldShowUpdateBadge = updateInfo && appUpdateState.status !== AppUpdateStatus.Checking;
@@ -1738,37 +1787,6 @@ const App: React.FC = () => {
     );
   }
 
-  if (privacyAgreed === false) {
-    // First-launch gate: render only the welcome screen — no app chrome (title
-    // bar/sidebar) until the agreement is accepted. An invisible drag strip
-    // keeps the frameless window movable; Windows caption buttons stay on top.
-    return (
-      <div className="relative h-screen overflow-hidden">
-        {toastMessage && (
-          <Toast
-            message={toastMessage.message}
-            actionLabel={toastMessage.actionLabel}
-            onAction={toastMessage.onAction}
-            closeLabel={i18nService.t('close')}
-            onClose={() => setToastMessage(null)}
-          />
-        )}
-        <WelcomeDialog
-          onLogin={handleWelcomeLogin}
-          loginPending={welcomeLoginPending}
-          onCancelLogin={handleWelcomeCancelLogin}
-          onCustomModel={handleWelcomeCustomModel}
-        />
-        <div className="draggable absolute inset-x-0 top-0 z-[70] h-9" />
-        {isWindows && (
-          <div className="absolute right-0 top-0 z-[80] h-9">
-            <WindowTitleBar inline />
-          </div>
-        )}
-      </div>
-    );
-  }
-
   return (
     <SkinProvider>
       <SkinPresentationScope
@@ -1784,8 +1802,6 @@ const App: React.FC = () => {
           onClose={() => setToastMessage(null)}
         />
       )}
-      {/* The welcome screen renders via the early return above, so agreement
-          alone gates the campaign here (no separate showWelcome flag). */}
       <StartupCreditCampaign
         enabled={privacyAgreed === true && !isEnterpriseAccount}
       />
@@ -1889,6 +1905,14 @@ const App: React.FC = () => {
               onCancelDownload={handleCancelDownload}
             />
           </AppUpdateInteractionOverlay>
+        )}
+        {shouldShowNewUserOnboarding && (
+          <NewUserOnboardingOverlay
+            step={newUserOnboardingStep}
+            onNext={handleNewUserOnboardingNext}
+            onSkip={handleNewUserOnboardingSkip}
+            onStartExperience={handleNewUserOnboardingStartExperience}
+          />
         )}
       </div>
 
