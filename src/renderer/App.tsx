@@ -110,9 +110,6 @@ const AGENT_TASK_SLOT_SHORTCUT_ACTIONS = [
   ShortcutAction.OpenAgentTask9,
 ] as const;
 
-// TEMP: force the onboarding open while the new-user guide is still under review.
-// Remove before committing the finalized onboarding flow.
-const TEMP_FORCE_NEW_USER_ONBOARDING = true;
 const NEW_USER_WELCOME_AFTER_LOGIN_STORAGE_KEY = 'lobsterai:newUserWelcomeAfterLogin';
 const NEW_USER_WELCOME_AFTER_LOGIN_RESTART_GRACE_MS = 1800;
 const NEW_USER_WELCOME_AFTER_LOGIN_ENGINE_SETTLE_MS = 700;
@@ -292,22 +289,17 @@ const App: React.FC = () => {
     isUserInitiatedUpdateFlowActive,
     appUpdateState.status,
   );
-  const forceNewUserOnboarding =
-    TEMP_FORCE_NEW_USER_ONBOARDING && !hasNewUserWelcomeAfterLoginPending();
   const shouldShowNewUserOnboarding =
-    (privacyAgreed === false || forceNewUserOnboarding)
+    privacyAgreed === false
     && !isNewUserOnboardingDismissed
     && !isUpdateInteractionBlocked;
 
   useEffect(() => {
     if (!shouldShowNewUserOnboarding) return;
-    console.log(
-      `[Onboarding] showing new user onboarding step=${newUserOnboardingStep} `
-      + `forced=${forceNewUserOnboarding}`,
-    );
+    console.log(`[Onboarding] showing new user onboarding step=${newUserOnboardingStep}`);
     setMainView('cowork');
     setIsSidebarCollapsed(false);
-  }, [forceNewUserOnboarding, newUserOnboardingStep, shouldShowNewUserOnboarding]);
+  }, [newUserOnboardingStep, shouldShowNewUserOnboarding]);
 
   useEffect(() => {
     let isCurrent = true;
@@ -1380,9 +1372,8 @@ const App: React.FC = () => {
   }, [authUser, openNewUserWelcomeTask]);
 
   const handleNewUserOnboardingSkip = useCallback(() => {
-    const shouldSeedWelcomeTask = privacyAgreed === false || TEMP_FORCE_NEW_USER_ONBOARDING;
     finishNewUserOnboarding('skip');
-    if (!shouldSeedWelcomeTask) return;
+    if (privacyAgreed !== false) return;
 
     openNewUserWelcomeTask('skip');
   }, [finishNewUserOnboarding, openNewUserWelcomeTask, privacyAgreed]);
