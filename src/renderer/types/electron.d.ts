@@ -1355,6 +1355,36 @@ interface IElectronAPI {
       artifactId?: string;
       filePath?: string;
     }) => Promise<{ success: boolean; share?: HtmlShareResult | null; error?: string; code?: number }>;
+    createFromGeneratedVideo: (options: {
+      taskId: string;
+      outputIndex: number;
+      sessionId: string;
+      artifactId: string;
+      title: string;
+      accessMode?: HtmlShareAccessMode;
+    }) => Promise<HtmlShareResult>;
+    getGeneratedVideoSource: (options: {
+      taskId: string;
+      outputIndex: number;
+    }) => Promise<{
+      success: boolean;
+      share?: HtmlShareResult | null;
+      state?: string;
+      assetStatus?: string;
+      retryAfterMs?: number;
+      failureReason?: string;
+      error?: string;
+      code?: number;
+    }>;
+    resolveLegacyGeneratedVideoSource: (options: {
+      resultUrl: string;
+    }) => Promise<{
+      success: boolean;
+      taskId?: string;
+      outputIndex?: number;
+      error?: string;
+      code?: number;
+    }>;
     getBySource: (options: {
       sourceType: HtmlShareSourceType;
       clientSourceKey: string;

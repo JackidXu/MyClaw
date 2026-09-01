@@ -283,6 +283,19 @@ async function createShare(
       accessMode,
     });
   }
+  if (request.source === ArtifactFileShareRequestSource.GeneratedVideo) {
+    if (!request.taskId || request.outputIndex === undefined) {
+      return { success: false, code: HtmlShareErrorCode.VideoTaskNotFound };
+    }
+    return api.createFromGeneratedVideo({
+      taskId: request.taskId,
+      outputIndex: request.outputIndex,
+      sessionId: request.sessionId,
+      artifactId: request.artifactId,
+      title: request.title,
+      accessMode,
+    });
+  }
   return api.createFromArtifactFile({
     sourceType: request.sourceType,
     sessionId: request.sessionId,
@@ -310,6 +323,19 @@ async function updateShareFile(
       filePath: request.filePath || '',
       title: request.title,
       currentStatus: share.status,
+      accessMode,
+    });
+  }
+  if (request.source === ArtifactFileShareRequestSource.GeneratedVideo) {
+    if (!request.taskId || request.outputIndex === undefined) {
+      return { success: false, code: HtmlShareErrorCode.VideoTaskNotFound };
+    }
+    return api.createFromGeneratedVideo({
+      taskId: request.taskId,
+      outputIndex: request.outputIndex,
+      sessionId: request.sessionId,
+      artifactId: request.artifactId,
+      title: request.title,
       accessMode,
     });
   }
@@ -529,9 +555,19 @@ export function ArtifactFileShareProvider({ sessionId, children }: ArtifactFileS
   }, [authState.isLoggedIn, authState.quota, authState.user?.accountMode]);
 
   const lookupShare = useCallback(async (api: HtmlShareApi, request: ArtifactFileShareRequest) => {
-    return request.source === ArtifactFileShareRequestSource.HtmlFile
-      ? api.getByHtmlFile({ filePath: request.filePath || '' })
-      : api.getByArtifactFile({
+    if (request.source === ArtifactFileShareRequestSource.HtmlFile) {
+      return api.getByHtmlFile({ filePath: request.filePath || '' });
+    }
+    if (request.source === ArtifactFileShareRequestSource.GeneratedVideo) {
+      if (!request.taskId || request.outputIndex === undefined) {
+        return { success: false, code: HtmlShareErrorCode.VideoTaskNotFound };
+      }
+      return api.getGeneratedVideoSource({
+        taskId: request.taskId,
+        outputIndex: request.outputIndex,
+      });
+    }
+    return api.getByArtifactFile({
           sourceType: request.sourceType,
           sessionId: request.sessionId,
           artifactId: request.artifactId,
@@ -588,6 +624,7 @@ export function ArtifactFileShareProvider({ sessionId, children }: ArtifactFileS
   const initializeShare = useCallback(
     async (artifact: Artifact, request: ArtifactFileShareRequest): Promise<void> => {
       const api = window.electron?.htmlShare;
+      let resolvedRequest = request;
       const runId = generationRef.current + 1;
       generationRef.current = runId;
       resetFeedback();
@@ -626,11 +663,39 @@ export function ArtifactFileShareProvider({ sessionId, children }: ArtifactFileS
           });
         }
 
-        const mutationBarrier = mutationBarriersRef.current.get(request.lookupKey);
+        if (
+          resolvedRequest.source === ArtifactFileShareRequestSource.GeneratedVideo
+          && !resolvedRequest.taskId
+        ) {
+          if (!resolvedRequest.legacyResultUrl) {
+            throw new ArtifactFileShareRequestError({
+              code: HtmlShareErrorCode.VideoTaskNotFound,
+            });
+          }
+          const resolution = await api.resolveLegacyGeneratedVideoSource({
+            resultUrl: resolvedRequest.legacyResultUrl,
+          });
+          if (!resolution.success || !resolution.taskId
+              || resolution.outputIndex === undefined) {
+            throw new ArtifactFileShareRequestError(getFailureDescriptor(resolution));
+          }
+          resolvedRequest = {
+            ...resolvedRequest,
+            taskId: resolution.taskId,
+            outputIndex: resolution.outputIndex,
+            legacyResultUrl: undefined,
+            lookupKey: `${resolvedRequest.sourceType}:task:${resolution.taskId}:${resolution.outputIndex}`,
+          };
+          setDialog(previous => previous
+            ? { ...previous, request: resolvedRequest }
+            : previous);
+        }
+
+        const mutationBarrier = mutationBarriersRef.current.get(resolvedRequest.lookupKey);
         if (mutationBarrier) await mutationBarrier;
         if (generationRef.current !== runId) return;
 
-        const prepared = await loadShare(api, request);
+        const prepared = await loadShare(api, resolvedRequest);
         if (generationRef.current !== runId) return;
         if (analyticsAttemptRef.current) {
           analyticsAttemptRef.current = updatePublishingAnalyticsAttempt(
@@ -670,7 +735,7 @@ export function ArtifactFileShareProvider({ sessionId, children }: ArtifactFileS
             setDialog(null);
             setTrialNotice({
               artifact,
-              request,
+              request: resolvedRequest,
               quota: quotaResult.data,
             });
             return;
@@ -684,7 +749,7 @@ export function ArtifactFileShareProvider({ sessionId, children }: ArtifactFileS
           : ArtifactFileSharePermission.Code;
         setDialog({
           artifact,
-          request,
+          request: resolvedRequest,
           phase: ArtifactFileSharePhase.Ready,
           intent,
           share: prepared.share,
@@ -986,6 +1051,20 @@ export function ArtifactFileShareProvider({ sessionId, children }: ArtifactFileS
     ) {
       return;
     }
+    const orderedPermissionPlan =
+      snapshot.request.source === ArtifactFileShareRequestSource.GeneratedVideo
+      && permissionPlan.some(
+        step => step.action === ArtifactFileSharePermissionChangeAction.RestoreActiveLimit,
+      )
+        ? [
+            ...permissionPlan.filter(
+              step => step.action === ArtifactFileSharePermissionChangeAction.RestoreActiveLimit,
+            ),
+            ...permissionPlan.filter(
+              step => step.action !== ArtifactFileSharePermissionChangeAction.RestoreActiveLimit,
+            ),
+          ]
+        : permissionPlan;
 
     const api = window.electron?.htmlShare;
     if (!api) return;
@@ -1023,7 +1102,7 @@ export function ArtifactFileShareProvider({ sessionId, children }: ArtifactFileS
     let lastConfirmedShare = originalShare;
     try {
       let nextShare = originalShare;
-      for (const step of permissionPlan) {
+      for (const step of orderedPermissionPlan) {
         if (step.action === ArtifactFileSharePermissionChangeAction.UpdateAccess) {
           nextShare = requireShareRecord(
             await api.updateAccessMode({
@@ -1042,7 +1121,12 @@ export function ArtifactFileShareProvider({ sessionId, children }: ArtifactFileS
           );
         } else if (step.action === ArtifactFileSharePermissionChangeAction.RestoreActiveLimit) {
           nextShare = requireShareRecord(
-            await updateShareFile(api, snapshot.request, nextShare, nextShare.accessMode),
+            snapshot.request.source === ArtifactFileShareRequestSource.GeneratedVideo
+              ? await api.updateStatus({
+                  shareId: nextShare.shareId,
+                  status: HtmlShareStatus.Live,
+                })
+              : await updateShareFile(api, snapshot.request, nextShare, nextShare.accessMode),
             nextShare,
           );
         }
@@ -1439,6 +1523,8 @@ export function ArtifactFileShareProvider({ sessionId, children }: ArtifactFileS
     share.status !== HtmlShareStatus.Disabled &&
     share.status !== HtmlShareStatus.Failed,
   );
+  const showUpdateFile =
+    dialog?.request?.source !== ArtifactFileShareRequestSource.GeneratedVideo;
 
   const dialogPortal =
     dialog && typeof document !== 'undefined'
@@ -1465,6 +1551,7 @@ export function ArtifactFileShareProvider({ sessionId, children }: ArtifactFileS
             canCreate={canCreate}
             canSubmitPermission={canSubmitPermission}
             canCopy={canCopy}
+            showUpdateFile={showUpdateFile}
             canUpdateFile={canUpdateFile}
             copyStatus={copyStatus}
             updateStatus={updateStatus}
