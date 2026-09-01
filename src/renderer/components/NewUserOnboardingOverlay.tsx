@@ -20,6 +20,7 @@ const POPOVER_GAP = 28;
 const POPOVER_WIDTH = 308;
 const POPOVER_MARGIN = 16;
 const POPOVER_ARROW_WIDTH = 14;
+const POPOVER_ARROW_CARD_OVERLAP = 2;
 const POPOVER_ARROW_HALF_HEIGHT = 12;
 const PROMPT_TEXTAREA_SELECTOR = '[data-onboarding-target="home-prompt-textarea"]';
 const PROMPT_SEND_BUTTON_SELECTOR = '[data-onboarding-target="home-prompt-send"]';
@@ -829,7 +830,7 @@ const NewUserOnboardingOverlay: React.FC<NewUserOnboardingOverlayProps> = ({
             className="absolute h-0 w-0 border-y-[12px] border-r-[14px] border-y-transparent border-r-background"
             style={{
               top: arrowTop,
-              left: -POPOVER_ARROW_WIDTH,
+              left: -POPOVER_ARROW_WIDTH + POPOVER_ARROW_CARD_OVERLAP,
             }}
           />
           <NewUserOnboardingHeroAnimation />
