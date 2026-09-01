@@ -73,6 +73,7 @@ import {
   isLatestAsyncRequest,
 } from './services/latestAsyncRequest';
 import { LogReporterAction, reportYdAnalyzer } from './services/logReporter';
+import { getOnboardingErrorCode, reportOnboardingAction } from './services/onboardingAnalytics';
 import { scheduledTaskService } from './services/scheduledTask';
 import { isTextEditingSafeShortcut, matchesShortcut } from './services/shortcuts';
 import { themeService } from './services/theme';
@@ -297,6 +298,10 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!shouldShowNewUserOnboarding) return;
     console.log(`[Onboarding] showing new user onboarding step=${newUserOnboardingStep}`);
+    reportOnboardingAction('guide_exposure', {
+      source: 'first_run_gate',
+      step: newUserOnboardingStep,
+    });
     setMainView('cowork');
     setIsSidebarCollapsed(false);
   }, [newUserOnboardingStep, shouldShowNewUserOnboarding]);
@@ -1202,15 +1207,30 @@ const App: React.FC = () => {
             `[Onboarding] new user welcome task seed returned no session source=${source}: `
             + `${result.error ?? 'unknown error'}`,
           );
+          reportOnboardingAction('welcome_task_open_result', {
+            source,
+            result: 'failed',
+            errorCode: result.error ? 'seed_failed' : 'unknown',
+          });
           showToast(i18nService.t('newUserWelcomeTaskCreateFailed'));
           return;
         }
         console.log(
           `[Onboarding] new user welcome task opened source=${source} session=${result.session.id}`,
         );
+        reportOnboardingAction('welcome_task_open_result', {
+          source,
+          result: 'success',
+          created: result.created === true,
+        });
       })
       .catch((error) => {
         console.warn(`[Onboarding] failed to open new user welcome task source=${source}:`, error);
+        reportOnboardingAction('welcome_task_open_result', {
+          source,
+          result: 'failed',
+          errorCode: getOnboardingErrorCode(error),
+        });
         showToast(i18nService.t('newUserWelcomeTaskCreateFailed'));
       });
   }, [showToast]);
@@ -1220,6 +1240,9 @@ const App: React.FC = () => {
       pendingNewUserWelcomeAuthCallbackAtRef.current = Date.now();
       if (hasNewUserWelcomeAfterLoginPending()) {
         console.log('[Onboarding] auth callback observed during new user login handoff');
+        reportOnboardingAction('auth_callback_observed', {
+          source: 'new_user_onboarding',
+        });
       }
     });
 
@@ -1246,6 +1269,10 @@ const App: React.FC = () => {
           '[Onboarding] login callback detected; waiting for OpenClaw startup before opening '
           + `new user welcome task phase=${snapshotPhase ?? 'unknown'}`,
         );
+        reportOnboardingAction('login_success_wait_gateway', {
+          source: 'new_user_onboarding',
+          phase: snapshotPhase ?? 'unknown',
+        });
         pendingNewUserWelcomeAfterLoginWaitingLoggedRef.current = true;
       }
       return;
@@ -1281,6 +1308,11 @@ const App: React.FC = () => {
         '[Onboarding] OpenClaw startup settled; opening pending new user welcome task '
         + `phase=${latestPhase ?? 'unknown'} sawStartup=${pendingNewUserWelcomeAfterLoginSawStartupRef.current}`,
       );
+      reportOnboardingAction('login_success_gateway_settled', {
+        source: 'new_user_onboarding',
+        phase: latestPhase ?? 'unknown',
+        sawStartup: pendingNewUserWelcomeAfterLoginSawStartupRef.current,
+      });
       pendingNewUserWelcomeAfterLoginSawStartupRef.current = false;
       pendingNewUserWelcomeAfterLoginWaitingLoggedRef.current = false;
       setIsNewUserOnboardingDismissed(true);
@@ -1339,6 +1371,10 @@ const App: React.FC = () => {
           '[Onboarding] login handoff returned without authenticated callback; opening '
           + `new user welcome task source=${source}`,
         );
+        reportOnboardingAction('login_return_without_auth', {
+          source,
+          pendingAge: Math.round(getNewUserWelcomeAfterLoginPendingAgeMs() ?? 0),
+        });
         pendingNewUserWelcomeAfterLoginSawStartupRef.current = false;
         pendingNewUserWelcomeAfterLoginWaitingLoggedRef.current = false;
         setIsNewUserOnboardingDismissed(true);
@@ -1372,15 +1408,24 @@ const App: React.FC = () => {
   }, [authUser, openNewUserWelcomeTask]);
 
   const handleNewUserOnboardingSkip = useCallback(() => {
+    reportOnboardingAction('guide_skip_click', {
+      source: 'new_user_onboarding',
+      step: newUserOnboardingStep,
+    });
     finishNewUserOnboarding('skip');
     if (privacyAgreed !== false) return;
 
     openNewUserWelcomeTask('skip');
-  }, [finishNewUserOnboarding, openNewUserWelcomeTask, privacyAgreed]);
+  }, [finishNewUserOnboarding, newUserOnboardingStep, openNewUserWelcomeTask, privacyAgreed]);
 
   const handleNewUserOnboardingNext = useCallback(() => {
     if (newUserOnboardingStep === NewUserOnboardingStep.NewTask) {
       console.log('[Onboarding] advancing new user onboarding step=new-task next=prompt-input');
+      reportOnboardingAction('guide_next_click', {
+        source: 'new_user_onboarding',
+        step: newUserOnboardingStep,
+        nextStep: NewUserOnboardingStep.PromptInput,
+      });
       setNewUserOnboardingStep(NewUserOnboardingStep.PromptInput);
       return;
     }
@@ -1389,6 +1434,10 @@ const App: React.FC = () => {
 
   const handleNewUserOnboardingStartExperience = useCallback(() => {
     console.log('[Onboarding] start experience clicked; starting login handoff');
+    reportOnboardingAction('guide_start_experience_click', {
+      source: 'new_user_onboarding',
+      step: newUserOnboardingStep,
+    });
     setNewUserWelcomeAfterLoginPending();
     setNewUserWelcomeAfterLoginSignal((value) => value + 1);
     finishNewUserOnboarding('start_experience');
@@ -1398,19 +1447,33 @@ const App: React.FC = () => {
           console.warn(
             `[Onboarding] login handoff from new user onboarding failed: ${result.error ?? 'unknown error'}`,
           );
+          reportOnboardingAction('login_redirect_result', {
+            source: 'new_user_onboarding',
+            result: 'failed',
+            errorCode: result.error ? 'login_redirect_failed' : 'unknown',
+          });
           consumeNewUserWelcomeAfterLoginPending();
           showToast(i18nService.t('welcomeLoginFailed'));
           return;
         }
         console.log('[Onboarding] login handoff from new user onboarding succeeded');
+        reportOnboardingAction('login_redirect_result', {
+          source: 'new_user_onboarding',
+          result: 'success',
+        });
         setNewUserWelcomeAfterLoginSignal((value) => value + 1);
       })
       .catch((error) => {
         console.warn('[Onboarding] failed to start login from new user onboarding:', error);
+        reportOnboardingAction('login_redirect_result', {
+          source: 'new_user_onboarding',
+          result: 'failed',
+          errorCode: getOnboardingErrorCode(error),
+        });
         consumeNewUserWelcomeAfterLoginPending();
         showToast(i18nService.t('welcomeLoginFailed'));
       });
-  }, [finishNewUserOnboarding, showToast]);
+  }, [finishNewUserOnboarding, newUserOnboardingStep, showToast]);
 
   const handlePermissionResponse = useCallback(async (result: CoworkPermissionResult) => {
     if (!pendingPermission) return;

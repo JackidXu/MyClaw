@@ -58,6 +58,7 @@ import {
   LogReporterEntry,
   reportYdAnalyzer,
 } from '../../services/logReporter';
+import { getOnboardingErrorCode, reportOnboardingAction } from '../../services/onboardingAnalytics';
 import { resolveLocalizedText, skillService } from '../../services/skill';
 import { RootState } from '../../store';
 import { selectDraftPrompts } from '../../store/selectors/coworkSelectors';
@@ -717,6 +718,12 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     source: 'chat_login_experience_prompt' | 'new_user_welcome_task' = 'chat_login_experience_prompt',
   ) => {
     if (chatLoginExperiencePending) return;
+    const isNewUserWelcomeTaskSource = source === 'new_user_welcome_task';
+    if (isNewUserWelcomeTaskSource) {
+      reportOnboardingAction('welcome_task_start_experience_click', {
+        source: 'new_user_welcome_task',
+      });
+    }
     setChatLoginExperiencePending(true);
     logPromptModelSelection(
       'debug',
@@ -731,6 +738,12 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
         'debug',
         `${source} login handoff succeeded`,
       );
+      if (isNewUserWelcomeTaskSource) {
+        reportOnboardingAction('welcome_task_login_redirect_result', {
+          source: 'new_user_welcome_task',
+          result: 'success',
+        });
+      }
       setShowChatLoginExperiencePrompt(false);
       setChatLoginExperiencePending(false);
     } catch (error) {
@@ -738,6 +751,13 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
         'warn',
         `${source} login handoff failed: ${error instanceof Error ? error.message : String(error)}`,
       );
+      if (isNewUserWelcomeTaskSource) {
+        reportOnboardingAction('welcome_task_login_redirect_result', {
+          source: 'new_user_welcome_task',
+          result: 'failed',
+          errorCode: getOnboardingErrorCode(error),
+        });
+      }
       showToast(i18nService.t('welcomeLoginFailed'));
       setChatLoginExperiencePending(false);
     }

@@ -59,6 +59,7 @@ export const LogReporterAction = {
   McpEnabled: 'lobsterai_mcp_enabled',
   McpAction: 'lobsterai_mcp_action',
   ModelSelected: 'lobsterai_model_selected',
+  OnboardingAction: 'lobsterai_onboarding_action',
   PlanModeEnabled: 'lobsterai_plan_mode_enabled',
   PluginAction: 'lobsterai_plugin_action',
   PluginSettingsSaved: 'lobsterai_plugin_settings_saved',
