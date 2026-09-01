@@ -246,6 +246,22 @@ index f5470bf..56c07cb 100644
      Quit
  
    RetryExtract7za:
+diff --git a/node_modules/app-builder-lib/templates/nsis/include/installUtil.nsh b/node_modules/app-builder-lib/templates/nsis/include/installUtil.nsh
+index 4736774..9797651 100644
+--- a/node_modules/app-builder-lib/templates/nsis/include/installUtil.nsh
++++ b/node_modules/app-builder-lib/templates/nsis/include/installUtil.nsh
+@@ -126,7 +126,10 @@ Function handleUninstallResult
+   Return
+ 
+   ${if} $R0 != 0
+-    MessageBox MB_OK|MB_ICONEXCLAMATION "$(uninstallFailed): $R0"
++    # /S is a zero-UI contract: NSIS shows MessageBox even in silent mode
++    # unless a silent default is declared, so silent channel installs must
++    # fail through SetErrorLevel alone instead of a stuck dialog.
++    MessageBox MB_OK|MB_ICONEXCLAMATION "$(uninstallFailed): $R0" /SD IDOK
+     DetailPrint `Uninstall was not successful. Uninstaller error code: $R0.`
+     SetErrorLevel 2
+     Quit
 diff --git a/node_modules/app-builder-lib/templates/nsis/include/installer.nsh b/node_modules/app-builder-lib/templates/nsis/include/installer.nsh
 index 34e91df..968f2a1 100644
 --- a/node_modules/app-builder-lib/templates/nsis/include/installer.nsh
