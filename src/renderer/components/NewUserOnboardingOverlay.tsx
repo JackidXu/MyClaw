@@ -84,6 +84,46 @@ const OnboardingCursorIcon: React.FC<React.SVGProps<SVGSVGElement>> = ({
   </svg>
 );
 
+const LeftPopoverArrow: React.FC<React.SVGProps<SVGSVGElement>> = ({
+  className,
+  ...props
+}) => (
+  <svg
+    className={className}
+    viewBox="0 0 14 24"
+    fill="none"
+    aria-hidden="true"
+    focusable="false"
+    preserveAspectRatio="none"
+    {...props}
+  >
+    <path
+      d="M14 0V24L1.7 13.45C0.62 12.52 0.62 11.48 1.7 10.55L14 0Z"
+      fill="currentColor"
+    />
+  </svg>
+);
+
+const TopPopoverArrow: React.FC<React.SVGProps<SVGSVGElement>> = ({
+  className,
+  ...props
+}) => (
+  <svg
+    className={className}
+    viewBox="0 0 36 20"
+    fill="none"
+    aria-hidden="true"
+    focusable="false"
+    preserveAspectRatio="none"
+    {...props}
+  >
+    <path
+      d="M0 20H36L20.2 2.35C18.94 0.94 17.06 0.94 15.8 2.35L0 20Z"
+      fill="currentColor"
+    />
+  </svg>
+);
+
 const clamp = (value: number, min: number, max: number): number => (
   Math.min(Math.max(value, min), max)
 );
@@ -622,11 +662,13 @@ const PromptResultPopover: React.FC<{
         }
       `}
       </style>
-      <div
-        className="absolute h-0 w-0 border-x-[18px] border-b-[20px] border-x-transparent border-b-white"
+      <TopPopoverArrow
+        className="absolute text-white"
         style={{
           top: -PROMPT_RESULT_POPOVER_ARROW_HEIGHT + 1,
           left: arrowLeft,
+          width: PROMPT_RESULT_POPOVER_ARROW_WIDTH,
+          height: PROMPT_RESULT_POPOVER_ARROW_HEIGHT,
         }}
       />
       <div
@@ -826,11 +868,13 @@ const NewUserOnboardingOverlay: React.FC<NewUserOnboardingOverlayProps> = ({
           className="absolute w-[308px] rounded-xl bg-background p-3 shadow-[0_18px_55px_rgba(0,0,0,0.24)]"
           style={{ top: popoverTop, left: popoverLeft }}
         >
-          <div
-            className="absolute h-0 w-0 border-y-[12px] border-r-[14px] border-y-transparent border-r-background"
+          <LeftPopoverArrow
+            className="absolute text-background"
             style={{
               top: arrowTop,
               left: -POPOVER_ARROW_WIDTH + POPOVER_ARROW_CARD_OVERLAP,
+              width: POPOVER_ARROW_WIDTH,
+              height: POPOVER_ARROW_HALF_HEIGHT * 2,
             }}
           />
           <NewUserOnboardingHeroAnimation />
