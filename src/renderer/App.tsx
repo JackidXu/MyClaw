@@ -230,8 +230,12 @@ const App: React.FC = () => {
   const [isTaskFilterActive, setIsTaskFilterActive] = useState(false);
   const [hasUnreadCompletedTasks, setHasUnreadCompletedTasks] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(244);
+  const initialOpenClawEngineStatusRef = useRef(coworkService.getOpenClawEngineStatusSnapshot());
   const [isEngineStartupOverlayVisible, setIsEngineStartupOverlayVisible] = useState(
-    () => coworkService.getOpenClawEngineStatusSnapshot()?.phase === OpenClawEnginePhase.Starting,
+    () => initialOpenClawEngineStatusRef.current?.phase === OpenClawEnginePhase.Starting,
+  );
+  const [hasResolvedEngineStartupOverlayState, setHasResolvedEngineStartupOverlayState] = useState(
+    () => initialOpenClawEngineStatusRef.current !== null,
   );
   const [appUpdateState, setAppUpdateState] = useState<AppUpdateRuntimeState>({
     status: AppUpdateStatus.Idle,
@@ -293,6 +297,8 @@ const App: React.FC = () => {
   const shouldShowNewUserOnboarding =
     privacyAgreed === false
     && !isNewUserOnboardingDismissed
+    && hasResolvedEngineStartupOverlayState
+    && !isEngineStartupOverlayVisible
     && !isUpdateInteractionBlocked;
 
   useEffect(() => {
@@ -315,13 +321,18 @@ const App: React.FC = () => {
       .then((status) => {
         if (!isCurrent) return;
         setIsEngineStartupOverlayVisible(resolveOverlayVisible(status?.phase));
+        setHasResolvedEngineStartupOverlayState(true);
       })
       .catch((error) => {
         console.debug('[App] failed to refresh OpenClaw engine status for sidebar promo timing:', error);
+        if (isCurrent) {
+          setHasResolvedEngineStartupOverlayState(true);
+        }
       });
 
     const unsubscribe = coworkService.onOpenClawEngineStatus((status) => {
       setIsEngineStartupOverlayVisible(resolveOverlayVisible(status.phase));
+      setHasResolvedEngineStartupOverlayState(true);
     });
 
     return () => {
