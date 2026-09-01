@@ -371,11 +371,14 @@ import {
   packageArtifactFile,
 } from './libs/htmlShare/artifactFileSharePackager';
 import {
+  createGeneratedVideoShare,
   deleteHtmlSharePermanently,
+  getGeneratedVideoShareSource,
   getHtmlShareAnalytics,
   getHtmlShareBySource,
   getHtmlShareQuota,
   getPublishingTrialPolicy,
+  resolveLegacyGeneratedVideoSource,
   updateHtmlShare,
   updateHtmlShareAccessMode,
   updateHtmlShareStatus,
@@ -674,6 +677,24 @@ interface HtmlShareGetByArtifactFileInput {
   filePath?: string;
 }
 
+interface HtmlShareCreateFromGeneratedVideoInput {
+  taskId: string;
+  outputIndex: number;
+  sessionId: string;
+  artifactId: string;
+  title: string;
+  accessMode?: HtmlShareAccessModeValue;
+}
+
+interface HtmlShareGetGeneratedVideoSourceInput {
+  taskId: string;
+  outputIndex: number;
+}
+
+interface HtmlShareResolveLegacyGeneratedVideoSourceInput {
+  resultUrl: string;
+}
+
 interface HtmlShareGetBySourceInput {
   sourceType: HtmlShareSourceTypeValue;
   clientSourceKey: string;
@@ -906,6 +927,71 @@ function sanitizeGetByArtifactFileInput(input: unknown): HtmlShareGetByArtifactF
     throw new Error('Artifact share lookup source is required.');
   }
   return options;
+}
+
+function sanitizeGeneratedVideoTaskId(value: unknown): string {
+  const taskId = sanitizeHtmlShareString(value, 'taskId', 19);
+  if (!/^[1-9]\d*$/.test(taskId)) {
+    throw new Error('taskId must be a positive decimal identifier.');
+  }
+  return taskId;
+}
+
+function sanitizeGeneratedVideoOutputIndex(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > 9999) {
+    throw new Error('outputIndex must be a non-negative integer.');
+  }
+  return value;
+}
+
+function sanitizeCreateFromGeneratedVideoInput(
+  input: unknown,
+): HtmlShareCreateFromGeneratedVideoInput {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    throw new Error('Invalid generated video share request.');
+  }
+  const source = input as Record<string, unknown>;
+  return {
+    taskId: sanitizeGeneratedVideoTaskId(source.taskId),
+    outputIndex: sanitizeGeneratedVideoOutputIndex(source.outputIndex),
+    sessionId: sanitizeHtmlShareString(source.sessionId, 'sessionId', 128),
+    artifactId: sanitizeHtmlShareString(source.artifactId, 'artifactId', 128),
+    title: sanitizeHtmlShareTitle(source.title),
+    accessMode: sanitizeHtmlShareAccessMode(source.accessMode, HtmlShareAccessMode.Code),
+  };
+}
+
+function sanitizeGetGeneratedVideoSourceInput(
+  input: unknown,
+): HtmlShareGetGeneratedVideoSourceInput {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    throw new Error('Invalid generated video share lookup request.');
+  }
+  const source = input as Record<string, unknown>;
+  return {
+    taskId: sanitizeGeneratedVideoTaskId(source.taskId),
+    outputIndex: sanitizeGeneratedVideoOutputIndex(source.outputIndex),
+  };
+}
+
+function sanitizeResolveLegacyGeneratedVideoSourceInput(
+  input: unknown,
+): HtmlShareResolveLegacyGeneratedVideoSourceInput {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    throw new Error('Invalid generated video source resolution request.');
+  }
+  const source = input as Record<string, unknown>;
+  const resultUrl = sanitizeHtmlShareString(source.resultUrl, 'resultUrl', 4096);
+  let parsed: URL;
+  try {
+    parsed = new URL(resultUrl);
+  } catch {
+    throw new Error('resultUrl must be a valid HTTPS URL.');
+  }
+  if (parsed.protocol !== 'https:' || parsed.username || parsed.password) {
+    throw new Error('resultUrl must be a valid HTTPS URL.');
+  }
+  return { resultUrl };
 }
 
 function sanitizeGetHtmlShareBySourceInput(input: unknown): HtmlShareGetBySourceInput {
@@ -5849,9 +5935,10 @@ if (!gotTheLock) {
             taskId,
           );
         }
-        const assets = resultUrls.map(url => ({
+        const assets = resultUrls.map((url, outputIndex) => ({
           type: statusMediaType,
           url,
+          outputIndex,
           mimeType: resolveGeneratedMediaAssetMimeType(statusMediaType, url),
         }));
 
@@ -6269,9 +6356,10 @@ if (!gotTheLock) {
         resultCount: resultUrls.length,
         quotaRemaining: task.quotaRemaining,
       }));
-      const assets = resultUrls.map(url => ({
+      const assets = resultUrls.map((url, outputIndex) => ({
         type: mediaType,
         url,
+        outputIndex,
         mimeType: resolveGeneratedMediaAssetMimeType(mediaType, url),
         ...(args.filename ? { filename: args.filename as string } : {}),
       }));
@@ -6359,6 +6447,7 @@ if (!gotTheLock) {
           model: outputModel,
           ...(upstreamModel ? { upstreamModel } : {}),
           ...(modelSelectionReason ? { modelSelectionReason } : {}),
+          mediaType,
           ...(detailsAssets.length > 0 ? { assets: detailsAssets } : {}),
           ...(Object.keys(billing).length > 0 ? { billing } : {}),
         },
@@ -6499,9 +6588,10 @@ if (!gotTheLock) {
             ? task.modelSelectionReason.trim()
             : undefined;
           const displayModel = upstreamModel || outputModel;
-          const assets = resultUrls.map(url => ({
+          const assets = resultUrls.map((url, outputIndex) => ({
             type: tracker.mediaType,
             url,
+            outputIndex,
             mimeType: resolveGeneratedMediaAssetMimeType(tracker.mediaType, url),
           }));
           if (status === 'succeeded' && tracker.mediaType === 'image') {
@@ -6516,7 +6606,9 @@ if (!gotTheLock) {
                 `Saved generated ${persistResult.saved.length === 1 ? 'image' : 'images'}:\n${fileLines.join('\n')}`,
                 {
                   toolResultDetails: {
+                    taskId,
                     status: 'succeeded',
+                    mediaType: 'image',
                     assets: persistResult.saved,
                   },
                 },
@@ -6549,7 +6641,9 @@ if (!gotTheLock) {
                 ].join('\n'),
                 {
                   toolResultDetails: {
+                    taskId,
                     status: 'succeeded',
+                    mediaType: 'video',
                     model: outputModel,
                     ...(upstreamModel ? { upstreamModel } : {}),
                     ...(modelSelectionReason ? { modelSelectionReason } : {}),
@@ -6559,14 +6653,25 @@ if (!gotTheLock) {
               );
             } else {
               const resultLines = resultUrls.map(url => `  - ${url}`);
-              emitMediaTaskMessage(tracker.sessionId, [
-                'Video generation succeeded.',
-                `Task ID: ${taskId}`,
-                `Model: ${displayModel}`,
-                ...(modelSelectionReason ? [`Selection reason: ${modelSelectionReason}`] : []),
-                ...(resultUrls.length > 0 ? [`Results:\n${resultLines.join('\n')}`] : []),
-                ...(task.errorMessage ? [`Error: ${task.errorMessage}`] : []),
-              ].join('\n'));
+              emitMediaTaskMessage(
+                tracker.sessionId,
+                [
+                  'Video generation succeeded.',
+                  `Task ID: ${taskId}`,
+                  `Model: ${displayModel}`,
+                  ...(modelSelectionReason ? [`Selection reason: ${modelSelectionReason}`] : []),
+                  ...(resultUrls.length > 0 ? [`Results:\n${resultLines.join('\n')}`] : []),
+                  ...(task.errorMessage ? [`Error: ${task.errorMessage}`] : []),
+                ].join('\n'),
+                {
+                  toolResultDetails: {
+                    taskId,
+                    status: 'succeeded',
+                    mediaType: 'video',
+                    assets,
+                  },
+                },
+              );
             }
           } else {
             const resultLines = tracker.mediaType === 'image'
@@ -7648,6 +7753,58 @@ if (!gotTheLock) {
     } catch (error) {
       console.error('[HtmlShare] failed to look up share from artifact file:', error);
       return serializeHtmlShareFailure(error, 'Failed to load share');
+    }
+  });
+
+  ipcMain.handle(HtmlShareIpc.CreateFromGeneratedVideo, async (_event, input: unknown) => {
+    try {
+      const { scopedFetch } = capturePublishingRequest();
+      const options = sanitizeCreateFromGeneratedVideoInput(input);
+      return await createGeneratedVideoShare(
+        getServerApiBaseUrl(),
+        getHtmlSharePublicBaseUrl(),
+        scopedFetch,
+        options,
+      );
+    } catch (error) {
+      console.error('[HtmlShare] failed to create share from generated video:', error);
+      return serializeHtmlShareFailure(error, 'Failed to create generated video share');
+    }
+  });
+
+  ipcMain.handle(HtmlShareIpc.GetGeneratedVideoSource, async (_event, input: unknown) => {
+    try {
+      const { scopedFetch } = capturePublishingRequest();
+      const options = sanitizeGetGeneratedVideoSourceInput(input);
+      return await getGeneratedVideoShareSource(
+        getServerApiBaseUrl(),
+        getHtmlSharePublicBaseUrl(),
+        scopedFetch,
+        options.taskId,
+        options.outputIndex,
+      );
+    } catch (error) {
+      console.error('[HtmlShare] failed to look up generated video share:', error);
+      return serializeHtmlShareFailure(error, 'Failed to load generated video share');
+    }
+  });
+
+  ipcMain.handle(HtmlShareIpc.ResolveLegacyGeneratedVideoSource, async (_event, input: unknown) => {
+    try {
+      const { scopedFetch } = capturePublishingRequest();
+      const options = sanitizeResolveLegacyGeneratedVideoSourceInput(input);
+      const resultUrlSha256 = crypto
+        .createHash('sha256')
+        .update(options.resultUrl, 'utf8')
+        .digest('hex');
+      return await resolveLegacyGeneratedVideoSource(
+        getServerApiBaseUrl(),
+        scopedFetch,
+        resultUrlSha256,
+      );
+    } catch (error) {
+      console.error('[HtmlShare] failed to resolve legacy generated video source:', error);
+      return serializeHtmlShareFailure(error, 'Failed to verify generated video source');
     }
   });
 
