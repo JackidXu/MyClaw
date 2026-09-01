@@ -3743,10 +3743,9 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
               type="button"
               onClick={() => { void handleChatLoginExperienceStart('new_user_welcome_task'); }}
               disabled={chatLoginExperiencePending}
-              className="relative min-w-[150px] rounded-xl bg-neutral-950 px-8 py-3 text-base font-semibold leading-5 text-white shadow-[0_14px_34px_rgba(0,0,0,0.22)] transition-all hover:bg-neutral-800 active:scale-[0.98] disabled:cursor-wait disabled:opacity-75 dark:bg-white dark:text-neutral-950 dark:hover:bg-neutral-200"
+              className="sidebar-login-rainbow chat-login-experience-action relative inline-flex h-9 w-[8.5rem] items-center justify-center whitespace-nowrap rounded-lg px-5 text-base font-medium leading-none transition-[filter,transform] disabled:cursor-wait disabled:opacity-75"
               aria-label={i18nService.t('newUserWelcomeInputLockedLabel')}
             >
-              <span className="pointer-events-none absolute inset-x-3 -bottom-1 h-3 rounded-full bg-gradient-to-r from-emerald-400 via-cyan-300 to-pink-400 opacity-80 blur-md" />
               <span className="relative">
                 {i18nService.t('newUserOnboardingStartExperience')}
               </span>
