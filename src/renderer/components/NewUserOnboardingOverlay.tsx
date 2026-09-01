@@ -58,6 +58,31 @@ interface NewUserOnboardingOverlayProps {
   onStartExperience: () => void;
 }
 
+const OnboardingCursorIcon: React.FC<React.SVGProps<SVGSVGElement>> = ({
+  className,
+  ...props
+}) => (
+  <svg
+    className={className}
+    viewBox="13.5 13.5 21 23"
+    fill="none"
+    aria-hidden="true"
+    focusable="false"
+    {...props}
+  >
+    <path
+      d="M15.0502 17.4398C14.6729 15.7408 16.4955 14.4039 18.0027 15.2743L32.5432 23.6706C34.1315 24.5878 33.7507 26.9807 31.9561 27.3595L26.7512 28.4581C26.2442 28.5652 25.7984 28.8649 25.508 29.2941L22.2182 34.155C21.2346 35.6083 18.9898 35.1807 18.6094 33.4676L15.0502 17.4398Z"
+      fill="#090002"
+    />
+    <path
+      d="M16.0261 17.2227C15.8379 16.3733 16.7492 15.7055 17.5027 16.1406L32.0427 24.5361C32.8368 24.9947 32.6469 26.1913 31.7498 26.3809L26.5447 27.4795C25.7841 27.64 25.1151 28.0896 24.6794 28.7334L21.3904 33.5947C20.8986 34.3213 19.776 34.1074 19.5857 33.251L16.0261 17.2227Z"
+      stroke="white"
+      strokeWidth="2"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
 const clamp = (value: number, min: number, max: number): number => (
   Math.min(Math.max(value, min), max)
 );
@@ -212,7 +237,7 @@ const NewUserOnboardingHeroAnimation: React.FC = () => (
         <div className="absolute left-[35px] top-9 h-[18px] w-[19px] rounded-bl-[8px] bg-white/80" />
       </div>
     </div>
-    <div className="lobster-onboarding-cursor absolute left-0 top-0 h-0 w-0 border-b-[18px] border-l-[8px] border-r-[8px] border-b-black border-l-transparent border-r-transparent drop-shadow-[0_5px_5px_rgba(0,0,0,0.25)]" />
+    <OnboardingCursorIcon className="lobster-onboarding-cursor absolute left-0 top-0 h-8 w-8 drop-shadow-[0_5px_5px_rgba(0,0,0,0.25)]" />
   </div>
 );
 
@@ -417,23 +442,13 @@ const TypewriterPromptPreview: React.FC<{
         )}
       </div>
       {showSendEffect && (
-        <svg
-          className="lobster-onboarding-send-cursor absolute z-30 h-8 w-8 text-neutral-950 drop-shadow-[0_6px_7px_rgba(0,0,0,0.3)]"
-          viewBox="0 0 24 24"
-          fill="none"
+        <OnboardingCursorIcon
+          className="lobster-onboarding-send-cursor absolute z-30 h-8 w-8 drop-shadow-[0_6px_7px_rgba(0,0,0,0.3)]"
           style={{
             top: sendCenterY - 3,
             left: sendCenterX - 3,
           }}
-        >
-          <path
-            d="M5.1 3.8 18.6 16a1 1 0 0 1-.75 1.73l-5.02-.4-2.68 4.23a1 1 0 0 1-1.82-.35L5.1 3.8Z"
-            fill="currentColor"
-            stroke="white"
-            strokeWidth="1.35"
-            strokeLinejoin="round"
-          />
-        </svg>
+        />
       )}
     </div>
   );
