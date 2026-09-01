@@ -633,7 +633,7 @@ const PromptResultPopover: React.FC<{
           <button
             type="button"
             onClick={onSkip}
-            className="flex h-10 items-center whitespace-nowrap rounded-md px-2 text-xs font-medium text-tertiary transition-colors hover:bg-surface-raised hover:text-secondary"
+            className="flex h-10 items-center whitespace-nowrap rounded-md px-2 text-xs font-medium text-muted transition-colors hover:bg-surface-raised/40 hover:text-secondary"
           >
             {i18nService.t('newUserOnboardingSkip')}
           </button>
@@ -829,7 +829,7 @@ const NewUserOnboardingOverlay: React.FC<NewUserOnboardingOverlayProps> = ({
               <button
                 type="button"
                 onClick={onSkip}
-                className="rounded-md px-2 py-1 text-xs font-medium text-tertiary transition-colors hover:bg-surface-raised hover:text-secondary"
+                className="rounded-md px-2 py-1 text-xs font-medium text-muted transition-colors hover:bg-surface-raised/40 hover:text-secondary"
               >
                 {i18nService.t('newUserOnboardingSkip')}
               </button>
