@@ -28,7 +28,7 @@ const PROMPT_TEXTAREA_PADDING_LEFT = 16;
 const PROMPT_TEXTAREA_PADDING_TOP = 12;
 const SEND_EFFECT_SIZE = 48;
 const TYPEWRITER_INTERVAL_MS = 90;
-const PROMPT_RESULT_POPOVER_DELAY_MS = 1280;
+const PROMPT_RESULT_POPOVER_DELAY_MS = 600;
 const PROMPT_RESULT_POPOVER_DEFAULT_HEIGHT = 246;
 const PROMPT_RESULT_POPOVER_MIN_HEIGHT = 226;
 const PROMPT_RESULT_POPOVER_MIN_WIDTH = 560;
@@ -278,7 +278,7 @@ const NewUserOnboardingHeroAnimation: React.FC = () => (
         <div className="absolute left-[34px] top-7 h-4 w-[17px] rounded-bl-[7px] bg-white/80 dark:bg-surface-raised/85" />
       </div>
     </div>
-    <OnboardingCursorIcon className="lobster-onboarding-cursor absolute left-0 top-0 h-8 w-8 drop-shadow-[0_5px_5px_rgba(0,0,0,0.25)]" />
+    <OnboardingCursorIcon className="lobster-onboarding-cursor absolute left-0 top-0 h-7 w-7 drop-shadow-[0_5px_5px_rgba(0,0,0,0.25)]" />
   </div>
 );
 
@@ -484,7 +484,7 @@ const TypewriterPromptPreview: React.FC<{
       </div>
       {showSendEffect && (
         <OnboardingCursorIcon
-          className="lobster-onboarding-send-cursor absolute z-30 h-8 w-8 drop-shadow-[0_6px_7px_rgba(0,0,0,0.3)]"
+          className="lobster-onboarding-send-cursor absolute z-30 h-7 w-7 drop-shadow-[0_6px_7px_rgba(0,0,0,0.3)]"
           style={{
             top: sendCenterY - 3,
             left: sendCenterX - 3,
@@ -647,12 +647,15 @@ const PromptResultPopover: React.FC<{
       <style>
         {`
         @keyframes lobster-onboarding-result-popover {
-          0% { opacity: 0; transform: translateY(10px) scale(0.985); }
+          0% { opacity: 0; transform: translateY(8px) scale(0.99); }
+          72% { opacity: 1; transform: translateY(-1px) scale(1); }
           100% { opacity: 1; transform: translateY(0) scale(1); }
         }
 
         .lobster-onboarding-result-popover {
-          animation: lobster-onboarding-result-popover 0.22s ease-out both;
+          animation: lobster-onboarding-result-popover 0.32s cubic-bezier(0.16, 1, 0.3, 1) both;
+          transform-origin: top center;
+          will-change: opacity, transform;
         }
 
         @media (prefers-reduced-motion: reduce) {
@@ -696,11 +699,10 @@ const PromptResultPopover: React.FC<{
             {i18nService.t('newUserOnboardingSkip')}
           </button>
           <div className="relative">
-            <div className="pointer-events-none absolute inset-x-2 bottom-0 h-4 translate-y-1/2 rounded-full bg-[linear-gradient(90deg,#14f195,#7c3aed,#ff4fd8)] opacity-65 blur-md" />
             <button
               type="button"
               onClick={onStartExperience}
-              className="relative whitespace-nowrap rounded-xl bg-foreground px-6 py-2.5 text-[15px] font-medium leading-5 text-background shadow-[0_10px_24px_rgba(0,0,0,0.22)] transition-transform hover:scale-[1.02] active:scale-[0.98]"
+              className="sidebar-login-rainbow chat-login-experience-action relative inline-flex h-9 w-[8.5rem] items-center justify-center whitespace-nowrap rounded-lg px-5 text-base font-medium leading-none transition-[filter,transform]"
             >
               {i18nService.t('newUserOnboardingStartExperience')}
             </button>
@@ -725,25 +727,29 @@ const NewUserOnboardingOverlay: React.FC<NewUserOnboardingOverlayProps> = ({
   const animationFrameRef = useRef<number | null>(null);
   const promptResultTimerRef = useRef<number | null>(null);
 
+  const measureTargetRect = useCallback(() => {
+    setTargetRect(readTargetRect(step));
+    setPromptTextareaRect(
+      step === NewUserOnboardingStep.PromptInput
+        ? readElementRect(PROMPT_TEXTAREA_SELECTOR)
+        : null,
+    );
+    setPromptSendButtonRect(
+      step === NewUserOnboardingStep.PromptInput
+        ? readElementRect(PROMPT_SEND_BUTTON_SELECTOR)
+        : null,
+    );
+  }, [step]);
+
   const updateTargetRect = useCallback(() => {
     if (animationFrameRef.current !== null) {
       window.cancelAnimationFrame(animationFrameRef.current);
     }
     animationFrameRef.current = window.requestAnimationFrame(() => {
       animationFrameRef.current = null;
-      setTargetRect(readTargetRect(step));
-      setPromptTextareaRect(
-        step === NewUserOnboardingStep.PromptInput
-          ? readElementRect(PROMPT_TEXTAREA_SELECTOR)
-          : null,
-      );
-      setPromptSendButtonRect(
-        step === NewUserOnboardingStep.PromptInput
-          ? readElementRect(PROMPT_SEND_BUTTON_SELECTOR)
-          : null,
-      );
+      measureTargetRect();
     });
-  }, [step]);
+  }, [measureTargetRect]);
 
   const handlePromptTypingComplete = useCallback(() => {
     setIsPromptTypingComplete(true);
@@ -763,7 +769,11 @@ const NewUserOnboardingOverlay: React.FC<NewUserOnboardingOverlayProps> = ({
       window.clearTimeout(promptResultTimerRef.current);
       promptResultTimerRef.current = null;
     }
-    updateTargetRect();
+    if (animationFrameRef.current !== null) {
+      window.cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+    measureTargetRect();
     window.addEventListener('resize', updateTargetRect);
     window.addEventListener('scroll', updateTargetRect, true);
 
@@ -799,7 +809,7 @@ const NewUserOnboardingOverlay: React.FC<NewUserOnboardingOverlayProps> = ({
         promptResultTimerRef.current = null;
       }
     };
-  }, [step, updateTargetRect]);
+  }, [measureTargetRect, step, updateTargetRect]);
 
   const viewportWidth = window.innerWidth;
   const viewportHeight = window.innerHeight;
