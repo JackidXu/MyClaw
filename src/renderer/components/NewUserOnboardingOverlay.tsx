@@ -674,7 +674,7 @@ const PromptResultPopover: React.FC<{
           height: PROMPT_RESULT_POPOVER_ARROW_HEIGHT,
         }}
       />
-      <div className="relative flex h-full flex-col gap-5">
+      <div className="relative flex h-full flex-col gap-2">
         <div className="min-w-0">
           <h2 className="text-[22px] font-semibold leading-7 text-foreground">
             {i18nService.t('newUserOnboardingPromptResultTitle')}
@@ -697,7 +697,7 @@ const PromptResultPopover: React.FC<{
           }
         >
           <PromptLoadingSequence />
-          <div className={`flex items-end justify-end gap-7 ${useCompactActionLayout ? 'mt-auto' : 'pb-3'}`}>
+          <div className={`flex items-end justify-end gap-7 ${useCompactActionLayout ? 'mt-auto' : 'h-full pb-3'}`}>
             <button
               type="button"
               onClick={onSkip}
