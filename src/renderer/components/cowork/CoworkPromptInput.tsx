@@ -723,6 +723,10 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
       reportOnboardingAction('welcome_task_start_experience_click', {
         source: 'new_user_welcome_task',
       });
+    } else {
+      reportOnboardingAction('chat_login_experience_start_click', {
+        source: 'chat_login_experience_prompt',
+      });
     }
     setChatLoginExperiencePending(true);
     logPromptModelSelection(

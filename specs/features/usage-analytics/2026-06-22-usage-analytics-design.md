@@ -1176,11 +1176,11 @@ export const LogReporterActionPrefix = {
 #### 2.4.44 `lobsterai_onboarding_action`
 
 - 状态：已实现。
-- 触发时机：新用户引导页曝光、点击下一步/跳过/开始体验、浏览器登录跳转结果、登录回调观察、登录后等待/完成 OpenClaw 网关重启、跳转登录但未登录返回客户端、新人任务打开结果、新人任务本地流式动画开始/结束，以及新人任务输入框上的二次登录按钮点击和登录跳转结果。
+- 触发时机：新用户引导页曝光、点击下一步/跳过/开始体验、浏览器登录跳转结果、登录回调观察、登录后等待/完成 OpenClaw 网关重启、跳转登录但未登录返回客户端、新人任务打开结果、新人任务本地流式动画开始/结束、普通登录引导弹窗开始体验按钮点击，以及新人任务输入框上的二次登录按钮点击和登录跳转结果。
 - 事件含义：统计新用户引导漏斗、登录转化、新人任务触达和二次登录入口效果。
 - 业务参数：
-  - `actionType`：string，动作类型。当前取值包括 `guide_exposure`、`guide_next_click`、`guide_skip_click`、`guide_start_experience_click`、`login_redirect_result`、`auth_callback_observed`、`login_success_wait_gateway`、`login_success_gateway_settled`、`login_return_without_auth`、`welcome_task_open_result`、`welcome_stream_start`、`welcome_stream_complete`、`welcome_task_start_experience_click`、`welcome_task_login_redirect_result`。
-  - `source`：string，触发来源。当前取值包括 `first_run_gate`、`new_user_onboarding`、`skip`、`start_experience_login_callback`、`start_experience_window_focus_without_login`、`start_experience_dom_focus_without_login`、`start_experience_visibility_without_login`、`new_user_welcome_task`。
+  - `actionType`：string，动作类型。当前取值包括 `guide_exposure`、`guide_next_click`、`guide_skip_click`、`guide_start_experience_click`、`chat_login_experience_start_click`、`login_redirect_result`、`auth_callback_observed`、`login_success_wait_gateway`、`login_success_gateway_settled`、`login_return_without_auth`、`welcome_task_open_result`、`welcome_stream_start`、`welcome_stream_complete`、`welcome_task_start_experience_click`、`welcome_task_login_redirect_result`。
+  - `source`：string，触发来源。当前取值包括 `first_run_gate`、`new_user_onboarding`、`chat_login_experience_prompt`、`skip`、`start_experience_login_callback`、`start_experience_window_focus_without_login`、`start_experience_dom_focus_without_login`、`start_experience_visibility_without_login`、`new_user_welcome_task`。
   - `step`：string，引导步骤。当前取值为 `new_task` 或 `prompt_input`，仅引导页相关动作发送。
   - `nextStep`：string，下一步引导步骤，仅点击下一步时发送。
   - `result`：string，动作结果。当前取值为 `success` 或 `failed`，仅登录跳转或新人任务打开结果发送。
