@@ -36,6 +36,7 @@ import {
   CoworkIpcChannel,
   type CoworkSessionsChangedPayload,
   formatDesktopContextOverflowNotice,
+  isContextOverflowNotice,
 } from '../../../shared/cowork/constants';
 import {
   buildCoworkErrorDetail,
@@ -9917,11 +9918,12 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     }
 
     // Reconcile local messages with authoritative gateway history.
-    // Managed sessions keep local tool messages as the source of truth, but the
-    // final assistant text should still be corrected from chat.history because
-    // streaming merge heuristics can lose repeated boundary characters.
+    // Managed sessions keep local store as the source of truth when stream content is already present.
+    // Only invoke syncFinalAssistantWithHistory as a fallback if the local assistant segment is empty.
     if (isManagedSessionKey(turn.sessionKey)) {
-      await this.syncFinalAssistantWithHistory(sessionId, turn);
+      if (!turn.currentAssistantSegmentText.trim() && !finalText.trim()) {
+        await this.syncFinalAssistantWithHistory(sessionId, turn);
+      }
     } else {
       // Awaited so that IM handlers reading from the store see reconciled data.
       await this.syncSessionHistoryFromGateway(sessionId, turn.sessionKey);
@@ -11457,6 +11459,24 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
           metadata: finalMetadata,
         });
         this.emit('messageUpdate', sessionId, turn.assistantMessageId, canonicalSegmentText, finalMetadata);
+        return;
+      }
+
+      if (
+        currentText.length > 0
+        && !isContextOverflowNotice(currentText)
+        && isContextOverflowNotice(canonicalSegmentText)
+      ) {
+        console.warn(
+          '[OpenClawRuntime] prevented overwriting valid assistant response with historical context overflow notice.',
+          `sessionId=${sessionId}`,
+          `validLen=${currentText.length}`,
+          `overflowNoticeLen=${canonicalSegmentText.length}`,
+        );
+        this.store.updateMessage(sessionId, turn.assistantMessageId, {
+          metadata: finalMetadata,
+        });
+        this.emit('messageUpdate', sessionId, turn.assistantMessageId, currentText, finalMetadata);
         return;
       }
 
