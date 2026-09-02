@@ -20,10 +20,6 @@ import {
   CoworkSystemMessageKind,
 } from '../../../common/coworkSystemMessages';
 import {
-  BrowserControlRequestMethod,
-  OpenClawBrowserGatewayMethod,
-} from '../../../shared/browserWebAccess/constants';
-import {
   BrowserAnnotationAnchorKind,
   BrowserAnnotationScreenshotStatus,
 } from '../../../shared/cowork/browserAnnotations';
@@ -61,35 +57,6 @@ import {
   resolveOpenClawToolLoopErrorOverride,
   resolveToolEventIsError,
 } from './openclawRuntimeAdapter';
-
-test('browser control requests use the embedded gateway RPC', async () => {
-  const adapter = new OpenClawRuntimeAdapter({} as never, {} as never);
-  const request = vi.fn(async () => ({ tabs: [] }));
-  adapter.gatewayClient = {
-    start: () => {},
-    stop: () => {},
-    request,
-  };
-
-  const result = await adapter.requestBrowserControl({
-    method: BrowserControlRequestMethod.Get,
-    path: '/tabs',
-    query: { profile: 'openclaw' },
-    timeoutMs: 5_000,
-  });
-
-  expect(result).toEqual({ tabs: [] });
-  expect(request).toHaveBeenCalledWith(
-    OpenClawBrowserGatewayMethod.Request,
-    {
-      method: BrowserControlRequestMethod.Get,
-      path: '/tabs',
-      query: { profile: 'openclaw' },
-      timeoutMs: 5_000,
-    },
-    { timeoutMs: 10_000 },
-  );
-});
 
 test('plan mode allows read-only shell inspection on macOS and Windows', () => {
   expect(isPlanModeSafeExecCommand('rg --files src')).toBe(true);

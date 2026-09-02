@@ -20,12 +20,6 @@ import {
   type PromptAnalyticsConversationState as PromptAnalyticsConversationStateValue,
 } from '../../../shared/analytics/constants';
 import {
-  type AgentBrowserToolEvent,
-  AgentBrowserToolPhase,
-  type BrowserControlGatewayRequest,
-  OpenClawBrowserGatewayMethod,
-} from '../../../shared/browserWebAccess/constants';
-import {
   buildBrowserAnnotationPromptSection,
   type CoworkBrowserAnnotationMessageBatch,
 } from '../../../shared/cowork/browserAnnotations';
@@ -229,8 +223,6 @@ const FORK_COMPACTION_SUMMARY_MAX_CHARS = 40_000;
 // attempt.  Keep a broad timeout to accommodate plugin loading and runtime
 // warmup on slow machines.
 const GATEWAY_READY_TIMEOUT_MS = 60_000;
-const BROWSER_GATEWAY_REQUEST_TIMEOUT_MS = 15_000;
-const BROWSER_GATEWAY_REQUEST_TIMEOUT_SLACK_MS = 5_000;
 const FINAL_HISTORY_SYNC_LIMIT = 50;
 const CHANNEL_SESSION_DISCOVERY_LIMIT = 200;
 export const OPENCLAW_CHAT_SEND_PAYLOAD_LIMIT_BYTES = 30 * 1000 * 1000;
@@ -487,7 +479,6 @@ type OpenClawRuntimeAdapterOptions = {
     platform: string;
   }) => void;
   onGatewayClientReady?: () => void;
-  onBrowserToolEvent?: (event: AgentBrowserToolEvent) => void;
 };
 
 const SessionModelPatchSource = {
@@ -2533,6 +2524,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
    *  giving the gateway time to flush the transcript append. */
   private static readonly CRON_DELIVERY_SYNC_DELAY_MS = 2_000;
   private static readonly FULL_HISTORY_SYNC_LIMIT = 50;
+  private browserPrewarmAttempted = false;
 
   /** Gateway WS auto-reconnect state */
   private gatewayReconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -4172,21 +4164,6 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       console.error('[ChannelSync] connectGatewayIfNeeded: failed to initialize gateway client:', error);
       throw error;
     }
-  }
-
-  async requestBrowserControl(request: BrowserControlGatewayRequest): Promise<unknown> {
-    if (!this.gatewayClient) {
-      await this.ensureGatewayClientReady();
-    }
-    const browserTimeoutMs = request.timeoutMs ?? BROWSER_GATEWAY_REQUEST_TIMEOUT_MS;
-    return this.requireGatewayClient().request(
-      OpenClawBrowserGatewayMethod.Request,
-      {
-        ...request,
-        timeoutMs: browserTimeoutMs,
-      },
-      { timeoutMs: browserTimeoutMs + BROWSER_GATEWAY_REQUEST_TIMEOUT_SLACK_MS },
-    );
   }
 
   /**
@@ -5882,6 +5859,10 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       await waitWithTimeout(this.gatewayReadyPromise, GATEWAY_READY_TIMEOUT_MS);
     }
     console.log('[ChannelSync] ensureGatewayClientReady: gateway client created and ready');
+
+    // Browser pre-warm disabled: the empty browser window is disruptive.
+    // The browser will start on-demand when the AI agent first calls the browser tool.
+    // this.prewarmBrowserIfNeeded(connection);
   }
 
   private async createGatewayClient(connection: OpenClawGatewayConnectionInfo): Promise<void> {
@@ -6089,6 +6070,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     this.stoppedSessions.clear();
     this.recentlyClosedRunIds.clear();
     this.terminalBtwRunIds.clear();
+    this.browserPrewarmAttempted = false;
     this.lastTickTimestamp = 0;
     // Clear messageUpdate throttle state
     for (const timer of this.pendingMessageUpdateTimer.values()) {
@@ -6935,6 +6917,97 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       console.warn('[GatewayReconnect] reconnect failed:', error);
       this.scheduleGatewayReconnect(); // retry with next backoff
     }
+  }
+
+  private prewarmBrowserIfNeeded(connection: OpenClawGatewayConnectionInfo): void {
+    if (this.browserPrewarmAttempted) return;
+    if (!connection.port || !connection.token) return;
+    this.browserPrewarmAttempted = true;
+
+    const browserControlPort = connection.port + 2;
+    const token = connection.token;
+    console.log(`[OpenClawRuntime] browser pre-warm: gatewayPort=${connection.port}, browserControlPort=${browserControlPort}`);
+    void this.prewarmBrowserWithRetry(browserControlPort, token);
+  }
+
+  private probeBrowserControlService(toolCallId: string, phase: string): void {
+    const connection = this.engineManager.getGatewayConnectionInfo();
+    if (!connection.port || !connection.token) {
+      console.log(`[OpenClawRuntime] browser probe (${toolCallId}/${phase}): no gateway connection info`);
+      return;
+    }
+    const browserControlPort = connection.port + 2;
+    const token = connection.token;
+    const probeStartTime = Date.now();
+    console.log(`[OpenClawRuntime] browser probe (${toolCallId}/${phase}): checking port ${browserControlPort} ...`);
+
+    // Probe multiple endpoints to diagnose reachability
+    const endpoints = [`http://127.0.0.1:${browserControlPort}/status`, `http://127.0.0.1:${browserControlPort}/`];
+    for (const probeUrl of endpoints) {
+      fetch(probeUrl, {
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${token}` },
+        signal: AbortSignal.timeout(5_000),
+      })
+        .then(async (response) => {
+          const body = await response.text().catch(() => '');
+          console.log(
+            `[OpenClawRuntime] browser probe (${toolCallId}/${phase}): ${probeUrl} → HTTP ${response.status} (${Date.now() - probeStartTime}ms) body=${body.slice(0, 500)}`,
+          );
+        })
+        .catch((err) => {
+          const message = err instanceof Error ? err.message : String(err);
+          console.warn(
+            `[OpenClawRuntime] browser probe (${toolCallId}/${phase}): ${probeUrl} → FAILED (${Date.now() - probeStartTime}ms) error=${message}`,
+          );
+        });
+    }
+  }
+
+  private async prewarmBrowserWithRetry(
+    port: number,
+    token: string,
+    maxRetries = 5,
+  ): Promise<void> {
+    const url = `http://127.0.0.1:${port}/start?profile=openclaw`;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      const startTime = Date.now();
+      console.log(
+        `[OpenClawRuntime] browser pre-warm attempt ${attempt}/${maxRetries} → POST http://127.0.0.1:${port}/start?profile=openclaw`,
+      );
+
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}` },
+          signal: AbortSignal.timeout(90_000),
+        });
+        const body = await response.text();
+        if (response.ok) {
+          console.log(
+            `[OpenClawRuntime] browser pre-warm succeeded (${Date.now() - startTime}ms): ${body.slice(0, 200)}`,
+          );
+          return;
+        }
+        console.warn(
+          `[OpenClawRuntime] browser pre-warm attempt ${attempt} returned HTTP ${response.status} (${Date.now() - startTime}ms): ${body.slice(0, 200)}`,
+        );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn(
+          `[OpenClawRuntime] browser pre-warm attempt ${attempt} failed (${Date.now() - startTime}ms): ${message}`,
+        );
+      }
+
+      if (attempt < maxRetries) {
+        const delayMs = Math.min(5000, 2000 * attempt);
+        console.log(`[OpenClawRuntime] browser pre-warm retrying in ${delayMs}ms...`);
+        await new Promise((r) => setTimeout(r, delayMs));
+      }
+    }
+
+    console.warn('[OpenClawRuntime] browser pre-warm exhausted all retries (non-fatal, browser will start on first tool use)');
   }
 
   private async loadGatewayClientCtor(clientEntryPath: string): Promise<GatewayClientCtor> {
@@ -8432,37 +8505,42 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
 
     if (toolNameRaw.toLowerCase() === 'browser') {
       const isError = resolveToolEventIsError(data);
-      const browserArgs = isRecord(data.args) ? data.args : {};
-      const browserResult = isRecord(data.result) ? data.result : {};
-      const browserResultDetails = isRecord(browserResult.details) ? browserResult.details : {};
-      const readBrowserEventString = (value: unknown): string | undefined => (
-        typeof value === 'string' && value.trim() ? value.trim() : undefined
+      // Log full data keys and values for diagnosis
+      const dataKeys = Object.keys(data);
+      const resultType = data.result === undefined ? 'undefined'
+        : data.result === null ? 'null'
+          : typeof data.result === 'string' ? `string(len=${data.result.length})`
+            : Array.isArray(data.result) ? `array(len=${data.result.length})`
+              : `object(keys=${Object.keys(data.result as Record<string, unknown>).join(',')})`;
+      console.log(
+        `[OpenClawRuntime] browser tool event: phase=${phase} toolCallId=${toolCallId}`
+        + ` dataKeys=[${dataKeys.join(',')}] resultType=${resultType}`
+        + (phase === 'start' ? ` args=${JSON.stringify(data.args ?? {}).slice(0, 500)}` : '')
+        + (phase === 'result' ? ` isError=${isError}` : ''),
       );
-      const browserAction = readBrowserEventString(browserArgs.action);
-      const browserProfile = readBrowserEventString(browserArgs.profile);
-      const browserTargetId = readBrowserEventString(browserResultDetails.targetId)
-        ?? readBrowserEventString(browserResult.targetId)
-        ?? readBrowserEventString(browserArgs.targetId);
-      try {
-        this.options.onBrowserToolEvent?.({
-          sessionId,
-          phase,
-          ...(browserAction ? { action: browserAction } : {}),
-          ...(browserProfile ? { profile: browserProfile } : {}),
-          ...(browserTargetId ? { targetId: browserTargetId } : {}),
-          ...(phase === AgentBrowserToolPhase.Result ? { isError } : {}),
-        });
-      } catch (error) {
-        console.warn('[OpenClawRuntime] Browser observation callback failed.', error);
+      if (phase === 'result') {
+        // Log full result for browser events (may contain error details)
+        try {
+          const fullResult = JSON.stringify(data.result, null, 2);
+          console.log(`[OpenClawRuntime] browser tool result (${toolCallId}): ${fullResult?.slice(0, 2000) ?? '(null)'}`);
+        } catch {
+          console.log(`[OpenClawRuntime] browser tool result (${toolCallId}): [unstringifiable] ${String(data.result).slice(0, 500)}`);
+        }
+        if (isError) {
+          // Log any additional error-related fields
+          const errorFields: Record<string, unknown> = {};
+          for (const key of dataKeys) {
+            if (/error|reason|message|detail|status/i.test(key)) {
+              errorFields[key] = data[key];
+            }
+          }
+          if (Object.keys(errorFields).length > 0) {
+            console.log(`[OpenClawRuntime] browser tool error fields (${toolCallId}): ${JSON.stringify(errorFields).slice(0, 1000)}`);
+          }
+        }
       }
-      const browserEventSummary = `[OpenClawRuntime] browser tool event: phase=${phase}`
-        + ` action=${browserAction ?? 'unknown'} toolCallId=${toolCallId}`
-        + (browserTargetId ? ` targetId=${browserTargetId}` : '');
-      if (phase === AgentBrowserToolPhase.Result && isError) {
-        console.warn(`${browserEventSummary} failed.`);
-      } else {
-        console.debug(browserEventSummary);
-      }
+      // Probe browser control service reachability from Electron main process
+      this.probeBrowserControlService(toolCallId, phase);
     }
 
     if (!turn.toolUseMessageIdByToolCallId.has(toolCallId)) {
