@@ -674,38 +674,46 @@ const PromptResultPopover: React.FC<{
           height: PROMPT_RESULT_POPOVER_ARROW_HEIGHT,
         }}
       />
-      <div
-        className={
-          useCompactActionLayout
-            ? 'relative flex h-full flex-col gap-3'
-            : 'relative grid h-full grid-cols-[minmax(0,1fr)_172px] gap-6'
-        }
-      >
+      <div className="relative flex h-full flex-col gap-2">
         <div className="min-w-0">
           <h2 className="text-[22px] font-semibold leading-7 text-foreground">
             {i18nService.t('newUserOnboardingPromptResultTitle')}
           </h2>
-          <p className="mt-1.5 text-base leading-6 text-secondary">
+          <p
+            className={
+              `mt-1.5 text-base leading-6 text-secondary ${
+                useCompactActionLayout ? '' : 'whitespace-nowrap'
+              }`
+            }
+          >
             {i18nService.t('newUserOnboardingPromptResultDescription')}
           </p>
-          <PromptLoadingSequence />
         </div>
-        <div className={`flex items-end justify-end gap-7 ${useCompactActionLayout ? 'mt-auto' : 'h-full pb-3'}`}>
-          <button
-            type="button"
-            onClick={onSkip}
-            className="flex h-10 items-center whitespace-nowrap rounded-md px-2 text-xs font-medium text-muted transition-colors hover:bg-surface-raised/40 hover:text-secondary"
-          >
-            {i18nService.t('newUserOnboardingSkip')}
-          </button>
-          <div className="relative">
+        <div
+          className={
+            useCompactActionLayout
+              ? 'flex min-h-0 flex-1 flex-col'
+              : 'grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_172px] gap-6'
+          }
+        >
+          <PromptLoadingSequence />
+          <div className={`flex items-end justify-end gap-7 ${useCompactActionLayout ? 'mt-auto' : 'h-full pb-3'}`}>
             <button
               type="button"
-              onClick={onStartExperience}
-              className="sidebar-login-rainbow chat-login-experience-action relative inline-flex h-9 w-[8.5rem] items-center justify-center whitespace-nowrap rounded-lg px-5 text-base font-medium leading-none transition-[filter,transform]"
+              onClick={onSkip}
+              className="flex h-10 items-center whitespace-nowrap rounded-md px-2 text-xs font-medium text-muted transition-colors hover:bg-surface-raised/40 hover:text-secondary"
             >
-              {i18nService.t('newUserOnboardingStartExperience')}
+              {i18nService.t('newUserOnboardingSkip')}
             </button>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={onStartExperience}
+                className="sidebar-login-rainbow chat-login-experience-action relative inline-flex h-9 w-[8.5rem] items-center justify-center whitespace-nowrap rounded-lg px-5 text-base font-medium leading-none transition-[filter,transform]"
+              >
+                {i18nService.t('newUserOnboardingStartExperience')}
+              </button>
+            </div>
           </div>
         </div>
       </div>
