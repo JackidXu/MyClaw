@@ -8959,7 +8959,6 @@ if (!gotTheLock) {
       return app.getPath('home');
     },
     getWorkbenchTitle: () => t('dshWorkbenchTitle'),
-    syncOpenClawConfig,
   });
 
 
