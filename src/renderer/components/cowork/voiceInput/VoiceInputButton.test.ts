@@ -43,4 +43,12 @@ describe('VoiceInputButton', () => {
     expect(html).toContain('rounded-[3px]');
     expect(html).not.toContain('<svg');
   });
+
+  test('dims the microphone when quota is exhausted while keeping the quota prompt clickable', () => {
+    const html = renderButton({ isQuotaExhausted: true });
+
+    expect(html).toContain('aria-label="暂无语音输入时长"');
+    expect(html).toContain('text-secondary opacity-40');
+    expect(html).not.toContain('disabled=""');
+  });
 });
