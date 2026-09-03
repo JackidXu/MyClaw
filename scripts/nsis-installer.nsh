@@ -461,6 +461,16 @@ FunctionEnd
   ; This does NOT change the default install path -- just ensures UAC elevation.
   RequestExecutionLevel admin
 
+  ; Declare the installer (and the uninstaller stub it writes) DPI-aware.
+  ; electron-builder's template leaves the NSIS manifest without a dpiAware
+  ; element, so on 125%-200% displays Windows renders the whole wizard at
+  ; 96 DPI and bitmap-scales it up: the title-bar icon, the header icon and
+  ; every label come out blurry. With the declaration the dialog is laid out
+  ; at the native DPI and the icons are loaded at their true size from
+  ; build/icons/win/icon.ico (16/24/32/48/64/128/256). MUI2 stretches the
+  ; welcome/finish sidebar bitmap to the scaled control, so layout is kept.
+  ManifestDPIAware true
+
   ; Keep only the progress bar visible. The details box stays hidden and
   ; NSIS/electron-builder retains the default status text behavior.
   ShowInstDetails nevershow

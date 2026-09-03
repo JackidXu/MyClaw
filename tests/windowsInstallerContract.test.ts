@@ -1203,6 +1203,25 @@ describe('Windows installer hardening contracts', () => {
     expect(electronBuilderConfig.nsis?.deleteAppDataOnUninstall).toBe(false);
   });
 
+  test('declares the installer DPI-aware so high-DPI icons and text stay crisp', () => {
+    // electron-builder's template never emits a dpiAware manifest element, so
+    // Windows bitmap-scales the whole wizard on 125%-200% displays and the
+    // title-bar/header icons render blurry. The attribute is global, so it
+    // must come from customHeader (file scope of installer.nsi), not from a
+    // section or function, and it must be emitted for the uninstaller pass
+    // too, i.e. outside any BUILD_UNINSTALLER guard.
+    expect(rootInstallerTemplate).toContain('!insertmacro customHeader');
+    expect(installerInclude.match(/^\s*ManifestDPIAware\b/gm)?.length).toBe(1);
+    const headerStart = installerInclude.indexOf('!macro customHeader');
+    const header = installerInclude.slice(
+      headerStart,
+      installerInclude.indexOf('!macroend', headerStart),
+    );
+    expect(header).toContain('ManifestDPIAware true');
+    const afterUninstallerGuard = header.slice(header.indexOf('!endif'));
+    expect(afterUninstallerGuard).toContain('ManifestDPIAware true');
+  });
+
   test('stages the embedded package through a selectable staging directory', () => {
     // Template contract: default init -> selection hook -> materialize hook ->
     // File materialize, all against $appPackageStagingDir, so the preflight
