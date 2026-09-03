@@ -14,6 +14,7 @@ import {
   powerMonitor,
   powerSaveBlocker,
   protocol,
+  safeStorage,
   session,
   shell,
   type WebContents,
@@ -56,10 +57,18 @@ import {
   AuthSessionStatus,
 } from '../shared/auth/constants';
 import {
+  type AgentBrowserCredentialSavePromptRequest,
+  type AgentBrowserHostNavigateRequest,
+  type AgentBrowserHostPageRequest,
+  type AgentBrowserHostRequest,
+  type AgentBrowserHostResponse,
+  type AgentBrowserHostSetViewRequest,
   type BrowserDiagnosticResultStep,
   BrowserDiagnosticStatus,
   BrowserDiagnosticStep,
+  BrowserDisplayMode,
   BrowserIpc,
+  BrowserNetworkMode,
   BrowserRuntimeProfile,
   type BrowserWebAccessConfig,
   normalizeBrowserWebAccessConfig,
@@ -197,6 +206,8 @@ import { APP_NAME, APP_USER_MODEL_ID, DB_FILENAME } from './appConstants';
 import { createLocalFileProtocolResponse } from './artifactLocalFileProtocol';
 import { authQuotaGateStateFromQuota, AuthSubscriptionStatus, createDefaultAuthQuotaGateState, normalizeAuthQuota } from './authQuota';
 import { type AutoLaunchStatus, getAutoLaunchStatus, isAutoLaunched, setAutoLaunchEnabled } from './autoLaunchManager';
+import { BrowserCredentialApprovalService } from './browserCredentials/browserCredentialApprovalService';
+import { BrowserCredentialService } from './browserCredentials/browserCredentialService';
 import { getRecentComputerUseLogEntries } from './computerUse/computerUseLogs';
 import { type CoworkForkContextMessage, type CoworkMessage, CoworkStore } from './coworkStore';
 import {
@@ -240,6 +251,7 @@ import type {
 import { registerActivityIpcHandlers } from './ipcHandlers/activity';
 import { registerAgentHandlers } from './ipcHandlers/agents';
 import { registerAsrIpcHandlers } from './ipcHandlers/asr';
+import { registerBrowserCredentialHandlers } from './ipcHandlers/browserCredentials/handlers';
 import { registerCoworkSubagentHandlers } from './ipcHandlers/coworkSubagent';
 import { ensureDshEngineReady, registerDshHandlers } from './ipcHandlers/dsh/handlers';
 import { registerEnterpriseAccountHandlers } from './ipcHandlers/enterpriseAccount';
@@ -261,6 +273,7 @@ import { registerSkillHandlers } from './ipcHandlers/skills';
 import { LibraryIndexService } from './library/libraryIndexService';
 import { registerLibraryIpcHandlers } from './library/libraryIpc';
 import { LibraryLocalStore } from './library/libraryLocalStore';
+import { AgentBrowserHost } from './libs/agentBrowserHost';
 import {
   type CoworkAgentEngine,
   CoworkEngineRouter,
@@ -385,6 +398,10 @@ import { getKeyfromAttribution, initializeKeyfromAttribution } from './libs/keyf
 import { LibraryThumbnailRenderer } from './libs/libraryThumbnailRenderer';
 import { LibraryThumbnailService } from './libs/libraryThumbnailService';
 import { isLikelyBlankThumbnailBitmap } from './libs/libraryThumbnailValidation';
+import {
+  resolveLobsterBrowserMcpCommand,
+  resolveLobsterBrowserMcpStdioLaunch,
+} from './libs/lobsterBrowserMcpServer';
 import { exportLogsZip } from './libs/logExport';
 import { MainLogReporter } from './libs/mainLogReporter';
 import { inferImageMimeTypeFromDataUrl, type PersistedGeneratedImageAsset, persistGeneratedImageAssets, type PersistGeneratedImageAssetsResult, persistGeneratedVideoAssets, type RemoteGeneratedMediaAsset } from './libs/mediaAssetPersistence';
@@ -2072,6 +2089,9 @@ let store: SqliteStore | null = null;
 let coworkStore: CoworkStore | null = null;
 let openClawRuntimeAdapter: OpenClawRuntimeAdapter | null = null;
 let coworkEngineRouter: CoworkEngineRouter | null = null;
+let agentBrowserHost: AgentBrowserHost | null = null;
+let browserCredentialService: BrowserCredentialService | null = null;
+let browserCredentialApprovalService: BrowserCredentialApprovalService | null = null;
 let skillManager: SkillManager | null = null;
 let mcpRuntime: McpRuntime | null = null;
 let skinRuntimeController: SkinRuntimeController | null = null;
@@ -2135,6 +2155,61 @@ const getOpenClawEngineManager = (): OpenClawEngineManager => {
     openClawEngineManager = new OpenClawEngineManager();
   }
   return openClawEngineManager;
+};
+
+const getBrowserCredentialService = (): BrowserCredentialService => {
+  if (!browserCredentialService) {
+    browserCredentialService = new BrowserCredentialService(
+      getStore().getDatabase(),
+      safeStorage,
+    );
+  }
+  return browserCredentialService;
+};
+
+const getBrowserCredentialApprovalService = (): BrowserCredentialApprovalService => {
+  if (!browserCredentialApprovalService) {
+    browserCredentialApprovalService = new BrowserCredentialApprovalService({
+      askUser: (questions, timeoutMs, options) => getMcpRuntime().askUserInternal(
+        questions,
+        timeoutMs,
+        options,
+      ),
+      translate: t,
+    });
+  }
+  return browserCredentialApprovalService;
+};
+
+const getAgentBrowserHost = (): AgentBrowserHost => {
+  if (!agentBrowserHost) {
+    agentBrowserHost = new AgentBrowserHost({
+      getMainWindow: () => mainWindow,
+      getBrowserConfig: () => getStore().get<AppConfigSettings>('app_config')?.browserWebAccess,
+      useSystemProxy: () => {
+        const appConfig = getStore().get<AppConfigSettings>('app_config');
+        const browserConfig = normalizeBrowserWebAccessConfig(appConfig?.browserWebAccess);
+        return getUseSystemProxyFromConfig(appConfig)
+          && browserConfig.followGlobalProxy
+          && browserConfig.networkMode === BrowserNetworkMode.ProxyCompatible;
+      },
+      emitState: event => {
+        for (const window of BrowserWindow.getAllWindows()) {
+          if (!window.isDestroyed()) {
+            window.webContents.send(BrowserIpc.HostState, event);
+          }
+        }
+      },
+      credentialService: getBrowserCredentialService(),
+      credentialApprovalService: getBrowserCredentialApprovalService(),
+      resolveSessionKey: sessionId => {
+        const normalizedSessionId = sessionId?.trim();
+        if (!normalizedSessionId) return undefined;
+        return getCoworkStore().getSession(normalizedSessionId, 0)?.claudeSessionId ?? undefined;
+      },
+    });
+  }
+  return agentBrowserHost;
 };
 
 const formatAutoLaunchStatusForLog = (status: AutoLaunchStatus): string => {
@@ -2497,6 +2572,33 @@ const getOpenClawConfigSync = (): OpenClawConfigSync => {
       },
       getAskUserCallbackUrl: () => getMcpRuntime().getAskUserCallbackUrl(),
       getMediaCallbackUrl: () => getMcpRuntime().getMediaCallbackUrl(),
+      getBrowserCallbackUrl: () => getMcpRuntime().getBrowserCallbackUrl(),
+      getLobsterBrowserMcpCommand: () => {
+        const mcpRuntime = getMcpRuntime();
+        const bridgeUrl = mcpRuntime.getBrowserCallbackUrl();
+        if (!bridgeUrl) return null;
+        return resolveLobsterBrowserMcpCommand(
+          path.join(getOpenClawEngineManager().getStateDir(), 'generated'),
+          {
+            electronNodeRuntimePath: getElectronNodeRuntimePath(),
+            bridgeUrl,
+            bridgeSecret: mcpRuntime.getBridgeSecret(),
+          },
+        );
+      },
+      getLobsterBrowserMcpStdioLaunch: () => {
+        const mcpRuntime = getMcpRuntime();
+        const bridgeUrl = mcpRuntime.getBrowserCallbackUrl();
+        if (!bridgeUrl) return null;
+        return resolveLobsterBrowserMcpStdioLaunch(
+          path.join(getOpenClawEngineManager().getStateDir(), 'generated'),
+          {
+            electronNodeRuntimePath: getElectronNodeRuntimePath(),
+            bridgeUrl,
+            bridgeSecret: mcpRuntime.getBridgeSecret(),
+          },
+        );
+      },
       getMcpBridgeSecret: () => getMcpRuntime().getBridgeSecret(),
       getAgents: () => getCoworkStore().listAgents(),
       getUserPlugins: () =>
@@ -3384,6 +3486,14 @@ const getCoworkEngineRouter = () => {
             getCronJobService().notifyGatewayReady();
             handleGatewaySelfRestartSettled();
           },
+          onBrowserToolEvent: event => {
+            const displayMode = normalizeBrowserWebAccessConfig(
+              getStore().get<AppConfigSettings>('app_config')?.browserWebAccess,
+            ).displayMode;
+            if (displayMode === BrowserDisplayMode.InApp) {
+              getAgentBrowserHost().handleToolEvent(event);
+            }
+          },
         },
         new SubagentRunStore(getStore().getDatabase()),
         new SubagentMessageStore(getStore().getDatabase()),
@@ -3499,7 +3609,9 @@ const getMcpRuntime = (): McpRuntime => {
 };
 
 const startAskUserServer = async (): Promise<void> => {
-  await getMcpRuntime().startAskUserServer();
+  const runtime = getMcpRuntime();
+  await runtime.startAskUserServer();
+  runtime.setBrowserToolHandler(request => getAgentBrowserHost().handleToolRequest(request));
 };
 
 const getIMGatewayManager = () => {
@@ -4224,9 +4336,24 @@ const hasBrowserWebAccessConfigChanged = (
   previousConfig?: AppConfigSettings,
   nextConfig?: AppConfigSettings,
 ): boolean => {
-  return JSON.stringify(normalizeBrowserWebAccessConfig(previousConfig?.browserWebAccess)) !==
-    JSON.stringify(normalizeBrowserWebAccessConfig(nextConfig?.browserWebAccess));
+  const previousBrowserConfig = normalizeBrowserWebAccessConfig(previousConfig?.browserWebAccess);
+  const nextBrowserConfig = normalizeBrowserWebAccessConfig(nextConfig?.browserWebAccess);
+  return JSON.stringify({
+    ...previousBrowserConfig,
+    credentialUseMode: undefined,
+    credentialSaveMode: undefined,
+  }) !== JSON.stringify({
+    ...nextBrowserConfig,
+    credentialUseMode: undefined,
+    credentialSaveMode: undefined,
+  });
 };
+
+const hasBrowserHostConfigChanged = (
+  previousConfig?: AppConfigSettings,
+  nextConfig?: AppConfigSettings,
+): boolean => JSON.stringify(normalizeBrowserWebAccessConfig(previousConfig?.browserWebAccess)) !==
+  JSON.stringify(normalizeBrowserWebAccessConfig(nextConfig?.browserWebAccess));
 
 const getSqliteAutoBackupEnabledFromConfig = (
   config?: { sqliteAutoBackupEnabled?: boolean },
@@ -4638,8 +4765,10 @@ if (!gotTheLock) {
         );
       }
       const browserWebAccessChanged = hasBrowserWebAccessConfigChanged(previousAppConfig, nextAppConfig);
-      const systemProxyChanged = getUseSystemProxyFromConfig(previousAppConfig) !==
-        getUseSystemProxyFromConfig(nextAppConfig);
+      const browserHostConfigChanged = hasBrowserHostConfigChanged(previousAppConfig, nextAppConfig);
+      if (browserHostConfigChanged || previousAppConfig?.useSystemProxy !== nextAppConfig?.useSystemProxy) {
+        agentBrowserHost?.refreshConfig();
+      }
       refreshEndpointsTestMode(getStore());
       const impactDecision = classifyAppConfigChange(previousAppConfig, value);
       const proxyChanged = impactDecision.reasons.includes(OpenClawConfigImpactReason.AppUseSystemProxy);
@@ -4653,21 +4782,14 @@ if (!gotTheLock) {
       }
 
       const shouldSyncOpenClawConfig = actionDecision.impact !== OpenClawConfigImpact.None || browserWebAccessChanged;
-      let syncResult: Awaited<ReturnType<typeof syncOpenClawConfig>> | null = null;
       if (shouldSyncOpenClawConfig) {
-        syncResult = await syncOpenClawConfig({
+        const syncResult = await syncOpenClawConfig({
           reason: 'app-config-change',
-          restartGatewayIfRunning: actionDecision.impact === OpenClawConfigImpact.Restart,
+          restartGatewayIfRunning:
+            actionDecision.impact === OpenClawConfigImpact.Restart || browserWebAccessChanged,
         });
         if (!syncResult.success) {
           console.error('[OpenClaw] Failed to sync config after app_config update:', syncResult.error);
-        }
-      }
-      if (syncResult?.success && browserWebAccessChanged && !systemProxyChanged && actionDecision.impact !== OpenClawConfigImpact.Restart) {
-        const engineStatus = getOpenClawEngineManager().getStatus();
-        if (engineStatus.phase === 'running') {
-          console.log(`${gwDiagTs()} browser access settings changed, restarting gateway`);
-          void getOpenClawEngineManager().restartGateway('browser-access-settings-change');
         }
       }
     }
@@ -8567,6 +8689,103 @@ if (!gotTheLock) {
 
   const buildBrowserProfileQuery = (profile?: string): string => (
     profile ? `?profile=${encodeURIComponent(profile)}` : ''
+  );
+
+  registerBrowserCredentialHandlers({
+    ipcMain,
+    getService: getBrowserCredentialService,
+  });
+
+  const runBrowserHostAction = async (
+    action: () => Promise<ReturnType<AgentBrowserHost['getState']>> | ReturnType<AgentBrowserHost['getState']>,
+  ): Promise<AgentBrowserHostResponse> => {
+    try {
+      return { success: true, state: await action() };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'LobsterAI in-app browser action failed.';
+      return {
+        success: false,
+        state: {
+          ...getAgentBrowserHost().getState(),
+          error: message,
+        },
+        error: message,
+      };
+    }
+  };
+
+  ipcMain.handle(
+    BrowserIpc.GetHostState,
+    (_event, _request?: AgentBrowserHostRequest): Promise<AgentBrowserHostResponse> =>
+      runBrowserHostAction(() => getAgentBrowserHost().getState()),
+  );
+
+  ipcMain.handle(
+    BrowserIpc.SetHostView,
+    (_event, request?: AgentBrowserHostSetViewRequest): Promise<AgentBrowserHostResponse> =>
+      runBrowserHostAction(() => getAgentBrowserHost().setView({
+        sessionId: request?.sessionId,
+        visible: request?.visible === true,
+        bounds: request?.bounds,
+      })),
+  );
+
+  ipcMain.handle(
+    BrowserIpc.NavigateHost,
+    (_event, request?: AgentBrowserHostNavigateRequest): Promise<AgentBrowserHostResponse> =>
+      runBrowserHostAction(() => getAgentBrowserHost().navigate(
+        request?.url ?? '',
+        request?.sessionId,
+      )),
+  );
+
+  ipcMain.handle(
+    BrowserIpc.GoBackHost,
+    (): Promise<AgentBrowserHostResponse> => runBrowserHostAction(() => getAgentBrowserHost().goBack()),
+  );
+
+  ipcMain.handle(
+    BrowserIpc.GoForwardHost,
+    (): Promise<AgentBrowserHostResponse> => runBrowserHostAction(() => getAgentBrowserHost().goForward()),
+  );
+
+  ipcMain.handle(
+    BrowserIpc.ReloadHost,
+    (): Promise<AgentBrowserHostResponse> => runBrowserHostAction(() => getAgentBrowserHost().reload()),
+  );
+
+  ipcMain.handle(
+    BrowserIpc.StopHost,
+    (): Promise<AgentBrowserHostResponse> => runBrowserHostAction(() => getAgentBrowserHost().stop()),
+  );
+
+  ipcMain.handle(
+    BrowserIpc.SelectHostPage,
+    (_event, request?: AgentBrowserHostPageRequest): Promise<AgentBrowserHostResponse> =>
+      runBrowserHostAction(() => getAgentBrowserHost().selectPage(
+        request?.pageId ?? 0,
+        request?.sessionId,
+      )),
+  );
+
+  ipcMain.handle(
+    BrowserIpc.CloseHostPage,
+    (_event, request?: AgentBrowserHostPageRequest): Promise<AgentBrowserHostResponse> =>
+      runBrowserHostAction(() => getAgentBrowserHost().closePage(request?.pageId ?? 0)),
+  );
+
+  ipcMain.handle(
+    BrowserIpc.ResolveCredentialSavePrompt,
+    (_event, request?: AgentBrowserCredentialSavePromptRequest): Promise<AgentBrowserHostResponse> =>
+      runBrowserHostAction(() => {
+        if (!request) {
+          throw new Error('A browser credential save decision is required.');
+        }
+        return getAgentBrowserHost().resolveCredentialSavePrompt(
+          request.requestId,
+          request.decision,
+        );
+      }),
   );
 
   ipcMain.handle(BrowserIpc.GetStatus, async (_event, options?: { profile?: BrowserRuntimeProfile }) => {
@@ -13445,6 +13664,10 @@ if (!gotTheLock) {
     mainWindow.on('focus', () => {
       getDesktopNotificationManager().handleWindowFocused();
     });
+    mainWindow.on('show', () => agentBrowserHost?.setWindowVisible(true));
+    mainWindow.on('restore', () => agentBrowserHost?.setWindowVisible(true));
+    mainWindow.on('hide', () => agentBrowserHost?.setWindowVisible(false));
+    mainWindow.on('minimize', () => agentBrowserHost?.setWindowVisible(false));
 
     // 处理渲染进程崩溃或退出
     mainWindow.webContents.on('render-process-gone', (_event, details) => {
@@ -13521,6 +13744,7 @@ if (!gotTheLock) {
       windowStatePersist.cleanup();
       authCallbackRouter.markRendererUnavailable();
       isOpenSessionFromNotificationReady = false;
+      agentBrowserHost?.setWindowVisible(false);
       mainWindow = null;
     });
 
@@ -13762,6 +13986,15 @@ if (!gotTheLock) {
     mediaTurnAccountScopeBySession.clear();
     mediaTasksHandledByStatusPolling.clear();
     mediaStatusPollCounts.clear();
+    const browserHost = agentBrowserHost;
+    agentBrowserHost = null;
+
+    if (browserHost) {
+      currentAppCleanupStep = 'agent-browser-storage';
+      await browserHost.dispose().catch(error => {
+        console.error('[AgentBrowserHost] Failed to flush persistent browser storage on quit:', error);
+      });
+    }
 
     // Stop Cowork sessions without blocking shutdown.
     if (coworkEngineRouter) {
