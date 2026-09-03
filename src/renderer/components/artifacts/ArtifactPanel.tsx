@@ -709,6 +709,7 @@ interface ArtifactPanelProps {
   onOpenHtmlFileInBrowser?: (artifact: Artifact) => void;
   onAddSelectedText?: (snippet: CoworkSelectedTextSnippet) => void;
   selectedTextEnabled?: boolean;
+  agentBrowserPanel?: React.ReactNode;
   subagentPanel?: React.ReactNode;
   userAttachmentPanel?: React.ReactNode;
   onAnnotationSend?: () => void;
@@ -798,6 +799,7 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
   onOpenHtmlFileInBrowser,
   onAddSelectedText,
   selectedTextEnabled = false,
+  agentBrowserPanel,
   subagentPanel,
   userAttachmentPanel,
   onAnnotationSend,
@@ -5218,6 +5220,8 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
             annotationSendCount={annotationSendCount}
             onAnnotationSend={onAnnotationSend}
           />
+        ) : activeSpecialTab === ArtifactSpecialTab.AgentBrowser && agentBrowserPanel ? (
+          agentBrowserPanel
         ) : activeSpecialTab === ArtifactSpecialTab.Subagents && subagentPanel ? (
           subagentPanel
         ) : activeSpecialTab === ArtifactSpecialTab.UserAttachment && userAttachmentPanel ? (

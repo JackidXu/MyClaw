@@ -6,6 +6,11 @@ import path from 'path';
 import { buildScheduledTaskEnginePrompt } from '../../scheduledTask/enginePrompt';
 import { AgentId, DefaultAgentProfile } from '../../shared/agent';
 import {
+  BrowserCredentialLoginTool,
+  BrowserCredentialMcpServer,
+} from '../../shared/browserCredentials/constants';
+import {
+  BrowserDisplayMode,
   BrowserNetworkMode,
   BrowserRuntimeProfile,
   type BrowserWebAccessConfig,
@@ -54,6 +59,7 @@ import {
   getCoworkOpenAICompatProxyBaseURL,
   getCoworkOpenAICompatProxyToken,
 } from './coworkOpenAICompatProxy';
+import type { LobsterBrowserMcpStdioLaunch } from './lobsterBrowserMcpServer';
 import {
   buildAgentEntry,
   buildManagedAgentEntries,
@@ -401,6 +407,8 @@ const MANAGED_BROWSER_POLICY_PROMPT = [
   '- For every `browser` tool call, set `target="host"` explicitly.',
   '- Do not use `target="sandbox"` or `target="node"` unless a future LobsterAI version explicitly enables it.',
   '- If a browser call fails because the sandbox browser is unavailable, retry the same action with `target="host"`.',
+  `- When a page requires a password and \`${BrowserCredentialMcpServer.ModelToolName}\` is available, call it before asking the user to sign in manually. The tool can use an encrypted saved login without revealing its password to you.`,
+  '- If no saved login is available, ask the user to sign in directly in the visible LobsterAI browser. Never ask the user to send a password in chat, and never search files, memory, or logs for passwords.',
 ].join('\n');
 
 const MANAGED_EXEC_SAFETY_PROMPT = [
@@ -1848,6 +1856,9 @@ type OpenClawConfigSyncDeps = {
   getResolvedMcpServers?: () => ResolvedMcpServer[];
   getAskUserCallbackUrl?: () => string | null;
   getMediaCallbackUrl?: () => string | null;
+  getBrowserCallbackUrl?: () => string | null;
+  getLobsterBrowserMcpCommand?: () => string | null;
+  getLobsterBrowserMcpStdioLaunch?: () => LobsterBrowserMcpStdioLaunch | null;
   getMcpBridgeSecret?: () => string;
   getSkillsList?: () => Array<{ id: string; name: string; enabled: boolean }>;
   getAgents?: () => Agent[];
@@ -1876,6 +1887,9 @@ export class OpenClawConfigSync {
   private readonly getResolvedMcpServers?: () => ResolvedMcpServer[];
   private readonly getAskUserCallbackUrl?: () => string | null;
   private readonly getMediaCallbackUrl?: () => string | null;
+  private readonly getBrowserCallbackUrl?: () => string | null;
+  private readonly getLobsterBrowserMcpCommand?: () => string | null;
+  private readonly getLobsterBrowserMcpStdioLaunch?: () => LobsterBrowserMcpStdioLaunch | null;
   private readonly getMcpBridgeSecret?: () => string;
   private readonly getSkillsList?: () => Array<{ id: string; name: string; enabled: boolean }>;
   private readonly getAgents?: () => Agent[];
@@ -1905,6 +1919,9 @@ export class OpenClawConfigSync {
     this.getResolvedMcpServers = deps.getResolvedMcpServers;
     this.getAskUserCallbackUrl = deps.getAskUserCallbackUrl;
     this.getMediaCallbackUrl = deps.getMediaCallbackUrl;
+    this.getBrowserCallbackUrl = deps.getBrowserCallbackUrl;
+    this.getLobsterBrowserMcpCommand = deps.getLobsterBrowserMcpCommand;
+    this.getLobsterBrowserMcpStdioLaunch = deps.getLobsterBrowserMcpStdioLaunch;
     this.getMcpBridgeSecret = deps.getMcpBridgeSecret;
     this.getSkillsList = deps.getSkillsList;
     this.getAgents = deps.getAgents;
@@ -1965,13 +1982,38 @@ export class OpenClawConfigSync {
           ...(blockedHostnames.length > 0 ? { blockedHostnames } : {}),
         };
 
-    return {
+    const commonConfig = {
       enabled: true,
-      defaultProfile: BrowserRuntimeProfile.Managed,
       evaluateEnabled: browserWebAccess.evaluateEnabled,
-      ...(browserWebAccess.headless === true ? { headless: true } : {}),
-      ...(extraArgs.length > 0 ? { extraArgs } : {}),
       ssrfPolicy,
+    };
+
+    if (browserWebAccess.displayMode === BrowserDisplayMode.InApp) {
+      const callbackUrl = this.getBrowserCallbackUrl?.();
+      const mcpCommand = this.getLobsterBrowserMcpCommand?.();
+      if (callbackUrl && mcpCommand) {
+        return {
+          ...commonConfig,
+          defaultProfile: BrowserRuntimeProfile.InApp,
+          profiles: {
+            [BrowserRuntimeProfile.InApp]: {
+              driver: 'existing-session',
+              attachOnly: true,
+              color: '#D7A514',
+              mcpCommand,
+              mcpArgs: [`--lobster-bridge-url=${callbackUrl}`],
+            },
+          },
+        };
+      }
+      console.warn('[OpenClawConfigSync] In-app browser bridge is unavailable; falling back to external browser.');
+    }
+
+    return {
+      ...commonConfig,
+      defaultProfile: BrowserRuntimeProfile.Managed,
+      headless: false,
+      ...(extraArgs.length > 0 ? { extraArgs } : {}),
     };
   }
 
@@ -2637,12 +2679,29 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
     // Sync MCP servers into OpenClaw's native mcp.servers config field.
     // OpenClaw handles connection, tool discovery, and execution natively.
     const resolvedMcpServers = this.getResolvedMcpServers?.() ?? [];
-    if (resolvedMcpServers.length > 0) {
+    const nativeMcpServers = buildOpenClawMcpServers(resolvedMcpServers);
+    if (browserWebAccess.displayMode === BrowserDisplayMode.InApp) {
+      const browserMcpLaunch = this.getLobsterBrowserMcpStdioLaunch?.();
+      if (browserMcpLaunch) {
+        nativeMcpServers[BrowserCredentialMcpServer.Name] = {
+          command: browserMcpLaunch.command,
+          args: [...browserMcpLaunch.args, BrowserCredentialMcpServer.ToolSetArgument],
+          ...(Object.keys(browserMcpLaunch.env).length > 0
+            ? { env: browserMcpLaunch.env }
+            : {}),
+          toolFilter: {
+            include: [BrowserCredentialLoginTool.Name],
+          },
+        };
+      }
+    }
+    const nativeMcpServerCount = Object.keys(nativeMcpServers).length;
+    if (nativeMcpServerCount > 0) {
       (managedConfig as Record<string, unknown>).mcp = {
-        servers: buildOpenClawMcpServers(resolvedMcpServers),
+        servers: nativeMcpServers,
       };
     }
-    console.log(`[OpenClawConfigSync] mcp.servers: ${resolvedMcpServers.length} server(s)`);
+    console.log(`[OpenClawConfigSync] mcp.servers: ${nativeMcpServerCount} server(s)`);
 
     // Sync AskUserQuestion plugin config
     const askUserCallbackUrl = this.getAskUserCallbackUrl?.();
