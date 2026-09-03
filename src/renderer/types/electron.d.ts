@@ -65,6 +65,8 @@ import type {
   HtmlShareAnalyticsResult,
   HtmlShareConfigurableStatus,
   HtmlShareDisabledSource,
+  HtmlShareFailureDetails,
+  HtmlShareFailureKind,
   HtmlSharePermanentDeleteResult,
   HtmlShareSourceType,
   HtmlShareStatus,
@@ -614,6 +616,8 @@ interface HtmlShareResult {
   restoredByUpdate?: boolean;
   error?: string;
   code?: number;
+  failureKind?: HtmlShareFailureKind;
+  details?: HtmlShareFailureDetails;
   quota?: PublishingQuotaErrorData;
   warnings?: string[];
 }
@@ -988,6 +992,12 @@ interface IElectronAPI {
     setActiveSession: (
       sessionId: string | null,
     ) => Promise<{ success: boolean; error?: string }>;
+    seedNewUserWelcomeTask: (options: { title: string; content: string }) => Promise<{
+      success: boolean;
+      session?: CoworkSession;
+      created?: boolean;
+      error?: string;
+    }>;
     remoteManaged: (
       sessionId: string,
     ) => Promise<{ success: boolean; remoteManaged: boolean; error?: string }>;
@@ -1259,8 +1269,11 @@ interface IElectronAPI {
       filePath: string,
     ) => Promise<{ success: boolean; canceled?: boolean; path?: string; error?: string }>;
     generateThumbnail: (
-      filePath: string,
-    ) => Promise<{ success: boolean; dataUrl?: string; error?: string }>;
+      request: import('../../shared/library/thumbnail').LibraryThumbnailGenerateRequest,
+    ) => Promise<import('../../shared/library/thumbnail').LibraryThumbnailGenerateResponse>;
+    cancelThumbnail: (
+      requestId: string,
+    ) => Promise<{ success: boolean; canceled: boolean }>;
     showMessageBox: (options: {
       message: string;
       type?: 'none' | 'info' | 'error' | 'question' | 'warning';
@@ -1348,6 +1361,36 @@ interface IElectronAPI {
       artifactId?: string;
       filePath?: string;
     }) => Promise<{ success: boolean; share?: HtmlShareResult | null; error?: string; code?: number }>;
+    createFromGeneratedVideo: (options: {
+      taskId: string;
+      outputIndex: number;
+      sessionId: string;
+      artifactId: string;
+      title: string;
+      accessMode?: HtmlShareAccessMode;
+    }) => Promise<HtmlShareResult>;
+    getGeneratedVideoSource: (options: {
+      taskId: string;
+      outputIndex: number;
+    }) => Promise<{
+      success: boolean;
+      share?: HtmlShareResult | null;
+      state?: string;
+      assetStatus?: string;
+      retryAfterMs?: number;
+      failureReason?: string;
+      error?: string;
+      code?: number;
+    }>;
+    resolveLegacyGeneratedVideoSource: (options: {
+      resultUrl: string;
+    }) => Promise<{
+      success: boolean;
+      taskId?: string;
+      outputIndex?: number;
+      error?: string;
+      code?: number;
+    }>;
     getBySource: (options: {
       sourceType: HtmlShareSourceType;
       clientSourceKey: string;

@@ -91,6 +91,7 @@ import {
   CoworkContextUsageSource,
   CoworkForkMode,
   CoworkIpcChannel,
+  CoworkOnboardingMessageKind,
 } from '../shared/cowork/constants';
 import {
   buildCoworkImageAttachmentPreviews,
@@ -140,6 +141,14 @@ import type {
 } from '../shared/kit/constants';
 import { KitStoreKey } from '../shared/kit/constants';
 import { LibraryChangeReason, LibraryIpc } from '../shared/library/constants';
+import {
+  getLibraryThumbnailFailureDetails,
+  isLibraryThumbnailFailureRetryable,
+  LibraryThumbnailError,
+  LibraryThumbnailFailureCode,
+  type LibraryThumbnailGenerateRequest,
+  type LibraryThumbnailGenerateResponse,
+} from '../shared/library/thumbnail';
 import type { LibraryChangedPayload } from '../shared/library/types';
 import {
   type ListLocalWebServicesOptions,
@@ -349,16 +358,23 @@ import {
   packageArtifactFile,
 } from './libs/htmlShare/artifactFileSharePackager';
 import {
+  createGeneratedVideoShare,
   deleteHtmlSharePermanently,
+  getGeneratedVideoShareSource,
   getHtmlShareAnalytics,
   getHtmlShareBySource,
   getHtmlShareQuota,
   getPublishingTrialPolicy,
+  resolveLegacyGeneratedVideoSource,
   updateHtmlShare,
   updateHtmlShareAccessMode,
   updateHtmlShareStatus,
   uploadHtmlShare,
 } from './libs/htmlShare/htmlShareClient';
+import {
+  sanitizeOptionalHtmlShareContent,
+  serializeHtmlShareFailure,
+} from './libs/htmlShare/htmlShareError';
 import { packageHtmlFile } from './libs/htmlShare/htmlSharePackager';
 import {
   buildArtifactFileClientSourceKey,
@@ -644,6 +660,24 @@ interface HtmlShareGetByArtifactFileInput {
   filePath?: string;
 }
 
+interface HtmlShareCreateFromGeneratedVideoInput {
+  taskId: string;
+  outputIndex: number;
+  sessionId: string;
+  artifactId: string;
+  title: string;
+  accessMode?: HtmlShareAccessModeValue;
+}
+
+interface HtmlShareGetGeneratedVideoSourceInput {
+  taskId: string;
+  outputIndex: number;
+}
+
+interface HtmlShareResolveLegacyGeneratedVideoSourceInput {
+  resultUrl: string;
+}
+
 interface HtmlShareGetBySourceInput {
   sourceType: HtmlShareSourceTypeValue;
   clientSourceKey: string;
@@ -836,9 +870,8 @@ function sanitizeCreateFromArtifactFileInput(input: unknown): HtmlShareCreateFro
     accessMode: sanitizeHtmlShareAccessMode(source.accessMode, HtmlShareAccessMode.Code),
     fileName: sanitizeOptionalHtmlShareString(source.fileName, 'fileName', 255),
     filePath: sanitizeOptionalHtmlShareString(source.filePath, 'filePath', 4096),
-    content: sanitizeOptionalHtmlShareString(
+    content: sanitizeOptionalHtmlShareContent(
       source.content,
-      'content',
       MAX_ARTIFACT_SHARE_CONTENT_CHARS,
     ),
     remoteUrl: sanitizeOptionalHtmlShareString(source.remoteUrl, 'remoteUrl', 4096),
@@ -877,6 +910,71 @@ function sanitizeGetByArtifactFileInput(input: unknown): HtmlShareGetByArtifactF
     throw new Error('Artifact share lookup source is required.');
   }
   return options;
+}
+
+function sanitizeGeneratedVideoTaskId(value: unknown): string {
+  const taskId = sanitizeHtmlShareString(value, 'taskId', 19);
+  if (!/^[1-9]\d*$/.test(taskId)) {
+    throw new Error('taskId must be a positive decimal identifier.');
+  }
+  return taskId;
+}
+
+function sanitizeGeneratedVideoOutputIndex(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > 9999) {
+    throw new Error('outputIndex must be a non-negative integer.');
+  }
+  return value;
+}
+
+function sanitizeCreateFromGeneratedVideoInput(
+  input: unknown,
+): HtmlShareCreateFromGeneratedVideoInput {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    throw new Error('Invalid generated video share request.');
+  }
+  const source = input as Record<string, unknown>;
+  return {
+    taskId: sanitizeGeneratedVideoTaskId(source.taskId),
+    outputIndex: sanitizeGeneratedVideoOutputIndex(source.outputIndex),
+    sessionId: sanitizeHtmlShareString(source.sessionId, 'sessionId', 128),
+    artifactId: sanitizeHtmlShareString(source.artifactId, 'artifactId', 128),
+    title: sanitizeHtmlShareTitle(source.title),
+    accessMode: sanitizeHtmlShareAccessMode(source.accessMode, HtmlShareAccessMode.Code),
+  };
+}
+
+function sanitizeGetGeneratedVideoSourceInput(
+  input: unknown,
+): HtmlShareGetGeneratedVideoSourceInput {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    throw new Error('Invalid generated video share lookup request.');
+  }
+  const source = input as Record<string, unknown>;
+  return {
+    taskId: sanitizeGeneratedVideoTaskId(source.taskId),
+    outputIndex: sanitizeGeneratedVideoOutputIndex(source.outputIndex),
+  };
+}
+
+function sanitizeResolveLegacyGeneratedVideoSourceInput(
+  input: unknown,
+): HtmlShareResolveLegacyGeneratedVideoSourceInput {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    throw new Error('Invalid generated video source resolution request.');
+  }
+  const source = input as Record<string, unknown>;
+  const resultUrl = sanitizeHtmlShareString(source.resultUrl, 'resultUrl', 4096);
+  let parsed: URL;
+  try {
+    parsed = new URL(resultUrl);
+  } catch {
+    throw new Error('resultUrl must be a valid HTTPS URL.');
+  }
+  if (parsed.protocol !== 'https:' || parsed.username || parsed.password) {
+    throw new Error('resultUrl must be a valid HTTPS URL.');
+  }
+  return { resultUrl };
 }
 
 function sanitizeGetHtmlShareBySourceInput(input: unknown): HtmlShareGetBySourceInput {
@@ -2258,6 +2356,9 @@ const resolveSessionWorkingDirectory = (options: { cwd?: string; agentId?: strin
   if (explicitWorkingDirectory) return explicitWorkingDirectory;
   return resolveAgentDefaultWorkingDirectory(options.agentId);
 };
+
+const NEW_USER_WELCOME_SESSION_ID_STORE_KEY = 'new_user_welcome_session_id';
+const NEW_USER_WELCOME_CONTENT_MAX_LENGTH = 4000;
 
 const isLobsteraiServerModelRef = (modelRef: string): boolean => {
   const normalized = modelRef.trim();
@@ -5712,9 +5813,10 @@ if (!gotTheLock) {
             taskId,
           );
         }
-        const assets = resultUrls.map(url => ({
+        const assets = resultUrls.map((url, outputIndex) => ({
           type: statusMediaType,
           url,
+          outputIndex,
           mimeType: resolveGeneratedMediaAssetMimeType(statusMediaType, url),
         }));
 
@@ -6132,9 +6234,10 @@ if (!gotTheLock) {
         resultCount: resultUrls.length,
         quotaRemaining: task.quotaRemaining,
       }));
-      const assets = resultUrls.map(url => ({
+      const assets = resultUrls.map((url, outputIndex) => ({
         type: mediaType,
         url,
+        outputIndex,
         mimeType: resolveGeneratedMediaAssetMimeType(mediaType, url),
         ...(args.filename ? { filename: args.filename as string } : {}),
       }));
@@ -6222,6 +6325,7 @@ if (!gotTheLock) {
           model: outputModel,
           ...(upstreamModel ? { upstreamModel } : {}),
           ...(modelSelectionReason ? { modelSelectionReason } : {}),
+          mediaType,
           ...(detailsAssets.length > 0 ? { assets: detailsAssets } : {}),
           ...(Object.keys(billing).length > 0 ? { billing } : {}),
         },
@@ -6362,9 +6466,10 @@ if (!gotTheLock) {
             ? task.modelSelectionReason.trim()
             : undefined;
           const displayModel = upstreamModel || outputModel;
-          const assets = resultUrls.map(url => ({
+          const assets = resultUrls.map((url, outputIndex) => ({
             type: tracker.mediaType,
             url,
+            outputIndex,
             mimeType: resolveGeneratedMediaAssetMimeType(tracker.mediaType, url),
           }));
           if (status === 'succeeded' && tracker.mediaType === 'image') {
@@ -6379,7 +6484,9 @@ if (!gotTheLock) {
                 `Saved generated ${persistResult.saved.length === 1 ? 'image' : 'images'}:\n${fileLines.join('\n')}`,
                 {
                   toolResultDetails: {
+                    taskId,
                     status: 'succeeded',
+                    mediaType: 'image',
                     assets: persistResult.saved,
                   },
                 },
@@ -6412,7 +6519,9 @@ if (!gotTheLock) {
                 ].join('\n'),
                 {
                   toolResultDetails: {
+                    taskId,
                     status: 'succeeded',
+                    mediaType: 'video',
                     model: outputModel,
                     ...(upstreamModel ? { upstreamModel } : {}),
                     ...(modelSelectionReason ? { modelSelectionReason } : {}),
@@ -6422,14 +6531,25 @@ if (!gotTheLock) {
               );
             } else {
               const resultLines = resultUrls.map(url => `  - ${url}`);
-              emitMediaTaskMessage(tracker.sessionId, [
-                'Video generation succeeded.',
-                `Task ID: ${taskId}`,
-                `Model: ${displayModel}`,
-                ...(modelSelectionReason ? [`Selection reason: ${modelSelectionReason}`] : []),
-                ...(resultUrls.length > 0 ? [`Results:\n${resultLines.join('\n')}`] : []),
-                ...(task.errorMessage ? [`Error: ${task.errorMessage}`] : []),
-              ].join('\n'));
+              emitMediaTaskMessage(
+                tracker.sessionId,
+                [
+                  'Video generation succeeded.',
+                  `Task ID: ${taskId}`,
+                  `Model: ${displayModel}`,
+                  ...(modelSelectionReason ? [`Selection reason: ${modelSelectionReason}`] : []),
+                  ...(resultUrls.length > 0 ? [`Results:\n${resultLines.join('\n')}`] : []),
+                  ...(task.errorMessage ? [`Error: ${task.errorMessage}`] : []),
+                ].join('\n'),
+                {
+                  toolResultDetails: {
+                    taskId,
+                    status: 'succeeded',
+                    mediaType: 'video',
+                    assets,
+                  },
+                },
+              );
             }
           } else {
             const resultLines = tracker.mediaType === 'image'
@@ -7362,10 +7482,7 @@ if (!gotTheLock) {
       return { ...result, warnings: packaged.warnings };
     } catch (error) {
       console.error('[HtmlShare] failed to create share from HTML file:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to create share',
-      };
+      return serializeHtmlShareFailure(error, 'Failed to create share');
     } finally {
       if (archivePath) {
         const archiveDir = path.dirname(archivePath);
@@ -7395,10 +7512,7 @@ if (!gotTheLock) {
       );
     } catch (error) {
       console.error('[HtmlShare] failed to look up share from HTML file:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to load share',
-      };
+      return serializeHtmlShareFailure(error, 'Failed to load share');
     }
   });
 
@@ -7430,10 +7544,7 @@ if (!gotTheLock) {
       return { ...result, warnings: packaged.warnings };
     } catch (error) {
       console.error('[HtmlShare] failed to update share from HTML file:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to update share',
-      };
+      return serializeHtmlShareFailure(error, 'Failed to update share');
     } finally {
       if (archivePath) {
         const archiveDir = path.dirname(archivePath);
@@ -7489,10 +7600,7 @@ if (!gotTheLock) {
       return { ...result, warnings: packaged.warnings };
     } catch (error) {
       console.error('[HtmlShare] failed to create share from artifact file:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to create share',
-      };
+      return serializeHtmlShareFailure(error, 'Failed to create share');
     } finally {
       if (archivePath) {
         const archiveDir = path.dirname(archivePath);
@@ -7522,10 +7630,59 @@ if (!gotTheLock) {
       );
     } catch (error) {
       console.error('[HtmlShare] failed to look up share from artifact file:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to load share',
-      };
+      return serializeHtmlShareFailure(error, 'Failed to load share');
+    }
+  });
+
+  ipcMain.handle(HtmlShareIpc.CreateFromGeneratedVideo, async (_event, input: unknown) => {
+    try {
+      const { scopedFetch } = capturePublishingRequest();
+      const options = sanitizeCreateFromGeneratedVideoInput(input);
+      return await createGeneratedVideoShare(
+        getServerApiBaseUrl(),
+        getHtmlSharePublicBaseUrl(),
+        scopedFetch,
+        options,
+      );
+    } catch (error) {
+      console.error('[HtmlShare] failed to create share from generated video:', error);
+      return serializeHtmlShareFailure(error, 'Failed to create generated video share');
+    }
+  });
+
+  ipcMain.handle(HtmlShareIpc.GetGeneratedVideoSource, async (_event, input: unknown) => {
+    try {
+      const { scopedFetch } = capturePublishingRequest();
+      const options = sanitizeGetGeneratedVideoSourceInput(input);
+      return await getGeneratedVideoShareSource(
+        getServerApiBaseUrl(),
+        getHtmlSharePublicBaseUrl(),
+        scopedFetch,
+        options.taskId,
+        options.outputIndex,
+      );
+    } catch (error) {
+      console.error('[HtmlShare] failed to look up generated video share:', error);
+      return serializeHtmlShareFailure(error, 'Failed to load generated video share');
+    }
+  });
+
+  ipcMain.handle(HtmlShareIpc.ResolveLegacyGeneratedVideoSource, async (_event, input: unknown) => {
+    try {
+      const { scopedFetch } = capturePublishingRequest();
+      const options = sanitizeResolveLegacyGeneratedVideoSourceInput(input);
+      const resultUrlSha256 = crypto
+        .createHash('sha256')
+        .update(options.resultUrl, 'utf8')
+        .digest('hex');
+      return await resolveLegacyGeneratedVideoSource(
+        getServerApiBaseUrl(),
+        scopedFetch,
+        resultUrlSha256,
+      );
+    } catch (error) {
+      console.error('[HtmlShare] failed to resolve legacy generated video source:', error);
+      return serializeHtmlShareFailure(error, 'Failed to verify generated video source');
     }
   });
 
@@ -7541,10 +7698,7 @@ if (!gotTheLock) {
       );
     } catch (error) {
       console.error('[HtmlShare] failed to look up share from source:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to load share',
-      };
+      return serializeHtmlShareFailure(error, 'Failed to load share');
     }
   });
 
@@ -7582,10 +7736,7 @@ if (!gotTheLock) {
       return { ...result, warnings: packaged.warnings };
     } catch (error) {
       console.error('[HtmlShare] failed to update share from artifact file:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to update share',
-      };
+      return serializeHtmlShareFailure(error, 'Failed to update share');
     } finally {
       if (archivePath) {
         const archiveDir = path.dirname(archivePath);
@@ -7614,10 +7765,7 @@ if (!gotTheLock) {
       );
     } catch (error) {
       console.error('[HtmlShare] failed to update share status:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to update share status',
-      };
+      return serializeHtmlShareFailure(error, 'Failed to update share status');
     }
   });
 
@@ -7633,10 +7781,7 @@ if (!gotTheLock) {
       );
     } catch (error) {
       console.error('[HtmlShare] failed to update share access mode:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to update share access mode',
-      };
+      return serializeHtmlShareFailure(error, 'Failed to update share access mode');
     }
   });
 
@@ -9369,6 +9514,73 @@ if (!gotTheLock) {
       };
     }
   });
+
+  ipcMain.handle(
+    CoworkIpcChannel.SeedNewUserWelcomeTask,
+    async (_event, options: { title?: string; content?: string }) => {
+      try {
+        const title = options.title?.trim();
+        const content = options.content?.trim();
+        if (!title || !content) {
+          return { success: false, error: 'Missing new user welcome task content' };
+        }
+        if (content.length > NEW_USER_WELCOME_CONTENT_MAX_LENGTH) {
+          return { success: false, error: 'New user welcome task content is too long' };
+        }
+
+        const existingSessionId = getStore().get<string>(NEW_USER_WELCOME_SESSION_ID_STORE_KEY);
+        if (existingSessionId) {
+          const coworkStoreInstance = getCoworkStore();
+          const existingSession = coworkStoreInstance.getSession(existingSessionId);
+          if (existingSession) {
+            if (existingSession.title !== title) {
+              coworkStoreInstance.updateSession(existingSessionId, { title }, { touchUpdatedAt: false });
+            }
+            const normalizedExistingSession = existingSession.title === title
+              ? existingSession
+              : { ...existingSession, title };
+            console.debug(`[Onboarding] reused seeded new user welcome task session=${existingSessionId}`);
+            return { success: true, session: normalizedExistingSession, created: false };
+          }
+          console.warn(
+            `[Onboarding] stored new user welcome task session was missing; session=${existingSessionId}`,
+          );
+        }
+
+        const coworkStoreInstance = getCoworkStore();
+        const config = coworkStoreInstance.getConfig();
+        const cwd = resolveSessionWorkingDirectory({ agentId: 'main' });
+        const session = coworkStoreInstance.createSession(
+          title,
+          cwd,
+          config.systemPrompt,
+          config.executionMode || 'local',
+          [],
+          'main',
+          '',
+        );
+        coworkStoreInstance.addMessage(session.id, {
+          type: 'assistant',
+          content,
+          metadata: {
+            kind: CoworkOnboardingMessageKind.NewUserWelcome,
+          },
+        });
+        coworkStoreInstance.updateSession(session.id, { status: 'completed' });
+        getStore().set(NEW_USER_WELCOME_SESSION_ID_STORE_KEY, session.id);
+
+        const sessionWithMessages = coworkStoreInstance.getSession(session.id) || session;
+        console.log(`[Onboarding] seeded new user welcome task session=${session.id}`);
+        return { success: true, session: sessionWithMessages, created: true };
+      } catch (error) {
+        console.warn('[Onboarding] failed to seed new user welcome task:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to seed new user welcome task',
+        };
+      }
+    },
+  );
 
   ipcMain.handle(CoworkIpcChannel.OpenSessionFromNotificationReady, async event => {
     if (!mainWindow || mainWindow.isDestroyed() || event.sender.id !== mainWindow.webContents.id) {
@@ -12174,61 +12386,119 @@ if (!gotTheLock) {
         return await libraryThumbnailRenderer.render(filePath, size);
       } catch (rendererError) {
         const extension = path.extname(filePath).toLowerCase();
+        const rendererFailure = getLibraryThumbnailFailureDetails(
+          rendererError,
+          LibraryThumbnailFailureCode.RendererFailed,
+        );
         console.warn('[LibraryThumbnail] Renderer failed; using native fallback', {
           extension,
-          errorType: rendererError instanceof Error ? rendererError.name : 'UnknownError',
+          failureCode: rendererFailure.code,
+          failureStage: rendererFailure.stage,
+          sourceSizeBytes: rendererFailure.metrics?.sourceSizeBytes,
+          slideCount: rendererFailure.metrics?.slideCount,
+          imageCount: rendererFailure.metrics?.imageCount,
+          renderDurationMs: rendererFailure.metrics?.renderDurationMs,
         });
         try {
           const image = await nativeImage.createThumbnailFromPath(filePath, size);
-          if (image.isEmpty()) throw new Error('Thumbnail is empty');
+          if (image.isEmpty()) {
+            throw new LibraryThumbnailError(
+              LibraryThumbnailFailureCode.NativeThumbnailEmpty,
+              'Thumbnail is empty',
+            );
+          }
+          const rendererConfirmedIntentionalBlank = (
+            rendererFailure.metrics?.sourceHasVisualContent === false
+            && rendererFailure.metrics?.domHasVisualContent === false
+          );
           if (
             process.platform === 'win32'
             && extension === '.pptx'
+            && !rendererConfirmedIntentionalBlank
             && isLikelyBlankThumbnailBitmap(image.toBitmap())
           ) {
-            throw new Error('Native PPTX thumbnail is visually blank');
+            throw new LibraryThumbnailError(
+              LibraryThumbnailFailureCode.NativeThumbnailBlank,
+              'Native PPTX thumbnail is visually blank',
+            );
           }
           return image.toPNG();
         } catch (nativeError) {
+          const nativeFailure = getLibraryThumbnailFailureDetails(
+            nativeError,
+            LibraryThumbnailFailureCode.NativeThumbnailFailed,
+          );
           console.error('[LibraryThumbnail] Renderer and native fallback failed', {
             extension,
-            errorType: nativeError instanceof Error ? nativeError.name : 'UnknownError',
+            rendererFailureCode: rendererFailure.code,
+            rendererFailureStage: rendererFailure.stage,
+            nativeFailureCode: nativeFailure.code,
+            nativeFailureStage: nativeFailure.stage,
+            sourceSizeBytes: rendererFailure.metrics?.sourceSizeBytes,
+            slideCount: rendererFailure.metrics?.slideCount,
           });
-          const rendererMessage = rendererError instanceof Error
-            ? rendererError.message
-            : 'Unknown renderer error';
-          const nativeMessage = nativeError instanceof Error
-            ? nativeError.message
-            : 'Unknown native thumbnail error';
-          throw new Error(
-            `Failed to generate thumbnail (renderer: ${rendererMessage}; native: ${nativeMessage})`,
+          const finalFailure = isLibraryThumbnailFailureRetryable(rendererFailure.code)
+            ? nativeFailure
+            : rendererFailure;
+          throw new LibraryThumbnailError(
+            finalFailure.code,
+            `Failed to generate thumbnail (renderer: ${rendererFailure.message}; native: ${nativeFailure.message})`,
+            rendererFailure.metrics,
           );
         }
       }
     },
     getCacheDirectory: () => path.join(app.getPath('userData'), 'library', 'thumbnails'),
-    maxConcurrency: 3,
+    maxConcurrency: 1,
   });
 
   ipcMain.handle(
     DialogIpc.GenerateThumbnail,
     async (
       _event,
-      filePath?: string,
-    ): Promise<{ success: boolean; dataUrl?: string; error?: string }> => {
+      request?: LibraryThumbnailGenerateRequest,
+    ): Promise<LibraryThumbnailGenerateResponse> => {
       try {
-        if (typeof filePath !== 'string' || !filePath.trim()) {
-          return { success: false, error: 'Missing file path' };
+        if (
+          !request
+          || typeof request.filePath !== 'string'
+          || !request.filePath.trim()
+          || typeof request.requestId !== 'string'
+          || !request.requestId.trim()
+        ) {
+          return {
+            success: false,
+            error: 'Invalid thumbnail request',
+            failureCode: LibraryThumbnailFailureCode.Unknown,
+            retryable: false,
+          };
         }
-        const dataUrl = await libraryThumbnailService.generate(filePath);
+        const dataUrl = await libraryThumbnailService.generate(request.filePath, {
+          requestId: request.requestId,
+          priority: request.priority,
+        });
         return { success: true, dataUrl };
       } catch (error) {
+        const failure = getLibraryThumbnailFailureDetails(error);
         return {
           success: false,
-          error: error instanceof Error ? error.message : 'Failed to generate thumbnail',
+          error: failure.message,
+          failureCode: failure.code,
+          failureStage: failure.stage,
+          retryable: isLibraryThumbnailFailureRetryable(failure.code),
         };
       }
     },
+  );
+
+  ipcMain.handle(
+    DialogIpc.CancelThumbnail,
+    (_event, requestId?: string): { success: boolean; canceled: boolean } => ({
+      success: true,
+      canceled: typeof requestId === 'string' && requestId.trim().length > 0
+        ? libraryThumbnailService.cancel(requestId)
+        : false,
+    }),
   );
 
   const getFileAccessFailureReason = (error: unknown): ShellOpenFailureReasonType => {

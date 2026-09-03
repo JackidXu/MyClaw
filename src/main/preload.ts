@@ -510,6 +510,8 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.invoke(CoworkIpcChannel.MarkSessionViewed, sessionId),
     setActiveSession: (sessionId: string | null) =>
       ipcRenderer.invoke(CoworkIpcChannel.SetActiveSession, sessionId),
+    seedNewUserWelcomeTask: (options: { title: string; content: string }) =>
+      ipcRenderer.invoke(CoworkIpcChannel.SeedNewUserWelcomeTask, options),
     notifyOpenSessionFromNotificationReady: () =>
       ipcRenderer.invoke(CoworkIpcChannel.OpenSessionFromNotificationReady),
     remoteManaged: (sessionId: string) =>
@@ -753,8 +755,10 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.invoke(DialogIpc.ReadTextFile, filePath),
     saveFileCopy: (filePath: string) =>
       ipcRenderer.invoke(DialogIpc.SaveFileCopy, filePath),
-    generateThumbnail: (filePath: string) =>
-      ipcRenderer.invoke(DialogIpc.GenerateThumbnail, filePath),
+    generateThumbnail: (request: import('../shared/library/thumbnail').LibraryThumbnailGenerateRequest) =>
+      ipcRenderer.invoke(DialogIpc.GenerateThumbnail, request),
+    cancelThumbnail: (requestId: string) =>
+      ipcRenderer.invoke(DialogIpc.CancelThumbnail, requestId),
     showMessageBox: (options: {
       message: string;
       type?: 'none' | 'info' | 'error' | 'question' | 'warning';
@@ -832,6 +836,18 @@ contextBridge.exposeInMainWorld('electron', {
       artifactId?: string;
       filePath?: string;
     }) => ipcRenderer.invoke(HtmlShareIpc.GetByArtifactFile, options),
+    createFromGeneratedVideo: (options: {
+      taskId: string;
+      outputIndex: number;
+      sessionId: string;
+      artifactId: string;
+      title: string;
+      accessMode?: HtmlShareAccessMode;
+    }) => ipcRenderer.invoke(HtmlShareIpc.CreateFromGeneratedVideo, options),
+    getGeneratedVideoSource: (options: { taskId: string; outputIndex: number }) =>
+      ipcRenderer.invoke(HtmlShareIpc.GetGeneratedVideoSource, options),
+    resolveLegacyGeneratedVideoSource: (options: { resultUrl: string }) =>
+      ipcRenderer.invoke(HtmlShareIpc.ResolveLegacyGeneratedVideoSource, options),
     getBySource: (options: {
       sourceType: HtmlShareSourceType;
       clientSourceKey: string;

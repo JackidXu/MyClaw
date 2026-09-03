@@ -138,6 +138,7 @@ import {
   reportDeploymentTerminal,
 } from './deploymentAnalytics';
 import FileDirectoryView from './FileDirectoryView';
+import { formatHtmlShareFailure } from './htmlShareErrorPresentation';
 import {
   buildLocalServiceDeploymentPermissionPlan,
   canCopyLocalServiceDeploymentLink,
@@ -500,25 +501,7 @@ function getHtmlShareFailureMessage(
     | null
     | undefined,
 ): string {
-  if (result?.code === HtmlShareErrorCode.SubscriptionRequired) {
-    return t('htmlShareSubscriptionRequiredMessage');
-  }
-  if (result?.code === HtmlShareErrorCode.FeatureUnavailable) {
-    return t('htmlShareUnavailableInProduction');
-  }
-  if (result?.code === HtmlShareErrorCode.ReopenUnavailable) {
-    return t('htmlShareReopenUnavailable');
-  }
-  if (result?.code === HtmlShareErrorCode.ActiveShareLimitReached) {
-    return t('htmlShareActiveLimitReached');
-  }
-  if (result?.code === HtmlShareErrorCode.DisabledCannotUpdate) {
-    return t('htmlShareDisabledCannotUpdate');
-  }
-  if (result?.code === HtmlShareErrorCode.UnsafeSvg) {
-    return t('artifactShareSvgRejected');
-  }
-  return result?.error || t('htmlShareFailed');
+  return formatHtmlShareFailure(result);
 }
 
 function isNodeDeploymentPending(status?: ShareDeploymentStatus): boolean {

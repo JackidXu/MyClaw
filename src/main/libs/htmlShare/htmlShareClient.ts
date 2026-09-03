@@ -6,6 +6,10 @@ import {
   type HtmlShareAnalyticsResult,
   type HtmlShareConfigurableStatus,
   type HtmlShareDisabledSource,
+  HtmlShareErrorCode,
+  type HtmlShareFailureDetails,
+  HtmlShareFailureKind,
+  type HtmlShareFailureKind as HtmlShareFailureKindValue,
   type HtmlSharePermanentDeleteResult,
   HtmlShareSourceType,
   HtmlShareStatus,
@@ -49,6 +53,8 @@ export interface HtmlShareCreateResult {
   restoredByUpdate?: boolean;
   error?: string;
   code?: number;
+  failureKind?: HtmlShareFailureKindValue;
+  details?: HtmlShareFailureDetails;
   quota?: PublishingQuotaErrorData;
 }
 
@@ -73,6 +79,33 @@ export interface HtmlShareLookupResult {
   code?: number;
 }
 
+export interface GeneratedVideoShareInput {
+  taskId: string;
+  outputIndex: number;
+  sessionId: string;
+  artifactId: string;
+  title: string;
+  accessMode?: (typeof HtmlShareAccessMode)[keyof typeof HtmlShareAccessMode];
+}
+
+export interface GeneratedVideoShareSourceResult extends HtmlShareLookupResult {
+  state?: string;
+  taskId?: string;
+  outputIndex?: number;
+  assetStatus?: string;
+  retryAfterMs?: number;
+  failureReason?: string;
+  limitBytes?: number;
+}
+
+export interface GeneratedVideoLegacyResolveResult {
+  success: boolean;
+  taskId?: string;
+  outputIndex?: number;
+  error?: string;
+  code?: number;
+}
+
 type FetchWithAuth = (url: string, options?: RequestInit) => Promise<Response>;
 
 interface HtmlShareApiData extends Partial<PublishingQuota> {
@@ -90,12 +123,40 @@ interface HtmlShareApiData extends Partial<PublishingQuota> {
   disabledReason?: string | null;
   disabledSource?: HtmlShareDisabledSource | null;
   restoredByUpdate?: boolean;
+  limitBytes?: number;
+  actualBytes?: number;
 }
 
 interface HtmlShareApiResponse {
   code: number;
   message?: string;
   data?: HtmlShareApiData;
+}
+
+interface GeneratedVideoApiData {
+  state?: string;
+  taskId?: string | number;
+  outputIndex?: number;
+  assetStatus?: string;
+  retryAfterMs?: number;
+  failureReason?: string;
+  limitBytes?: number;
+  share?: HtmlShareApiData | null;
+}
+
+interface GeneratedVideoApiResponse {
+  code: number;
+  message?: string;
+  data?: GeneratedVideoApiData;
+}
+
+interface GeneratedVideoLegacyApiResponse {
+  code: number;
+  message?: string;
+  data?: {
+    taskId?: string | number;
+    outputIndex?: number;
+  };
 }
 
 interface PublishingTrialPolicyApiResponse {
@@ -170,12 +231,67 @@ function buildHtmlShareFailure(
   fallbackError: string,
 ): HtmlShareCreateResult {
   const quota = normalizePublishingQuotaErrorData(payload?.data);
+  const sizeDetails = payload?.code === HtmlShareErrorCode.TooLarge
+    ? {
+        ...(typeof payload.data?.limitBytes === 'number'
+          ? { limitBytes: payload.data.limitBytes }
+          : {}),
+        ...(typeof payload.data?.actualBytes === 'number'
+          ? { actualBytes: payload.data.actualBytes }
+          : {}),
+      }
+    : undefined;
   return {
     success: false,
     error: payload?.message || fallbackError,
     code: payload?.code,
+    ...(sizeDetails
+      ? {
+          failureKind: HtmlShareFailureKind.FileTooLarge,
+          details: sizeDetails,
+        }
+      : {}),
     ...(quota ? { quota } : {}),
   };
+}
+
+function buildGeneratedVideoSourceResult(
+  payload: GeneratedVideoApiResponse,
+  publicBaseUrl: string,
+): GeneratedVideoShareSourceResult {
+  const share = payload.data?.share
+    ? buildHtmlShareResult({ code: payload.code, data: payload.data.share }, publicBaseUrl)
+    : null;
+  return {
+    success: payload.code === 0,
+    share,
+    state: payload.data?.state,
+    taskId: payload.data?.taskId === undefined ? undefined : String(payload.data.taskId),
+    outputIndex: payload.data?.outputIndex,
+    assetStatus: payload.data?.assetStatus,
+    retryAfterMs: payload.data?.retryAfterMs,
+    failureReason: payload.data?.failureReason,
+    limitBytes: payload.data?.limitBytes,
+    error: payload.code === 0 ? undefined : payload.message,
+    code: payload.code,
+  };
+}
+
+function generatedVideoTerminalCode(result: GeneratedVideoShareSourceResult): number | undefined {
+  if (result.failureReason === 'too_large') {
+    return HtmlShareErrorCode.TooLarge;
+  }
+  if (result.assetStatus === 'source_unavailable' || result.failureReason === 'source_unavailable') {
+    return HtmlShareErrorCode.VideoSourceUnavailable;
+  }
+  if (result.assetStatus === 'invalid' || result.failureReason === 'prepare_failed') {
+    return HtmlShareErrorCode.VideoPrepareFailed;
+  }
+  return undefined;
+}
+
+function wait(delayMs: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, delayMs));
 }
 
 function getRecordString(record: Record<string, unknown>, fieldName: string): string | undefined {
@@ -447,6 +563,143 @@ export async function getHtmlShareBySource(
   return {
     success: true,
     share: fallbackShare,
+  };
+}
+
+export async function getGeneratedVideoShareSource(
+  serverBaseUrl: string,
+  publicBaseUrl: string,
+  fetchWithAuth: FetchWithAuth,
+  taskId: string,
+  outputIndex: number,
+): Promise<GeneratedVideoShareSourceResult> {
+  const params = new URLSearchParams({
+    taskId,
+    outputIndex: String(outputIndex),
+  });
+  const response = await fetchWithAuth(
+    `${serverBaseUrl}/api/html-shares/generated-videos/source?${params.toString()}`,
+    { cache: 'no-store' },
+  );
+  const payload = (await response.json().catch((): null => null)) as
+    | GeneratedVideoApiResponse
+    | null;
+  if (!response.ok || payload?.code !== 0) {
+    return {
+      success: false,
+      error: payload?.message || `Generated video share lookup failed: ${response.status}`,
+      code: payload?.code,
+    };
+  }
+  return buildGeneratedVideoSourceResult(payload, publicBaseUrl);
+}
+
+async function prepareGeneratedVideoShare(
+  serverBaseUrl: string,
+  publicBaseUrl: string,
+  fetchWithAuth: FetchWithAuth,
+  input: GeneratedVideoShareInput,
+): Promise<GeneratedVideoShareSourceResult | HtmlShareCreateResult> {
+  const response = await fetchWithAuth(`${serverBaseUrl}/api/html-shares/generated-videos`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  const payload = (await response.json().catch((): null => null)) as
+    | GeneratedVideoApiResponse
+    | null;
+  if ((!response.ok && response.status !== 202) || payload?.code !== 0) {
+    return buildHtmlShareFailure(
+      payload as unknown as HtmlShareApiResponse | null,
+      `Generated video share failed: ${response.status}`,
+    );
+  }
+  if (!payload) {
+    return {
+      success: false,
+      code: HtmlShareErrorCode.VideoPrepareFailed,
+      error: 'Generated video share returned an empty response.',
+    };
+  }
+  return buildGeneratedVideoSourceResult(payload, publicBaseUrl);
+}
+
+export async function createGeneratedVideoShare(
+  serverBaseUrl: string,
+  publicBaseUrl: string,
+  fetchWithAuth: FetchWithAuth,
+  input: GeneratedVideoShareInput,
+): Promise<HtmlShareCreateResult> {
+  const deadline = Date.now() + 3 * 60 * 1000;
+  let shouldPrepare = true;
+  while (Date.now() < deadline) {
+    const result = shouldPrepare
+      ? await prepareGeneratedVideoShare(serverBaseUrl, publicBaseUrl, fetchWithAuth, input)
+      : await getGeneratedVideoShareSource(
+          serverBaseUrl,
+          publicBaseUrl,
+          fetchWithAuth,
+          input.taskId,
+          input.outputIndex,
+        );
+    if (!result.success) return result;
+    if ('share' in result && result.share?.success) return result.share;
+
+    const source = result as GeneratedVideoShareSourceResult;
+    const terminalCode = generatedVideoTerminalCode(source);
+    if (terminalCode) {
+      return {
+        success: false,
+        code: terminalCode,
+        error: source.failureReason || 'Generated video is unavailable for sharing.',
+        ...(terminalCode === HtmlShareErrorCode.TooLarge
+          ? {
+              failureKind: HtmlShareFailureKind.FileTooLarge,
+              details: typeof source.limitBytes === 'number'
+                ? { limitBytes: source.limitBytes }
+                : undefined,
+            }
+          : {}),
+      };
+    }
+    shouldPrepare = source.state === 'prepared' || source.assetStatus === 'persisted';
+    await wait(Math.max(250, Math.min(5000, source.retryAfterMs ?? 1500)));
+  }
+  return {
+    success: false,
+    code: HtmlShareErrorCode.VideoPrepareFailed,
+    error: 'Generated video is still being prepared. Please try again.',
+  };
+}
+
+export async function resolveLegacyGeneratedVideoSource(
+  serverBaseUrl: string,
+  fetchWithAuth: FetchWithAuth,
+  resultUrlSha256: string,
+): Promise<GeneratedVideoLegacyResolveResult> {
+  const response = await fetchWithAuth(
+    `${serverBaseUrl}/api/html-shares/generated-videos/resolve-legacy-source`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ resultUrlSha256 }),
+    },
+  );
+  const payload = (await response.json().catch((): null => null)) as
+    | GeneratedVideoLegacyApiResponse
+    | null;
+  if (!response.ok || payload?.code !== 0 || payload.data?.taskId === undefined
+      || !Number.isInteger(payload.data.outputIndex)) {
+    return {
+      success: false,
+      error: payload?.message || `Generated video source resolution failed: ${response.status}`,
+      code: payload?.code,
+    };
+  }
+  return {
+    success: true,
+    taskId: String(payload.data.taskId),
+    outputIndex: payload.data.outputIndex,
   };
 }
 

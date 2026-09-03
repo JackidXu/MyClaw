@@ -75,6 +75,7 @@ interface ArtifactFileShareDialogProps {
   canCreate: boolean;
   canSubmitPermission: boolean;
   canCopy: boolean;
+  showUpdateFile?: boolean;
   canUpdateFile: boolean;
   copyStatus: ArtifactFileShareCopyStatus;
   updateStatus: ArtifactFileShareUpdateStatus;
@@ -147,6 +148,7 @@ const ArtifactFileShareDialog = ({
   canCreate,
   canSubmitPermission,
   canCopy,
+  showUpdateFile = true,
   canUpdateFile,
   copyStatus,
   updateStatus,
@@ -312,7 +314,7 @@ const ArtifactFileShareDialog = ({
               {t('artifactFileShareRetry')}
             </button>
           )}
-          {isReady && intent === ArtifactFileShareIntent.Manage && (
+          {isReady && intent === ArtifactFileShareIntent.Manage && showUpdateFile && (
             <button
               type="button"
               onClick={onUpdateFile}

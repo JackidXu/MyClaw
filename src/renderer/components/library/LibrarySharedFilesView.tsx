@@ -113,6 +113,11 @@ import {
   getLibraryDisplayFileName,
   isLibraryWebsiteItem,
 } from './libraryItemPresentation';
+import {
+  LibraryLoadingIndicator,
+  LibraryToolbarLoadingStatus,
+} from './LibraryLoadingIndicator';
+import type { LibraryLoadingPresentation } from './libraryLoadingPresentation';
 import LibraryShareAnalyticsView from './LibraryShareAnalyticsView';
 import LibraryShareConfirmDialog from './LibraryShareConfirmDialog';
 import LibraryShareDeleteDialog from './LibraryShareDeleteDialog';
@@ -138,8 +143,8 @@ const STATUS_FILTERS = [
 interface LibraryCloudViewProps {
   analyticsPageViewId: string;
   data: LibraryCloudListData;
-  loading: boolean;
-  refreshing: boolean;
+  loadingFeedback: LibraryLoadingPresentation;
+  hasResolvedSnapshot: boolean;
   loadingMore: boolean;
   error?: string;
   isAuthenticated: boolean;
@@ -1297,8 +1302,8 @@ const LibraryShareSettingsView: React.FC<{
 const LibraryCloudView: React.FC<LibraryCloudViewProps> = ({
   analyticsPageViewId,
   data,
-  loading,
-  refreshing,
+  loadingFeedback,
+  hasResolvedSnapshot,
   loadingMore,
   error,
   isAuthenticated,
@@ -1327,7 +1332,8 @@ const LibraryCloudView: React.FC<LibraryCloudViewProps> = ({
   const [activeItem, setActiveItem] = useState<SharedFileItem>();
   const [activeSite, setActiveSite] = useState<DeployedSiteItem>();
   const [interactionError, setInteractionError] = useState<string>();
-  const busy = loading || refreshing || loadingMore;
+  const loading = loadingFeedback.showInitialSkeleton;
+  const busy = loadingFeedback.ariaBusy;
   const expirations = useMemo(
     () => data.list
       .flatMap(item => [item.accessExpiresAt, item.effectiveExpiresAt])
@@ -1568,9 +1574,18 @@ const LibraryCloudView: React.FC<LibraryCloudViewProps> = ({
               grouped
             />
           </div>
+          <LibraryToolbarLoadingStatus presentation={loadingFeedback} />
           <div className="ml-auto flex shrink-0 items-center gap-2">
             <div className="relative w-56">
-              <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-tertiary" />
+              <div className="pointer-events-none absolute left-3 top-1/2 flex h-4 w-4 -translate-y-1/2 items-center justify-center">
+                {loadingFeedback.showSearchActivity ? (
+                  <LibraryLoadingIndicator
+                    label={i18nService.t('librarySearching')}
+                  />
+                ) : (
+                  <MagnifyingGlassIcon className="h-4 w-4 text-tertiary" />
+                )}
+              </div>
               <input
                 ref={searchInputRef}
                 value={keywordInput}
@@ -1614,17 +1629,24 @@ const LibraryCloudView: React.FC<LibraryCloudViewProps> = ({
                 ? <StarSolidIcon className="h-4 w-4" />
                 : <StarIcon className="h-4 w-4" />}
             </HeaderAction>
-            <HeaderAction label={i18nService.t('refresh')} align={TooltipAlign.End} onClick={onRefresh} disabled={busy}>
-              <ArrowPathIcon className={`h-4 w-4 ${loading || refreshing ? 'animate-spin' : ''}`} />
+            <HeaderAction
+              label={i18nService.t('refresh')}
+              align={TooltipAlign.End}
+              onClick={onRefresh}
+              disabled={
+                loadingFeedback.initialPending
+                || loadingFeedback.showManualRefreshActivity
+                || loadingMore
+              }
+            >
+              <ArrowPathIcon className={`h-4 w-4 ${
+                loadingFeedback.showManualRefreshActivity
+                  ? 'motion-safe:animate-spin'
+                  : ''
+              }`} />
             </HeaderAction>
           </div>
         </div>
-        {refreshing && (
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-x-0 -bottom-px h-0.5 bg-primary/60"
-          />
-        )}
       </div>
 
       {(error || interactionError) && (
@@ -1640,12 +1662,21 @@ const LibraryCloudView: React.FC<LibraryCloudViewProps> = ({
         <div className="mt-8 rounded-xl border border-border bg-surface px-4 py-8 text-center text-xs">
           <p className="text-secondary">{i18nService.t('libraryLoginForCloud')}</p>
         </div>
-      ) : loading ? (
-        <div className="mt-6 border-y border-border">
-          {Array.from({ length: 6 }, (_, index) => (
-            <div key={index} className="h-16 animate-pulse border-b border-border bg-surface-raised/40 last:border-b-0" />
-          ))}
-        </div>
+      ) : loadingFeedback.initialPending ? (
+        loading ? (
+          <div className="mt-6 border-y border-border">
+            {Array.from({ length: 6 }, (_, index) => (
+              <div
+                key={index}
+                className="h-16 border-b border-border bg-surface-raised/40 last:border-b-0 motion-safe:animate-pulse"
+              />
+            ))}
+          </div>
+        ) : (
+          <div aria-hidden="true" className="mt-6 min-h-96" />
+        )
+      ) : error && !hasResolvedSnapshot ? (
+        <div aria-hidden="true" className="mt-6 min-h-64" />
       ) : items.length === 0 ? (
         <div className="mt-12 rounded-2xl border border-dashed border-border py-16 text-center">
           <h2 className={`${MANAGEMENT_TITLE_TEXT} font-semibold text-foreground`}>
@@ -1710,11 +1741,11 @@ const LibraryCloudView: React.FC<LibraryCloudViewProps> = ({
         </div>
       )}
 
-      {!loading && data.hasMore && (
+      {!loadingFeedback.initialPending && data.hasMore && (
         <div ref={loadMoreSentinelRef} className="flex h-14 items-center justify-center" aria-live="polite">
           {loadingMore && (
             <>
-              <ArrowPathIcon className="h-4 w-4 animate-spin text-tertiary" aria-hidden="true" />
+              <ArrowPathIcon className="h-4 w-4 text-tertiary motion-safe:animate-spin" aria-hidden="true" />
               <span className="sr-only">{i18nService.t('loading')}</span>
             </>
           )}
