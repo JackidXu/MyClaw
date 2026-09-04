@@ -1217,6 +1217,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     mediaTokenPricingThinkingOutput: '思考输出',
     mediaTokenBillingEstimateNote: '按实际 token 扣费，列表价格为默认 1 张输出的预估消耗。',
     modelSelectorNoModels: '请先在设置中配置模型',
+    coworkModelRefreshing: '模型列表正在刷新，请稍后再试。',
     coworkApiConfigTitle: 'API 配置',
     coworkApiConfigHint:
       '支持 Anthropic 兼容与 OpenAI 兼容协议（OpenAI 兼容通过本地转换服务接入）。',
@@ -5048,6 +5049,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     mediaTokenBillingEstimateNote:
       'Billed by actual tokens. List price is the estimate for the default 1-image output.',
     modelSelectorNoModels: 'Please configure models in settings first',
+    coworkModelRefreshing: 'Models are refreshing. Please try again shortly.',
     coworkApiConfigTitle: 'API Configuration',
     coworkApiConfigHint:
       'Supports Anthropic-compatible and OpenAI-compatible APIs (OpenAI compatibility is bridged by a local adapter).',
