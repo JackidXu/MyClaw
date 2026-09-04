@@ -37,6 +37,7 @@ import { i18nService, LanguageType } from '../services/i18n';
 import { imService } from '../services/im';
 import { LogReporterAction, reportYdAnalyzer } from '../services/logReporter';
 import { clearPendingPublishingConversionAttribution } from '../services/publishingConversionAttribution';
+import { clearPublishingSubscriptionRecoveryAnalytics } from '../services/publishingSubscriptionRecovery';
 import { formatShortcutForDisplay, getShortcutConflictSignature, isTextEditingSafeShortcut, matchesShortcut } from '../services/shortcuts';
 import {
   type ThemeDefaultChangedDetail,
@@ -3473,6 +3474,7 @@ const Settings: React.FC<SettingsProps> = ({
 
       if (!usageAnalyticsEnabled) {
         clearPendingPublishingConversionAttribution();
+        clearPublishingSubscriptionRecoveryAnalytics();
       }
 
       if (previousArtifactAutoPreviewEnabled !== artifactAutoPreviewEnabled) {

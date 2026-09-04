@@ -755,6 +755,10 @@ const translations: Record<LanguageType, Record<string, string>> = {
     htmlShareEnterpriseUnavailableMessage:
       '未获取到当前团队的分享权益。请重新登录后重试，或联系团队管理员。',
     htmlShareOpenSubscription: '去订阅',
+    publishingSubscriptionRecoveryAction: '订阅恢复',
+    publishingSubscriptionRedeployAction: '订阅后重新部署',
+    publishingSubscriptionRecoveryDescription: '订阅成功后，该分享将自动恢复访问。',
+    publishingSubscriptionRedeployDescription: '订阅成功后，请重新部署以恢复访问。',
     subscriptionGateOpenAction: '去订阅',
     publishingTrialShareTitle: '分享功能',
     publishingTrialSiteTitle: '网站部署服务',
@@ -4564,6 +4568,12 @@ const translations: Record<LanguageType, Record<string, string>> = {
     htmlShareEnterpriseUnavailableMessage:
       'Sharing entitlement was not available for the current team. Sign in again or contact your team administrator.',
     htmlShareOpenSubscription: 'View subscription',
+    publishingSubscriptionRecoveryAction: 'Subscribe to restore',
+    publishingSubscriptionRedeployAction: 'Subscribe to redeploy',
+    publishingSubscriptionRecoveryDescription:
+      'After subscribing, this share will be restored automatically.',
+    publishingSubscriptionRedeployDescription:
+      'After subscribing, redeploy to restore access.',
     subscriptionGateOpenAction: 'View subscription',
     publishingTrialShareTitle: 'Sharing',
     publishingTrialSiteTitle: 'Website deployment',
