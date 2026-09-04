@@ -547,12 +547,29 @@ const App: React.FC = () => {
         coreStartupServicesInitializedRef.current = true;
       }
 
-      // 初始化拉取与注册 VIP 状态
-      try {
-        await vipService.refreshStatus();
-        mark('vipService.refreshStatus done');
-      } catch (vipErr) {
-        console.warn('[App] vipService refresh failed on startup:', vipErr);
+      const apiKey = localStorage.getItem('heyclaw_api_key');
+      const userId = localStorage.getItem('heyclaw_user_id');
+      const session = localStorage.getItem('heyclaw_session');
+      if (session) {
+        void window.electron.auth.syncUserSession(session);
+      }
+      // 核心登录三要素凭证：apiKey、userId、session 必须同时具备
+      let activated = !!(apiKey && userId && session);
+
+      if (!activated) {
+        // 若凭证残缺不全，彻底清理残余缓存并同步注销状态
+        localStorage.removeItem('heyclaw_api_key');
+        localStorage.removeItem('heyclaw_user_id');
+        localStorage.removeItem('heyclaw_session');
+        void window.electron.auth.syncUserSession('');
+      } else {
+        // 已登录状态下初始化拉取与注册 VIP 状态
+        try {
+          await vipService.refreshStatus();
+          mark('vipService.refreshStatus done');
+        } catch (vipErr) {
+          console.warn('[App] vipService refresh failed on startup:', vipErr);
+        }
       }
 
       const config = configService.getConfig();
@@ -561,15 +578,6 @@ const App: React.FC = () => {
       let oneapiConfig = config.providers?.['oneapi'];
       let oneapiKey = oneapiConfig?.apiKey?.trim();
       let oneapiBaseUrl = oneapiConfig?.baseUrl?.trim() || 'https://token.chaohui.ai/v1';
-
-      const apiKey = localStorage.getItem('heyclaw_api_key');
-      const userId = localStorage.getItem('heyclaw_user_id');
-      const session = localStorage.getItem('heyclaw_session');
-      if (session) {
-        void window.electron.auth.syncUserSession(session);
-      }
-      // 基于核心凭证 apiKey 与 userId 判定登录态
-      let activated = !!(apiKey && userId);
 
       if (activated && oneapiKey) {
         try {

@@ -35,6 +35,8 @@ export function handleUnauthorized() {
 
   // 清除失效的本地凭据
   localStorage.removeItem('heyclaw_session');
+  localStorage.removeItem('heyclaw_api_key');
+  localStorage.removeItem('heyclaw_user_id');
   void window.electron?.auth?.syncUserSession?.('');
 
   // 触发全局 Toast
