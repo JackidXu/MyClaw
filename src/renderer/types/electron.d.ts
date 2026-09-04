@@ -8,7 +8,7 @@ import type {
   ActivityResult,
   ActivitySlotResponse,
 } from '../../shared/activity/constants';
-import type { AppUpdateCheckResult, AppUpdateRuntimeState } from '../../shared/appUpdate/constants';
+import type { AppUpdateActiveWorkloads, AppUpdateCheckResult, AppUpdateRuntimeState } from '../../shared/appUpdate/constants';
 import type {
   AsrRealtimeSessionRequest,
   AsrRealtimeSessionResult,
@@ -1593,9 +1593,9 @@ interface IElectronAPI {
       userId?: string | null;
     }) => Promise<AppUpdateCheckResult>;
     retryDownload: () => Promise<{ success: boolean; state: AppUpdateRuntimeState }>;
-    cancelDownload: () => Promise<{ success: boolean; state: AppUpdateRuntimeState }>;
     installReady: () => Promise<{ success: boolean; state: AppUpdateRuntimeState; error?: string }>;
     getCompletedUpdate: () => Promise<{ version: string | null }>;
+    getActiveWorkloads: () => Promise<AppUpdateActiveWorkloads>;
     onStateChanged: (callback: (data: AppUpdateRuntimeState) => void) => () => void;
   };
   log: {

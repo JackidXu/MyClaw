@@ -1061,9 +1061,9 @@ contextBridge.exposeInMainWorld('electron', {
     checkNow: (options?: { manual?: boolean; userId?: string | null }) =>
       ipcRenderer.invoke(AppUpdateIpc.CheckNow, options),
     retryDownload: () => ipcRenderer.invoke(AppUpdateIpc.RetryDownload),
-    cancelDownload: () => ipcRenderer.invoke(AppUpdateIpc.CancelDownload),
     installReady: () => ipcRenderer.invoke(AppUpdateIpc.InstallReady),
     getCompletedUpdate: () => ipcRenderer.invoke(AppUpdateIpc.GetCompletedUpdate),
+    getActiveWorkloads: () => ipcRenderer.invoke(AppUpdateIpc.GetActiveWorkloads),
     onStateChanged: (callback: (data: any) => void) => {
       const handler = (_event: any, data: any) => callback(data);
       ipcRenderer.on(AppUpdateIpc.StateChanged, handler);

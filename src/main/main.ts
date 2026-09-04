@@ -43,7 +43,7 @@ import {
 } from '../shared/analytics/constants';
 import { AppIpcChannel } from '../shared/app/constants';
 import { AppSettingsAutoLaunchErrorCode, AppSettingsIpc } from '../shared/appSettings/constants';
-import { AppUpdateIpc } from '../shared/appUpdate/constants';
+import { type AppUpdateActiveWorkloads, AppUpdateIpc } from '../shared/appUpdate/constants';
 import { ArtifactBrowserPartition, ArtifactPreviewIpc, ArtifactPreviewProtocol } from '../shared/artifactPreview/constants';
 import { createAccountOwnerKey } from '../shared/auth/accountOwner';
 import {
@@ -280,6 +280,12 @@ import {
   OpenClawRuntimeAdapter,
   type PermissionResult,
 } from './libs/agentEngine';
+import {
+  appQuitConfirmationGate,
+  AppQuitRequestVerdict,
+  quitAppWithoutConfirmation,
+  showAppQuitConfirmation,
+} from './libs/appQuitConfirmation';
 import { AppUpdateCoordinator, INSTALLATION_UUID_KEY } from './libs/appUpdateCoordinator';
 import { AuthCallbackRouter } from './libs/authCallbackRouter';
 import {
@@ -4962,7 +4968,7 @@ if (!gotTheLock) {
   ipcMain.handle('app:relaunch', () => {
     console.log('[Main] app:relaunch requested, scheduling restart...');
     app.relaunch();
-    app.quit();
+    quitAppWithoutConfirmation('app:relaunch');
   });
 
   // Window control IPC handlers
@@ -13094,17 +13100,18 @@ if (!gotTheLock) {
     return { success: true, state };
   });
 
-  ipcMain.handle(AppUpdateIpc.CancelDownload, async () => {
-    const state = getAppUpdateCoordinator().cancelDownload();
-    return { success: true, state };
-  });
-
   ipcMain.handle(AppUpdateIpc.InstallReady, async () => {
     return getAppUpdateCoordinator().installReadyUpdate();
   });
 
   ipcMain.handle(AppUpdateIpc.GetCompletedUpdate, async () => {
     return { version: getAppUpdateCoordinator().consumeCompletedUpdateVersion() };
+  });
+
+  // Installing quits the app, so the renderer asks before interrupting a
+  // running agent turn or scheduled task.
+  ipcMain.handle(AppUpdateIpc.GetActiveWorkloads, async (): Promise<AppUpdateActiveWorkloads> => {
+    return { hasActiveWorkloads: hasActiveGatewayWorkloads() };
   });
 
   // Helper: detect if a URL belongs to GitHub Copilot and apply token refresh on 401.
@@ -14072,6 +14079,21 @@ if (!gotTheLock) {
   // kill — and that zombie is what the installer later has to hunt down.
   const APP_CLEANUP_WATCHDOG_MS = 10_000;
 
+  // While the quit confirmation is open on macOS, the parentless alert runs a
+  // nested native loop: app.exit() only stops that modal session and the main
+  // loop never quits, leaving a process that ignores every later exit call
+  // (process.exit is mapped to app.exit in Electron's main process, so it is
+  // no escape either). Cleanup has already run by the time this is called, so
+  // killing the process outright is safe; electron-log writes synchronously.
+  const exitAppProcess = (code: number) => {
+    if (isMac && appQuitConfirmationGate.isPromptOpen()) {
+      console.warn(`[Main] quit confirmation prompt still open, killing process instead of app.exit(${code})`);
+      process.kill(process.pid, 'SIGKILL');
+      return;
+    }
+    app.exit(code);
+  };
+
   const runAppCleanupAndExit = (trigger: string) => {
     isCleanupInProgress = true;
     isQuitting = true;
@@ -14080,7 +14102,7 @@ if (!gotTheLock) {
       console.error(
         `[Main] App cleanup did not finish within ${APP_CLEANUP_WATCHDOG_MS}ms (trigger=${trigger}, stuck at step: ${currentAppCleanupStep}), forcing exit`,
       );
-      app.exit(1);
+      exitAppProcess(1);
     }, APP_CLEANUP_WATCHDOG_MS);
 
     void runAppCleanup()
@@ -14091,7 +14113,7 @@ if (!gotTheLock) {
         clearTimeout(watchdog);
         isCleanupFinished = true;
         isCleanupInProgress = false;
-        app.exit(0);
+        exitAppProcess(0);
       });
   };
 
@@ -14103,7 +14125,34 @@ if (!gotTheLock) {
       return;
     }
 
-    runAppCleanupAndExit('before-quit');
+    const verdict = appQuitConfirmationGate.resolveQuitRequest();
+    if (verdict === AppQuitRequestVerdict.Ignore) {
+      return;
+    }
+    if (verdict === AppQuitRequestVerdict.Bypass) {
+      runAppCleanupAndExit('before-quit');
+      return;
+    }
+
+    // User-initiated quit (Cmd+Q, app menu, Dock, tray): scheduled tasks and
+    // IM replies stop with the app, so ask first.
+    void showAppQuitConfirmation()
+      .then(
+        confirmed => confirmed,
+        error => {
+          // Honor the quit rather than trap the user in a process that cannot
+          // exit because its confirmation prompt is broken.
+          console.error('[Main] quit confirmation prompt failed, quitting without it:', error);
+          return true;
+        },
+      )
+      .then(confirmed => {
+        if (appQuitConfirmationGate.finishPrompt(confirmed)) {
+          runAppCleanupAndExit('before-quit');
+        } else {
+          console.log('[Main] quit cancelled at the confirmation prompt');
+        }
+      });
   });
 
   const handleTerminationSignal = (signal: NodeJS.Signals) => {
@@ -14617,6 +14666,17 @@ if (!gotTheLock) {
       }
     });
 
+    // macOS posts this for logout, restart, and shutdown right before it asks
+    // the app to terminate. The OS already decided the quit, so do not hold
+    // the logout at the confirmation prompt. Windows session end never reaches
+    // `before-quit`, and on Linux a listener would add a logind inhibitor.
+    if (isMac) {
+      powerMonitor.on('shutdown', () => {
+        console.log('[Main] OS logout/shutdown announced, skipping quit confirmation');
+        appQuitConfirmationGate.armBypass();
+      });
+    }
+
     // 首次启动时默认开启开机自启动，并以系统登录项的实际状态回写本地标记。
     if (!getStore().get('auto_launch_initialized')) {
       getStore().set('auto_launch_initialized', true);
@@ -14726,7 +14786,9 @@ if (!gotTheLock) {
       return;
     }
     if (process.platform !== 'darwin') {
-      app.quit();
+      // Only reachable in development (production closes hide to the tray),
+      // and the window is already gone, so there is nothing to cancel back to.
+      quitAppWithoutConfirmation('window-all-closed');
     }
   });
 }
