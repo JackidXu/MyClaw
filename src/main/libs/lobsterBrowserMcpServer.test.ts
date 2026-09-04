@@ -52,7 +52,7 @@ describe('resolveLobsterBrowserMcpCommand', () => {
     expect(path.extname(command)).toBe('.cmd');
     expect(launcher).toContain('"D:\\龙虾\\LobsterAI 100%%\\LobsterAI.exe"');
     expect(launcher).toMatch(/^@echo off\r\nchcp 65001 >nul 2>&1\r\n/);
-    expect(launcher.indexOf('chcp 65001')).toBeLessThan(launcher.indexOf(electronNodeRuntimePath.replace('%', '%%')));
+    expect(launcher.indexOf('chcp 65001')).toBeLessThan(launcher.indexOf(electronNodeRuntimePath.replaceAll('%', '%%')));
     expect(launcher).toContain('set "ELECTRON_RUN_AS_NODE=1"');
     expect(launcher).not.toContain('LOBSTERAI_ELECTRON_PATH');
     expect(launcher).not.toContain(bridgeSecret);
