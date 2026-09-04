@@ -40,9 +40,9 @@ const VoiceInputButton: React.FC<VoiceInputButtonProps> = ({
   const stateClass = showsStopIcon
     ? 'bg-neutral-100 text-neutral-950 hover:bg-neutral-200 dark:bg-white/10 dark:text-white dark:hover:bg-white/15'
     : unavailable
-        ? 'cursor-not-allowed text-secondary opacity-60'
+        ? 'cursor-not-allowed text-secondary/40 opacity-60'
         : isQuotaExhausted
-          ? 'text-secondary opacity-40 hover:bg-surface-raised'
+          ? 'text-secondary hover:bg-surface-raised hover:text-foreground'
         : loginRequired
           ? 'text-secondary hover:bg-surface-raised hover:text-foreground'
         : 'text-secondary hover:bg-surface-raised hover:text-foreground';
