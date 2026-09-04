@@ -146,10 +146,7 @@ const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ onClose }) => {
     setSubmitting(true);
     try {
       const userId = localStorage.getItem('heyclaw_user_id') || '';
-      const nickname =
-        localStorage.getItem('heyclaw_user_name') ||
-        localStorage.getItem('heyclaw_nickname') ||
-        'HeyClaw 用户';
+      const nickname = localStorage.getItem('heyclaw_user_name') || '';
 
       const payload = {
         userId,

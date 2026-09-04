@@ -63,6 +63,7 @@ import { SkinProvider } from './providers/SkinProvider';
 import type { ApiConfig } from './services/api';
 import { apiService } from './services/api';
 import { authService } from './services/auth';
+import { logoutAndDeactivate } from './services/authStorage';
 import { configService } from './services/config';
 import { coworkService } from './services/cowork';
 import { i18nService } from './services/i18n';
@@ -557,11 +558,8 @@ const App: React.FC = () => {
       let activated = !!(apiKey && userId && session);
 
       if (!activated) {
-        // 若凭证残缺不全，彻底清理残余缓存并同步注销状态
-        localStorage.removeItem('heyclaw_api_key');
-        localStorage.removeItem('heyclaw_user_id');
-        localStorage.removeItem('heyclaw_session');
-        void window.electron.auth.syncUserSession('');
+        // 若凭证残缺不全，彻底清理残余缓存并同步注销状态（静默重置）
+        logoutAndDeactivate({ silent: true });
       } else {
         // 已登录状态下初始化拉取与注册 VIP 状态
         try {
@@ -712,16 +710,7 @@ const App: React.FC = () => {
     }
   }, [authUser]);
 
-  // 监听 401 未授权/Token 过期事件，自动唤起登录框
-  useEffect(() => {
-    const handleUnauthorizedEvent = () => {
-      setIsActivated(false);
-    };
-    window.addEventListener('app:unauthorized', handleUnauthorizedEvent);
-    return () => {
-      window.removeEventListener('app:unauthorized', handleUnauthorizedEvent);
-    };
-  }, []);
+
 
   // 订阅 VIP 权限与账号状态更新
   useEffect(() => {

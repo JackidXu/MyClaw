@@ -101,6 +101,8 @@ interface AuthState {
   profileSummary: ProfileSummary | null;
   ownerAccountKey: string | null;
   accountGeneration: number;
+  /** HeyClaw 算力点数余额 (纯内存存储) */
+  userBalance: number | null;
 }
 
 const initialState: AuthState = {
@@ -112,6 +114,7 @@ const initialState: AuthState = {
   profileSummary: null,
   ownerAccountKey: null,
   accountGeneration: 0,
+  userBalance: null,
 };
 
 const authSlice = createSlice({
@@ -148,11 +151,13 @@ const authSlice = createSlice({
       state.quota = null;
       state.profileSummary = null;
       state.ownerAccountKey = null;
+      state.userBalance = null;
     },
     invalidateAuthAccountContext(state) {
       state.accountGeneration += 1;
       state.quota = null;
       state.profileSummary = null;
+      state.userBalance = null;
     },
     setAuthExpired(state) {
       if (state.ownerAccountKey !== null) {
@@ -165,6 +170,7 @@ const authSlice = createSlice({
       state.quota = null;
       state.profileSummary = null;
       state.ownerAccountKey = null;
+      state.userBalance = null;
     },
     setAuthTemporarilyUnavailable(
       state,
@@ -191,6 +197,9 @@ const authSlice = createSlice({
     clearProfileSummary(state) {
       state.profileSummary = null;
     },
+    setUserBalance(state, action: PayloadAction<number | null>) {
+      state.userBalance = action.payload;
+    },
   },
 });
 
@@ -204,5 +213,6 @@ export const {
   setLoggedOut,
   setProfileSummary,
   updateQuota,
+  setUserBalance,
 } = authSlice.actions;
 export default authSlice.reducer;

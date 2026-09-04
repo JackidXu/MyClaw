@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 
+import { logoutAndDeactivate } from '../services/authStorage';
 import { httpClient } from '../services/httpClient';
 
 interface PasswordModalProps {
@@ -59,11 +60,7 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({ isOpen, onClose, o
       }
 
       // 修改成功后的处理：清除缓存并引导退出登录
-      localStorage.removeItem('heyclaw_user_id');
-      localStorage.removeItem('heyclaw_api_key');
-      localStorage.removeItem('heyclaw_session');
-      localStorage.removeItem('heyclaw_user_balance');
-      void window.electron.auth.syncUserSession('');
+      logoutAndDeactivate({ toastMessage: '密码已修改，请重新登录' });
 
       onSuccess();
     } catch (err: any) {

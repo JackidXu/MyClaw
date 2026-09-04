@@ -1,9 +1,10 @@
 import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import { AgentId } from '@shared/agent';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSelector } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 
 import { agentService } from '../services/agent';
+import { logoutAndDeactivate } from '../services/authStorage';
 import { configService } from '../services/config';
 import { coworkService } from '../services/cowork';
 import { httpClient } from '../services/httpClient';
@@ -16,6 +17,7 @@ import {
   selectCoworkSessions,
   selectCurrentSessionId,
 } from '../store/selectors/coworkSelectors';
+import { setUserBalance } from '../store/slices/authSlice';
 import type { CoworkSessionSummary } from '../types/cowork';
 import { getAgentDisplayNameById } from '../utils/agentDisplay';
 import {
@@ -271,11 +273,15 @@ const Sidebar: React.FC<SidebarProps> = ({
     };
   }, [hasSecondBrain]);
 
+  const dispatch = useDispatch();
+  const balance = useSelector((state: RootState) => state.auth.userBalance);
+
   // 用户卡片状态与逻辑
   const [showUserMenu, setShowUserMenu] = useState(false);
-  const [balance, setBalance] = useState<number | null>(null);
   const [balanceLoading, setBalanceLoading] = useState(false);
-  const [userNickname, setUserNickname] = useState('HeyClaw 用户');
+  const balanceLoadingRef = useRef(false);
+  const [accountUsername, setAccountUsername] = useState('');
+  const [userNickname, setUserNickname] = useState('');
   const [userAvatar, setUserAvatar] = useState('🐱');
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isBillingModalOpen, setIsBillingModalOpen] = useState(false);
@@ -368,9 +374,10 @@ const Sidebar: React.FC<SidebarProps> = ({
   }, [onShowLogin]);
 
   const handleRefreshBalance = useCallback(async (showToast = true) => {
-    if (balanceLoading) return;
+    if (balanceLoadingRef.current) return;
+    balanceLoadingRef.current = true;
     setBalanceLoading(true);
-    const minDelayPromise = new Promise((resolve) => setTimeout(resolve, 800));
+    const minDelayPromise = new Promise((resolve) => setTimeout(resolve, 600));
     try {
       const session = localStorage.getItem('heyclaw_session');
       if (!session) {
@@ -398,13 +405,8 @@ const Sidebar: React.FC<SidebarProps> = ({
         if (selfResp.ok && selfResp.data && selfResp.data.success) {
           const userProfile = selfResp.data.data;
           remainQuota = Number(userProfile?.quota || 0);
-          const dispName = userProfile?.displayName || userProfile?.username || 'HeyClaw 用户';
-          const savedName = localStorage.getItem('heyclaw_user_name');
-          if (!savedName) {
-            localStorage.setItem('heyclaw_user_name', dispName);
-            setUserNickname(dispName);
-            setEditNickname(dispName);
-          }
+          const rawAccount = userProfile?.username || userProfile?.displayName || '';
+          setAccountUsername(rawAccount);
         } else {
           const errorMsg = selfResp.data?.error || '获取用户信息失败';
           throw new Error(errorMsg);
@@ -414,10 +416,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       await Promise.all([fetchPromise, minDelayPromise]);
 
       const points = Math.max(0, Math.round(remainQuota / 5000));
-      
-      setBalance(points);
-      localStorage.setItem('heyclaw_user_balance', String(points));
-
+      dispatch(setUserBalance(points));
 
     } catch (err) {
       console.error('[Sidebar] Refresh balance error:', err);
@@ -425,9 +424,10 @@ const Sidebar: React.FC<SidebarProps> = ({
         window.dispatchEvent(new CustomEvent('app:showToast', { detail: '余额刷新失败，请检查网络' }));
       }
     } finally {
+      balanceLoadingRef.current = false;
       setBalanceLoading(false);
     }
-  }, [balanceLoading]);
+  }, [dispatch]);
 
   // 从 localStorage 加载配置
   useEffect(() => {
@@ -452,14 +452,9 @@ const Sidebar: React.FC<SidebarProps> = ({
       }
     }
 
-    const savedName = localStorage.getItem('heyclaw_user_name');
-    if (savedName) {
-      setUserNickname(savedName);
-      setEditNickname(savedName);
-    } else {
-      setUserNickname('HeyClaw 用户');
-      setEditNickname('HeyClaw 用户');
-    }
+    const savedName = localStorage.getItem('heyclaw_user_name') || '';
+    setUserNickname(savedName);
+    setEditNickname(savedName);
     const savedAvatar = localStorage.getItem('heyclaw_user_avatar');
     if (savedAvatar) {
       setUserAvatar(savedAvatar);
@@ -467,11 +462,9 @@ const Sidebar: React.FC<SidebarProps> = ({
     } else {
       setEditAvatar('🐱');
     }
-    const savedBalance = localStorage.getItem('heyclaw_user_balance');
-    if (savedBalance) {
-      setBalance(Number(savedBalance));
-    }
-  }, []);
+    // 启动时自动静默加载一次用户账号与余额
+    void handleRefreshBalance(false);
+  }, [handleRefreshBalance]);
 
   const [batchAgentId, setBatchAgentId] = useState<string | null>(null);
   const [batchSelectableItems, setBatchSelectableItems] = useState<AgentSidebarBatchItem[]>([]);
@@ -1189,20 +1182,23 @@ const Sidebar: React.FC<SidebarProps> = ({
             >
               {renderAvatar(userAvatar, userNickname)}
             </div>
-            {/* 昵称 */}
+            {/* 昵称与账号名双行展示 */}
             <div className="flex-1 min-w-0 leading-tight">
-              <div 
-                className="text-[13px] font-semibold text-foreground/90 truncate"
-              >
-                {userNickname}
+              <div className="text-[13px] font-semibold text-foreground/90 truncate">
+                {userNickname || <span className="text-secondary font-normal">未设置昵称</span>}
               </div>
+              {accountUsername && (
+                <div className="text-[11px] text-secondary truncate mt-0.5" title={accountUsername}>
+                  @{accountUsername}
+                </div>
+              )}
             </div>
           </div>
 
           {/* 个人中心弹窗 */}
           {showUserMenu && (
             <div className="absolute bottom-[calc(100%+8px)] left-2 right-2 z-50 rounded-2xl border border-border/80 bg-surface shadow-2xl overflow-hidden flex flex-col animate-fade-in text-[13px]">
-              {/* Profile Head: 头像、昵称与算力点数 */}
+              {/* Profile Head: 头像、昵称、账号与算力点数 */}
               <div className="flex items-center gap-2.5 p-3.5 border-b border-border/50">
                 <div 
                   onClick={handleAvatarDebugClick}
@@ -1214,10 +1210,15 @@ const Sidebar: React.FC<SidebarProps> = ({
                 >
                   {renderAvatar(userAvatar, userNickname)}
                 </div>
-                <div className="flex-1 min-w-0">
+                <div className="flex-1 min-w-0 leading-tight">
                   <div className="font-bold text-foreground truncate text-sm">
-                    {userNickname}
+                    {userNickname || <span className="text-secondary font-normal">未设置昵称</span>}
                   </div>
+                  {accountUsername && (
+                    <div className="text-xs text-secondary truncate mt-0.5" title={accountUsername}>
+                      @{accountUsername}
+                    </div>
+                  )}
                 </div>
                 {/* 算力点数展示徽章 */}
                 <div 
@@ -1466,16 +1467,26 @@ const Sidebar: React.FC<SidebarProps> = ({
 
               </div>
             </div>
+            {/* 登录账号展示（只读） */}
+            {accountUsername && (
+              <div className="flex flex-col space-y-1.5">
+                <label className="text-xs font-semibold text-secondary tracking-wider uppercase pl-1">当前账号</label>
+                <div className="w-full px-4 py-2 bg-surface-raised/70 border border-border/60 rounded-xl text-sm text-secondary select-all font-mono">
+                  {accountUsername}
+                </div>
+              </div>
+            )}
             {/* 昵称编辑 */}
             <div className="flex flex-col space-y-1.5">
-              <label className="text-xs font-semibold text-secondary tracking-wider uppercase pl-1">昵称</label>
+              <label className="text-xs font-semibold text-secondary tracking-wider uppercase pl-1">自定义昵称</label>
               <input
                 type="text"
                 value={editNickname}
                 onChange={(e) => setEditNickname(e.target.value)}
-                placeholder="请输入昵称"
+                placeholder="未设置昵称（点击设置）"
                 className="w-full px-4 py-2.5 bg-surface-raised border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary/50 text-sm text-foreground"
               />
+              <p className="text-[11px] text-secondary pl-1">仅保存在当前设备，与登录账号完全独立</p>
             </div>
           </div>
           <div className="flex items-center justify-end gap-3 px-5 py-4 border-t border-border">
@@ -1487,7 +1498,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             </button>
             <button
               onClick={() => {
-                const finalName = editNickname.trim() || 'HeyClaw 用户';
+                const finalName = editNickname.trim();
                 const finalAvatar = editAvatar.trim() || '🐱';
                 setUserNickname(finalName);
                 setUserAvatar(finalAvatar);
@@ -1530,24 +1541,9 @@ const Sidebar: React.FC<SidebarProps> = ({
               取消
             </button>
             <button
-              onClick={async () => {
+              onClick={() => {
                 setShowConfirmDeactivate(false);
-                // 1. 清除本地缓存凭证
-                localStorage.removeItem('heyclaw_api_key');
-                localStorage.removeItem('heyclaw_user_id');
-                localStorage.removeItem('heyclaw_session');
-                localStorage.removeItem('heyclaw_user_balance');
-                localStorage.removeItem('heyclaw_user_name');
-                
-                // 2. 清除浏览器缓存 Cookies
-                try {
-                  await window.electron.artifact.clearBrowserCookies();
-                } catch (cookieErr) {
-                  console.warn('Failed to clear browser cookies on deactivate:', cookieErr);
-                }
-
-                // 3. 触发全局事件，让 App.tsx 同步 SQLite 配置并重启网关
-                window.dispatchEvent(new CustomEvent('app:deactivate'));
+                logoutAndDeactivate();
               }}
               className="px-4 py-2 text-sm font-medium rounded-lg bg-red-500 hover:bg-red-600 text-white transition-colors"
             >
@@ -1576,7 +1572,6 @@ const Sidebar: React.FC<SidebarProps> = ({
         onClose={() => setIsPasswordModalOpen(false)}
         onSuccess={() => {
           setIsPasswordModalOpen(false);
-          window.dispatchEvent(new CustomEvent('app:deactivate'));
         }}
       />
 

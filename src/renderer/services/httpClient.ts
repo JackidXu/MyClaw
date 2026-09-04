@@ -1,4 +1,5 @@
 import { getAdminBaseUrl } from '../../shared/endpoints';
+import { logoutAndDeactivate } from './authStorage';
 
 export type HttpTarget = 'admin' | 'biz';
 
@@ -23,7 +24,7 @@ export interface ApiResponse<T = any> {
   error?: string;
 }
 
-// 401 全局防抖锁（3秒内只触发一次 Toast 和登录弹窗，防止并发风暴）
+// 401 全局防抖锁（3秒内只触发一次，防止并发风暴）
 let last401TriggerTime = 0;
 
 export function handleUnauthorized() {
@@ -33,21 +34,7 @@ export function handleUnauthorized() {
   }
   last401TriggerTime = now;
 
-  // 清除失效的本地凭据
-  localStorage.removeItem('heyclaw_session');
-  localStorage.removeItem('heyclaw_api_key');
-  localStorage.removeItem('heyclaw_user_id');
-  void window.electron?.auth?.syncUserSession?.('');
-
-  // 触发全局 Toast
-  window.dispatchEvent(
-    new CustomEvent('app:showToast', {
-      detail: '登录已过期或凭证失效，请重新登录',
-    }),
-  );
-
-  // 触发未授权全局事件唤起登录弹窗
-  window.dispatchEvent(new CustomEvent('app:unauthorized'));
+  logoutAndDeactivate({ toastMessage: '登录已过期或凭证失效，请重新登录' });
 }
 
 export class HttpClient {
