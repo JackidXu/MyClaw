@@ -1642,7 +1642,9 @@ const Settings: React.FC<SettingsProps> = ({
         reportAboutAction('check_update', 'update_found');
       }
 
-      if (result.state.info) {
+      // A download already running in the background reports its progress on
+      // this button; opening the update dialog on top of it only adds noise.
+      if (result.state.info && result.state.status !== AppUpdateStatus.Downloading) {
         onUpdateFound?.(result.state.info);
       }
     } catch {
