@@ -15,7 +15,25 @@ import {
   type AuthLifecycleEvent,
   type AuthSessionChangedEvent,
 } from '../shared/auth/constants';
-import { BrowserIpc, type BrowserRuntimeProfile } from '../shared/browserWebAccess/constants';
+import {
+  type BrowserCredentialAvailabilityResponse,
+  type BrowserCredentialDeleteRequest,
+  BrowserCredentialIpc,
+  type BrowserCredentialListResponse,
+  type BrowserCredentialMutationResponse,
+  type BrowserCredentialSaveRequest,
+} from '../shared/browserCredentials/constants';
+import {
+  type AgentBrowserCredentialSavePromptRequest,
+  type AgentBrowserHostNavigateRequest,
+  type AgentBrowserHostPageRequest,
+  type AgentBrowserHostRequest,
+  type AgentBrowserHostResponse,
+  type AgentBrowserHostSetViewRequest,
+  type AgentBrowserHostStateEvent,
+  BrowserIpc,
+  type BrowserRuntimeProfile,
+} from '../shared/browserWebAccess/constants';
 import { ClipboardIpc } from '../shared/clipboard/constants';
 import type { CoworkBrowserAnnotationMessageBatch } from '../shared/cowork/browserAnnotations';
 import type {
@@ -354,6 +372,44 @@ contextBridge.exposeInMainWorld('electron', {
       listProfiles: () => ipcRenderer.invoke(BrowserIpc.ListProfiles),
       test: (options?: { profile?: BrowserRuntimeProfile }) => ipcRenderer.invoke(BrowserIpc.Test, options),
       resetProfile: (options?: { profile?: BrowserRuntimeProfile }) => ipcRenderer.invoke(BrowserIpc.ResetProfile, options),
+      getHostState: (request?: AgentBrowserHostRequest): Promise<AgentBrowserHostResponse> =>
+        ipcRenderer.invoke(BrowserIpc.GetHostState, request),
+      setHostView: (request: AgentBrowserHostSetViewRequest): Promise<AgentBrowserHostResponse> =>
+        ipcRenderer.invoke(BrowserIpc.SetHostView, request),
+      navigateHost: (request: AgentBrowserHostNavigateRequest): Promise<AgentBrowserHostResponse> =>
+        ipcRenderer.invoke(BrowserIpc.NavigateHost, request),
+      goBackHost: (request?: AgentBrowserHostRequest): Promise<AgentBrowserHostResponse> =>
+        ipcRenderer.invoke(BrowserIpc.GoBackHost, request),
+      goForwardHost: (request?: AgentBrowserHostRequest): Promise<AgentBrowserHostResponse> =>
+        ipcRenderer.invoke(BrowserIpc.GoForwardHost, request),
+      reloadHost: (request?: AgentBrowserHostRequest): Promise<AgentBrowserHostResponse> =>
+        ipcRenderer.invoke(BrowserIpc.ReloadHost, request),
+      stopHost: (request?: AgentBrowserHostRequest): Promise<AgentBrowserHostResponse> =>
+        ipcRenderer.invoke(BrowserIpc.StopHost, request),
+      selectHostPage: (request: AgentBrowserHostPageRequest): Promise<AgentBrowserHostResponse> =>
+        ipcRenderer.invoke(BrowserIpc.SelectHostPage, request),
+      closeHostPage: (request: AgentBrowserHostPageRequest): Promise<AgentBrowserHostResponse> =>
+        ipcRenderer.invoke(BrowserIpc.CloseHostPage, request),
+      resolveCredentialSavePrompt: (
+        request: AgentBrowserCredentialSavePromptRequest,
+      ): Promise<AgentBrowserHostResponse> =>
+        ipcRenderer.invoke(BrowserIpc.ResolveCredentialSavePrompt, request),
+      onHostState: (callback: (event: AgentBrowserHostStateEvent) => void) => {
+        const handler = (_event: Electron.IpcRendererEvent, hostEvent: AgentBrowserHostStateEvent) =>
+          callback(hostEvent);
+        ipcRenderer.on(BrowserIpc.HostState, handler);
+        return () => ipcRenderer.removeListener(BrowserIpc.HostState, handler);
+      },
+      credentials: {
+        getAvailability: (): Promise<BrowserCredentialAvailabilityResponse> =>
+          ipcRenderer.invoke(BrowserCredentialIpc.GetAvailability),
+        list: (): Promise<BrowserCredentialListResponse> =>
+          ipcRenderer.invoke(BrowserCredentialIpc.List),
+        save: (request: BrowserCredentialSaveRequest): Promise<BrowserCredentialMutationResponse> =>
+          ipcRenderer.invoke(BrowserCredentialIpc.Save, request),
+        delete: (request: BrowserCredentialDeleteRequest): Promise<BrowserCredentialMutationResponse> =>
+          ipcRenderer.invoke(BrowserCredentialIpc.Delete, request),
+      },
     },
     dataMigration: {
       backup: () => ipcRenderer.invoke(DataMigrationIpc.Backup),
@@ -531,6 +587,8 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.invoke(CoworkIpcChannel.MarkSessionViewed, sessionId),
     setActiveSession: (sessionId: string | null) =>
       ipcRenderer.invoke(CoworkIpcChannel.SetActiveSession, sessionId),
+    seedNewUserWelcomeTask: (options: { title: string; content: string }) =>
+      ipcRenderer.invoke(CoworkIpcChannel.SeedNewUserWelcomeTask, options),
     notifyOpenSessionFromNotificationReady: () =>
       ipcRenderer.invoke(CoworkIpcChannel.OpenSessionFromNotificationReady),
     remoteManaged: (sessionId: string) =>
@@ -779,8 +837,10 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.invoke(DialogIpc.ReadTextFile, filePath),
     saveFileCopy: (filePath: string) =>
       ipcRenderer.invoke(DialogIpc.SaveFileCopy, filePath),
-    generateThumbnail: (filePath: string) =>
-      ipcRenderer.invoke(DialogIpc.GenerateThumbnail, filePath),
+    generateThumbnail: (request: import('../shared/library/thumbnail').LibraryThumbnailGenerateRequest) =>
+      ipcRenderer.invoke(DialogIpc.GenerateThumbnail, request),
+    cancelThumbnail: (requestId: string) =>
+      ipcRenderer.invoke(DialogIpc.CancelThumbnail, requestId),
     showMessageBox: (options: {
       message: string;
       type?: 'none' | 'info' | 'error' | 'question' | 'warning';
@@ -858,6 +918,18 @@ contextBridge.exposeInMainWorld('electron', {
       artifactId?: string;
       filePath?: string;
     }) => ipcRenderer.invoke(HtmlShareIpc.GetByArtifactFile, options),
+    createFromGeneratedVideo: (options: {
+      taskId: string;
+      outputIndex: number;
+      sessionId: string;
+      artifactId: string;
+      title: string;
+      accessMode?: HtmlShareAccessMode;
+    }) => ipcRenderer.invoke(HtmlShareIpc.CreateFromGeneratedVideo, options),
+    getGeneratedVideoSource: (options: { taskId: string; outputIndex: number }) =>
+      ipcRenderer.invoke(HtmlShareIpc.GetGeneratedVideoSource, options),
+    resolveLegacyGeneratedVideoSource: (options: { resultUrl: string }) =>
+      ipcRenderer.invoke(HtmlShareIpc.ResolveLegacyGeneratedVideoSource, options),
     getBySource: (options: {
       sourceType: HtmlShareSourceType;
       clientSourceKey: string;
@@ -1014,9 +1086,9 @@ contextBridge.exposeInMainWorld('electron', {
     checkNow: (options?: { manual?: boolean; userId?: string | null }) =>
       ipcRenderer.invoke(AppUpdateIpc.CheckNow, options),
     retryDownload: () => ipcRenderer.invoke(AppUpdateIpc.RetryDownload),
-    cancelDownload: () => ipcRenderer.invoke(AppUpdateIpc.CancelDownload),
     installReady: () => ipcRenderer.invoke(AppUpdateIpc.InstallReady),
     getCompletedUpdate: () => ipcRenderer.invoke(AppUpdateIpc.GetCompletedUpdate),
+    getActiveWorkloads: () => ipcRenderer.invoke(AppUpdateIpc.GetActiveWorkloads),
     onStateChanged: (callback: (data: any) => void) => {
       const handler = (_event: any, data: any) => callback(data);
       ipcRenderer.on(AppUpdateIpc.StateChanged, handler);

@@ -1,8 +1,8 @@
 /**
- * McpBridgeServer — lightweight HTTP callback endpoint for OpenClaw's ask-user-question plugin.
+ * McpBridgeServer — authenticated loopback callbacks shared by OpenClaw integrations.
  *
- * Provides a /askuser endpoint that OpenClaw calls to show user confirmation dialogs.
- * Binds to 127.0.0.1 only (local traffic).
+ * Provides AskUser, media-generation, and in-app browser endpoints. Binds to
+ * 127.0.0.1 only and requires the per-process bridge secret.
  */
 import crypto from 'crypto';
 import http from 'http';
@@ -14,11 +14,13 @@ import { serializeForLog } from './sanitizeForLog';
 
 
 const log = (level: string, msg: string) => {
-  const formatted = `[AskUser:HTTP][${level}] ${msg}`;
+  const formatted = `[McpBridge:HTTP][${level}] ${msg}`;
   if (level === 'ERROR') {
     console.error(formatted);
   } else if (level === 'WARN') {
     console.warn(formatted);
+  } else if (level === 'DEBUG') {
+    console.debug(formatted);
   } else {
     console.log(formatted);
   }
@@ -63,6 +65,17 @@ export type MediaGenerationResponse = {
   details?: Record<string, unknown>;
 };
 
+export type BrowserToolRequest = {
+  tool: string;
+  args: Record<string, unknown>;
+};
+
+export type BrowserToolResponse = {
+  content: Array<Record<string, unknown>>;
+  structuredContent?: Record<string, unknown>;
+  isError?: boolean;
+};
+
 export class McpBridgeServer {
   private server: http.Server | null = null;
   private _port: number | null = null;
@@ -71,6 +84,7 @@ export class McpBridgeServer {
   private onAskUserCallback: ((request: AskUserRequest) => void) | null = null;
   private onAskUserDismissCallback: ((requestId: string) => void) | null = null;
   private onMediaGenerationCallback: ((request: MediaGenerationRequest) => Promise<MediaGenerationResponse>) | null = null;
+  private onBrowserToolCallback: ((request: BrowserToolRequest) => Promise<BrowserToolResponse>) | null = null;
 
   constructor(secret: string) {
     this.secret = secret;
@@ -97,7 +111,9 @@ export class McpBridgeServer {
     return this._port ? `http://127.0.0.1:${this._port}/web-search/search` : null;
   }
 
-
+  get browserCallbackUrl(): string | null {
+    return this._port ? `http://127.0.0.1:${this._port}/browser/tool` : null;
+  }
   /**
    * Register a callback that fires when an AskUserQuestion request arrives.
    * The callback should show a modal and eventually call resolveAskUser().
@@ -120,6 +136,10 @@ export class McpBridgeServer {
    */
   onMediaGeneration(callback: (request: MediaGenerationRequest) => Promise<MediaGenerationResponse>): void {
     this.onMediaGenerationCallback = callback;
+  }
+
+  onBrowserTool(callback: (request: BrowserToolRequest) => Promise<BrowserToolResponse>): void {
+    this.onBrowserToolCallback = callback;
   }
 
   /**
@@ -258,6 +278,11 @@ export class McpBridgeServer {
 
     if (req.url?.startsWith('/web-search/search')) {
       await this.handleWebSearch(req, res);
+      return;
+    }
+
+    if (req.url?.startsWith('/browser/tool')) {
+      await this.handleBrowserTool(req, res);
       return;
     }
 
@@ -401,6 +426,50 @@ export class McpBridgeServer {
     }
   }
 
+  private async handleBrowserTool(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    const startedAt = Date.now();
+    try {
+      const body = await this.readBody(req);
+      const request = JSON.parse(body) as BrowserToolRequest;
+      if (typeof request.tool !== 'string' || !request.tool.trim()) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          content: [{ type: 'text', text: 'Missing browser tool name.' }],
+          isError: true,
+        }));
+        return;
+      }
+      if (!this.onBrowserToolCallback) {
+        res.writeHead(503, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          content: [{ type: 'text', text: 'HeyClaw in-app browser is not ready.' }],
+          isError: true,
+        }));
+        return;
+      }
+
+      const result = await this.onBrowserToolCallback({
+        tool: request.tool,
+        args: request.args && typeof request.args === 'object' && !Array.isArray(request.args)
+          ? request.args
+          : {},
+      });
+      log('DEBUG', `Browser tool "${request.tool}" completed in ${Date.now() - startedAt}ms`);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(result));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      log('ERROR', `Browser tool request failed after ${Date.now() - startedAt}ms: ${message}`);
+      if (!res.writableEnded) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          content: [{ type: 'text', text: `HeyClaw browser error: ${message}` }],
+          isError: true,
+        }));
+      }
+    }
+  }
+
   private async handleWebSearch(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     const t0 = Date.now();
     try {
@@ -426,8 +495,6 @@ export class McpBridgeServer {
       }
     }
   }
-
-
   private readBody(req: http.IncomingMessage): Promise<string> {
     return new Promise((resolve, reject) => {
       const chunks: Buffer[] = [];

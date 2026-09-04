@@ -1,13 +1,18 @@
 const MAX_CACHE_ENTRIES = 128;
-export const LibraryThumbnailClientCacheVersion = 'renderer-identity-v2';
+export const LibraryThumbnailClientCacheVersion = 'viewport-scheduler-v4';
 
 const thumbnailCache = new Map<string, string>();
-const thumbnailRequests = new Map<string, Promise<string | undefined>>();
 
 export const createLibraryThumbnailCacheKey = (
   filePath: string,
   fileMtimeMs?: number,
-): string => `${LibraryThumbnailClientCacheVersion}\0${filePath}\0${fileMtimeMs ?? 'unknown'}`;
+  fileSizeBytes?: number,
+): string => [
+  LibraryThumbnailClientCacheVersion,
+  filePath,
+  fileMtimeMs ?? 'unknown-mtime',
+  fileSizeBytes ?? 'unknown-size',
+].join('\0');
 
 export const shouldApplyLibraryThumbnailResult = (
   requestedCacheKey: string,
@@ -23,33 +28,16 @@ export const getCachedLibraryThumbnail = (cacheKey: string): string | undefined 
   return value;
 };
 
-export const loadLibraryThumbnail = (
-  cacheKey: string,
-  load: () => Promise<string | undefined>,
-): Promise<string | undefined> => {
-  const cached = getCachedLibraryThumbnail(cacheKey);
-  if (cached) return Promise.resolve(cached);
-
-  const existingRequest = thumbnailRequests.get(cacheKey);
-  if (existingRequest) return existingRequest;
-
-  const request = load().then(value => {
-    if (!value) return undefined;
-    thumbnailCache.set(cacheKey, value);
-    while (thumbnailCache.size > MAX_CACHE_ENTRIES) {
-      const oldestKey = thumbnailCache.keys().next().value as string | undefined;
-      if (!oldestKey) break;
-      thumbnailCache.delete(oldestKey);
-    }
-    return value;
-  }).finally(() => {
-    thumbnailRequests.delete(cacheKey);
-  });
-  thumbnailRequests.set(cacheKey, request);
-  return request;
+export const cacheLibraryThumbnail = (cacheKey: string, dataUrl: string): void => {
+  thumbnailCache.delete(cacheKey);
+  thumbnailCache.set(cacheKey, dataUrl);
+  while (thumbnailCache.size > MAX_CACHE_ENTRIES) {
+    const oldestKey = thumbnailCache.keys().next().value as string | undefined;
+    if (!oldestKey) break;
+    thumbnailCache.delete(oldestKey);
+  }
 };
 
 export const clearLibraryThumbnailCache = (): void => {
   thumbnailCache.clear();
-  thumbnailRequests.clear();
 };

@@ -7,11 +7,12 @@ import { McpIpcChannel } from '../../shared/mcp/constants';
 import { isComputerUseKitInstalled } from '../computerUse/computerUseKit';
 import { resolveComputerUseMcpServer } from '../computerUse/computerUseMcpServer';
 import { installComputerUseRuntime } from '../computerUse/computerUseRuntime';
-import { resolveDshCodeMcpServerForConfig } from '../ipcHandlers/dsh/handlers';
 import { getElectronNodeRuntimePath } from '../libs/coworkUtil';
 import {
   type AskUserRequest,
   type AskUserResponse,
+  type BrowserToolRequest,
+  type BrowserToolResponse,
   McpBridgeServer,
   type MediaGenerationRequest,
   type MediaGenerationResponse,
@@ -48,6 +49,9 @@ export class McpRuntime {
   private resolvedServersCache: ResolvedMcpServer[] = [];
   private mediaGenerationHandler:
     | ((request: MediaGenerationRequest) => Promise<MediaGenerationResponse>)
+    | null = null;
+  private browserToolHandler:
+    | ((request: BrowserToolRequest) => Promise<BrowserToolResponse>)
     | null = null;
 
   constructor(private readonly deps: McpRuntimeDeps) {}
@@ -88,6 +92,13 @@ export class McpRuntime {
     this.mediaGenerationHandler = handler;
   }
 
+  setBrowserToolHandler(
+    handler: (request: BrowserToolRequest) => Promise<BrowserToolResponse>,
+  ): void {
+    this.browserToolHandler = handler;
+    this.bridgeServer?.onBrowserTool(handler);
+  }
+
   getAskUserCallbackUrl(): string | null {
     return this.bridgeServer?.askUserCallbackUrl ?? null;
   }
@@ -104,7 +115,9 @@ export class McpRuntime {
     return this.bridgeServer?.webSearchCallbackUrl ?? null;
   }
 
-
+  getBrowserCallbackUrl(): string | null {
+    return this.bridgeServer?.browserCallbackUrl ?? null;
+  }
   getBridgeSecret(): string {
     return this.bridgeSecret;
   }
@@ -190,6 +203,10 @@ export class McpRuntime {
       }
       return await this.mediaGenerationHandler(request);
     });
+
+    if (this.browserToolHandler) {
+      this.bridgeServer.onBrowserTool(this.browserToolHandler);
+    }
   }
 
   async askUserInternal(
@@ -344,16 +361,6 @@ export class McpRuntime {
     if (computerUseServer) {
       resolved.push(computerUseServer);
       builtInCount++;
-    }
-
-    try {
-      const dshCodeServer = await resolveDshCodeMcpServerForConfig(this.deps.getStore());
-      if (dshCodeServer) {
-        resolved.push(dshCodeServer);
-        builtInCount++;
-      }
-    } catch (err) {
-      console.warn('[MCP] failed to resolve built-in dsh-code server (non-fatal):', err);
     }
 
     console.log(

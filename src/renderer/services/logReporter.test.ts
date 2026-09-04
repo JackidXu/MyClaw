@@ -1,3 +1,4 @@
+import { PublishingIdentityType } from '@shared/publishing/constants';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 
 vi.mock('../store', () => ({
@@ -212,6 +213,30 @@ test('reports are disabled and reportYdAnalyzer returns false without network re
   })).resolves.toBe(false);
 
   expect(fetchMock).not.toHaveBeenCalled();
+});
+
+test('allows only an explicit touchpoint identity override during event capture', async () => {
+  const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+  vi.stubGlobal('window', {
+    electron: {
+      api: { fetch: fetchMock },
+    },
+  });
+  vi.spyOn(console, 'debug').mockImplementation(() => undefined);
+
+  await expect(reportYdAnalyzer({
+    action: LogReporterAction.PublishingRecoveryResult,
+    identityType: PublishingIdentityType.Enterprise,
+    log_Usid: 'untrusted-user',
+  }, {
+    touchpointIdentityType: PublishingIdentityType.Subscription,
+  })).resolves.toBe(true);
+
+  const requestUrl = new URL(fetchMock.mock.calls[0][0].url);
+  expect(requestUrl.searchParams.get('identityType')).toBe(PublishingIdentityType.Subscription);
+  expect(requestUrl.searchParams.get('log_Usid')).toBe('stored-user');
+  expect(requestUrl.searchParams.get('is_logged_in')).toBe('true');
+  expect(requestUrl.searchParams.get('is_subscriber')).toBe('false');
 });
 
 test('returns false when the event request is rejected', async () => {

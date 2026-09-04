@@ -44,6 +44,10 @@ import type {
 import { copyTextToClipboard } from '../../services/clipboard';
 import { i18nService } from '../../services/i18n';
 import { startLibraryBackfill } from '../../services/libraryBackfill';
+import {
+  PublishingSubscriptionRecoveryCoordinatorEvent,
+  reconcilePublishingSubscriptionRecovery,
+} from '../../services/publishingSubscriptionRecovery';
 import type { RootState } from '../../store';
 import CardOverflowMenu, { type CardOverflowMenuItem } from '../common/CardOverflowMenu';
 import {
@@ -91,25 +95,33 @@ import {
   sanitizeLibraryLocalListData,
 } from './libraryListState';
 import {
+  LibraryLoadingIndicator,
+  LibraryToolbarLoadingStatus,
+} from './LibraryLoadingIndicator';
+import {
+  getLibraryQueryLoadCause,
+  LibraryLoadCause,
+  type LibraryLoadCause as LibraryLoadCauseValue,
+  type LibraryQueryIdentity,
+  shouldResetLibraryScrollOnCommit,
+} from './libraryLoadingPresentation';
+import {
   applyLibraryLocalItemChanges,
   getLibraryQueryLoadIntent,
   isLibraryBusyPhase,
-  isLibraryRefreshPhase,
   LibraryLoadIntent,
   LibraryLoadPhase,
-  shouldShowLibraryInitialSkeleton,
 } from './libraryLocalQueryState';
 import LibraryPreviewModal from './LibraryPreviewModal';
 import {
   type LibraryRefreshBatch,
   LibraryRefreshCoordinator,
 } from './libraryRefreshCoordinator';
-import {
-  createLibraryThumbnailCacheKey,
-  getCachedLibraryThumbnail,
-  loadLibraryThumbnail,
-  shouldApplyLibraryThumbnailResult,
-} from './libraryThumbnailCache';
+import LibraryThumbnail from './LibraryThumbnail';
+import LibraryVirtualizedGroups, {
+  type LibraryDateGroup,
+} from './LibraryVirtualizedGroups';
+import { useLibraryLoadingFeedback } from './useLibraryLoadingFeedback';
 
 interface LibraryViewProps {
   isAuthenticated: boolean;
@@ -121,20 +133,6 @@ interface LibraryViewProps {
   updateBadge?: React.ReactNode;
   requestedSource?: LibrarySourceFilter;
   navigationRequestId?: number;
-}
-
-interface LibrarySessionGroup {
-  key: string;
-  title: string;
-  sortTime: number;
-  session?: LibrarySessionRef;
-  items: LibraryItem[];
-}
-
-interface LibraryDateGroup {
-  key: string;
-  title: string;
-  sessionGroups: LibrarySessionGroup[];
 }
 
 interface LibraryCloudResolvedQuery {
@@ -158,8 +156,6 @@ const LIBRARY_GRID_CLASSNAME = 'grid justify-start gap-3';
 const LIBRARY_GRID_STYLE: React.CSSProperties = {
   gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 240px), 264px))',
 };
-const LIBRARY_CLOUD_RECOVERY_RETRY_DELAYS_MS = [3_000, 10_000, 30_000] as const;
-
 const EMPTY_LOCAL: LibraryLocalListData = {
   list: [],
   hasMore: false,
@@ -202,92 +198,7 @@ const formatLibrarySessionTime = (value: number): string => new Intl.DateTimeFor
   { hour: '2-digit', minute: '2-digit' },
 ).format(new Date(value));
 
-const LibraryThumbnail: React.FC<{ item: LibraryItem }> = ({ item }) => {
-  const localItem = item.itemKind === LibraryItemKind.LocalArtifact
-    && item.availability === 'available' ? item : undefined;
-  const cacheKey = localItem
-    ? createLibraryThumbnailCacheKey(localItem.filePath, localItem.fileMtimeMs)
-    : undefined;
-  const containerRef = useRef<HTMLDivElement>(null);
-  const currentCacheKeyRef = useRef(cacheKey);
-  currentCacheKeyRef.current = cacheKey;
-  const [isNearViewport, setIsNearViewport] = useState(false);
-  const [thumbnail, setThumbnail] = useState<{
-    cacheKey: string;
-    dataUrl: string;
-  } | undefined>(() => {
-    const cached = cacheKey ? getCachedLibraryThumbnail(cacheKey) : undefined;
-    return cacheKey && cached ? { cacheKey, dataUrl: cached } : undefined;
-  });
-  const dataUrl = cacheKey && thumbnail?.cacheKey === cacheKey
-    ? thumbnail.dataUrl
-    : undefined;
 
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return undefined;
-    if (typeof IntersectionObserver === 'undefined') {
-      setIsNearViewport(true);
-      return undefined;
-    }
-
-    const observer = new IntersectionObserver(entries => {
-      if (!entries.some(entry => entry.isIntersecting)) return;
-      setIsNearViewport(true);
-      observer.disconnect();
-    }, { rootMargin: '240px' });
-    observer.observe(container);
-    return () => observer.disconnect();
-  }, [cacheKey]);
-
-  useEffect(() => {
-    let active = true;
-    const cached = cacheKey ? getCachedLibraryThumbnail(cacheKey) : undefined;
-    setThumbnail(cacheKey && cached ? { cacheKey, dataUrl: cached } : undefined);
-    if (!localItem || !cacheKey || !isNearViewport || cached) {
-      return () => { active = false; };
-    }
-
-    void loadLibraryThumbnail(cacheKey, async () => {
-      const result = await window.electron.dialog.generateThumbnail(localItem.filePath);
-      return result.success ? result.dataUrl : undefined;
-    }).then(value => {
-      if (
-        value
-        && shouldApplyLibraryThumbnailResult(cacheKey, currentCacheKeyRef.current, active)
-      ) {
-        setThumbnail({ cacheKey, dataUrl: value });
-      }
-    });
-    return () => { active = false; };
-  }, [cacheKey, isNearViewport, localItem]);
-
-  const isWebsite = isLibraryWebsiteItem(item);
-  return (
-    <div ref={containerRef} className="h-full w-full">
-      {dataUrl ? (
-        <img
-          src={dataUrl}
-          alt={item.title}
-          className="h-full w-full bg-surface-raised object-contain"
-        />
-      ) : (
-        <div className="flex h-full w-full items-center justify-center bg-surface-raised text-secondary">
-          {isWebsite ? (
-            <GlobeAltIcon className="h-6 w-6 text-primary" aria-hidden="true" />
-          ) : item.category === LibraryCategory.Web ? (
-            <FileTypeIcon
-              fileName={getLibraryDisplayFileName(item)}
-              className="h-6 w-6"
-            />
-          ) : (
-            <DocumentIcon className="h-6 w-6" aria-hidden="true" />
-          )}
-        </div>
-      )}
-    </div>
-  );
-};
 
 const LibraryListItemIcon: React.FC<{ item: LibraryItem }> = ({ item }) => {
   const isWebsite = isLibraryWebsiteItem(item);
@@ -389,6 +300,7 @@ const LibraryView: React.FC<LibraryViewProps> = ({
   navigationRequestId = 0,
 }) => {
   const ownerAccountKey = useSelector((state: RootState) => state.auth.ownerAccountKey);
+
   const favoriteOwnerScope = ownerAccountKey ?? undefined;
   const [analyticsPageViewId] = useState(createLibraryAnalyticsPageViewId);
   const [source, setSource] = useState<LibrarySourceFilter>(requestedSource);
@@ -402,7 +314,15 @@ const LibraryView: React.FC<LibraryViewProps> = ({
   const [viewMode, setViewMode] = useState<LibraryViewMode>(LibraryViewMode.List);
   const [localData, setLocalData] = useState<LibraryLocalListData>(EMPTY_LOCAL);
   const [cloudData, setCloudData] = useState<LibraryCloudListData>(EMPTY_CLOUD);
-  const [loadPhase, setLoadPhase] = useState<LibraryLoadPhase>(LibraryLoadPhase.Initial);
+  const [loadActivity, setLoadActivity] = useState<{
+    phase: LibraryLoadPhase;
+    cause: LibraryLoadCauseValue;
+    id: number;
+  }>({
+    phase: LibraryLoadPhase.Initial,
+    cause: LibraryLoadCause.Initial,
+    id: 0,
+  });
   const [localResolvedQueryKey, setLocalResolvedQueryKey] = useState('');
   const [cloudResolvedQuery, setCloudResolvedQuery] = useState<LibraryCloudResolvedQuery>();
   const [error, setError] = useState<string>();
@@ -416,6 +336,10 @@ const LibraryView: React.FC<LibraryViewProps> = ({
   const localDataRef = useRef(localData);
   const localQueryKeyRef = useRef('');
   const currentQueryKeyRef = useRef('');
+  const queryIdentityRef = useRef<LibraryQueryIdentity>();
+  const pendingLocalRefreshCauseRef = useRef<LibraryLoadCauseValue>(
+    LibraryLoadCause.BackgroundRefresh,
+  );
   const pendingScrollAnchorRef = useRef<{
     candidates: Array<{ itemKey: string; offsetTop: number }>;
   } | undefined>(undefined);
@@ -423,19 +347,36 @@ const LibraryView: React.FC<LibraryViewProps> = ({
   const refreshBatchHandlerRef = useRef<(batch: LibraryRefreshBatch) => Promise<void>>(
     async () => undefined,
   );
-  const refreshLocalWindowRef = useRef<() => Promise<void>>(async () => undefined);
+  const refreshLocalWindowRef = useRef<
+    (cause?: LibraryLoadCauseValue) => Promise<void>
+  >(async () => undefined);
   const cardDetailRequestIdsRef = useRef(new Set<string>());
   const scrollContainerRef = useRef<HTMLElement>(null);
   const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
   const localSearchInputRef = useRef<HTMLInputElement>(null);
-  const cloudRecoveryTimerRef = useRef<number | undefined>(undefined);
-  const cloudRecoveryAttemptRef = useRef(0);
-  const cloudRecoveryContextRef = useRef('');
-  const cloudRecoveryLoadRef = useRef<() => Promise<void>>(async () => undefined);
   const pageExposureReportedRef = useRef(false);
   const lastListResultSignatureRef = useRef('');
   const lastReportedKeywordRef = useRef('');
   const pendingRefreshOperationIdRef = useRef<string>();
+
+  const beginLibraryLoad = useCallback((
+    phase: LibraryLoadPhase,
+    cause: LibraryLoadCauseValue,
+  ): void => {
+    setLoadActivity(current => ({
+      phase,
+      cause,
+      id: current.id + 1,
+    }));
+  }, []);
+
+  const settleLibraryLoad = useCallback((): void => {
+    setLoadActivity(current => (
+      current.phase === LibraryLoadPhase.Settled
+        ? current
+        : { ...current, phase: LibraryLoadPhase.Settled }
+    ));
+  }, []);
 
   useEffect(() => {
     localDataRef.current = localData;
@@ -487,12 +428,15 @@ const LibraryView: React.FC<LibraryViewProps> = ({
   const visibleCloudData = activeCloudResolvedQuery ? cloudData : EMPTY_CLOUD;
   localQueryKeyRef.current = localQueryKey;
   currentQueryKeyRef.current = queryKey;
-  const loading = shouldShowLibraryInitialSkeleton(
-    loadPhase,
+  const loadingFeedback = useLibraryLoadingFeedback({
+    activityId: loadActivity.id,
+    phase: loadActivity.phase,
+    cause: loadActivity.cause,
     hasResolvedSnapshot,
-  );
-  const loadingMore = loadPhase === LibraryLoadPhase.Appending;
-  const refreshing = isLibraryRefreshPhase(loadPhase);
+  });
+  const loading = loadingFeedback.showInitialSkeleton;
+  const loadingMore = loadActivity.phase === LibraryLoadPhase.Appending;
+  const loadPhase = loadActivity.phase;
   const isBusy = isLibraryBusyPhase(loadPhase);
 
   const captureScrollAnchor = useCallback((): void => {
@@ -625,6 +569,7 @@ const LibraryView: React.FC<LibraryViewProps> = ({
     setCategory(nextCategory);
   };
 
+
   const handleFavoritesOnlyToggle = (): void => {
     const nextFavoritesOnly = !favoritesOnly;
     reportLibraryAction(analyticsContext, {
@@ -661,21 +606,23 @@ const LibraryView: React.FC<LibraryViewProps> = ({
   }, [category, sitesHidden]);
 
   const loadData = useCallback(async (
-    intent: LibraryLoadIntent = LibraryLoadIntent.Initial,
+    intent: LibraryLoadIntent,
+    cause: LibraryLoadCauseValue,
   ) => {
     const append = intent === LibraryLoadIntent.Append;
     const requestId = ++requestIdRef.current;
+    let appliedActiveResult = false;
     const requestLocalQueryKey = localQueryKey;
     const requestCloudQueryKey = cloudQueryKey;
     const requestCloudScopeKey = cloudScopeKey;
     const requestCloudAvailability = cloudAvailability;
-    setLoadPhase(append
+    beginLibraryLoad(append
       ? LibraryLoadPhase.Appending
       : intent === LibraryLoadIntent.Revalidate
         ? LibraryLoadPhase.Revalidating
         : intent === LibraryLoadIntent.Refresh
           ? LibraryLoadPhase.Refreshing
-          : LibraryLoadPhase.Initial);
+          : LibraryLoadPhase.Initial, cause);
     if (!append) {
       setError(undefined);
       setCloudError(undefined);
@@ -737,6 +684,7 @@ const LibraryView: React.FC<LibraryViewProps> = ({
             return sanitizedResult.data;
           });
           if (!append) setLocalResolvedQueryKey(requestLocalQueryKey);
+          appliedActiveResult = true;
         } else if (localResult) {
           if (!append) reportListResult(LibraryAnalyticsResult.Failure);
           setError(localResult.error);
@@ -778,6 +726,7 @@ const LibraryView: React.FC<LibraryViewProps> = ({
               availability: requestCloudAvailability,
             });
           }
+          appliedActiveResult = true;
         } else if (cloudResult) {
           if (!append) reportListResult(LibraryAnalyticsResult.Failure);
           setCloudError(cloudResult.error);
@@ -799,8 +748,16 @@ const LibraryView: React.FC<LibraryViewProps> = ({
     };
     await Promise.all([applyLocalResult(), applyCloudResult()]);
     if (requestId !== requestIdRef.current) return;
-    setLoadPhase(LibraryLoadPhase.Settled);
+    if (
+      !append
+      && appliedActiveResult
+      && shouldResetLibraryScrollOnCommit(cause)
+    ) {
+      scrollContainerRef.current?.scrollTo({ top: 0 });
+    }
+    settleLibraryLoad();
   }, [
+    beginLibraryLoad,
     category,
     cloudQueryKey,
     cloudScopeKey,
@@ -813,6 +770,7 @@ const LibraryView: React.FC<LibraryViewProps> = ({
     localQueryKey,
     cloudAvailability,
     reportListResult,
+    settleLibraryLoad,
     sitesHidden,
     visibleCloudData.hasMore,
     visibleCloudData.nextCursor,
@@ -820,7 +778,9 @@ const LibraryView: React.FC<LibraryViewProps> = ({
     wantsLocal,
   ]);
 
-  const refreshLocalWindow = useCallback(async (): Promise<void> => {
+  const refreshLocalWindow = useCallback(async (
+    cause: LibraryLoadCauseValue = LibraryLoadCause.BackgroundRefresh,
+  ): Promise<void> => {
     if (!mountedRef.current) return;
     const requestId = ++requestIdRef.current;
     const requestQueryKey = queryKey;
@@ -829,7 +789,7 @@ const LibraryView: React.FC<LibraryViewProps> = ({
       localDataRef.current.list.length,
       LibraryLimits.DefaultPageSize,
     );
-    setLoadPhase(LibraryLoadPhase.Refreshing);
+    beginLibraryLoad(LibraryLoadPhase.Refreshing, cause);
     setError(undefined);
     try {
       let cursor: string | undefined;
@@ -898,10 +858,11 @@ const LibraryView: React.FC<LibraryViewProps> = ({
         && mountedRef.current
         && requestQueryKey === currentQueryKeyRef.current
       ) {
-        setLoadPhase(LibraryLoadPhase.Settled);
+        settleLibraryLoad();
       }
     }
   }, [
+    beginLibraryLoad,
     captureScrollAnchor,
     category,
     favoritesOnly,
@@ -909,6 +870,7 @@ const LibraryView: React.FC<LibraryViewProps> = ({
     localQueryKey,
     queryKey,
     reportListResult,
+    settleLibraryLoad,
   ]);
   refreshLocalWindowRef.current = refreshLocalWindow;
 
@@ -921,66 +883,81 @@ const LibraryView: React.FC<LibraryViewProps> = ({
       eventPhase: LibraryAnalyticsEventPhase.Start,
     });
     if (wantsLocal) {
+      pendingLocalRefreshCauseRef.current = LibraryLoadCause.ManualRefresh;
       const coordinator = refreshCoordinatorRef.current;
       if (coordinator) {
         coordinator.enqueue({ reason: LibraryChangeReason.Repair });
         coordinator.flushNow();
       } else {
-        void refreshLocalWindow();
+        void refreshLocalWindow(LibraryLoadCause.ManualRefresh);
       }
       return;
     }
-    void loadData(LibraryLoadIntent.Refresh);
+    void loadData(LibraryLoadIntent.Refresh, LibraryLoadCause.ManualRefresh);
   }, [analyticsContext, loadData, refreshLocalWindow, wantsLocal]);
 
   useEffect(() => {
-    cloudRecoveryLoadRef.current = () => loadData(LibraryLoadIntent.Refresh);
-  }, [loadData]);
-
-  useEffect(() => {
-    if (cloudRecoveryTimerRef.current !== undefined) {
-      window.clearTimeout(cloudRecoveryTimerRef.current);
-      cloudRecoveryTimerRef.current = undefined;
-    }
-    const recoveryContext = `${wantsCloud ? 'cloud' : 'local'}:${favoriteOwnerScope ?? ''}`;
-    if (cloudRecoveryContextRef.current !== recoveryContext) {
-      cloudRecoveryContextRef.current = recoveryContext;
-      cloudRecoveryAttemptRef.current = 0;
-    }
-    if (
-      !wantsCloud
-      || !isAuthenticated
-      || !favoriteOwnerScope
-      || !hasResolvedCurrentQuery
-      || !visibleCloudData.recoveryPending
-    ) {
-      cloudRecoveryAttemptRef.current = 0;
-      return undefined;
-    }
-    const attempt = cloudRecoveryAttemptRef.current;
-    if (attempt >= LIBRARY_CLOUD_RECOVERY_RETRY_DELAYS_MS.length) return undefined;
-    cloudRecoveryTimerRef.current = window.setTimeout(() => {
-      cloudRecoveryTimerRef.current = undefined;
-      cloudRecoveryAttemptRef.current = attempt + 1;
-      void cloudRecoveryLoadRef.current();
-    }, LIBRARY_CLOUD_RECOVERY_RETRY_DELAYS_MS[attempt]);
-    return () => {
-      if (cloudRecoveryTimerRef.current !== undefined) {
-        window.clearTimeout(cloudRecoveryTimerRef.current);
-        cloudRecoveryTimerRef.current = undefined;
+    const handleRecoveryInvalidation = (event: Event): void => {
+      const ownerAccountKey = (event as CustomEvent<{ ownerAccountKey?: string }>).detail
+        ?.ownerAccountKey;
+      if (
+        !wantsCloud
+        || !isAuthenticated
+        || !favoriteOwnerScope
+        || ownerAccountKey !== favoriteOwnerScope
+      ) {
+        return;
       }
+      void loadData(LibraryLoadIntent.Refresh, LibraryLoadCause.BackgroundRefresh);
     };
-  }, [favoriteOwnerScope, hasResolvedCurrentQuery, isAuthenticated, visibleCloudData, wantsCloud]);
+    window.addEventListener(
+      PublishingSubscriptionRecoveryCoordinatorEvent.LibraryInvalidated,
+      handleRecoveryInvalidation,
+    );
+    return () => {
+      window.removeEventListener(
+        PublishingSubscriptionRecoveryCoordinatorEvent.LibraryInvalidated,
+        handleRecoveryInvalidation,
+      );
+    };
+  }, [favoriteOwnerScope, isAuthenticated, loadData, wantsCloud]);
 
   useEffect(() => {
-    void loadData(getLibraryQueryLoadIntent(hasResolvedSnapshot));
+    if (
+      wantsCloud
+      && isAuthenticated
+      && favoriteOwnerScope
+      && hasResolvedCurrentQuery
+      && visibleCloudData.recoveryPending === true
+    ) {
+      reconcilePublishingSubscriptionRecovery(favoriteOwnerScope);
+    }
+  }, [
+    favoriteOwnerScope,
+    hasResolvedCurrentQuery,
+    isAuthenticated,
+    visibleCloudData.recoveryPending,
+    wantsCloud,
+  ]);
+
+  useLayoutEffect(() => {
+    const queryIdentity: LibraryQueryIdentity = {
+      source,
+      scopeKey: cloudScopeKey,
+      category,
+      keyword,
+      favoritesOnly,
+      availability: cloudAvailability,
+    };
+    const cause = getLibraryQueryLoadCause(queryIdentityRef.current, queryIdentity);
+    queryIdentityRef.current = queryIdentity;
+    void loadData(getLibraryQueryLoadIntent(hasResolvedSnapshot), cause);
   // Cursor changes are outputs of this request and must not trigger a new first page.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     category,
-    favoriteOwnerScope,
+    cloudScopeKey,
     favoritesOnly,
-    isAuthenticated,
     keyword,
     cloudAvailability,
     source,
@@ -988,13 +965,15 @@ const LibraryView: React.FC<LibraryViewProps> = ({
 
   refreshBatchHandlerRef.current = async batch => {
     if (!mountedRef.current) return;
+    const refreshCause = pendingLocalRefreshCauseRef.current;
+    pendingLocalRefreshCauseRef.current = LibraryLoadCause.BackgroundRefresh;
     if (batch.requiresAuthoritativeRefresh || batch.itemIds.length === 0) {
-      await refreshLocalWindowRef.current();
+      await refreshLocalWindowRef.current(refreshCause);
       return;
     }
     const requestQueryKey = currentQueryKeyRef.current;
     const requestLocalQueryKey = localQueryKeyRef.current;
-    setLoadPhase(LibraryLoadPhase.Refreshing);
+    beginLibraryLoad(LibraryLoadPhase.Refreshing, refreshCause);
     try {
       const items: LocalArtifactItem[] = [];
       const unavailableItemIds: string[] = [];
@@ -1031,20 +1010,20 @@ const LibraryView: React.FC<LibraryViewProps> = ({
       });
       if (applied.requiresAuthoritativeRefresh) {
         console.warn('[LibraryRefresh] Targeted merge exceeded the local window; revalidating.');
-        await refreshLocalWindowRef.current();
+        await refreshLocalWindowRef.current(refreshCause);
       }
     } catch (refreshError) {
       console.warn(
         '[LibraryRefresh] Targeted refresh failed; revalidating the loaded window.',
         refreshError,
       );
-      await refreshLocalWindowRef.current();
+      await refreshLocalWindowRef.current(refreshCause);
     } finally {
       if (
         mountedRef.current
         && requestQueryKey === currentQueryKeyRef.current
       ) {
-        setLoadPhase(LibraryLoadPhase.Settled);
+        settleLibraryLoad();
       }
     }
   };
@@ -1416,7 +1395,7 @@ const LibraryView: React.FC<LibraryViewProps> = ({
       if (requested || !entries.some(entry => entry.isIntersecting)) return;
       requested = true;
       observer.disconnect();
-      void loadData(LibraryLoadIntent.Append);
+      void loadData(LibraryLoadIntent.Append, LibraryLoadCause.Append);
     }, {
       root,
       rootMargin: '0px 0px 320px 0px',
@@ -1456,7 +1435,7 @@ const LibraryView: React.FC<LibraryViewProps> = ({
 
       <main
         ref={scrollContainerRef}
-        aria-busy={isBusy}
+        aria-busy={loadingFeedback.ariaBusy}
         className="min-h-0 flex-1 overflow-auto [scrollbar-gutter:stable]"
       >
         <div className="mx-auto w-full max-w-[1120px] px-4 py-6 sm:px-8">
@@ -1470,9 +1449,18 @@ const LibraryView: React.FC<LibraryViewProps> = ({
               onChange={handleCategoryChange}
               grouped
             />
+            <LibraryToolbarLoadingStatus presentation={loadingFeedback} />
             <div className="ml-auto flex min-w-0 flex-[1_1_240px] items-center justify-end gap-2">
               <div className="relative min-w-[96px] max-w-56 flex-1">
-                <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-tertiary" />
+                <div className="pointer-events-none absolute left-3 top-1/2 flex h-4 w-4 -translate-y-1/2 items-center justify-center">
+                  {loadingFeedback.showSearchActivity ? (
+                    <LibraryLoadingIndicator
+                      label={i18nService.t('librarySearching')}
+                    />
+                  ) : (
+                    <MagnifyingGlassIcon className="h-4 w-4 text-tertiary" />
+                  )}
+                </div>
                 <input
                   ref={localSearchInputRef}
                   value={keywordInput}
@@ -1530,17 +1518,13 @@ const LibraryView: React.FC<LibraryViewProps> = ({
                 </Tooltip>
               </div>
             </div>
-            {refreshing && (
-              <div
-                aria-hidden="true"
-                className="pointer-events-none absolute inset-x-0 -bottom-px h-0.5 bg-primary/60"
-              />
-            )}
           </div>
 
-          {(error || cloudError) && (
+          {error && (
             <div className="mt-4 flex items-center justify-between rounded-lg border border-amber-500/25 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
-              <span>{error || i18nService.t('libraryCloudUnavailable')}</span>
+              <span>{localResolvedQueryKey
+                ? i18nService.t('libraryResultsNotUpdated').replace('{message}', error)
+                : error}</span>
               <button type="button" onClick={handleRefresh} className="ml-3 inline-flex items-center gap-1"><ArrowPathIcon className="h-3.5 w-3.5" />{i18nService.t('retry')}</button>
             </div>
           )}
@@ -1552,25 +1536,31 @@ const LibraryView: React.FC<LibraryViewProps> = ({
           )}
 
           <div>
-            {loading ? (
-              <div className={viewMode === LibraryViewMode.List
-                ? 'mt-6 divide-y divide-border border-y border-border'
-                : `mt-6 ${LIBRARY_GRID_CLASSNAME}`}
-              style={viewMode === LibraryViewMode.Grid ? LIBRARY_GRID_STYLE : undefined}>
-                {Array.from({ length: 6 }, (_, index) => (
-                  <div key={index} className={viewMode === LibraryViewMode.List
-                    ? 'h-14 animate-pulse bg-surface-raised/40'
-                    : 'animate-pulse rounded-xl border border-border bg-surface p-2.5'}>
-                    {viewMode === LibraryViewMode.Grid && (
-                      <>
-                        <div className="aspect-video rounded-lg bg-surface-raised" />
-                        <div className="mt-2 h-4 w-3/4 rounded bg-surface-raised" />
-                        <div className="mt-2 h-3 w-1/2 rounded bg-surface-raised" />
-                      </>
-                    )}
-                  </div>
-                ))}
-              </div>
+            {loadingFeedback.initialPending ? (
+              loading ? (
+                <div className={viewMode === LibraryViewMode.List
+                  ? 'mt-6 divide-y divide-border border-y border-border'
+                  : `mt-6 ${LIBRARY_GRID_CLASSNAME}`}
+                style={viewMode === LibraryViewMode.Grid ? LIBRARY_GRID_STYLE : undefined}>
+                  {Array.from({ length: 6 }, (_, index) => (
+                    <div key={index} className={viewMode === LibraryViewMode.List
+                      ? 'h-14 bg-surface-raised/40 motion-safe:animate-pulse'
+                      : 'rounded-xl border border-border bg-surface p-2.5 motion-safe:animate-pulse'}>
+                      {viewMode === LibraryViewMode.Grid && (
+                        <>
+                          <div className="aspect-video rounded-lg bg-surface-raised" />
+                          <div className="mt-2 h-4 w-3/4 rounded bg-surface-raised" />
+                          <div className="mt-2 h-3 w-1/2 rounded bg-surface-raised" />
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div aria-hidden="true" className="mt-6 min-h-96" />
+              )
+            ) : error && !localResolvedQueryKey ? (
+              <div aria-hidden="true" className="mt-6 min-h-64" />
             ) : dateGroups.length === 0 ? (
               <div className="mt-12 rounded-2xl border border-dashed border-border py-16 text-center">
                 <DocumentIcon className="mx-auto h-8 w-8 text-tertiary" />
@@ -1586,75 +1576,30 @@ const LibraryView: React.FC<LibraryViewProps> = ({
                 </p>
               </div>
             ) : (
-              <div className="mt-6 space-y-10">
-                {dateGroups.map(dateGroup => (
-                  <section key={dateGroup.key}>
-                    <div className="mb-5 flex items-center gap-3">
-                      <h2 className={`shrink-0 ${MANAGEMENT_TITLE_TEXT} font-semibold text-foreground`}>
-                        {dateGroup.title}
-                      </h2>
-                      <div className="h-px flex-1 bg-border" />
-                    </div>
-                    <div className="space-y-7">
-                      {dateGroup.sessionGroups.map(group => (
-                        <section key={group.key}>
-                          <div className="mb-2.5 flex items-center justify-between gap-6">
-                            {group.session ? (
-                              <button
-                                type="button"
-                                onClick={() => onOpenSession(group.session!)}
-                                title={group.title}
-                                className={`min-w-0 max-w-xl truncate text-left ${MANAGEMENT_TITLE_TEXT} font-semibold text-foreground hover:text-primary`}
-                              >
-                                {group.title}
-                              </button>
-                            ) : (
-                              <h3
-                                title={group.title}
-                                className={`min-w-0 max-w-xl truncate ${MANAGEMENT_TITLE_TEXT} font-semibold text-foreground`}
-                              >
-                                {group.title}
-                              </h3>
-                            )}
-                            <time
-                              dateTime={new Date(group.sortTime).toISOString()}
-                              className="shrink-0 text-xs text-secondary"
-                            >
-                              {formatLibrarySessionTime(group.sortTime)}
-                            </time>
-                          </div>
-                          <div
-                            className={viewMode === LibraryViewMode.List
-                              ? 'divide-y divide-border border-y border-border'
-                              : LIBRARY_GRID_CLASSNAME}
-                            style={viewMode === LibraryViewMode.Grid
-                              ? LIBRARY_GRID_STYLE
-                              : undefined}
-                          >
-                            {group.items.map(item => (
-                              <LibraryItemCard
-                                key={`${item.itemKind}:${item.itemId}`}
-                                item={item}
-                                viewMode={viewMode}
-                                onOpen={() => openItem(item)}
-                                onMenuOpen={item.itemKind === LibraryItemKind.LocalArtifact
-                                  && getLibraryCardActionIds(item).includes(
-                                    LibraryItemAction.RelatedSessions,
-                                  )
-                                  ? () => loadCardDetail(item)
-                                  : undefined}
-                                menuItems={buildCardMenuItems(item)}
-                              />
-                            ))}
-                          </div>
-                        </section>
-                      ))}
-                    </div>
-                  </section>
-                ))}
-              </div>
+              <LibraryVirtualizedGroups
+                dateGroups={dateGroups}
+                viewMode={viewMode}
+                scrollContainerRef={scrollContainerRef}
+                onOpenSession={onOpenSession}
+                formatSessionTime={formatLibrarySessionTime}
+                renderItem={item => (
+                  <LibraryItemCard
+                    key={`${item.itemKind}:${item.itemId}`}
+                    item={item}
+                    viewMode={viewMode}
+                    onOpen={() => openItem(item)}
+                    onMenuOpen={item.itemKind === LibraryItemKind.LocalArtifact
+                      && getLibraryCardActionIds(item).includes(
+                        LibraryItemAction.RelatedSessions,
+                      )
+                      ? () => loadCardDetail(item)
+                      : undefined}
+                    menuItems={buildCardMenuItems(item)}
+                  />
+                )}
+              />
             )}
-            {!loading && hasMore && (
+            {!loadingFeedback.initialPending && hasMore && (
               <div
                 ref={loadMoreSentinelRef}
                 className="flex h-14 items-center justify-center"
@@ -1662,7 +1607,7 @@ const LibraryView: React.FC<LibraryViewProps> = ({
               >
                 {loadingMore && (
                   <>
-                    <ArrowPathIcon className="h-4 w-4 animate-spin text-tertiary" aria-hidden="true" />
+                    <ArrowPathIcon className="h-4 w-4 text-tertiary motion-safe:animate-spin" aria-hidden="true" />
                     <span className="sr-only">{i18nService.t('loading')}</span>
                   </>
                 )}
