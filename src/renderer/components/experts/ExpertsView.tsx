@@ -68,12 +68,14 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
   const isMac = window.electron.platform === 'darwin';
   const isWindows = window.electron.platform === 'win32';
 
-  // 初始化拉取内置专家列表 + 专家团列表
+  // 初始化拉取内置专家列表 + 专家团列表，并监听云端数据更新广播
   useEffect(() => {
     let active = true;
-    const fetchData = async () => {
+    const fetchData = async (showLoading = true) => {
       try {
-        setLoading(true);
+        if (showLoading) {
+          setLoading(true);
+        }
         const [presetsData, teamsData] = await Promise.all([
           window.electron.agents.presetTemplates(),
           window.electron.agents.getExpertTeams(),
@@ -85,14 +87,23 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
       } catch (err) {
         console.error('[ExpertsView] Failed to load data:', err);
       } finally {
-        if (active) {
+        if (active && showLoading) {
           setLoading(false);
         }
       }
     };
-    void fetchData();
+    void fetchData(true);
+
+    // 监听主进程云端拉取完成的广播通知，静默刷新最新专家与专家团列表
+    const unsubscribe = window.electron.agents?.onExpertsUpdated?.(() => {
+      if (active) {
+        void fetchData(false);
+      }
+    });
+
     return () => {
       active = false;
+      unsubscribe?.();
     };
   }, []);
 

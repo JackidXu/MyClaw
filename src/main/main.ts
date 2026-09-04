@@ -34,6 +34,7 @@ import {
 } from '../scheduledTask/migrate';
 import {
   AgentId,
+  AgentIpcChannel,
 } from '../shared/agent/constants';
 import {
   LogReporterAction,
@@ -334,7 +335,7 @@ import {
   resolveEnterpriseConfigPath,
   syncEnterpriseConfig,
 } from './libs/enterpriseConfigSync';
-import { fetchExpertsFromCloud } from './libs/expertStore';
+import { fetchExpertsFromCloud, initExpertStoreFromLocal } from './libs/expertStore';
 import {
   createOfficePreviewSession,
   createPreviewSession,
@@ -14350,6 +14351,7 @@ if (!gotTheLock) {
     store = await initStore();
     profiler.measure('initStore');
     console.log('[Main] initApp: store initialized');
+    initExpertStoreFromLocal(() => store);
     const libraryLocalStore = new LibraryLocalStore(store.getDatabase());
     const emitLibraryChanged = (payload: LibraryChangedPayload): void => {
       for (const window of BrowserWindow.getAllWindows()) {
@@ -14394,6 +14396,12 @@ if (!gotTheLock) {
           await syncOpenClawConfig({ reason: 'experts-cloud-synced' }).catch(err => {
             console.error('[OpenClaw] config sync after experts cloud sync failed:', err);
           });
+        }
+        // 向渲染进程广播专家和专家团数据更新通知
+        for (const window of BrowserWindow.getAllWindows()) {
+          if (!window.isDestroyed()) {
+            window.webContents.send(AgentIpcChannel.ExpertsUpdated);
+          }
         }
       })
       .catch(err => {

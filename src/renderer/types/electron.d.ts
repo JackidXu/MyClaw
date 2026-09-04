@@ -798,6 +798,7 @@ interface IElectronAPI {
     addPreset: (presetId: string) => Promise<Agent>;
     getPaidExperts: () => Promise<import('./paidExpert').PaidExpert[]>;
     getExpertTeams: () => Promise<import('./expertTeam').ExpertTeam[]>;
+    onExpertsUpdated: (callback: () => void) => () => void;
   };
   api: {
     fetch: (options: {

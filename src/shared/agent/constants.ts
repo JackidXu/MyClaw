@@ -17,6 +17,7 @@ export const AgentIpcChannel = {
   AddPreset: 'agents:addPreset',
   GetPaidExperts: 'agents:getPaidExperts',
   GetExpertTeams: 'agents:getExpertTeams',
+  ExpertsUpdated: 'agents:expertsUpdated',
 } as const;
 
 export type AgentIpcChannel = typeof AgentIpcChannel[keyof typeof AgentIpcChannel];
