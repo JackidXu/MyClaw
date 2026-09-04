@@ -55,7 +55,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     aiSkinNone: '当前未应用自定义皮肤',
     aiSkinLibrary: '已生成皮肤',
     aiSkinPreviewHint: '这里展示实际背景预览；应用后会同步显示在会话首页和会话背景中。',
-    aiSkinCreationGuide: '可前往“专家套件”使用「LobsterAI 外观定制」，或直接开始创作。',
+    aiSkinCreationGuide: '可前往“专家套件”使用「HeyClaw 外观定制」，或直接开始创作。',
     aiSkinEmpty: '还没有可用的 AI 皮肤',
     aiSkinEmptyDescription: '描述你想要的风格，AI 会生成背景、徽记和配色并自动应用。',
     aiSkinCreate: '开始创作',
@@ -74,7 +74,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     aiSkinDeleteConfirmTitle: '删除 AI 皮肤？',
     aiSkinDeleteConfirmMessage: '确定要从皮肤库删除“{name}”吗？此操作无法撤销。',
     aiSkinDeleteActiveWarning: '该皮肤正在使用；删除后会恢复默认主题色。',
-    aiSkinDeleteManagedCopyNote: '只会删除 LobsterAI 管理的皮肤副本，不会删除会话中的原始生成图片或卸载 AI 皮肤设计师套件。',
+    aiSkinDeleteManagedCopyNote: '只会删除 HeyClaw 管理的皮肤副本，不会删除会话中的原始生成图片或卸载 AI 皮肤设计师套件。',
     aiSkinDeleteFailed: '删除皮肤失败，请重试',
     uiFontSize: 'UI 字号',
     uiFontSizeDescription: '调整 HeyClaw 界面使用的基准字号',
@@ -307,10 +307,10 @@ const translations: Record<LanguageType, Record<string, string>> = {
     newUserOnboardingAriaLabel: '新用户引导',
     newUserOnboardingNewTaskTitle: '发起一个新任务',
     newUserOnboardingNewTaskDescription:
-      '输入一个任务，LobsterAI 会帮你拆解步骤、生成内容，并推进成结果。',
+      '输入一个任务，HeyClaw 会帮你拆解步骤、生成内容，并推进成结果。',
     newUserOnboardingPromptExample: '帮我做一个金融行业分析报告',
     newUserOnboardingPromptResultTitle: '直接说出你想完成的事',
-    newUserOnboardingPromptResultDescription: 'LobsterAI 会把复杂的事情变成清晰的结果',
+    newUserOnboardingPromptResultDescription: 'HeyClaw 会把复杂的事情变成清晰的结果',
     newUserOnboardingPromptLoadingUnderstand: '正在理解你的目标',
     newUserOnboardingPromptLoadingBreakdown: '正在拆解任务步骤',
     newUserOnboardingPromptLoadingResult: '正在整理可交付结果',
@@ -319,13 +319,13 @@ const translations: Record<LanguageType, Record<string, string>> = {
     newUserOnboardingNext: '下一步',
     newUserWelcomeTaskTitle: '你好，新朋友',
     newUserWelcomeTaskContent:
-      '嗨～ 我是 LobsterAI，你的全能办公助手Agent，帮你解决一切问题！\n\n'
+      '嗨～ 我是 HeyClaw，你的全能办公助手Agent，帮你解决一切问题！\n\n'
       + '我可以帮你处理数据分析、文档撰写、PPT生成、信息搜索、定时任务等各种工作；\n'
       + '我还是全能项目助手，轻松搞定网站开发部署与图片视频制作；\n'
       + '还能帮你拉起一个AI团队：多Agent组队接力干活。\n\n\n'
       + '最近工作上在忙什么呢？项目推进、信息整理，还是有什么新想法？\n'
       + '我可以一起帮你拆解拆解😄',
-    newUserWelcomeInputLockedLabel: '登录后继续体验 LobsterAI',
+    newUserWelcomeInputLockedLabel: '登录后继续体验 HeyClaw',
     newUserWelcomeTaskCreateFailed: '新人任务创建失败，请稍后重试',
     search: '搜索任务',
     openSettings: '打开设置',
@@ -403,7 +403,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     dailyCheckInClaimedAction: '已领取',
     dailyCheckInCompleted: '本期已完成',
     dailyCheckInStartingLogin: '正在前往登录…',
-    dailyCheckInLoginHint: '登录只在 LobsterAI 客户端中完成，活动不会获取账号令牌',
+    dailyCheckInLoginHint: '登录只在 HeyClaw 客户端中完成，活动不会获取账号令牌',
     dailyCheckInLoginFailed: '暂时无法发起登录',
     dailyCheckInClaimSuccess: '已领取 {credits} 积分',
     dailyCheckInClaimFailed: '领取失败，请重试',
@@ -493,13 +493,13 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseAccountEnter: '进入',
     enterpriseAccountAdjustQuota: '调整额度',
     enterpriseQuotaMemberTitle: '你的额度已用完',
-    enterpriseQuotaMemberMemberDesc: '向团队管理员申请提高成员额度后继续使用 LobsterAI。',
-    enterpriseQuotaMemberAdminDesc: '调整额度后继续使用 LobsterAI。',
+    enterpriseQuotaMemberMemberDesc: '向团队管理员申请提高成员额度后继续使用 HeyClaw。',
+    enterpriseQuotaMemberAdminDesc: '调整额度后继续使用 HeyClaw。',
     enterpriseQuotaMemberInterrupt: '你已达到使用上限，请联系团队管理员。',
     enterpriseQuotaMemberAdminInterrupt: '你已达到个人额度上限，可调整额度。',
     enterpriseQuotaPoolTitle: '团队积分已用完',
-    enterpriseQuotaPoolMemberDesc: '通知团队管理员购买团队积分包后继续使用 LobsterAI。',
-    enterpriseQuotaPoolAdminDesc: '购买团队积分包后，团队成员可继续使用 LobsterAI。',
+    enterpriseQuotaPoolMemberDesc: '通知团队管理员购买团队积分包后继续使用 HeyClaw。',
+    enterpriseQuotaPoolAdminDesc: '购买团队积分包后，团队成员可继续使用 HeyClaw。',
     enterpriseQuotaPoolInterrupt: '团队积分已达到使用上限，请补充积分后继续。',
     enterpriseQuotaExpiredTitle: '团队积分已过期',
     enterpriseQuotaExpiredMemberDesc: '团队积分批次已全部过期，请联系团队管理员。',
@@ -1999,7 +1999,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     // Cowork 错误消息
     coworkErrorAuthInvalid: 'API 密钥无效或已过期，请在设置中检查并更新您的 API 密钥。',
     coworkErrorEnterpriseMembershipRevoked: '你已被移出当前团队，已退出登录。请重新登录并选择可用身份。',
-    coworkErrorLobsterAILoginExpired: '登录状态已过期，请重新登录后继续使用 LobsterAI 套餐模型。',
+    coworkErrorLobsterAILoginExpired: '登录状态已过期，请重新登录后继续使用 HeyClaw 套餐模型。',
     coworkErrorOAuthInvalid: 'OAuth 授权已失效或权限不足，请重新授权后重试。',
     coworkErrorModelAccessDenied: '当前账号无权访问该模型，请切换模型或检查服务商账号权限。',
     coworkErrorQuotaExhausted:
@@ -2044,7 +2044,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     coworkErrorUnknown: '任务执行出错，请重试。如果问题持续出现，请检查模型配置。',
     coworkErrorTechnicalDetails: '技术详情',
     coworkErrorModelLabel: '模型',
-    coworkErrorModelSourceLobsterAIPlan: 'LobsterAI 套餐',
+    coworkErrorModelSourceLobsterAIPlan: 'HeyClaw 套餐',
     coworkErrorModelSourceCustomModel: '自定义模型',
 
     // Media Generation
@@ -2763,7 +2763,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     pluginsTab: '插件',
     experimentalTab: '实验功能',
     dshSettingsTitle: 'DeepSeek Harness',
-    dshSettingsDesc: '内置 DeepSeek 官方开源 agent 框架（dsh）。启用后，LobsterAI 的模型供应商配置会自动同步给 dsh。',
+    dshSettingsDesc: '内置 DeepSeek 官方开源 agent 框架（dsh）。启用后，HeyClaw 的模型供应商配置会自动同步给 dsh。',
     dshEnableLabel: '启用 DeepSeek Harness',
     dshOpenWorkbench: '打开工作台',
     dshOpening: '启动中…',
@@ -3323,7 +3323,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     taskCompletionNotificationModeOff: '从不',
     permissionNotifications: '需要你处理时通知',
     permissionNotificationsDescription: '会话需要你确认操作或回答问题时显示系统提醒',
-    notificationSystemPermissionHint: '若未收到通知，请在系统设置中允许 LobsterAI 发送通知。',
+    notificationSystemPermissionHint: '若未收到通知，请在系统设置中允许 HeyClaw 发送通知。',
     openSystemNotificationSettings: '打开系统设置',
     preventSleep: '防止休眠',
     preventSleepDescription: '防止系统在应用运行时进入睡眠模式',
@@ -3731,8 +3731,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     welcomeLogin: '登录',
     welcomeCustomModel: '自定义模型',
     welcomeAgreementNotice: '继续即表示您已阅读并同意{link}',
-    welcomeAgreementLinkText: '《网易有道LobsterAI服务协议》',
-    welcomeCopyright: '© {year} 网易有道',
+    welcomeAgreementLinkText: '《HeyClaw服务协议》',
+    welcomeCopyright: '© {year} HeyClaw',
     welcomeLoginWaiting: '请在浏览器中完成登录',
     welcomeLoginFailed: '登录发起失败，请重试',
     githubCopilotAuth: 'GitHub 账号认证',
@@ -3874,7 +3874,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     aiSkinNone: 'No custom skin is currently active',
     aiSkinLibrary: 'Generated skins',
     aiSkinPreviewHint: 'These are the actual backdrop previews. Applying one updates the home and conversation backgrounds.',
-    aiSkinCreationGuide: 'Use “Customize LobsterAI” in Expert Kits, or start here.',
+    aiSkinCreationGuide: 'Use “Customize HeyClaw” in Expert Kits, or start here.',
     aiSkinEmpty: 'No AI skins are available yet',
     aiSkinEmptyDescription: 'Describe the look you want. AI will create a backdrop, emblem, and coordinated colors, then apply them.',
     aiSkinCreate: 'Create',
@@ -3893,7 +3893,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     aiSkinDeleteConfirmTitle: 'Delete AI skin?',
     aiSkinDeleteConfirmMessage: 'Delete "{name}" from the skin library? This action cannot be undone.',
     aiSkinDeleteActiveWarning: 'This skin is in use. Deleting it restores the default color theme.',
-    aiSkinDeleteManagedCopyNote: 'Only LobsterAI-managed skin copies are removed. Original images in the conversation and the AI Skin Designer kit are kept.',
+    aiSkinDeleteManagedCopyNote: 'Only HeyClaw-managed skin copies are removed. Original images in the conversation and the AI Skin Designer kit are kept.',
     aiSkinDeleteFailed: 'Failed to delete the skin. Please try again.',
     uiFontSize: 'UI font size',
     uiFontSizeDescription: 'Adjust the base size used for the HeyClaw UI',
@@ -4162,11 +4162,11 @@ const translations: Record<LanguageType, Record<string, string>> = {
     newUserOnboardingAriaLabel: 'New user onboarding',
     newUserOnboardingNewTaskTitle: 'Start a New Task',
     newUserOnboardingNewTaskDescription:
-      'Enter a task and LobsterAI will break it into steps, generate content, and move it toward a result.',
+      'Enter a task and HeyClaw will break it into steps, generate content, and move it toward a result.',
     newUserOnboardingPromptExample: 'Create a financial industry analysis report',
     newUserOnboardingPromptResultTitle: 'Say what you want to get done',
     newUserOnboardingPromptResultDescription:
-      'LobsterAI turns complex work into clear results',
+      'HeyClaw turns complex work into clear results',
     newUserOnboardingPromptLoadingUnderstand: 'Understanding your goal',
     newUserOnboardingPromptLoadingBreakdown: 'Breaking the task into steps',
     newUserOnboardingPromptLoadingResult: 'Preparing a clear deliverable',
@@ -4175,13 +4175,13 @@ const translations: Record<LanguageType, Record<string, string>> = {
     newUserOnboardingNext: 'Next',
     newUserWelcomeTaskTitle: 'Hello, New Friend',
     newUserWelcomeTaskContent:
-      "Hi, I'm LobsterAI, your all-purpose office Agent, here to help you solve problems.\n\n"
+      "Hi, I'm HeyClaw, your all-purpose office Agent, here to help you solve problems.\n\n"
       + 'I can help with data analysis, document writing, PPT generation, research, scheduled tasks, and more.\n'
       + 'I can also act as a project assistant for website development, deployment, image creation, and video work.\n'
       + 'And I can help you spin up an AI team, with multiple Agents taking turns to move work forward.\n\n\n'
       + 'What has been keeping you busy lately? Project progress, information sorting, or a new idea?\n'
       + "I can help you break it down together.",
-    newUserWelcomeInputLockedLabel: 'Sign in to continue with LobsterAI',
+    newUserWelcomeInputLockedLabel: 'Sign in to continue with HeyClaw',
     newUserWelcomeTaskCreateFailed: 'Could not create the welcome task. Please try again later.',
     search: 'Search Tasks',
     openSettings: 'Open Settings',
@@ -4259,7 +4259,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     dailyCheckInClaimedAction: 'Claimed',
     dailyCheckInCompleted: 'Completed',
     dailyCheckInStartingLogin: 'Opening login…',
-    dailyCheckInLoginHint: 'Login is handled by LobsterAI; the activity never receives account tokens',
+    dailyCheckInLoginHint: 'Login is handled by HeyClaw; the activity never receives account tokens',
     dailyCheckInLoginFailed: 'Unable to start login',
     dailyCheckInClaimSuccess: '{credits} credits claimed',
     dailyCheckInClaimFailed: 'Unable to claim credits. Please try again.',
@@ -4349,13 +4349,13 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseAccountEnter: 'Open',
     enterpriseAccountAdjustQuota: 'Adjust quota',
     enterpriseQuotaMemberTitle: 'Your quota has been used up',
-    enterpriseQuotaMemberMemberDesc: 'Request a higher member quota from your team administrator to continue using LobsterAI.',
-    enterpriseQuotaMemberAdminDesc: 'Adjust your quota to continue using LobsterAI.',
+    enterpriseQuotaMemberMemberDesc: 'Request a higher member quota from your team administrator to continue using HeyClaw.',
+    enterpriseQuotaMemberAdminDesc: 'Adjust your quota to continue using HeyClaw.',
     enterpriseQuotaMemberInterrupt: 'You have reached your usage limit. Contact your team administrator.',
     enterpriseQuotaMemberAdminInterrupt: 'You have reached your personal quota. You can adjust it.',
     enterpriseQuotaPoolTitle: 'Team credits have been used up',
-    enterpriseQuotaPoolMemberDesc: 'Notify your team administrator to purchase a Team credit pack and continue using LobsterAI.',
-    enterpriseQuotaPoolAdminDesc: 'Purchase a Team credit pack so members can continue using LobsterAI.',
+    enterpriseQuotaPoolMemberDesc: 'Notify your team administrator to purchase a Team credit pack and continue using HeyClaw.',
+    enterpriseQuotaPoolAdminDesc: 'Purchase a Team credit pack so members can continue using HeyClaw.',
     enterpriseQuotaPoolInterrupt: 'Team credits have reached the limit. Add credits to continue.',
     enterpriseQuotaExpiredTitle: 'Team credits have expired',
     enterpriseQuotaExpiredMemberDesc: 'All Team credit batches have expired. Contact your team administrator.',
@@ -4707,7 +4707,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     siteQuotaReservedHint:
       '{count} deployment reservation(s) are also using capacity and will expire if not submitted.',
     siteQuotaSearchPlaceholder: 'Search sites to stop',
-    siteQuotaChooseHint: 'Choose an online site. LobsterAI will never stop one automatically.',
+    siteQuotaChooseHint: 'Choose an online site. HeyClaw will never stop one automatically.',
     siteQuotaNoCandidates: 'No online sites are available to stop',
     siteQuotaStopAndContinue: 'Stop and continue',
     siteQuotaConfirmTitle: 'Stop this site?',
@@ -5945,7 +5945,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     coworkErrorEnterpriseMembershipRevoked:
       'You have been removed from the current team and signed out. Sign in again to choose an available identity.',
     coworkErrorLobsterAILoginExpired:
-      'Your login session has expired. Sign in again to continue using LobsterAI plan models.',
+      'Your login session has expired. Sign in again to continue using HeyClaw plan models.',
     coworkErrorOAuthInvalid:
       'OAuth authorization is invalid or missing required access. Re-authenticate and try again.',
     coworkErrorModelAccessDenied:
@@ -6005,7 +6005,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
       'Task failed due to an unexpected error. Please retry. If the issue persists, check your model configuration.',
     coworkErrorTechnicalDetails: 'Technical details',
     coworkErrorModelLabel: 'Model',
-    coworkErrorModelSourceLobsterAIPlan: 'LobsterAI plan',
+    coworkErrorModelSourceLobsterAIPlan: 'HeyClaw plan',
     coworkErrorModelSourceCustomModel: 'Custom model',
 
     // Media Generation
@@ -6761,7 +6761,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     pluginsTab: 'Plugins',
     experimentalTab: 'Experimental',
     dshSettingsTitle: 'DeepSeek Harness',
-    dshSettingsDesc: 'Bundles DeepSeek\'s official open-source agent framework (dsh). Once enabled, LobsterAI\'s model provider configuration syncs into dsh automatically.',
+    dshSettingsDesc: 'Bundles DeepSeek\'s official open-source agent framework (dsh). Once enabled, HeyClaw\'s model provider configuration syncs into dsh automatically.',
     dshEnableLabel: 'Enable DeepSeek Harness',
     dshOpenWorkbench: 'Open Workbench',
     dshOpening: 'Starting…',
@@ -7369,7 +7369,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     permissionNotificationsDescription:
       'Show a system alert when a session needs you to approve an action or answer a question',
     notificationSystemPermissionHint:
-      'If you are not receiving notifications, allow LobsterAI to send notifications in the system settings.',
+      'If you are not receiving notifications, allow HeyClaw to send notifications in the system settings.',
     openSystemNotificationSettings: 'Open System Settings',
     preventSleep: 'Prevent Sleep',
     preventSleepDescription: 'Prevent the system from sleeping while the app is running',
@@ -7797,8 +7797,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     welcomeLogin: 'Login',
     welcomeCustomModel: 'Custom Model',
     welcomeAgreementNotice: 'By continuing, you agree to the {link}',
-    welcomeAgreementLinkText: 'NetEase Youdao LobsterAI Terms of Service',
-    welcomeCopyright: '© {year} NetEase Youdao',
+    welcomeAgreementLinkText: 'HeyClaw Terms of Service',
+    welcomeCopyright: '© {year} HeyClaw',
     welcomeLoginWaiting: 'Complete the sign-in in your browser',
     welcomeLoginFailed: 'Could not start sign-in. Please try again.',
     githubCopilotAuth: 'GitHub Account Authentication',

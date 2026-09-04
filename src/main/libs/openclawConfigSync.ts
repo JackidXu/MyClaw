@@ -520,7 +520,7 @@ const MANAGED_DELIVERABLE_LINKS_PROMPT = [
 const MANAGED_MATH_FORMAT_PROMPT = [
   '## Math Formula Formatting',
   '',
-  'The LobsterAI app chat renders TeX formulas with KaTeX.',
+  'The HeyClaw app chat renders TeX formulas with KaTeX.',
   '',
   '- In app chat sessions, write every mathematical formula or expression in TeX:',
   '  `$...$` inline, and `$$` on its own lines around display blocks.',
