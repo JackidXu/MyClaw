@@ -159,7 +159,64 @@ describe('resolveLobsterBrowserMcpCommand', () => {
     }
 
     expect(receivedSecrets).toEqual([bridgeSecret]);
-    expect(stderr.join('')).not.toContain('LOBSTERAI_ELECTRON_PATH is not set');
+    const stderrText = stderr.join('');
+    expect(stderrText).toContain('[LobsterBrowserMcp] startup');
+    expect(stderrText).toContain('runtimeConfig=loaded');
+    expect(stderrText).toContain('bridgeUrlArg=true');
+    expect(stderrText).toContain('bridgeSecretConfigured=true');
+    expect(stderrText).not.toContain(bridgeSecret);
+    expect(stderrText).not.toContain('LOBSTERAI_ELECTRON_PATH is not set');
+  }, 15_000);
+
+  test('writes bridge failures to stderr without exposing the bridge secret', async () => {
+    const baseDir = createTempDirectory();
+    const bridgeSecret = 'diagnostic-secret-must-not-leak';
+    const bridgeServer = http.createServer((request, response) => {
+      request.resume();
+      request.on('end', () => {
+        response.writeHead(503, { 'content-type': 'application/json' });
+        response.end(JSON.stringify({ error: 'Browser host is not ready.' }));
+      });
+    });
+    await new Promise<void>((resolve, reject) => {
+      bridgeServer.once('error', reject);
+      bridgeServer.listen(0, '127.0.0.1', resolve);
+    });
+    const address = bridgeServer.address() as AddressInfo;
+    const bridgeUrl = `http://127.0.0.1:${address.port}/browser/tool?private=ignored`;
+    const launch = resolveLobsterBrowserMcpStdioLaunch(baseDir, {
+      electronNodeRuntimePath: process.execPath,
+      bridgeUrl,
+      bridgeSecret,
+    });
+    const transport = new StdioClientTransport({
+      command: launch.command,
+      args: launch.args,
+      env: launch.env,
+      stderr: 'pipe',
+    });
+    const stderr: string[] = [];
+    transport.stderr?.on('data', chunk => stderr.push(String(chunk)));
+    const client = new Client({ name: 'lobster-browser-diagnostic-test', version: '1.0.0' }, {});
+
+    try {
+      await client.connect(transport);
+      const result = await client.callTool({ name: 'list_pages', arguments: {} });
+      expect(result.isError).toBe(true);
+      expect(result.content).toEqual([
+        { type: 'text', text: 'Browser host is not ready.' },
+      ]);
+    } finally {
+      await client.close().catch(() => {});
+      await new Promise<void>(resolve => bridgeServer.close(() => resolve()));
+    }
+
+    const stderrText = stderr.join('');
+    expect(stderrText).toContain('bridge-http-error tool="list_pages"');
+    expect(stderrText).toContain(`bridge=http://127.0.0.1:${address.port}/browser/tool`);
+    expect(stderrText).toContain('status=503');
+    expect(stderrText).not.toContain('?private=ignored');
+    expect(stderrText).not.toContain(bridgeSecret);
   }, 15_000);
 
   test('can expose only the saved-credential login tool to the Agent runtime', async () => {
