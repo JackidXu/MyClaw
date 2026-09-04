@@ -1160,32 +1160,36 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                           {isConflict ? (
                             <div className="space-y-2.5">
                               {/* VS 对比框 */}
-                              <div className="grid grid-cols-[1fr_42px_1fr] items-center gap-2.5 md:gap-3">
+                              <div className="grid grid-cols-[minmax(0,1fr)_38px_minmax(0,1fr)] sm:grid-cols-[minmax(0,1fr)_42px_minmax(0,1fr)] items-stretch gap-2 md:gap-3">
                                 {/* 左侧：旧认知 */}
-                                <div className="bg-[#f5a623]/8 border border-[#f5a623]/30 rounded-xl p-3.5 space-y-2">
-                                  <div className="text-[11px] font-extrabold text-[#f5a623]">旧认知</div>
-                                  <div className="text-xs md:text-[13px] font-bold text-foreground leading-snug">
-                                    "{item.replaces?.proposition || '存量既有认知'}"
+                                <div className="min-w-0 flex flex-col justify-between bg-[#f5a623]/8 border border-[#f5a623]/30 rounded-xl p-3.5 space-y-2">
+                                  <div className="space-y-1.5">
+                                    <div className="text-[11px] font-extrabold text-[#f5a623]">旧认知</div>
+                                    <div className="text-xs md:text-[13px] font-bold text-foreground leading-snug break-words">
+                                      "{item.replaces?.proposition || '存量既有认知'}"
+                                    </div>
                                   </div>
-                                  <div className="text-[10.5px] text-secondary bg-surface px-2.5 py-1 rounded-[5px] border-l-2 border-l-[#f5a623] truncate block shadow-2xs">
+                                  <div className="text-[10.5px] text-secondary bg-surface px-2.5 py-1 rounded-[5px] border-l-2 border-l-[#f5a623] truncate block shadow-2xs" title={item.replaces?.elaboration || '已沉淀判断'}>
                                     {item.replaces?.elaboration || '已沉淀判断'}
                                   </div>
                                 </div>
 
                                 {/* 中间：VS 圆圈 */}
-                                <div className="flex justify-center">
-                                  <div className="w-[34px] h-[34px] rounded-full bg-[#f5a623] text-white font-extrabold text-xs flex items-center justify-center mx-auto shadow-2xs">
+                                <div className="flex items-center justify-center shrink-0">
+                                  <div className="w-8 h-8 md:w-[34px] md:h-[34px] rounded-full bg-[#f5a623] text-white font-extrabold text-xs flex items-center justify-center shrink-0 shadow-2xs">
                                     VS
                                   </div>
                                 </div>
 
                                 {/* 右侧：新萃取 */}
-                                <div className="bg-[#4a8fe7]/8 border border-[#4a8fe7]/30 rounded-xl p-3.5 space-y-2">
-                                  <div className="text-[11px] font-extrabold text-[#4a8fe7]">新萃取</div>
-                                  <div className="text-xs md:text-[13px] font-bold text-foreground leading-snug">
-                                    "{editedPropositions[item.node_id] ?? item.proposition}"
+                                <div className="min-w-0 flex flex-col justify-between bg-[#4a8fe7]/8 border border-[#4a8fe7]/30 rounded-xl p-3.5 space-y-2">
+                                  <div className="space-y-1.5">
+                                    <div className="text-[11px] font-extrabold text-[#4a8fe7]">新萃取</div>
+                                    <div className="text-xs md:text-[13px] font-bold text-foreground leading-snug break-words">
+                                      "{editedPropositions[item.node_id] ?? item.proposition}"
+                                    </div>
                                   </div>
-                                  <div className="text-[10.5px] text-secondary bg-surface px-2.5 py-1 rounded-[5px] border-l-2 border-l-[#4a8fe7] truncate block shadow-2xs">
+                                  <div className="text-[10.5px] text-secondary bg-surface px-2.5 py-1 rounded-[5px] border-l-2 border-l-[#4a8fe7] truncate block shadow-2xs" title={item.source_name || '新提取判断'}>
                                     {item.source_name || '新提取判断'}
                                   </div>
                                 </div>
