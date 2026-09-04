@@ -3,6 +3,10 @@ import os from 'os';
 import path from 'path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
+import {
+  BrowserCredentialLoginTool,
+  BrowserCredentialMcpServer,
+} from '../../shared/browserCredentials/constants';
 import { ProviderName } from '../../shared/providers';
 
 vi.mock('electron', () => ({
@@ -2809,6 +2813,7 @@ describe('OpenClawConfigSync runtime config output', () => {
     const agentsMd = fs.readFileSync(agentsMdPath, 'utf8');
     expect(agentsMd).toContain('LobsterAI does not support sandbox browser execution in this version.');
     expect(agentsMd).toContain('For every `browser` tool call, set `target="host"` explicitly.');
+    expect(agentsMd).toContain('never tell the user to enable Chrome remote debugging');
   });
 
   test('enables managed OpenClaw tool loop detection', async () => {
@@ -2836,6 +2841,7 @@ describe('OpenClawConfigSync runtime config output', () => {
   test('writes browser and web fetch access settings', async () => {
     const { setSystemProxyEnabled } = await import('./systemProxy');
     const {
+      BrowserDisplayMode,
       BrowserNetworkMode,
       BrowserProfileMode,
       BrowserRuntimeProfile,
@@ -2843,6 +2849,7 @@ describe('OpenClawConfigSync runtime config output', () => {
     } = await import('../../shared/browserWebAccess/constants');
     const { OpenClawConfigSync } = await import('./openclawConfigSync');
     setSystemProxyEnabled(true);
+    let browserDisplayMode = BrowserDisplayMode.External;
 
     const sync = new OpenClawConfigSync({
       engineManager: {
@@ -2866,6 +2873,7 @@ describe('OpenClawConfigSync runtime config output', () => {
       getBrowserWebAccessConfig: () => ({
         browserEnabled: true,
         profileMode: BrowserProfileMode.User,
+        displayMode: browserDisplayMode,
         networkMode: BrowserNetworkMode.Strict,
         followGlobalProxy: true,
         allowedHostnames: ['https://Localhost:8443/path'],
@@ -2919,6 +2927,7 @@ describe('OpenClawConfigSync runtime config output', () => {
       enabled: true,
       defaultProfile: BrowserRuntimeProfile.Managed,
       evaluateEnabled: false,
+      headless: false,
       ssrfPolicy: {
         dangerouslyAllowPrivateNetwork: false,
         allowedHostnames: ['localhost'],
@@ -2944,6 +2953,86 @@ describe('OpenClawConfigSync runtime config output', () => {
     });
     expect(config.tools.web.fetch.useEnvProxy).toBeUndefined();
     expect(config.tools.web.fetch.useTrustedEnvProxy).toBeUndefined();
+
+    browserDisplayMode = BrowserDisplayMode.InApp;
+    let browserCallbackUrl: string | null = 'http://127.0.0.1:3210/browser/tool';
+    const inAppSync = new OpenClawConfigSync({
+      engineManager: {
+        getConfigPath: () => configPath,
+        getGatewayToken: () => 'gateway-token',
+        getStateDir: () => stateDir,
+        getBaseDir: () => tmpDir,
+      } as never,
+      getCoworkConfig: () => ({
+        workingDirectory: tmpDir,
+        systemPrompt: '',
+        executionMode: 'local',
+        agentEngine: 'openclaw',
+        memoryEnabled: false,
+        memoryImplicitUpdateEnabled: false,
+        memoryLlmJudgeEnabled: false,
+        memoryGuardLevel: 'balanced',
+        memoryUserMemoriesMaxItems: 100,
+        skipMissedJobs: false,
+      }),
+      getBrowserWebAccessConfig: () => ({ displayMode: browserDisplayMode }),
+      getBrowserCallbackUrl: () => browserCallbackUrl,
+      getLobsterBrowserMcpCommand: () => 'C:/LobsterAI/lobster-browser-mcp.cmd',
+      getLobsterBrowserMcpStdioLaunch: () => ({
+        command: 'C:/LobsterAI/LobsterAI.exe',
+        args: ['C:/LobsterAI/lobster-browser-mcp-server.mjs'],
+        env: { ELECTRON_RUN_AS_NODE: '1' },
+      }),
+      isEnterprise: () => false,
+      getPopoInstances: () => [],
+      getNeteaseBeeChanConfig: () => null,
+      getWeixinConfig: () => null,
+      getIMSettings: () => null,
+      getSkillsList: () => [],
+      getAgents: () => [],
+    } as never);
+    const inAppResult = inAppSync.sync('browser-web-access-in-app');
+    expect(inAppResult.ok).toBe(true);
+    const inAppConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    expect(inAppConfig.browser).toMatchObject({
+      defaultProfile: BrowserRuntimeProfile.InApp,
+      profiles: {
+        [BrowserRuntimeProfile.InApp]: {
+          driver: 'existing-session',
+          attachOnly: true,
+          mcpCommand: 'C:/LobsterAI/lobster-browser-mcp.cmd',
+          mcpArgs: ['--lobster-bridge-url=http://127.0.0.1:3210/browser/tool'],
+        },
+      },
+    });
+    expect(inAppConfig.browser.headless).toBeUndefined();
+    expect(inAppConfig.browser.extraArgs).toBeUndefined();
+    expect(inAppConfig.mcp.servers[BrowserCredentialMcpServer.Name]).toEqual({
+      command: 'C:/LobsterAI/LobsterAI.exe',
+      args: [
+        'C:/LobsterAI/lobster-browser-mcp-server.mjs',
+        BrowserCredentialMcpServer.ToolSetArgument,
+      ],
+      env: { ELECTRON_RUN_AS_NODE: '1' },
+      toolFilter: {
+        include: [BrowserCredentialLoginTool.Name],
+      },
+    });
+
+    browserCallbackUrl = null;
+    const fallbackResult = inAppSync.sync('browser-web-access-in-app-fallback');
+    expect(fallbackResult.ok).toBe(true);
+    const fallbackConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    expect(fallbackConfig.browser).toMatchObject({
+      defaultProfile: BrowserRuntimeProfile.Managed,
+      headless: false,
+    });
+
+    browserDisplayMode = BrowserDisplayMode.External;
+    const leaveInAppResult = inAppSync.sync('browser-web-access-leave-in-app');
+    expect(leaveInAppResult.ok).toBe(true);
+    const leaveInAppConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    expect(leaveInAppConfig.mcp).toBeUndefined();
   });
 
   test('marks MCP server config changes as restart impact', async () => {

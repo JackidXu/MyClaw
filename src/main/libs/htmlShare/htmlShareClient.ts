@@ -17,9 +17,11 @@ import {
 } from '../../../shared/htmlShare/constants';
 import {
   normalizePublishingQuotaErrorData,
+  normalizePublishingSubscriptionRecoveryMode,
   normalizePublishingTrialPolicy,
   type PublishingQuota,
   type PublishingQuotaErrorData,
+  type PublishingSubscriptionRecoveryMode,
   type PublishingTrialPolicy,
 } from '../../../shared/publishing/constants';
 
@@ -47,6 +49,7 @@ export interface HtmlShareCreateResult {
   updatedAt?: string;
   contentUpdatedAt?: string;
   accessExpiresAt?: string | null;
+  subscriptionRecoveryMode?: PublishingSubscriptionRecoveryMode;
   disabledAt?: string | null;
   disabledReason?: string | null;
   disabledSource?: HtmlShareDisabledSource | null;
@@ -119,6 +122,7 @@ interface HtmlShareApiData extends Partial<PublishingQuota> {
   updatedAt?: string;
   contentUpdatedAt?: string;
   accessExpiresAt?: string | null;
+  subscriptionRecoveryMode?: unknown;
   disabledAt?: string | null;
   disabledReason?: string | null;
   disabledSource?: HtmlShareDisabledSource | null;
@@ -218,7 +222,12 @@ function buildHtmlShareResult(
     moderationStatus: payload.data.moderationStatus,
     updatedAt: payload.data.updatedAt,
     contentUpdatedAt: payload.data.contentUpdatedAt,
-    accessExpiresAt: payload.data.accessExpiresAt,
+    ...(Object.prototype.hasOwnProperty.call(payload.data, 'accessExpiresAt')
+      ? { accessExpiresAt: payload.data.accessExpiresAt }
+      : {}),
+    subscriptionRecoveryMode: normalizePublishingSubscriptionRecoveryMode(
+      payload.data.subscriptionRecoveryMode,
+    ),
     disabledAt: payload.data.disabledAt,
     disabledReason: payload.data.disabledReason,
     disabledSource: payload.data.disabledSource,

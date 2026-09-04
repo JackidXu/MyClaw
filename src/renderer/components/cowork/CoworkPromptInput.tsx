@@ -94,6 +94,7 @@ import {
 } from '../../store/slices/coworkSlice';
 import { setActiveKitIds, toggleActiveKit } from '../../store/slices/kitSlice';
 import type { Model } from '../../store/slices/modelSlice';
+import { isSameModelIdentity } from '../../store/slices/modelSlice';
 import { setActiveSkillIds, setSkills, toggleActiveSkill } from '../../store/slices/skillSlice';
 import { CoworkCollaborationMode, CoworkImageAttachment } from '../../types/cowork';
 import type { MediaAttachmentRef } from '../../types/mediaGeneration';
@@ -682,6 +683,13 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     agentSelectedModel,
     globalSelectedModel: currentAgentSelectedModel,
   });
+  const effectiveModelIsAvailable = useMemo(() => (
+    !!effectiveSelectedModel
+    && availableModels.some(model => isSameModelIdentity(model, effectiveSelectedModel))
+  ), [availableModels, effectiveSelectedModel]);
+  const modelSelectionRefreshPending = isLoggedIn
+    && availableModels.length === 0
+    && effectiveSelectedModel?.isServerModel === true;
   const effectiveThinkingLevel = resolveModelThinkingLevel(
     effectiveSelectedModel,
     sessionId && currentSession?.id === sessionId
@@ -1713,6 +1721,29 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
       : CoworkCollaborationMode.Default;
 
     const accessPrompt = resolveSubmitModelAccessPrompt();
+    if (!effectiveModelIsAvailable && accessPrompt !== ModelAccessPromptKind.Login) {
+      const message = `blocked submit because selected model is unavailable; refreshPending=${modelSelectionRefreshPending}; model=${effectiveSelectedModel?.id ?? 'none'}; provider=${effectiveSelectedModel?.providerKey ?? 'none'}`;
+      console.debug(`[CoworkPromptInput] ${message}`);
+      try {
+        window.electron?.log?.fromRenderer?.('debug', 'CoworkPromptInput', message);
+      } catch {
+        // Diagnostics only.
+      }
+      reportPromptControl('submit_blocked', {
+        blockedReason: 'model_unavailable',
+        modelRefreshPending: modelSelectionRefreshPending,
+        submitMethod: effectiveSubmitMethod,
+        ...getPromptTextAnalyticsParams(trimmedValue),
+        ...getPromptCapabilityAnalyticsParams(),
+      });
+      showToast(i18nService.t(
+        modelSelectionRefreshPending
+          ? 'coworkModelRefreshing'
+          : 'coworkModelSettingsRequired',
+      ));
+      return;
+    }
+
     if (accessPrompt) {
       reportPromptControl('submit_blocked', {
         blockedReason: 'model_access_required',
@@ -1932,7 +1963,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     resetGoalInput(false);
     draftStartedAnalyticsRef.current = false;
     inputSourceOverrideRef.current = null;
-  }, [value, steerInputActive, steerValue, isVoiceRecording, stopVoiceRecordingAndRecognize, goalInputActive, goalInputMode, resetGoalInput, isStreaming, canSteer, remoteManaged, disabled, submitDisabled, isPatchingModel, onSubmit, onGoalCommand, activeSkillIds, skills, activeKitIds, marketplaceKits, installedKits, attachments, browserAnnotationBatches, showFolderSelector, workingDirectory, dispatch, draftKey, selectedTextSnippets, pendingSteers.length, resolveSubmitModelAccessPrompt, isLoggedIn, hasAccessibleUserModel, isPlanMode, planConfirmation, reportPromptControl, getPromptCapabilityAnalyticsParams, getPromptContextAnalyticsParams, getPromptInputSource, goal, sessionId, preparePromptPayload, modelSupportsImage, queuedMediaSelection, authOwnerAccountKey, authAccountGeneration]);
+  }, [value, steerInputActive, steerValue, isVoiceRecording, stopVoiceRecordingAndRecognize, goalInputActive, goalInputMode, resetGoalInput, isStreaming, canSteer, remoteManaged, disabled, submitDisabled, isPatchingModel, onSubmit, onGoalCommand, activeSkillIds, skills, activeKitIds, marketplaceKits, installedKits, attachments, browserAnnotationBatches, showFolderSelector, workingDirectory, dispatch, draftKey, selectedTextSnippets, pendingSteers.length, resolveSubmitModelAccessPrompt, isLoggedIn, hasAccessibleUserModel, isPlanMode, planConfirmation, reportPromptControl, getPromptCapabilityAnalyticsParams, getPromptContextAnalyticsParams, getPromptInputSource, goal, sessionId, preparePromptPayload, modelSupportsImage, queuedMediaSelection, authOwnerAccountKey, authAccountGeneration, effectiveModelIsAvailable, modelSelectionRefreshPending, effectiveSelectedModel?.id, effectiveSelectedModel?.providerKey]);
   handleSubmitRef.current = handleSubmit;
 
   const handleSelectSkill = useCallback((skill: Skill) => {
@@ -2801,6 +2832,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     && !isVoiceRecognizing
     && !isPatchingModel
     && !agentModelIsInvalid
+    && (effectiveModelIsAvailable || resolveSubmitModelAccessPrompt() === ModelAccessPromptKind.Login)
     && (!!activeTextareaValue.trim() || (!steerInputActive && (hasAttachments || browserAnnotationBatches.length > 0)));
   const showNewUserWelcomeLockOverlay = showNewUserWelcomeLoginOverlay && !isLoggedIn;
   const enhancedContainerClass = isDraggingFiles
@@ -2860,7 +2892,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
         alignDropdownToTriggerEnd={useHomeContextLayout}
         portal={showReadOnlyContext}
         triggerMaxWidthClassName={largeModelTriggerMaxWidthClassName}
-        disabled={isPatchingModel || isPersistingAgentModel}
+        disabled={isPatchingModel || isPersistingAgentModel || modelSelectionRefreshPending}
         thinkingLevel={effectiveThinkingLevel ?? null}
         value={agentModelIsInvalid && currentSession?.modelOverride
           ? { id: '__invalid__', name: currentSession.modelOverride.split('/').pop() || currentSession.modelOverride } as Model

@@ -719,6 +719,33 @@ describe('htmlShareClient', () => {
     expect(result.share?.disabledSource).toBe(HtmlShareDisabledSource.ActiveLimit);
   });
 
+  test('preserves missing and explicit null access expiry from share lookup responses', async () => {
+    const lookup = (data: Record<string, unknown>) => getHtmlShareBySource(
+      'https://lobsterai-server.inner.youdao.com',
+      'https://lobsterai-server.inner.youdao.com/s',
+      async () => new Response(
+        JSON.stringify({ code: 0, data }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+      HtmlShareSourceType.HtmlFile,
+      'source-key',
+    );
+
+    const missingResult = await lookup({
+      shareId: 'shr_missing_expiry',
+      status: HtmlShareStatus.Disabled,
+    });
+    const nullResult = await lookup({
+      shareId: 'shr_null_expiry',
+      status: HtmlShareStatus.Live,
+      accessExpiresAt: null,
+    });
+
+    expect(Object.prototype.hasOwnProperty.call(missingResult.share, 'accessExpiresAt')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(nullResult.share, 'accessExpiresAt')).toBe(true);
+    expect(nullResult.share?.accessExpiresAt).toBeNull();
+  });
+
   test('falls back to my shares when source lookup omits a disabled share', async () => {
     const requestedUrls: string[] = [];
 

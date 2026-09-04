@@ -14,6 +14,7 @@ import {
   powerMonitor,
   powerSaveBlocker,
   protocol,
+  safeStorage,
   session,
   shell,
   type WebContents,
@@ -42,7 +43,7 @@ import {
 } from '../shared/analytics/constants';
 import { AppIpcChannel } from '../shared/app/constants';
 import { AppSettingsAutoLaunchErrorCode, AppSettingsIpc } from '../shared/appSettings/constants';
-import { AppUpdateIpc } from '../shared/appUpdate/constants';
+import { type AppUpdateActiveWorkloads, AppUpdateIpc } from '../shared/appUpdate/constants';
 import { ArtifactBrowserPartition, ArtifactPreviewIpc, ArtifactPreviewProtocol } from '../shared/artifactPreview/constants';
 import { createAccountOwnerKey } from '../shared/auth/accountOwner';
 import {
@@ -56,10 +57,18 @@ import {
   AuthSessionStatus,
 } from '../shared/auth/constants';
 import {
+  type AgentBrowserCredentialSavePromptRequest,
+  type AgentBrowserHostNavigateRequest,
+  type AgentBrowserHostPageRequest,
+  type AgentBrowserHostRequest,
+  type AgentBrowserHostResponse,
+  type AgentBrowserHostSetViewRequest,
   type BrowserDiagnosticResultStep,
   BrowserDiagnosticStatus,
   BrowserDiagnosticStep,
+  BrowserDisplayMode,
   BrowserIpc,
+  BrowserNetworkMode,
   BrowserRuntimeProfile,
   type BrowserWebAccessConfig,
   normalizeBrowserWebAccessConfig,
@@ -197,6 +206,8 @@ import { APP_NAME, APP_USER_MODEL_ID, DB_FILENAME } from './appConstants';
 import { createLocalFileProtocolResponse } from './artifactLocalFileProtocol';
 import { authQuotaGateStateFromQuota, AuthSubscriptionStatus, createDefaultAuthQuotaGateState, normalizeAuthQuota } from './authQuota';
 import { type AutoLaunchStatus, getAutoLaunchStatus, isAutoLaunched, setAutoLaunchEnabled } from './autoLaunchManager';
+import { BrowserCredentialApprovalService } from './browserCredentials/browserCredentialApprovalService';
+import { BrowserCredentialService } from './browserCredentials/browserCredentialService';
 import { getRecentComputerUseLogEntries } from './computerUse/computerUseLogs';
 import { type CoworkForkContextMessage, type CoworkMessage, CoworkStore } from './coworkStore';
 import {
@@ -240,6 +251,7 @@ import type {
 import { registerActivityIpcHandlers } from './ipcHandlers/activity';
 import { registerAgentHandlers } from './ipcHandlers/agents';
 import { registerAsrIpcHandlers } from './ipcHandlers/asr';
+import { registerBrowserCredentialHandlers } from './ipcHandlers/browserCredentials/handlers';
 import { registerCoworkSubagentHandlers } from './ipcHandlers/coworkSubagent';
 import { ensureDshEngineReady, registerDshHandlers } from './ipcHandlers/dsh/handlers';
 import { registerEnterpriseAccountHandlers } from './ipcHandlers/enterpriseAccount';
@@ -261,12 +273,19 @@ import { registerSkillHandlers } from './ipcHandlers/skills';
 import { LibraryIndexService } from './library/libraryIndexService';
 import { registerLibraryIpcHandlers } from './library/libraryIpc';
 import { LibraryLocalStore } from './library/libraryLocalStore';
+import { AgentBrowserHost } from './libs/agentBrowserHost';
 import {
   type CoworkAgentEngine,
   CoworkEngineRouter,
   OpenClawRuntimeAdapter,
   type PermissionResult,
 } from './libs/agentEngine';
+import {
+  appQuitConfirmationGate,
+  AppQuitRequestVerdict,
+  quitAppWithoutConfirmation,
+  showAppQuitConfirmation,
+} from './libs/appQuitConfirmation';
 import { AppUpdateCoordinator, INSTALLATION_UUID_KEY } from './libs/appUpdateCoordinator';
 import { AuthCallbackRouter } from './libs/authCallbackRouter';
 import {
@@ -385,6 +404,10 @@ import { getKeyfromAttribution, initializeKeyfromAttribution } from './libs/keyf
 import { LibraryThumbnailRenderer } from './libs/libraryThumbnailRenderer';
 import { LibraryThumbnailService } from './libs/libraryThumbnailService';
 import { isLikelyBlankThumbnailBitmap } from './libs/libraryThumbnailValidation';
+import {
+  resolveLobsterBrowserMcpCommand,
+  resolveLobsterBrowserMcpStdioLaunch,
+} from './libs/lobsterBrowserMcpServer';
 import { exportLogsZip } from './libs/logExport';
 import { MainLogReporter } from './libs/mainLogReporter';
 import { inferImageMimeTypeFromDataUrl, type PersistedGeneratedImageAsset, persistGeneratedImageAssets, type PersistGeneratedImageAssetsResult, persistGeneratedVideoAssets, type RemoteGeneratedMediaAsset } from './libs/mediaAssetPersistence';
@@ -2072,6 +2095,9 @@ let store: SqliteStore | null = null;
 let coworkStore: CoworkStore | null = null;
 let openClawRuntimeAdapter: OpenClawRuntimeAdapter | null = null;
 let coworkEngineRouter: CoworkEngineRouter | null = null;
+let agentBrowserHost: AgentBrowserHost | null = null;
+let browserCredentialService: BrowserCredentialService | null = null;
+let browserCredentialApprovalService: BrowserCredentialApprovalService | null = null;
 let skillManager: SkillManager | null = null;
 let mcpRuntime: McpRuntime | null = null;
 let skinRuntimeController: SkinRuntimeController | null = null;
@@ -2135,6 +2161,61 @@ const getOpenClawEngineManager = (): OpenClawEngineManager => {
     openClawEngineManager = new OpenClawEngineManager();
   }
   return openClawEngineManager;
+};
+
+const getBrowserCredentialService = (): BrowserCredentialService => {
+  if (!browserCredentialService) {
+    browserCredentialService = new BrowserCredentialService(
+      getStore().getDatabase(),
+      safeStorage,
+    );
+  }
+  return browserCredentialService;
+};
+
+const getBrowserCredentialApprovalService = (): BrowserCredentialApprovalService => {
+  if (!browserCredentialApprovalService) {
+    browserCredentialApprovalService = new BrowserCredentialApprovalService({
+      askUser: (questions, timeoutMs, options) => getMcpRuntime().askUserInternal(
+        questions,
+        timeoutMs,
+        options,
+      ),
+      translate: t,
+    });
+  }
+  return browserCredentialApprovalService;
+};
+
+const getAgentBrowserHost = (): AgentBrowserHost => {
+  if (!agentBrowserHost) {
+    agentBrowserHost = new AgentBrowserHost({
+      getMainWindow: () => mainWindow,
+      getBrowserConfig: () => getStore().get<AppConfigSettings>('app_config')?.browserWebAccess,
+      useSystemProxy: () => {
+        const appConfig = getStore().get<AppConfigSettings>('app_config');
+        const browserConfig = normalizeBrowserWebAccessConfig(appConfig?.browserWebAccess);
+        return getUseSystemProxyFromConfig(appConfig)
+          && browserConfig.followGlobalProxy
+          && browserConfig.networkMode === BrowserNetworkMode.ProxyCompatible;
+      },
+      emitState: event => {
+        for (const window of BrowserWindow.getAllWindows()) {
+          if (!window.isDestroyed()) {
+            window.webContents.send(BrowserIpc.HostState, event);
+          }
+        }
+      },
+      credentialService: getBrowserCredentialService(),
+      credentialApprovalService: getBrowserCredentialApprovalService(),
+      resolveSessionKey: sessionId => {
+        const normalizedSessionId = sessionId?.trim();
+        if (!normalizedSessionId) return undefined;
+        return getCoworkStore().getSession(normalizedSessionId, 0)?.claudeSessionId ?? undefined;
+      },
+    });
+  }
+  return agentBrowserHost;
 };
 
 const formatAutoLaunchStatusForLog = (status: AutoLaunchStatus): string => {
@@ -2497,6 +2578,33 @@ const getOpenClawConfigSync = (): OpenClawConfigSync => {
       },
       getAskUserCallbackUrl: () => getMcpRuntime().getAskUserCallbackUrl(),
       getMediaCallbackUrl: () => getMcpRuntime().getMediaCallbackUrl(),
+      getBrowserCallbackUrl: () => getMcpRuntime().getBrowserCallbackUrl(),
+      getLobsterBrowserMcpCommand: () => {
+        const mcpRuntime = getMcpRuntime();
+        const bridgeUrl = mcpRuntime.getBrowserCallbackUrl();
+        if (!bridgeUrl) return null;
+        return resolveLobsterBrowserMcpCommand(
+          path.join(getOpenClawEngineManager().getStateDir(), 'generated'),
+          {
+            electronNodeRuntimePath: getElectronNodeRuntimePath(),
+            bridgeUrl,
+            bridgeSecret: mcpRuntime.getBridgeSecret(),
+          },
+        );
+      },
+      getLobsterBrowserMcpStdioLaunch: () => {
+        const mcpRuntime = getMcpRuntime();
+        const bridgeUrl = mcpRuntime.getBrowserCallbackUrl();
+        if (!bridgeUrl) return null;
+        return resolveLobsterBrowserMcpStdioLaunch(
+          path.join(getOpenClawEngineManager().getStateDir(), 'generated'),
+          {
+            electronNodeRuntimePath: getElectronNodeRuntimePath(),
+            bridgeUrl,
+            bridgeSecret: mcpRuntime.getBridgeSecret(),
+          },
+        );
+      },
       getMcpBridgeSecret: () => getMcpRuntime().getBridgeSecret(),
       getAgents: () => getCoworkStore().listAgents(),
       getUserPlugins: () =>
@@ -3384,6 +3492,14 @@ const getCoworkEngineRouter = () => {
             getCronJobService().notifyGatewayReady();
             handleGatewaySelfRestartSettled();
           },
+          onBrowserToolEvent: event => {
+            const displayMode = normalizeBrowserWebAccessConfig(
+              getStore().get<AppConfigSettings>('app_config')?.browserWebAccess,
+            ).displayMode;
+            if (displayMode === BrowserDisplayMode.InApp) {
+              getAgentBrowserHost().handleToolEvent(event);
+            }
+          },
         },
         new SubagentRunStore(getStore().getDatabase()),
         new SubagentMessageStore(getStore().getDatabase()),
@@ -3499,7 +3615,9 @@ const getMcpRuntime = (): McpRuntime => {
 };
 
 const startAskUserServer = async (): Promise<void> => {
-  await getMcpRuntime().startAskUserServer();
+  const runtime = getMcpRuntime();
+  await runtime.startAskUserServer();
+  runtime.setBrowserToolHandler(request => getAgentBrowserHost().handleToolRequest(request));
 };
 
 const getIMGatewayManager = () => {
@@ -4224,9 +4342,24 @@ const hasBrowserWebAccessConfigChanged = (
   previousConfig?: AppConfigSettings,
   nextConfig?: AppConfigSettings,
 ): boolean => {
-  return JSON.stringify(normalizeBrowserWebAccessConfig(previousConfig?.browserWebAccess)) !==
-    JSON.stringify(normalizeBrowserWebAccessConfig(nextConfig?.browserWebAccess));
+  const previousBrowserConfig = normalizeBrowserWebAccessConfig(previousConfig?.browserWebAccess);
+  const nextBrowserConfig = normalizeBrowserWebAccessConfig(nextConfig?.browserWebAccess);
+  return JSON.stringify({
+    ...previousBrowserConfig,
+    credentialUseMode: undefined,
+    credentialSaveMode: undefined,
+  }) !== JSON.stringify({
+    ...nextBrowserConfig,
+    credentialUseMode: undefined,
+    credentialSaveMode: undefined,
+  });
 };
+
+const hasBrowserHostConfigChanged = (
+  previousConfig?: AppConfigSettings,
+  nextConfig?: AppConfigSettings,
+): boolean => JSON.stringify(normalizeBrowserWebAccessConfig(previousConfig?.browserWebAccess)) !==
+  JSON.stringify(normalizeBrowserWebAccessConfig(nextConfig?.browserWebAccess));
 
 const getSqliteAutoBackupEnabledFromConfig = (
   config?: { sqliteAutoBackupEnabled?: boolean },
@@ -4638,8 +4771,10 @@ if (!gotTheLock) {
         );
       }
       const browserWebAccessChanged = hasBrowserWebAccessConfigChanged(previousAppConfig, nextAppConfig);
-      const systemProxyChanged = getUseSystemProxyFromConfig(previousAppConfig) !==
-        getUseSystemProxyFromConfig(nextAppConfig);
+      const browserHostConfigChanged = hasBrowserHostConfigChanged(previousAppConfig, nextAppConfig);
+      if (browserHostConfigChanged || previousAppConfig?.useSystemProxy !== nextAppConfig?.useSystemProxy) {
+        agentBrowserHost?.refreshConfig();
+      }
       refreshEndpointsTestMode(getStore());
       const impactDecision = classifyAppConfigChange(previousAppConfig, value);
       const proxyChanged = impactDecision.reasons.includes(OpenClawConfigImpactReason.AppUseSystemProxy);
@@ -4653,21 +4788,14 @@ if (!gotTheLock) {
       }
 
       const shouldSyncOpenClawConfig = actionDecision.impact !== OpenClawConfigImpact.None || browserWebAccessChanged;
-      let syncResult: Awaited<ReturnType<typeof syncOpenClawConfig>> | null = null;
       if (shouldSyncOpenClawConfig) {
-        syncResult = await syncOpenClawConfig({
+        const syncResult = await syncOpenClawConfig({
           reason: 'app-config-change',
-          restartGatewayIfRunning: actionDecision.impact === OpenClawConfigImpact.Restart,
+          restartGatewayIfRunning:
+            actionDecision.impact === OpenClawConfigImpact.Restart || browserWebAccessChanged,
         });
         if (!syncResult.success) {
           console.error('[OpenClaw] Failed to sync config after app_config update:', syncResult.error);
-        }
-      }
-      if (syncResult?.success && browserWebAccessChanged && !systemProxyChanged && actionDecision.impact !== OpenClawConfigImpact.Restart) {
-        const engineStatus = getOpenClawEngineManager().getStatus();
-        if (engineStatus.phase === 'running') {
-          console.log(`${gwDiagTs()} browser access settings changed, restarting gateway`);
-          void getOpenClawEngineManager().restartGateway('browser-access-settings-change');
         }
       }
     }
@@ -4840,7 +4968,7 @@ if (!gotTheLock) {
   ipcMain.handle('app:relaunch', () => {
     console.log('[Main] app:relaunch requested, scheduling restart...');
     app.relaunch();
-    app.quit();
+    quitAppWithoutConfirmation('app:relaunch');
   });
 
   // Window control IPC handlers
@@ -8569,6 +8697,103 @@ if (!gotTheLock) {
     profile ? `?profile=${encodeURIComponent(profile)}` : ''
   );
 
+  registerBrowserCredentialHandlers({
+    ipcMain,
+    getService: getBrowserCredentialService,
+  });
+
+  const runBrowserHostAction = async (
+    action: () => Promise<ReturnType<AgentBrowserHost['getState']>> | ReturnType<AgentBrowserHost['getState']>,
+  ): Promise<AgentBrowserHostResponse> => {
+    try {
+      return { success: true, state: await action() };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'LobsterAI in-app browser action failed.';
+      return {
+        success: false,
+        state: {
+          ...getAgentBrowserHost().getState(),
+          error: message,
+        },
+        error: message,
+      };
+    }
+  };
+
+  ipcMain.handle(
+    BrowserIpc.GetHostState,
+    (_event, _request?: AgentBrowserHostRequest): Promise<AgentBrowserHostResponse> =>
+      runBrowserHostAction(() => getAgentBrowserHost().getState()),
+  );
+
+  ipcMain.handle(
+    BrowserIpc.SetHostView,
+    (_event, request?: AgentBrowserHostSetViewRequest): Promise<AgentBrowserHostResponse> =>
+      runBrowserHostAction(() => getAgentBrowserHost().setView({
+        sessionId: request?.sessionId,
+        visible: request?.visible === true,
+        bounds: request?.bounds,
+      })),
+  );
+
+  ipcMain.handle(
+    BrowserIpc.NavigateHost,
+    (_event, request?: AgentBrowserHostNavigateRequest): Promise<AgentBrowserHostResponse> =>
+      runBrowserHostAction(() => getAgentBrowserHost().navigate(
+        request?.url ?? '',
+        request?.sessionId,
+      )),
+  );
+
+  ipcMain.handle(
+    BrowserIpc.GoBackHost,
+    (): Promise<AgentBrowserHostResponse> => runBrowserHostAction(() => getAgentBrowserHost().goBack()),
+  );
+
+  ipcMain.handle(
+    BrowserIpc.GoForwardHost,
+    (): Promise<AgentBrowserHostResponse> => runBrowserHostAction(() => getAgentBrowserHost().goForward()),
+  );
+
+  ipcMain.handle(
+    BrowserIpc.ReloadHost,
+    (): Promise<AgentBrowserHostResponse> => runBrowserHostAction(() => getAgentBrowserHost().reload()),
+  );
+
+  ipcMain.handle(
+    BrowserIpc.StopHost,
+    (): Promise<AgentBrowserHostResponse> => runBrowserHostAction(() => getAgentBrowserHost().stop()),
+  );
+
+  ipcMain.handle(
+    BrowserIpc.SelectHostPage,
+    (_event, request?: AgentBrowserHostPageRequest): Promise<AgentBrowserHostResponse> =>
+      runBrowserHostAction(() => getAgentBrowserHost().selectPage(
+        request?.pageId ?? 0,
+        request?.sessionId,
+      )),
+  );
+
+  ipcMain.handle(
+    BrowserIpc.CloseHostPage,
+    (_event, request?: AgentBrowserHostPageRequest): Promise<AgentBrowserHostResponse> =>
+      runBrowserHostAction(() => getAgentBrowserHost().closePage(request?.pageId ?? 0)),
+  );
+
+  ipcMain.handle(
+    BrowserIpc.ResolveCredentialSavePrompt,
+    (_event, request?: AgentBrowserCredentialSavePromptRequest): Promise<AgentBrowserHostResponse> =>
+      runBrowserHostAction(() => {
+        if (!request) {
+          throw new Error('A browser credential save decision is required.');
+        }
+        return getAgentBrowserHost().resolveCredentialSavePrompt(
+          request.requestId,
+          request.decision,
+        );
+      }),
+  );
+
   ipcMain.handle(BrowserIpc.GetStatus, async (_event, options?: { profile?: BrowserRuntimeProfile }) => {
     try {
       const status = await fetchBrowserControlJson<Record<string, unknown>>(
@@ -8740,7 +8965,6 @@ if (!gotTheLock) {
       return app.getPath('home');
     },
     getWorkbenchTitle: () => t('dshWorkbenchTitle'),
-    syncOpenClawConfig,
   });
 
 
@@ -12876,17 +13100,18 @@ if (!gotTheLock) {
     return { success: true, state };
   });
 
-  ipcMain.handle(AppUpdateIpc.CancelDownload, async () => {
-    const state = getAppUpdateCoordinator().cancelDownload();
-    return { success: true, state };
-  });
-
   ipcMain.handle(AppUpdateIpc.InstallReady, async () => {
     return getAppUpdateCoordinator().installReadyUpdate();
   });
 
   ipcMain.handle(AppUpdateIpc.GetCompletedUpdate, async () => {
     return { version: getAppUpdateCoordinator().consumeCompletedUpdateVersion() };
+  });
+
+  // Installing quits the app, so the renderer asks before interrupting a
+  // running agent turn or scheduled task.
+  ipcMain.handle(AppUpdateIpc.GetActiveWorkloads, async (): Promise<AppUpdateActiveWorkloads> => {
+    return { hasActiveWorkloads: hasActiveGatewayWorkloads() };
   });
 
   // Helper: detect if a URL belongs to GitHub Copilot and apply token refresh on 401.
@@ -13445,6 +13670,10 @@ if (!gotTheLock) {
     mainWindow.on('focus', () => {
       getDesktopNotificationManager().handleWindowFocused();
     });
+    mainWindow.on('show', () => agentBrowserHost?.setWindowVisible(true));
+    mainWindow.on('restore', () => agentBrowserHost?.setWindowVisible(true));
+    mainWindow.on('hide', () => agentBrowserHost?.setWindowVisible(false));
+    mainWindow.on('minimize', () => agentBrowserHost?.setWindowVisible(false));
 
     // 处理渲染进程崩溃或退出
     mainWindow.webContents.on('render-process-gone', (_event, details) => {
@@ -13521,6 +13750,7 @@ if (!gotTheLock) {
       windowStatePersist.cleanup();
       authCallbackRouter.markRendererUnavailable();
       isOpenSessionFromNotificationReady = false;
+      agentBrowserHost?.setWindowVisible(false);
       mainWindow = null;
     });
 
@@ -13762,6 +13992,15 @@ if (!gotTheLock) {
     mediaTurnAccountScopeBySession.clear();
     mediaTasksHandledByStatusPolling.clear();
     mediaStatusPollCounts.clear();
+    const browserHost = agentBrowserHost;
+    agentBrowserHost = null;
+
+    if (browserHost) {
+      currentAppCleanupStep = 'agent-browser-storage';
+      await browserHost.dispose().catch(error => {
+        console.error('[AgentBrowserHost] Failed to flush persistent browser storage on quit:', error);
+      });
+    }
 
     // Stop Cowork sessions without blocking shutdown.
     if (coworkEngineRouter) {
@@ -13840,6 +14079,21 @@ if (!gotTheLock) {
   // kill — and that zombie is what the installer later has to hunt down.
   const APP_CLEANUP_WATCHDOG_MS = 10_000;
 
+  // While the quit confirmation is open on macOS, the parentless alert runs a
+  // nested native loop: app.exit() only stops that modal session and the main
+  // loop never quits, leaving a process that ignores every later exit call
+  // (process.exit is mapped to app.exit in Electron's main process, so it is
+  // no escape either). Cleanup has already run by the time this is called, so
+  // killing the process outright is safe; electron-log writes synchronously.
+  const exitAppProcess = (code: number) => {
+    if (isMac && appQuitConfirmationGate.isPromptOpen()) {
+      console.warn(`[Main] quit confirmation prompt still open, killing process instead of app.exit(${code})`);
+      process.kill(process.pid, 'SIGKILL');
+      return;
+    }
+    app.exit(code);
+  };
+
   const runAppCleanupAndExit = (trigger: string) => {
     isCleanupInProgress = true;
     isQuitting = true;
@@ -13848,7 +14102,7 @@ if (!gotTheLock) {
       console.error(
         `[Main] App cleanup did not finish within ${APP_CLEANUP_WATCHDOG_MS}ms (trigger=${trigger}, stuck at step: ${currentAppCleanupStep}), forcing exit`,
       );
-      app.exit(1);
+      exitAppProcess(1);
     }, APP_CLEANUP_WATCHDOG_MS);
 
     void runAppCleanup()
@@ -13859,7 +14113,7 @@ if (!gotTheLock) {
         clearTimeout(watchdog);
         isCleanupFinished = true;
         isCleanupInProgress = false;
-        app.exit(0);
+        exitAppProcess(0);
       });
   };
 
@@ -13871,7 +14125,34 @@ if (!gotTheLock) {
       return;
     }
 
-    runAppCleanupAndExit('before-quit');
+    const verdict = appQuitConfirmationGate.resolveQuitRequest();
+    if (verdict === AppQuitRequestVerdict.Ignore) {
+      return;
+    }
+    if (verdict === AppQuitRequestVerdict.Bypass) {
+      runAppCleanupAndExit('before-quit');
+      return;
+    }
+
+    // User-initiated quit (Cmd+Q, app menu, Dock, tray): scheduled tasks and
+    // IM replies stop with the app, so ask first.
+    void showAppQuitConfirmation()
+      .then(
+        confirmed => confirmed,
+        error => {
+          // Honor the quit rather than trap the user in a process that cannot
+          // exit because its confirmation prompt is broken.
+          console.error('[Main] quit confirmation prompt failed, quitting without it:', error);
+          return true;
+        },
+      )
+      .then(confirmed => {
+        if (appQuitConfirmationGate.finishPrompt(confirmed)) {
+          runAppCleanupAndExit('before-quit');
+        } else {
+          console.log('[Main] quit cancelled at the confirmation prompt');
+        }
+      });
   });
 
   const handleTerminationSignal = (signal: NodeJS.Signals) => {
@@ -14385,6 +14666,17 @@ if (!gotTheLock) {
       }
     });
 
+    // macOS posts this for logout, restart, and shutdown right before it asks
+    // the app to terminate. The OS already decided the quit, so do not hold
+    // the logout at the confirmation prompt. Windows session end never reaches
+    // `before-quit`, and on Linux a listener would add a logind inhibitor.
+    if (isMac) {
+      powerMonitor.on('shutdown', () => {
+        console.log('[Main] OS logout/shutdown announced, skipping quit confirmation');
+        appQuitConfirmationGate.armBypass();
+      });
+    }
+
     // 首次启动时默认开启开机自启动，并以系统登录项的实际状态回写本地标记。
     if (!getStore().get('auto_launch_initialized')) {
       getStore().set('auto_launch_initialized', true);
@@ -14494,7 +14786,9 @@ if (!gotTheLock) {
       return;
     }
     if (process.platform !== 'darwin') {
-      app.quit();
+      // Only reachable in development (production closes hide to the tray),
+      // and the window is already gone, so there is nothing to cancel back to.
+      quitAppWithoutConfirmation('window-all-closed');
     }
   });
 }

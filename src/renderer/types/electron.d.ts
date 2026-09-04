@@ -8,7 +8,7 @@ import type {
   ActivityResult,
   ActivitySlotResponse,
 } from '../../shared/activity/constants';
-import type { AppUpdateCheckResult, AppUpdateRuntimeState } from '../../shared/appUpdate/constants';
+import type { AppUpdateActiveWorkloads, AppUpdateCheckResult, AppUpdateRuntimeState } from '../../shared/appUpdate/constants';
 import type {
   AsrRealtimeSessionRequest,
   AsrRealtimeSessionResult,
@@ -21,6 +21,20 @@ import type {
   AuthSessionStatus,
 } from '../../shared/auth/constants';
 import type {
+  BrowserCredentialAvailabilityResponse,
+  BrowserCredentialDeleteRequest,
+  BrowserCredentialListResponse,
+  BrowserCredentialMutationResponse,
+  BrowserCredentialSaveRequest,
+} from '../../shared/browserCredentials/constants';
+import type {
+  AgentBrowserCredentialSavePromptRequest,
+  AgentBrowserHostNavigateRequest,
+  AgentBrowserHostPageRequest,
+  AgentBrowserHostRequest,
+  AgentBrowserHostResponse,
+  AgentBrowserHostSetViewRequest,
+  AgentBrowserHostStateEvent,
   BrowserDiagnosticResult,
   BrowserRuntimeProfile,
 } from '../../shared/browserWebAccess/constants';
@@ -106,6 +120,7 @@ import type {
 import type {
   PublishingQuota,
   PublishingQuotaErrorData,
+  PublishingSubscriptionRecoveryMode,
   PublishingTrialPolicy,
 } from '../../shared/publishing/constants';
 import type {
@@ -610,6 +625,7 @@ interface HtmlShareResult {
   updatedAt?: string;
   contentUpdatedAt?: string;
   accessExpiresAt?: string | null;
+  subscriptionRecoveryMode?: PublishingSubscriptionRecoveryMode;
   disabledAt?: string | null;
   disabledReason?: string | null;
   disabledSource?: HtmlShareDisabledSource | null;
@@ -878,6 +894,25 @@ interface IElectronAPI {
       listProfiles: () => Promise<{ success: boolean; profiles?: unknown[]; error?: string }>;
       test: (options?: { profile?: BrowserRuntimeProfile }) => Promise<BrowserDiagnosticResult>;
       resetProfile: (options?: { profile?: BrowserRuntimeProfile }) => Promise<{ success: boolean; result?: Record<string, unknown>; error?: string }>;
+      getHostState: (request?: AgentBrowserHostRequest) => Promise<AgentBrowserHostResponse>;
+      setHostView: (request: AgentBrowserHostSetViewRequest) => Promise<AgentBrowserHostResponse>;
+      navigateHost: (request: AgentBrowserHostNavigateRequest) => Promise<AgentBrowserHostResponse>;
+      goBackHost: (request?: AgentBrowserHostRequest) => Promise<AgentBrowserHostResponse>;
+      goForwardHost: (request?: AgentBrowserHostRequest) => Promise<AgentBrowserHostResponse>;
+      reloadHost: (request?: AgentBrowserHostRequest) => Promise<AgentBrowserHostResponse>;
+      stopHost: (request?: AgentBrowserHostRequest) => Promise<AgentBrowserHostResponse>;
+      selectHostPage: (request: AgentBrowserHostPageRequest) => Promise<AgentBrowserHostResponse>;
+      closeHostPage: (request: AgentBrowserHostPageRequest) => Promise<AgentBrowserHostResponse>;
+      resolveCredentialSavePrompt: (
+        request: AgentBrowserCredentialSavePromptRequest,
+      ) => Promise<AgentBrowserHostResponse>;
+      onHostState: (callback: (event: AgentBrowserHostStateEvent) => void) => () => void;
+      credentials: {
+        getAvailability: () => Promise<BrowserCredentialAvailabilityResponse>;
+        list: () => Promise<BrowserCredentialListResponse>;
+        save: (request: BrowserCredentialSaveRequest) => Promise<BrowserCredentialMutationResponse>;
+        delete: (request: BrowserCredentialDeleteRequest) => Promise<BrowserCredentialMutationResponse>;
+      };
     };
     dataMigration: {
       backup: () => Promise<DataMigrationBackupResult>;
@@ -1560,9 +1595,9 @@ interface IElectronAPI {
       userId?: string | null;
     }) => Promise<AppUpdateCheckResult>;
     retryDownload: () => Promise<{ success: boolean; state: AppUpdateRuntimeState }>;
-    cancelDownload: () => Promise<{ success: boolean; state: AppUpdateRuntimeState }>;
     installReady: () => Promise<{ success: boolean; state: AppUpdateRuntimeState; error?: string }>;
     getCompletedUpdate: () => Promise<{ version: string | null }>;
+    getActiveWorkloads: () => Promise<AppUpdateActiveWorkloads>;
     onStateChanged: (callback: (data: AppUpdateRuntimeState) => void) => () => void;
   };
   log: {
