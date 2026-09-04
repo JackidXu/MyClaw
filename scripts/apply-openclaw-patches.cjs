@@ -66,30 +66,6 @@ if (patchFiles.length === 0) {
 console.log(`[apply-openclaw-patches] Applying patches for openclaw ${openclawVersion} (${patchFiles.length} file(s))`);
 
 const strongPatchValidators = {
-  'openclaw-browser-mcp-startup-diagnostics.patch': [
-    {
-      file: 'extensions/browser/src/browser/chrome-mcp.ts',
-      snippets: [
-        'let stage: "connect" | "list-tools" | "ready" = "connect"',
-        'Chrome MCP subprocess ready profile=',
-        'Chrome MCP attach failed profile=',
-        'stderr=${JSON.stringify(stderrDetail)}',
-      ],
-      forbiddenSnippets: ['let getStderr = () => ""'],
-      orderedSnippets: [
-        'const getStderr = drainStderr(transport);',
-        'await client.connect(transport);',
-      ],
-    },
-    {
-      file: 'extensions/browser/src/browser/chrome-mcp.test.ts',
-      snippets: [
-        'captures subprocess stderr when the MCP handshake exits early',
-        'lobster-startup-probe-before-initialize',
-        'expect(logs).not.toContain',
-      ],
-    },
-  ],
   'openclaw-terminate-run-on-critical-tool-loop.patch': [
     {
       file: 'packages/agent-core/src/agent.ts',

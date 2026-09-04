@@ -281,8 +281,12 @@ const escapeWindowsBatchValue = (value: string): string => value.replace(/%/g, '
 
 const quotePosixShellValue = (value: string): string => `'${value.replace(/'/g, `'"'"'`)}'`;
 
+// cmd.exe decodes batch files with the active console code page. Keep the
+// bootstrap lines ASCII and switch to UTF-8 before it reads the literal
+// Electron path, which may contain characters such as a Chinese install dir.
 const buildWindowsLauncherSource = (electronNodeRuntimePath: string): string => [
   '@echo off',
+  'chcp 65001 >nul 2>&1',
   'setlocal DisableDelayedExpansion',
   'set "ELECTRON_RUN_AS_NODE=1"',
   `"${escapeWindowsBatchValue(electronNodeRuntimePath)}" "%~dp0${SERVER_FILE_NAME}" %*`,
