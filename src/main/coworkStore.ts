@@ -2051,6 +2051,28 @@ export class CoworkStore {
   }
 
   /**
+   * 获取指定会话中最新的一条用户消息
+   */
+  getLatestUserMessage(sessionId: string): CoworkMessage | null {
+    if (!sessionId) return null;
+    try {
+      const rows = this.getAll<CoworkMessageRow>(
+        `
+        SELECT id, type, content, metadata, created_at, sequence
+        FROM cowork_messages
+        WHERE session_id = ? AND type = 'user'
+        ORDER BY COALESCE(sequence, created_at) DESC, created_at DESC, ROWID DESC
+        LIMIT 1
+      `,
+        [sessionId],
+      );
+      return rows.length > 0 ? this.mapConversationMessageRows(sessionId, rows)[0] : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Read the complete user/assistant transcript for a rare reconciliation fallback.
    * Routine polling must use getRecentConversationMessages() to keep reads bounded.
    */

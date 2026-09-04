@@ -6077,10 +6077,29 @@ if (!gotTheLock) {
 
       // Video generation confirmation
       if (tool === MediaGenerationTool.Video) {
-        const questionText = [
-          '请确认当前描述无误，提交后将无法取消。',
-          '视频生成任务耗时较长，请耐心等待。',
-        ].join('\n');
+        let userPromptText = '';
+        try {
+          if (sessionId) {
+            const latestUserMsg = getCoworkStore().getLatestUserMessage(sessionId);
+            if (latestUserMsg?.content?.trim()) {
+              userPromptText = latestUserMsg.content.trim();
+            }
+          }
+          if (!userPromptText && prompt) {
+            userPromptText = prompt.trim();
+          }
+        } catch {
+          // 次要功能：提取用户问题出错直接忽略，使用默认提示文案，不影响后续确认与生成主流程
+        }
+
+        const questionParts: string[] = [];
+        if (userPromptText) {
+          questionParts.push(`【用户需求】\n${userPromptText}\n`);
+        }
+        questionParts.push('请确认当前描述无误，提交后将无法取消。');
+        questionParts.push('视频生成任务耗时较长，请耐心等待。');
+        const questionText = questionParts.join('\n');
+
         const confirmResponse = await getMcpRuntime().askUserInternal(
           [{
             question: questionText,
