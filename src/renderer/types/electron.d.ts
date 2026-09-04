@@ -120,6 +120,7 @@ import type {
 import type {
   PublishingQuota,
   PublishingQuotaErrorData,
+  PublishingSubscriptionRecoveryMode,
   PublishingTrialPolicy,
 } from '../../shared/publishing/constants';
 import type {
@@ -624,6 +625,7 @@ interface HtmlShareResult {
   updatedAt?: string;
   contentUpdatedAt?: string;
   accessExpiresAt?: string | null;
+  subscriptionRecoveryMode?: PublishingSubscriptionRecoveryMode;
   disabledAt?: string | null;
   disabledReason?: string | null;
   disabledSource?: HtmlShareDisabledSource | null;

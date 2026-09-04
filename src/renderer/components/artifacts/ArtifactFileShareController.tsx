@@ -1,3 +1,4 @@
+import { PublishingRecoveryAnalyticsSurface } from '@shared/analytics/constants';
 import {
   HtmlShareAccessMode,
   type HtmlShareAccessMode as HtmlShareAccessModeValue,
@@ -13,6 +14,8 @@ import { LibraryNavigationEvent } from '@shared/library/constants';
 import {
   type PublishingQuotaErrorData,
   PublishingResourceKind,
+  PublishingSubscriptionRecoveryMode,
+  type PublishingSubscriptionRecoveryMode as PublishingSubscriptionRecoveryModeValue,
 } from '@shared/publishing/constants';
 import {
   createContext,
@@ -31,6 +34,12 @@ import { authService } from '@/services/auth';
 import { copyTextToClipboard } from '@/services/clipboard';
 import { getPortalPricingUrl, PortalPricingKeyfrom } from '@/services/endpoints';
 import { i18nService } from '@/services/i18n';
+import {
+  armPublishingSubscriptionRecovery,
+  PublishingSubscriptionRecoveryRefreshOutcome,
+  registerPublishingSubscriptionRecoveryTarget,
+  resolvePublishingSubscriptionRecoveryRefreshOutcome,
+} from '@/services/publishingSubscriptionRecovery';
 import type { RootState } from '@/store';
 import type { Artifact } from '@/types/artifact';
 
@@ -80,6 +89,7 @@ import {
   createPublishingAnalyticsAttempt,
   createPublishingAnalyticsDialog,
   createPublishingAnalyticsOperationId,
+  createPublishingRecoveryAnalyticsContextFromAttempt,
   getPublishingErrorCategory,
   PublishingAnalyticsActionType,
   type PublishingAnalyticsAttemptContext,
@@ -90,11 +100,14 @@ import {
   PublishingAnalyticsOperationType,
   PublishingAnalyticsResult,
   PublishingAnalyticsTarget,
+  type PublishingRecoveryAnalyticsContext,
   reportPublishingCopyShareLink,
   reportPublishingDialogAction,
   reportPublishingDialogExposure,
   reportPublishingEntryAction,
   reportPublishingOperationResult,
+  reportPublishingRecoveryCtaAction,
+  reportPublishingRecoveryCtaExposure,
   reportPublishingShareResult,
   updatePublishingAnalyticsAttempt,
 } from './publishingAnalytics';
@@ -113,6 +126,7 @@ interface ArtifactFileShareRecord {
   status: HtmlShareStatusValue;
   disabledSource?: HtmlShareDisabledSourceValue | null;
   accessExpiresAt?: string | null;
+  subscriptionRecoveryMode?: PublishingSubscriptionRecoveryModeValue;
 }
 
 interface ArtifactFileShareDialogState {
@@ -219,6 +233,7 @@ function getShareRecord(
         status?: HtmlShareStatusValue;
         disabledSource?: HtmlShareDisabledSourceValue | null;
         accessExpiresAt?: string | null;
+        subscriptionRecoveryMode?: PublishingSubscriptionRecoveryModeValue;
       }
     | null
     | undefined,
@@ -248,7 +263,11 @@ function getShareRecord(
       status === HtmlShareStatus.Disabled
         ? (value?.disabledSource ?? previous?.disabledSource)
         : undefined,
-    accessExpiresAt: value?.accessExpiresAt ?? previous?.accessExpiresAt,
+    accessExpiresAt: value && Object.prototype.hasOwnProperty.call(value, 'accessExpiresAt')
+      ? value.accessExpiresAt
+      : previous?.accessExpiresAt,
+    subscriptionRecoveryMode: value?.subscriptionRecoveryMode
+      ?? previous?.subscriptionRecoveryMode,
   };
 }
 
@@ -383,6 +402,8 @@ export function ArtifactFileShareProvider({ sessionId, children }: ArtifactFileS
   const [updateStatus, setUpdateStatus] = useState<ArtifactFileShareUpdateStatus>(
     ArtifactFileShareUpdateStatus.Idle,
   );
+  const dialogRef = useRef<ArtifactFileShareDialogState | null>(dialog);
+  dialogRef.current = dialog;
   const generationRef = useRef(0);
   const mutationBarriersRef = useRef(new Map<string, Promise<void>>());
   const preparationPromisesRef = useRef(new Map<string, Promise<PreparedArtifactFileShare>>());
@@ -1425,6 +1446,102 @@ export function ArtifactFileShareProvider({ sessionId, children }: ArtifactFileS
     closeTrialNotice();
   }, [closeTrialNotice]);
 
+  const share = dialog?.share;
+  const recoveryAnalyticsContext = useMemo<PublishingRecoveryAnalyticsContext | null>(() => {
+    const analyticsAttempt = analyticsAttemptRef.current;
+    if (
+      !analyticsAttempt
+      || !authState.ownerAccountKey
+      || !share?.shareId
+      || share.subscriptionRecoveryMode !== PublishingSubscriptionRecoveryMode.Automatic
+    ) {
+      return null;
+    }
+    return createPublishingRecoveryAnalyticsContextFromAttempt(analyticsAttempt, {
+      ownerAccountKey: authState.ownerAccountKey,
+      resourceKey: share.shareId,
+      recoverySurface: PublishingRecoveryAnalyticsSurface.TaskFileShareDialog,
+      subscriptionRecoveryMode: share.subscriptionRecoveryMode,
+    });
+  }, [
+    authState.ownerAccountKey,
+    share?.shareId,
+    share?.subscriptionRecoveryMode,
+  ]);
+
+  useEffect(() => {
+    const ownerAccountKey = authState.ownerAccountKey;
+    const request = dialog?.request;
+    const recoveryMode = share?.subscriptionRecoveryMode;
+    if (
+      !ownerAccountKey
+      || !request
+      || !share?.shareId
+      || recoveryMode !== PublishingSubscriptionRecoveryMode.Automatic
+    ) {
+      return undefined;
+    }
+    return registerPublishingSubscriptionRecoveryTarget({
+      ownerAccountKey,
+      resourceKind: PublishingResourceKind.File,
+      resourceKey: share.shareId,
+      recoveryMode,
+      traceId: recoveryAnalyticsContext?.attemptId
+        ?? analyticsAttemptRef.current?.attemptId
+        ?? createPublishingAnalyticsOperationId(),
+      refresh: async () => {
+        const currentDialog = dialogRef.current;
+        const fallback = currentDialog?.share;
+        const api = window.electron?.htmlShare;
+        if (!api || !fallback || currentDialog?.request?.lookupKey !== request.lookupKey) {
+          return PublishingSubscriptionRecoveryRefreshOutcome.ResourceUnavailable;
+        }
+        const result = await lookupShare(api, request).catch(() => null);
+        if (!result?.success) return PublishingSubscriptionRecoveryRefreshOutcome.Pending;
+        const refreshedShare = getShareRecord(result.share, fallback);
+        if (!refreshedShare) {
+          return PublishingSubscriptionRecoveryRefreshOutcome.ResourceUnavailable;
+        }
+        setDialog(current => current?.request?.lookupKey === request.lookupKey
+          ? {
+              ...current,
+              share: refreshedShare,
+              selectedPermission: deriveArtifactFileSharePermission(refreshedShare),
+            }
+          : current);
+        return resolvePublishingSubscriptionRecoveryRefreshOutcome({
+          expectedMode: recoveryMode,
+          currentMode: refreshedShare.subscriptionRecoveryMode,
+          isRestored: refreshedShare.status === HtmlShareStatus.Live
+            && refreshedShare.accessExpiresAt === null,
+        });
+      },
+    });
+  }, [
+    authState.ownerAccountKey,
+    dialog?.request,
+    lookupShare,
+    recoveryAnalyticsContext?.attemptId,
+    share?.shareId,
+    share?.subscriptionRecoveryMode,
+  ]);
+
+  const openRecoverySubscriptionPage = useCallback(() => {
+    if (!recoveryAnalyticsContext) return;
+    reportPublishingRecoveryCtaAction(recoveryAnalyticsContext);
+    armPublishingSubscriptionRecovery({
+      ownerAccountKey: recoveryAnalyticsContext.ownerAccountKey,
+      resourceKind: recoveryAnalyticsContext.resourceKind,
+      resourceKey: recoveryAnalyticsContext.resourceKey,
+      recoveryMode: recoveryAnalyticsContext.subscriptionRecoveryMode,
+      traceId: recoveryAnalyticsContext.attemptId,
+    });
+    void window.electron?.shell?.openExternal(getPortalPricingUrl(
+      PortalPricingKeyfrom.HtmlShare,
+      { traceId: recoveryAnalyticsContext.attemptId },
+    ));
+  }, [recoveryAnalyticsContext]);
+
   const contextValue = useMemo<ArtifactFileShareControllerValue>(
     () => ({
       isOverlayOpen:
@@ -1437,7 +1554,6 @@ export function ArtifactFileShareProvider({ sessionId, children }: ArtifactFileS
     [isDialogOpen, openShare, publishingQuota, subscriptionPrompt, trialNotice],
   );
 
-  const share = dialog?.share;
   const committedPermission = share
     ? deriveArtifactFileSharePermission(share)
     : undefined;
@@ -1547,6 +1663,11 @@ export function ArtifactFileShareProvider({ sessionId, children }: ArtifactFileS
               (share.shareCodeUnavailable || !share.shareCode),
             )}
             accessExpiresAt={share?.accessExpiresAt}
+            ownerAccountKey={authState.ownerAccountKey}
+            subscriptionStatus={authState.quota?.subscriptionStatus}
+            recoveryMode={share?.subscriptionRecoveryMode}
+            recoveryAnalyticsContext={recoveryAnalyticsContext}
+            recoveryExposureKey={recoveryAnalyticsContext?.exposureId}
             canRetry={Boolean(dialog.request)}
             canCreate={canCreate}
             canSubmitPermission={canSubmitPermission}
@@ -1563,6 +1684,12 @@ export function ArtifactFileShareProvider({ sessionId, children }: ArtifactFileS
             onSubmitPermission={() => void submitPermissionChange()}
             onUpdateFile={() => void updateFile()}
             onCopy={() => void copyShare()}
+            onRecoveryExposure={recoveryAnalyticsContext
+              ? () => reportPublishingRecoveryCtaExposure(recoveryAnalyticsContext)
+              : undefined}
+            onRecoveryClick={recoveryAnalyticsContext
+              ? openRecoverySubscriptionPage
+              : undefined}
           />,
           document.body,
         )
