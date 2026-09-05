@@ -567,11 +567,20 @@ export interface CoworkSessionSummary {
   pinned: boolean;
   pinOrder?: number | null;
   agentId: string;
+  projectId?: string | null;
   imPlatform?: Platform | null;
   parentSessionId?: string | null;
   forkedAt?: number | null;
   forkMode?: CoworkForkModeType;
   goal?: CoworkGoal | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CoworkProject {
+  id: string;
+  name: string;
+  sortOrder?: number | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -763,6 +772,7 @@ interface CoworkSessionSummaryRow {
   pinned: number | null;
   pin_order: number | null;
   agent_id: string | null;
+  project_id?: string | null;
   im_platform?: string | null;
   parent_session_id?: string | null;
   forked_at?: number | null;
@@ -863,7 +873,7 @@ export class CoworkStore {
 
     return `${sessionAlias}.id, ${sessionAlias}.title, ${sessionAlias}.scheduled_task_id,
       ${sessionAlias}.status, ${sessionAlias}.pinned, ${sessionAlias}.pin_order,
-      ${sessionAlias}.agent_id, ${imPlatformColumn},
+      ${sessionAlias}.agent_id, ${sessionAlias}.project_id, ${imPlatformColumn},
       ${sessionAlias}.parent_session_id, ${sessionAlias}.forked_at, ${sessionAlias}.fork_mode,
       ${sessionAlias}.goal_json,
       ${sessionAlias}.created_at, ${sessionAlias}.updated_at`;
@@ -899,6 +909,7 @@ export class CoworkStore {
       pinned: Boolean(row.pinned),
       pinOrder: row.pin_order ?? null,
       agentId: row.agent_id || 'main',
+      projectId: row.project_id ?? null,
       imPlatform: this.normalizeIMPlatform(row.im_platform),
       parentSessionId: row.parent_session_id ?? null,
       forkedAt: row.forked_at ?? null,
@@ -3780,5 +3791,87 @@ export class CoworkStore {
       installedAt: row.installed_at,
       config: row.config ? JSON.parse(row.config) as Record<string, unknown> : undefined,
     };
+  }
+
+  // ──────────────────────────────────────────────
+  // 项目管理（cowork_projects）
+  // ──────────────────────────────────────────────
+
+  listProjects(): CoworkProject[] {
+    const rows = this.getAll<{
+      id: string;
+      name: string;
+      sort_order: number | null;
+      created_at: number;
+      updated_at: number;
+    }>('SELECT id, name, sort_order, created_at, updated_at FROM cowork_projects ORDER BY COALESCE(sort_order, created_at) ASC');
+    return rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      sortOrder: r.sort_order ?? null,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    }));
+  }
+
+  createProject(name: string): CoworkProject {
+    const id = crypto.randomUUID();
+    const now = Date.now();
+    this.db
+      .prepare('INSERT INTO cowork_projects (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)')
+      .run(id, name.trim(), now, now);
+    return { id, name: name.trim(), sortOrder: null, createdAt: now, updatedAt: now };
+  }
+
+  updateProject(id: string, updates: { name?: string; sortOrder?: number | null }): boolean {
+    const now = Date.now();
+    const setParts: string[] = ['updated_at = ?'];
+    const params: (string | number | null)[] = [now];
+    if (updates.name !== undefined) {
+      setParts.push('name = ?');
+      params.push(updates.name.trim());
+    }
+    if (updates.sortOrder !== undefined) {
+      setParts.push('sort_order = ?');
+      params.push(updates.sortOrder ?? null);
+    }
+    params.push(id);
+    const result = this.db
+      .prepare(`UPDATE cowork_projects SET ${setParts.join(', ')} WHERE id = ?`)
+      .run(...params);
+    return result.changes > 0;
+  }
+
+  deleteProject(id: string): boolean {
+    const result = this.db.transaction(() => {
+      // 解散：将该项目内的所有会话 project_id 重置为 NULL，安全保留会话
+      this.db
+        .prepare('UPDATE cowork_sessions SET project_id = NULL WHERE project_id = ?')
+        .run(id);
+      return this.db
+        .prepare('DELETE FROM cowork_projects WHERE id = ?')
+        .run(id);
+    })();
+    return result.changes > 0;
+  }
+
+  moveSessionToProject(sessionId: string, projectId: string | null): boolean {
+    const result = this.db
+      .prepare('UPDATE cowork_sessions SET project_id = ? WHERE id = ?')
+      .run(projectId ?? null, sessionId);
+    return result.changes > 0;
+  }
+
+  moveSessionsToProject(sessionIds: string[], projectId: string | null): boolean {
+    if (sessionIds.length === 0) return false;
+    const result = this.db.transaction(() => {
+      let changes = 0;
+      const stmt = this.db.prepare('UPDATE cowork_sessions SET project_id = ? WHERE id = ?');
+      for (const sessionId of sessionIds) {
+        changes += stmt.run(projectId ?? null, sessionId).changes;
+      }
+      return changes;
+    })();
+    return result > 0;
   }
 }

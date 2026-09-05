@@ -88,6 +88,13 @@ export const CoworkIpcChannel = {
   BootstrapWrite: 'cowork:bootstrap:write',
   TempStorageUsage: 'cowork:tempStorage:usage',
   TempStorageClean: 'cowork:tempStorage:clean',
+  // 项目管理
+  ProjectList: 'cowork:project:list',
+  ProjectCreate: 'cowork:project:create',
+  ProjectUpdate: 'cowork:project:update',
+  ProjectDelete: 'cowork:project:delete',
+  SessionMoveToProject: 'cowork:session:moveToProject',
+  SessionBatchMoveToProject: 'cowork:session:batchMoveToProject',
 } as const;
 export type CoworkIpcChannel = typeof CoworkIpcChannel[keyof typeof CoworkIpcChannel];
 

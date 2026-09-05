@@ -44,6 +44,7 @@ import {
   createSessionBatchKey,
 } from './batchSelection';
 import MyAgentSidebarHeader from './MyAgentSidebarHeader';
+import { ProjectTreeNode } from './ProjectTreeNode';
 import type {
   AgentSidebarActivityItem,
   AgentSidebarActivityView as AgentSidebarActivityViewModel,
@@ -171,6 +172,7 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
   );
   const {
     agentNodes,
+    projectNodes,
     activityAgentNodes,
     hasUnreadCompletedTasks,
     patchTaskPreview,
@@ -184,6 +186,7 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
     expandTasks,
     collapseTasks,
     toggleAgentExpanded,
+    toggleProjectExpanded,
   } = useAgentSidebarState({ includeActivityTasks: isTaskFilterActive });
   const activityView = useMemo(
     () => (
@@ -618,6 +621,35 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
                 </h2>
               </div>
               {renderSortableAgentGroup(pinnedAgentNodes)}
+            </div>
+          )}
+
+          {projectNodes.length > 0 && (
+            <div className="space-y-0.5">
+              <div className="sticky top-0 z-30 -ml-[6px] flex h-9 w-[calc(100%+12px)] items-center bg-surface-raised pl-3 pr-1">
+                <h2 className="min-w-0 truncate text-[12px] font-medium text-secondary/75 tracking-wide">
+                  {i18nService.t('myProjects')}
+                </h2>
+              </div>
+              {projectNodes.map((project) => (
+                <ProjectTreeNode
+                  key={project.id}
+                  project={project}
+                  isBatchMode={isBatchMode}
+                  batchAgentId={batchAgentId}
+                  selectedKeys={selectedKeys}
+                  onToggleExpanded={toggleProjectExpanded}
+                  onSelectTask={(task) => void handleSelectTask(task)}
+                  onDeleteTask={handleDeleteTask}
+                  onShareTask={handleShareTask}
+                  onToggleTaskPin={handleToggleTaskPin}
+                  onRenameTask={handleRenameTask}
+                  onToggleSelection={onToggleSelection}
+                  onEnterBatchMode={handleEnterBatchMode}
+                  onSidebarAction={onSidebarAction}
+                  getTaskActionParams={getTaskActionParams}
+                />
+              ))}
             </div>
           )}
 

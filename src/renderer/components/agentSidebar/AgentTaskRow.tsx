@@ -12,11 +12,13 @@ import {
 import ClockIcon from '../icons/ClockIcon';
 import EditIcon from '../icons/EditIcon';
 import EllipsisHorizontalIcon from '../icons/EllipsisHorizontalIcon';
+import FolderIcon from '../icons/FolderIcon';
 import ListChecksIcon from '../icons/ListChecksIcon';
 import PushPinIcon from '../icons/PushPinIcon';
 import SpinnerIcon from '../icons/SpinnerIcon';
 import TrashIcon from '../icons/TrashIcon';
 import { AgentSidebarIndicator } from './constants';
+import MoveToProjectModal from './MoveToProjectModal';
 import {
   getScheduledTaskDisplayTitle,
   hasLegacyScheduledTaskTitle,
@@ -60,8 +62,8 @@ interface AgentTaskRowProps {
 
 const ACTION_MENU_VIEWPORT_PADDING = 8;
 const ACTION_MENU_VERTICAL_GAP = 4;
-const ACTION_MENU_HEIGHT = 164;
-const ACTION_MENU_WITH_BATCH_HEIGHT = 196;
+const ACTION_MENU_HEIGHT = 196;
+const ACTION_MENU_WITH_BATCH_HEIGHT = 228;
 
 const AgentTaskRow: React.FC<AgentTaskRowProps> = ({
   task,
@@ -97,6 +99,7 @@ const AgentTaskRow: React.FC<AgentTaskRowProps> = ({
     : displayTitle;
   const [menuPosition, setMenuPosition] = useState<{ right: number; top: number } | null>(null);
   const [showConfirmDelete, setShowConfirmDelete] = useState(false);
+  const [showMoveToProject, setShowMoveToProject] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
   const [suppressPinHover, setSuppressPinHover] = useState(false);
   const [renameValue, setRenameValue] = useState(editableTitle);
@@ -482,6 +485,20 @@ const AgentTaskRow: React.FC<AgentTaskRowProps> = ({
             onClick={(event) => {
               event.stopPropagation();
               closeMenu();
+              setShowMoveToProject(true);
+            }}
+            className={menuItemClassName}
+            role="menuitem"
+          >
+            <FolderIcon className={menuIconClassName} />
+            {task.projectId ? i18nService.t('moveToProject') : i18nService.t('moveToProject')}
+          </button>
+
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              closeMenu();
               void onTogglePin(!task.pinned);
             }}
             className={menuItemClassName}
@@ -550,6 +567,15 @@ const AgentTaskRow: React.FC<AgentTaskRowProps> = ({
             </button>
           </div>
         </Modal>
+      )}
+
+      {showMoveToProject && (
+        <MoveToProjectModal
+          isOpen={showMoveToProject}
+          onClose={() => setShowMoveToProject(false)}
+          sessionIds={[task.id]}
+          currentProjectId={task.projectId}
+        />
       )}
     </div>
   );

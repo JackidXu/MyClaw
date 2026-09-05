@@ -236,6 +236,15 @@ interface CoworkSessionSummary {
   parentSessionId?: string | null;
   forkedAt?: number | null;
   forkMode?: 'none' | 'conversation' | 'worktree';
+  projectId?: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+interface CoworkProject {
+  id: string;
+  name: string;
+  sortOrder: number;
   createdAt: number;
   updatedAt: number;
 }
@@ -1200,6 +1209,25 @@ interface IElectronAPI {
     setConfig: (config: CoworkConfigUpdate) => Promise<{ success: boolean; error?: string }>;
     getTempStorageUsage: () => Promise<CoworkTempStorageUsageResult>;
     cleanTempStorage: (options?: { cwds?: string[] }) => Promise<CoworkTempStorageCleanResult>;
+    listProjects: () => Promise<{ success: boolean; projects?: CoworkProject[]; error?: string }>;
+    createProject: (options: {
+      name: string;
+      sortOrder?: number;
+    }) => Promise<{ success: boolean; project?: CoworkProject; error?: string }>;
+    updateProject: (options: {
+      id: string;
+      name?: string;
+      sortOrder?: number;
+    }) => Promise<{ success: boolean; project?: CoworkProject; error?: string }>;
+    deleteProject: (id: string) => Promise<{ success: boolean; deleted?: boolean; error?: string }>;
+    moveSessionToProject: (options: {
+      sessionId: string;
+      projectId: string | null;
+    }) => Promise<{ success: boolean; moved?: boolean; error?: string }>;
+    moveSessionsToProject: (options: {
+      sessionIds: string[];
+      projectId: string | null;
+    }) => Promise<{ success: boolean; count?: number; error?: string }>;
     notifyOpenSessionFromNotificationReady: () => Promise<{ success: boolean; error?: string }>;
     onOpenSessionFromNotification: (
       callback: (data: { sessionId: string }) => void,

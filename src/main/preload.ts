@@ -675,6 +675,18 @@ contextBridge.exposeInMainWorld('electron', {
     getTempStorageUsage: () => ipcRenderer.invoke(CoworkIpcChannel.TempStorageUsage),
     cleanTempStorage: (options?: { cwds?: string[] }) =>
       ipcRenderer.invoke(CoworkIpcChannel.TempStorageClean, options),
+
+    // Project management
+    listProjects: () => ipcRenderer.invoke(CoworkIpcChannel.ProjectList),
+    createProject: (options: { name: string; sortOrder?: number }) =>
+      ipcRenderer.invoke(CoworkIpcChannel.ProjectCreate, options),
+    updateProject: (options: { id: string; name?: string; sortOrder?: number }) =>
+      ipcRenderer.invoke(CoworkIpcChannel.ProjectUpdate, options),
+    deleteProject: (id: string) => ipcRenderer.invoke(CoworkIpcChannel.ProjectDelete, id),
+    moveSessionToProject: (options: { sessionId: string; projectId: string | null }) =>
+      ipcRenderer.invoke(CoworkIpcChannel.SessionMoveToProject, options),
+    moveSessionsToProject: (options: { sessionIds: string[]; projectId: string | null }) =>
+      ipcRenderer.invoke(CoworkIpcChannel.SessionBatchMoveToProject, options),
     listMemoryEntries: (input: {
       query?: string;
       status?: 'created' | 'stale' | 'deleted' | 'all';

@@ -330,6 +330,15 @@ export interface CoworkSessionSummary {
   forkedAt?: number | null;
   forkMode?: CoworkForkMode;
   goal?: CoworkGoal | null;
+  projectId?: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CoworkProject {
+  id: string;
+  name: string;
+  sortOrder: number;
   createdAt: number;
   updatedAt: number;
 }
