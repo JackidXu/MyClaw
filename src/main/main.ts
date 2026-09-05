@@ -354,6 +354,7 @@ import {
 import { DesktopNotificationManager } from './libs/desktopNotificationManager';
 import { getDeviceInfo } from './libs/deviceId';
 import { adaptDoubaoSeedreamSize } from './libs/doubaoMediaSizeAdapter';
+import { enhanceImagePrompt } from './libs/mediaAestheticEnhancer';
 import {
   getHtmlSharePublicBaseUrl,
   getServerApiBaseUrl,
@@ -6638,9 +6639,14 @@ if (!gotTheLock) {
             ? { image: (params.images as string[]).length === 1 ? (params.images as string[])[0] : params.images }
             : { images: params.images })
           : {};
+        const enhancedPrompt = enhanceImagePrompt(prompt, { model });
+        if (enhancedPrompt !== prompt) {
+          console.log(`[MediaGeneration] Enhanced image prompt for aesthetic quality (originalLen=${prompt.length}, enhancedLen=${enhancedPrompt.length})`);
+        }
+
         bodyData = {
           model,
-          prompt,
+          prompt: enhancedPrompt,
           n,
           size,
           ...imageParam,
