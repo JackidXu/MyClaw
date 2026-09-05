@@ -54,7 +54,7 @@ const MATERIAL_TABS = ['文档', '对话', '录音卡'] as const;
 type MaterialTab = typeof MATERIAL_TABS[number];
 
 /** 录音卡功能暂未对客户开放（TODO: 硬件正式发布上线后改为 false 即可放开） */
-const SHOW_RECORDING_CARD_COMING_SOON = true;
+const SHOW_RECORDING_CARD_COMING_SOON = false;
 
 /** 单个上传文档最大限制：2MB */
 const MAX_DOCUMENT_FILE_SIZE = 2 * 1024 * 1024;
