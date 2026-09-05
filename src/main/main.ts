@@ -353,6 +353,7 @@ import {
 } from './libs/dataMigration/dataMigrationService';
 import { DesktopNotificationManager } from './libs/desktopNotificationManager';
 import { getDeviceInfo } from './libs/deviceId';
+import { adaptDoubaoSeedreamSize } from './libs/doubaoMediaSizeAdapter';
 import {
   getHtmlSharePublicBaseUrl,
   getServerApiBaseUrl,
@@ -6395,16 +6396,6 @@ if (!gotTheLock) {
         if (args.output_format) params.output_format = args.output_format;
         if (args.temperature != null) params.temperature = args.temperature;
         if (args.imageSize) params.imageSize = args.imageSize;
-
-        // 针对 Doubao-Seedream 最低像素限制进行静默升档纠偏
-        const modelStr = String(selectedModel).toLowerCase();
-        if (modelStr.includes('seedream')) {
-          const sizeStr = String(params.size || '');
-          if (!sizeStr || sizeStr === '1024x1024' || sizeStr.includes('512') || sizeStr.includes('768')) {
-            console.log(`[MediaGeneration] Auto-correcting size for Seedream model from "${sizeStr}" to "2048x1920" to meet pixel limits.`);
-            params.size = '2048x1920';
-          }
-        }
       }
       if (args.count) params.count = args.count;
       
@@ -6615,38 +6606,24 @@ if (!gotTheLock) {
           params,
         };
       } else {
-        const isDoubaoSeedream = typeof model === 'string' && model.toLowerCase().includes('doubao-seedream');
-        let size = isDoubaoSeedream ? '2048x2048' : '1024x1024';
-        
-        // 提取待用 size，包含参数纠偏
-        let inputSize = (args.size && typeof args.size === 'string') ? args.size : '';
-        if (isDoubaoSeedream) {
-          let needCorrect = false;
-          if (!inputSize) {
-            needCorrect = true;
-          } else {
-            const match = inputSize.match(/^(\d+)x(\d+)$/);
-            if (match) {
-              const pixels = parseInt(match[1], 10) * parseInt(match[2], 10);
-              if (pixels < 3686400) needCorrect = true;
-            } else {
-              needCorrect = true;
-            }
-          }
-          if (needCorrect) {
-            console.log(`[MediaGeneration] Overriding size for Seedream model from "${inputSize}" to "2048x1920" to meet minimum 3686400 pixel limit.`);
-            inputSize = '2048x1920';
-          }
-        }
+        const isDoubaoSeedream = typeof model === 'string' && /doubao-seedream|seedream/i.test(model);
+        let size = '1024x1024';
 
-        if (inputSize) {
-          size = inputSize;
-        } else if (args.aspectRatio && typeof args.aspectRatio === 'string') {
-          const ar = args.aspectRatio.trim();
-          if (ar === '16:9' || ar === '4:3') {
-            size = isDoubaoSeedream ? '2560x1440' : '1792x1024';
-          } else if (ar === '9:16' || ar === '3:4') {
-            size = isDoubaoSeedream ? '1440x2560' : '1024x1792';
+        if (isDoubaoSeedream) {
+          // 仅豆包生图（Doubao-Seedream 系列）需要针对最低 3,686,400 像素限制进行自适应升档加工
+          size = adaptDoubaoSeedreamSize({ size: args.size, aspectRatio: args.aspectRatio });
+          console.log(`[MediaGeneration] Doubao-Seedream adapted size: "${size}" from rawSize="${args.size ?? ''}", rawRatio="${args.aspectRatio ?? ''}"`);
+        } else {
+          // 其他生图模型保持原生逻辑，原样使用 size 或 aspectRatio
+          if (args.size && typeof args.size === 'string') {
+            size = args.size.trim();
+          } else if (args.aspectRatio && typeof args.aspectRatio === 'string') {
+            const ar = args.aspectRatio.trim();
+            if (ar === '16:9' || ar === '4:3') {
+              size = '1792x1024';
+            } else if (ar === '9:16' || ar === '3:4') {
+              size = '1024x1792';
+            }
           }
         }
 
