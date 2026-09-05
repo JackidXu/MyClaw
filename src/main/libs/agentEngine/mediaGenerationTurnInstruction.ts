@@ -71,14 +71,14 @@ export const buildMediaGenerationTurnInstruction = (
   const lines = [
     '[LobsterAI media generation turn instruction]',
     'The user selected a LobsterAI media generation model for this turn.',
-    'IMPORTANT: Do NOT read or use the "seedance" or "seedream" skills for this request.',
-    'The LobsterAI media generation tools (heyclaw_image_generate / heyclaw_video_generate) replace those skills when a media model is selected.',
+    'IMPORTANT: Do NOT read or use legacy "seedance" or "seedream" skills for this request; the LobsterAI media generation tools (heyclaw_image_generate / heyclaw_video_generate) replace those legacy scripts.',
+    'CRITICAL SKILL PRECEDENCE: If the user selected a dedicated workflow skill in <selected_skills> (e.g. cover-framework-library or any business skill), you MUST follow that skill\'s SOP first (call read to inspect SKILL.md, follow form/confirmation workflows, and construct prompts according to the skill). Do NOT bypass the selected skill to directly call heyclaw_image_generate. Only fall back directly to heyclaw_image_generate if the selected skill is not applicable or empty.',
     'Do not run any skill scripts for image or video generation. Use only the heyclaw_* tools specified below.',
   ];
 
   if (selection.mode === 'image') {
     lines.push('If the current user request asks to create, generate, draw, render, or make an image/photo/picture.');
-    lines.push('Use the current user request and relevant prior conversation as the image prompt.');
+    lines.push('Use the current user request and relevant prior conversation as the image prompt (unless overridden by an active skill in <selected_skills>).');
     lines.push('Do not answer with only a text prompt when the user asked for an image.');
     const imageModel = selection.imageModelId?.trim() || selection.modelId?.trim();
     if (imageModel) {

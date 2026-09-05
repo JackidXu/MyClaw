@@ -32,10 +32,11 @@ export const buildSelectedSkillRoutingPrompt = (skills: Skill[]): string | undef
   });
 
   return [
-    '## Selected skills for this turn',
-    'The user selected these skills as preferred candidates for this turn.',
-    'If one selected skill clearly applies, read its SKILL.md at <location> before using it.',
-    'If no selected skill applies, ignore this block and continue normal automatic skill routing.',
+    '## Selected skills for this turn (HIGHEST PRIORITY)',
+    'The user explicitly selected these specific skills for this turn. These skills take ABSOLUTE PRECEDENCE over default general-purpose tools or raw media generation shortcuts.',
+    'If a selected skill applies to the user\'s intent, you MUST call the read tool to read its SKILL.md at <location> BEFORE performing any other actions or calling terminal tools.',
+    'STRICT CONSTRAINT: Never bypass a selected skill to directly call general tools (such as heyclaw_image_generate or raw terminal tools). You must strictly follow the workflow, form interactions, and rules defined in the skill\'s SKILL.md.',
+    'Only if the selected skill is clearly inapplicable or empty may you fall back to standard automatic tool routing.',
     'If multiple selected skills could apply, choose the most specific one first.',
     'Do not read every selected skill up front. Only read additional skills if the first selected skill explicitly references them.',
     '<path_rules>',
