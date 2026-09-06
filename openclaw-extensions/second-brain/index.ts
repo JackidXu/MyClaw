@@ -12,7 +12,7 @@ type PluginConfig = {
   callbackUrl: string;
   secret: string;
   requestTimeoutMs: number;
-  tool?: DynamicToolConfig;
+  tools: DynamicToolConfig[];
 };
 
 type SecondBrainToolRequest = {
@@ -34,18 +34,26 @@ const isRecord = (value: unknown): value is Record<string, unknown> => {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 };
 
+const parseDynamicTool = (value: unknown): DynamicToolConfig | undefined => {
+  if (!isRecord(value)) return undefined;
+  return {
+    name: typeof value.name === 'string' ? value.name : undefined,
+    description: typeof value.description === 'string' ? value.description : undefined,
+    parameters: isRecord(value.parameters) ? value.parameters : undefined,
+  };
+};
+
 const parsePluginConfig = (value: unknown): PluginConfig => {
   const raw = isRecord(value) ? value : {};
-  const rawTool = isRecord(raw.tool) ? raw.tool : undefined;
+  const rawTools = Array.isArray(raw.tools)
+    ? raw.tools.map(parseDynamicTool).filter((t): t is DynamicToolConfig => Boolean(t?.name))
+    : [];
+
   return {
     callbackUrl: typeof raw.callbackUrl === 'string' ? raw.callbackUrl.trim() : '',
     secret: typeof raw.secret === 'string' ? raw.secret.trim() : '',
     requestTimeoutMs: typeof raw.requestTimeoutMs === 'number' ? raw.requestTimeoutMs : DEFAULT_TIMEOUT_MS,
-    tool: rawTool ? {
-      name: typeof rawTool.name === 'string' ? rawTool.name : undefined,
-      description: typeof rawTool.description === 'string' ? rawTool.description : undefined,
-      parameters: isRecord(rawTool.parameters) ? rawTool.parameters : undefined,
-    } : undefined,
+    tools: rawTools,
   };
 };
 
@@ -115,58 +123,61 @@ const plugin = {
       return;
     }
 
-    // 若后端未下发工具定义，则跳过注册
-    if (!config.tool?.name) {
+    if (config.tools.length === 0) {
       api.logger.info('[second-brain] skipped: no dynamic tool definition provided.');
       return;
     }
 
-    const toolName = config.tool.name;
-    const toolDesc = config.tool.description || '';
-    const toolParams = config.tool.parameters || Type.Object({});
+    for (const toolDef of config.tools) {
+      const toolName = toolDef.name;
+      if (!toolName) continue;
 
-    api.registerTool((ctx: any) => {
-      const sessionKey = ctx.sessionKey ?? '';
+      const toolDesc = toolDef.description || '';
+      const toolParams = toolDef.parameters || Type.Object({});
 
-      return {
-        name: toolName,
-        label: toolName,
-        description: toolDesc,
-        parameters: toolParams,
-        async execute(id: string, params: unknown) {
-          const rawArgs = (params ?? {}) as Record<string, unknown>;
-          const query = typeof rawArgs.query === 'string' ? rawArgs.query.trim() : '';
-          const topK = typeof rawArgs.topK === 'number' ? rawArgs.topK : undefined;
+      api.registerTool((ctx: any) => {
+        const sessionKey = ctx.sessionKey ?? '';
 
-          if (!query) {
-            return {
-              content: [{ type: 'text', text: `${toolName} 需要非空的 query 检索词。` }],
-              isError: true,
-            };
-          }
+        return {
+          name: toolName,
+          label: toolName,
+          description: toolDesc,
+          parameters: toolParams,
+          async execute(id: string, params: unknown) {
+            const rawArgs = (params ?? {}) as Record<string, unknown>;
+            const query = typeof rawArgs.query === 'string' ? rawArgs.query.trim() : '';
+            const topK = typeof rawArgs.topK === 'number' ? rawArgs.topK : undefined;
 
-          try {
-            api.logger.info(`[second-brain] ${toolName} tool invoked: toolCallId=${id} query="${query}" topK=${topK ?? 'default'}`);
-            const startedAt = Date.now();
-            const result = await callSecondBrainToolBridge(config, {
-              query,
-              name: toolName,
-              topK,
-              sessionKey,
-              toolCallId: id,
-            });
-            api.logger.info(`[second-brain] ${toolName} completed: toolCallId=${id} elapsedMs=${Date.now() - startedAt} isError=${result.isError === true}`);
-            return result;
-          } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            api.logger.error(`[second-brain] ${toolName} failed: toolCallId=${id} error=${message}`);
-            return { content: [{ type: 'text', text: `第二大脑工具执行失败: ${message}` }], isError: true };
-          }
-        },
-      };
-    });
+            if (!query) {
+              return {
+                content: [{ type: 'text', text: `${toolName} 需要非空的 query 检索词。` }],
+                isError: true,
+              };
+            }
 
-    api.logger.info(`[second-brain] registered ${toolName} tool.`);
+            try {
+              api.logger.info(`[second-brain] ${toolName} tool invoked: toolCallId=${id} query="${query}" topK=${topK ?? 'default'}`);
+              const startedAt = Date.now();
+              const result = await callSecondBrainToolBridge(config, {
+                query,
+                name: toolName,
+                topK,
+                sessionKey,
+                toolCallId: id,
+              });
+              api.logger.info(`[second-brain] ${toolName} completed: toolCallId=${id} elapsedMs=${Date.now() - startedAt} isError=${result.isError === true}`);
+              return result;
+            } catch (error) {
+              const message = error instanceof Error ? error.message : String(error);
+              api.logger.error(`[second-brain] ${toolName} failed: toolCallId=${id} error=${message}`);
+              return { content: [{ type: 'text', text: `第二大脑工具执行失败: ${message}` }], isError: true };
+            }
+          },
+        };
+      });
+
+      api.logger.info(`[second-brain] registered ${toolName} tool.`);
+    }
   },
 };
 

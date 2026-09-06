@@ -2811,11 +2811,7 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
           callbackUrl: secondBrainCallbackUrl,
           secret: '${LOBSTER_MCP_BRIDGE_SECRET}',
           requestTimeoutMs: 60000,
-          // 优先传 tools 数组，单个工具时也传 tool 字段保持向后兼容
-          ...(dynamicTools.length > 0 ? {
-            tools: dynamicTools.map(t => t.function),
-            tool: dynamicTools[0].function,
-          } : {}),
+          tools: dynamicTools.map(t => t.function),
         },
       };
     }
