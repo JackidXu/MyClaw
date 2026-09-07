@@ -525,8 +525,8 @@ FunctionEnd
     for ($$i = 0; $$i -lt 30; $$i++) {\
       $$procs = @();\
       $$procs += Get-Process -Name HeyClaw -ErrorAction SilentlyContinue;\
-      $$procs += Get-Process node -ErrorAction SilentlyContinue | Where-Object { ($$_.Path -like "*HeyClaw*") -or ($$_.Path -like "*LobsterAI*") };\
-      $$procs += Get-Process python -ErrorAction SilentlyContinue | Where-Object { ($$_.Path -like "*HeyClaw*") -or ($$_.Path -like "*LobsterAI*") };\
+      $$procs += Get-Process node -ErrorAction SilentlyContinue | Where-Object { ($$_.Path -like \"*HeyClaw*\") -or ($$_.Path -like \"*LobsterAI*\") };\
+      $$procs += Get-Process python -ErrorAction SilentlyContinue | Where-Object { ($$_.Path -like \"*HeyClaw*\") -or ($$_.Path -like \"*LobsterAI*\") };\
       if ($$sweep) { $$procs += Get-Process -ErrorAction SilentlyContinue | Where-Object { $$fp = $$null; try { $$fp = $$_.Path } catch { }; $$fp -and $$fp.StartsWith($$root, [System.StringComparison]::OrdinalIgnoreCase) -and $$_.Id.ToString() -ne $$selfPid } };\
       if ($$procs.Count -eq 0) { exit 0 };\
       $$procs | Stop-Process -Force -ErrorAction SilentlyContinue;\
@@ -559,8 +559,8 @@ FunctionEnd
     $$procs = @();\
     $$procs += Get-Process -Name HeyClaw -ErrorAction SilentlyContinue;\
     $$procs += Get-Process -Name LobsterAI -ErrorAction SilentlyContinue;\
-    $$procs += Get-Process node -ErrorAction SilentlyContinue | Where-Object { ($$_.Path -like "*HeyClaw*") -or ($$_.Path -like "*LobsterAI*") };\
-    $$procs += Get-Process python -ErrorAction SilentlyContinue | Where-Object { ($$_.Path -like "*HeyClaw*") -or ($$_.Path -like "*LobsterAI*") };\
+    $$procs += Get-Process node -ErrorAction SilentlyContinue | Where-Object { ($$_.Path -like \"*HeyClaw*\") -or ($$_.Path -like \"*LobsterAI*\") };\
+    $$procs += Get-Process python -ErrorAction SilentlyContinue | Where-Object { ($$_.Path -like \"*HeyClaw*\") -or ($$_.Path -like \"*LobsterAI*\") };\
     if ($$sweep) { $$procs += Get-Process -ErrorAction SilentlyContinue | Where-Object { $$fp = $$null; try { $$fp = $$_.Path } catch { }; $$fp -and $$fp.StartsWith($$root, [System.StringComparison]::OrdinalIgnoreCase) -and $$_.Id.ToString() -ne $$selfPid } };\
     foreach ($$p in $$procs) {\
       $$fp = \"unknown\";\
