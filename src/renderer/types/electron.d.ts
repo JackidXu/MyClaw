@@ -233,6 +233,7 @@ interface CoworkSessionSummary {
   pinned: boolean;
   pinOrder?: number | null;
   agentId?: string;
+  secondBrainEnabled?: boolean;
   parentSessionId?: string | null;
   forkedAt?: number | null;
   forkMode?: 'none' | 'conversation' | 'worktree';
@@ -1275,9 +1276,20 @@ interface IElectronAPI {
       callback: (data: { sessionId: string; modelOverride: string }) => void,
     ) => () => void;
   };
-  secondBrain: {
-    /** 注册工具列表（App 级，应用初始化时调用一次） */
-    registerTools: (tools: Array<{ type: 'function'; function: { name: string; description: string; parameters: unknown } }>) => Promise<{ success: boolean; error?: string }>;
+  vip: {
+    /** 获取主进程权威 VIP 状态（只读） */
+    getStatus: () => Promise<{
+      authorized: boolean;
+      subscriptions: Array<{
+        expertId: string;
+        expiredAt: string;
+        isActive: boolean;
+        revokedAt?: string;
+      }>;
+      permissions: string[];
+      reason?: string;
+      expiredAt?: string;
+    }>;
   };
   dialog: {
     selectDirectory: () => Promise<{ success: boolean; path: string | null }>;

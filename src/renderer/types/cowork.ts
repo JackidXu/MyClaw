@@ -325,6 +325,7 @@ export interface CoworkSessionSummary {
   pinned: boolean;
   pinOrder?: number | null;
   agentId?: string;
+  secondBrainEnabled?: boolean;
   imPlatform?: Platform | null;
   parentSessionId?: string | null;
   forkedAt?: number | null;

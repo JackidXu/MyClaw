@@ -11,7 +11,7 @@ interface IMDisplayTitleResult {
 
 const DEFAULT_ICON_CLASS_NAME = 'h-4 w-4 rounded-sm object-contain';
 
-const IM_TITLE_PREFIXES: Record<Platform, readonly string[]> = {
+export const IM_TITLE_PREFIXES: Record<Platform, readonly string[]> = {
   weixin: ['[微信]', '[WeChat]'],
   dingtalk: ['[钉钉]', '[DingTalk]'],
   feishu: ['[飞书]', '[Feishu]'],
@@ -24,6 +24,13 @@ const IM_TITLE_PREFIXES: Record<Platform, readonly string[]> = {
   discord: ['[Discord]'],
   email: ['[龙虾邮箱]', '[clawEmail]', '[邮件]', '[Email]'],
 };
+
+export function isIMChannelSessionTitle(title?: string | null): boolean {
+  if (!title || typeof title !== 'string') return false;
+  return Object.values(IM_TITLE_PREFIXES).some((prefixes) =>
+    prefixes.some((p) => title.startsWith(p)),
+  );
+}
 
 const IM_SESSION_ICON_SCALE_CLASS_NAMES: Partial<Record<Platform, string>> = {
   weixin: 'scale-90',

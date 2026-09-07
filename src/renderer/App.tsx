@@ -2376,16 +2376,9 @@ const App: React.FC = () => {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                   </svg>
                   <span>
-                    您的软件账号授权已到期{accountExpiredAt ? `（${accountExpiredAt}）` : ''}，当前对话与大模型功能已暂停使用，请联系管理员续费。
+                    您的软件账号授权已到期{accountExpiredAt ? `（${accountExpiredAt}）` : ''}，当前对话与大模型功能已暂停使用，请联系管理员续费，续费后请重启应用生效。
                   </span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => { void vipService.refreshStatus(); }}
-                  className="px-2.5 py-1 text-xs font-medium text-amber-700 dark:text-amber-300 bg-amber-500/20 hover:bg-amber-500/30 rounded-md transition"
-                >
-                  已续费，刷新状态
-                </button>
               </div>
             )}
             {mainView !== 'cowork' && (

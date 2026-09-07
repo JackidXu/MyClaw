@@ -1,4 +1,5 @@
 import { mainHttpClient } from '../libs/mainHttpClient';
+import { mainVipService } from '../vip/mainVipService';
 
 export interface FmpToolDefinition {
   type: 'function';
@@ -27,6 +28,31 @@ export function getSecondBrainToolDefinitions(): FmpToolDefinition[] {
 /** 获取第一个工具定义 */
 export function getSecondBrainToolDefinition(): FmpToolDefinition | null {
   return latestToolDefinitions[0] ?? null;
+}
+
+/**
+ * 主进程同步第二大脑工具定义（直接存入内存变量）
+ * 应用启动时调用一次，供网关生成配置使用
+ */
+export async function syncSecondBrainTools(): Promise<void> {
+  const granted = hasSecondBrainPermission();
+  if (!granted) {
+    latestToolDefinitions = [];
+    return;
+  }
+
+  try {
+    const res = await mainHttpClient.biz.get<SecondBrainApiResponse<{ tools?: FmpToolDefinition[] }>>(
+      '/api/chaohuixie/claw/fmp/injectTools',
+    );
+
+    if (res.ok && res.data && Array.isArray(res.data.data?.tools) && res.data.data.tools.length > 0) {
+      updateSecondBrainToolDefinitions(res.data.data.tools);
+      console.log(`[SecondBrainBridge] synced ${res.data.data.tools.length} tools into memory for OpenClaw config`);
+    }
+  } catch (error) {
+    console.warn('[SecondBrainBridge] syncSecondBrainTools error:', error);
+  }
 }
 
 /** 通用格式化第二大脑工具返回结果供大模型消费 */
@@ -93,4 +119,97 @@ export async function executeSecondBrainTool(options: {
   return {
     content: [{ type: 'text', text: formattedText }],
   };
+}
+
+interface SecondBrainApiResponse<T = unknown> {
+  status: string;
+  message: string;
+  code: number;
+  data: T;
+}
+
+/**
+ * 校验当前用户是否具备第二大脑权限（单源权威：直接读取 mainVipService）
+ */
+export function hasSecondBrainPermission(): boolean {
+  return mainVipService.hasSecondBrainPermission();
+}
+
+/**
+ * 获取第二大脑认知注入提示词（会话级）
+ * 供 IM 通道在会话首条消息时动态获取人设认知（默认开启，仅受 VIP 权限管控）
+ */
+export async function fetchSecondBrainPrompt(sessionKey?: string): Promise<{ prompt: string }> {
+  // VIP 权限检查（与桌面端 vipService 完全对齐）
+  const granted = hasSecondBrainPermission();
+  if (!granted) {
+    console.log('[SecondBrainBridge] skipped prompt injection: no secondBrain VIP permission');
+    return { prompt: '' };
+  }
+
+  const startedAt = Date.now();
+  try {
+    const res = await mainHttpClient.biz.get<SecondBrainApiResponse<{ prompt?: string }>>(
+      '/api/chaohuixie/claw/fmp/injectPrompt',
+    );
+
+    if (!res.ok || !res.data) {
+      console.warn('[SecondBrainBridge] fetchPrompt failed HTTP status:', res.status, res.error);
+      return { prompt: '' };
+    }
+
+    const promptText = res.data.data?.prompt;
+    if (typeof promptText === 'string' && promptText.trim()) {
+      console.log(`[SecondBrainBridge] fetchPrompt success: length=${promptText.trim().length} elapsedMs=${Date.now() - startedAt}`);
+      return { prompt: promptText.trim() };
+    }
+
+    console.log(`[SecondBrainBridge] fetchPrompt returned empty prompt: code=${res.data.code} message="${res.data.message}"`);
+    return { prompt: '' };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn('[SecondBrainBridge] fetchPrompt exception:', message, 'sessionKey:', sessionKey);
+    return { prompt: '' };
+  }
+}
+
+export interface SecondBrainChatReportMessage {
+  user: string;
+  assistant: string;
+}
+
+/**
+ * 上报对话记录至第二大脑后端（POST /api/chaohuixie/claw/fmp/chat/report）
+ */
+export async function reportSecondBrainChat(params: {
+  chatId: string;
+  name?: string;
+  messages: SecondBrainChatReportMessage[];
+}): Promise<{ success: boolean; error?: string }> {
+  if (!params.chatId || !Array.isArray(params.messages) || params.messages.length === 0) {
+    return { success: false, error: 'Invalid report params' };
+  }
+
+  const granted = hasSecondBrainPermission();
+  if (!granted) {
+    return { success: false, error: 'No secondBrain VIP permission' };
+  }
+
+  try {
+    const res = await mainHttpClient.biz.post<SecondBrainApiResponse<unknown>>(
+      '/api/chaohuixie/claw/fmp/chat/report',
+      params,
+    );
+
+    if (!res.ok) {
+      console.warn('[SecondBrainBridge] reportChat failed HTTP status:', res.status, res.error);
+      return { success: false, error: res.error };
+    }
+
+    return { success: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn('[SecondBrainBridge] reportChat exception:', message);
+    return { success: false, error: message };
+  }
 }

@@ -26,6 +26,7 @@ import {
   type CoworkSteerRequest,
   CoworkSteerStatus,
 } from '../../shared/cowork/steer';
+import { isIMChannelSessionTitle } from '../components/cowork/imSessionDisplay';
 import { store } from '../store';
 import {
   addMessage,
@@ -78,6 +79,7 @@ import type {
   CoworkPermissionResult,
   CoworkSession,
   CoworkSessionListResult,
+  CoworkSessionSummary,
   CoworkStartOptions,
   CoworkUserMemoryEntry,
   OpenClawEngineStatus,
@@ -2474,16 +2476,23 @@ class CoworkService {
     await new Promise((resolve) => setTimeout(resolve, 600));
     try {
       const coworkState = store.getState().cowork;
-      let session: CoworkSession | null = (coworkState.sessions.find(s => s.id === sessionId) as CoworkSession | undefined)
-        ?? (coworkState.currentSession?.id === sessionId ? coworkState.currentSession : null);
+      let session: CoworkSession | CoworkSessionSummary | null = (coworkState.currentSession?.id === sessionId ? coworkState.currentSession : null)
+        ?? (coworkState.sessions.find(s => s.id === sessionId) as CoworkSession | CoworkSessionSummary | undefined)
+        ?? null;
       if (!session) {
         const res = await window.electron.cowork.getSession(sessionId);
         session = res?.session ?? null;
       }
-      const enabled = (session?.secondBrainEnabled ?? true) && vipService.hasSecondBrainPermission();
+      const hasPermission = vipService.hasSecondBrainPermission();
+      const enabled = session?.secondBrainEnabled === true && hasPermission;
 
       if (!enabled) {
-        console.debug('[SecondBrain] 对话上报未开启（该 Session 开关关闭或无第二大脑权限）');
+        console.debug(`[SecondBrain] 对话上报未开启（sessionEnabled=${session?.secondBrainEnabled}, hasPermission=${hasPermission}）`);
+        return;
+      }
+
+      if (isIMChannelSessionTitle(session?.title)) {
+        console.debug('[SecondBrain] IM 渠道会话由 OpenClaw 插件实时上报，跳过前端延迟上报');
         return;
       }
 

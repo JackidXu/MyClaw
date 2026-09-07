@@ -354,7 +354,6 @@ import {
 import { DesktopNotificationManager } from './libs/desktopNotificationManager';
 import { getDeviceInfo } from './libs/deviceId';
 import { adaptDoubaoSeedreamSize } from './libs/doubaoMediaSizeAdapter';
-import { enhanceImagePrompt } from './libs/mediaAestheticEnhancer';
 import {
   getHtmlSharePublicBaseUrl,
   getServerApiBaseUrl,
@@ -416,6 +415,7 @@ import {
   setUnauthorizedBroadcastHandler,
 } from './libs/mainHttpClient';
 import { MainLogReporter } from './libs/mainLogReporter';
+import { enhanceImagePrompt } from './libs/mediaAestheticEnhancer';
 import { inferImageMimeTypeFromDataUrl, type PersistedGeneratedImageAsset, persistGeneratedImageAssets, type PersistGeneratedImageAssetsResult, persistGeneratedVideoAssets, type RemoteGeneratedMediaAsset } from './libs/mediaAssetPersistence';
 import {
   installGlobalNetworkInterceptor,
@@ -560,7 +560,7 @@ import {
 } from './openclawSessionPolicy/store';
 import { registerVoiceInputPermissionHandler } from './permissions/voiceInputPermission';
 import { isHiddenUserPluginId } from './plugins/pluginManager';
-import { updateSecondBrainToolDefinitions } from './secondBrain/secondBrainBridge';
+import { syncSecondBrainTools } from './secondBrain/secondBrainBridge';
 import { SkillManager } from './skills/skillManager';
 import { getSkillServiceManager } from './skills/skillServices';
 import {
@@ -574,6 +574,7 @@ import { StartupProfiler } from './startupProfiler';
 import { SubagentMessageStore } from './subagentMessageStore';
 import { SubagentRunStore } from './subagentRunStore';
 import { createTray, destroyTray, updateTrayMenu, updateTrayReminder } from './trayManager';
+import { mainVipService } from './vip/mainVipService';
 import {
   AppWindowStoreKey,
   MIN_APP_WINDOW_HEIGHT,
@@ -2331,6 +2332,13 @@ const bootstrapOpenClawEngine = async (
         ensureDefaultIdentity(getMainAgentWorkspacePath(manager.getStateDir()));
       } catch (err) {
         console.warn('[OpenClaw] bootstrap: ensureDefaultIdentity failed (non-fatal):', err);
+      }
+
+      // 单源初始化 VIP 状态（保证后续同步配置能够准确根据权限加载工具）
+      try {
+        await mainVipService.initVipStatus();
+      } catch (err) {
+        console.warn('[OpenClaw] bootstrap: initVipStatus failed (non-fatal):', err);
       }
 
       const syncResult = await syncOpenClawConfig({
@@ -9777,23 +9785,8 @@ if (!gotTheLock) {
     },
   );
 
-  // 第二大脑工具注册（App 级，应用初始化时调用一次）
-  ipcMain.handle(
-    'second-brain:register-tools',
-    async (_event, tools: Array<{ type: 'function'; function: { name: string; description: string; parameters: unknown } }>) => {
-      try {
-        updateSecondBrainToolDefinitions(tools);
-        // 动态工具定义加载后，必须通知 OpenClaw 同步配置并热重载插件工具
-        await syncOpenClawConfig({
-          reason: 'second-brain-tools-updated',
-        });
-        return { success: true };
-      } catch (error) {
-        console.error('[SecondBrain] failed to register tools:', error);
-        return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
-      }
-    },
-  );
+  // 注册 VIP 状态查询 IPC（供渲染进程只读消费）
+  mainVipService.registerIpc();
 
   ipcMain.handle(
     'cowork:session:continue',
@@ -15267,6 +15260,14 @@ if (!gotTheLock) {
     profiler.mark('prepareOpenClawRuntime');
     await getOpenClawEngineManager().prepareRuntimeForStartupConfigSync();
     profiler.measure('prepareOpenClawRuntime');
+
+    // 单源初始化 VIP 状态与第二大脑工具（应用启动时仅拉取一次，供网关配置注入）
+    try {
+      await mainVipService.initVipStatus();
+      await syncSecondBrainTools();
+    } catch (err) {
+      console.warn('[Main] initApp: initVipStatus or syncSecondBrainTools failed (non-fatal):', err);
+    }
 
     profiler.mark('syncOpenClawConfig');
     const startupSync = await syncOpenClawConfig({

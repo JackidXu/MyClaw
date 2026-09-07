@@ -2,7 +2,6 @@ import { store } from '../store';
 import { agentService } from './agent';
 import { coworkService } from './cowork';
 import { expertService } from './expertService';
-import { httpClient } from './httpClient';
 
 export interface VipSubscription {
   expertId: string;
@@ -105,60 +104,34 @@ class VipService {
     this.notify();
 
     try {
-      // 获取设备指纹
-      const deviceInfo = await window.electron.getDeviceInfo();
-
-      const res = await httpClient.admin.post<{
-        authorized?: boolean;
-        reason?: string;
-        expiredAt?: string;
-        subscriptions?: VipSubscription[];
-        permissions?: string[];
-      }>('/api/vip/status', {
-        deviceId: deviceInfo.deviceId,
-        platform: deviceInfo.platform,
-        hostname: deviceInfo.hostname,
-      });
-
-      if (res.ok && res.data) {
-        const data = res.data;
-        if (data.authorized) {
-          this.state = {
-            authorized: true,
-            subscriptions: data.subscriptions || [],
-            permissions: data.permissions || [],
-            loading: false,
-            lastUpdated: Date.now(),
-          };
-        } else {
-          this.state = {
-            authorized: false,
-            subscriptions: [],
-            permissions: [],
-            reason: data.reason,
-            expiredAt: data.expiredAt,
-            loading: false,
-            lastUpdated: Date.now(),
-          };
-
-          if (data.reason === 'device_limit') {
-            console.warn('[VipService] 设备注册数量已达上限 (5台)');
-          } else if (data.reason === 'account_expired') {
-            console.warn(`[VipService] 账号使用权限已到期 (${data.expiredAt || ''})`);
-          }
-        }
-      } else {
+      const data = await window.electron.vip.getStatus();
+      if (data && data.authorized) {
         this.state = {
-          ...this.state,
-          authorized: false,
-          subscriptions: [],
-          permissions: [],
+          authorized: true,
+          subscriptions: data.subscriptions || [],
+          permissions: data.permissions || [],
           loading: false,
           lastUpdated: Date.now(),
         };
+      } else {
+        this.state = {
+          authorized: false,
+          subscriptions: [],
+          permissions: [],
+          reason: data?.reason,
+          expiredAt: data?.expiredAt,
+          loading: false,
+          lastUpdated: Date.now(),
+        };
+
+        if (data?.reason === 'device_limit') {
+          console.warn('[VipService] 设备注册数量已达上限 (5台)');
+        } else if (data?.reason === 'account_expired') {
+          console.warn(`[VipService] 账号使用权限已到期 (${data.expiredAt || ''})`);
+        }
       }
     } catch (err) {
-      console.error('[VipService] Failed to refresh VIP status:', err);
+      console.error('[VipService] Failed to get VIP status from main process:', err);
       this.state = {
         ...this.state,
         loading: false,

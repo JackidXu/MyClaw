@@ -807,10 +807,9 @@ contextBridge.exposeInMainWorld('electron', {
       return () => ipcRenderer.removeListener(CoworkIpcChannel.OpenSessionFromNotification, handler);
     },
   },
-  secondBrain: {
-    /** \u6ce8\u518c\u5de5\u5177\u5217\u8868\uff08App \u7ea7\uff0c\u5e94\u7528\u521d\u59cb\u5316\u65f6\u8c03\u7528\u4e00\u6b21\uff09 */
-    registerTools: (tools: Array<{ type: 'function'; function: { name: string; description: string; parameters: unknown } }>) =>
-      ipcRenderer.invoke('second-brain:register-tools', tools),
+  vip: {
+    /** 获取主进程权威 VIP 状态（只读） */
+    getStatus: () => ipcRenderer.invoke('vip:get-status'),
   },
   dialog: {
     selectDirectory: () => ipcRenderer.invoke('dialog:selectDirectory'),

@@ -567,6 +567,7 @@ export interface CoworkSessionSummary {
   pinned: boolean;
   pinOrder?: number | null;
   agentId: string;
+  secondBrainEnabled?: boolean;
   imPlatform?: Platform | null;
   parentSessionId?: string | null;
   forkedAt?: number | null;
@@ -768,6 +769,7 @@ interface CoworkSessionSummaryRow {
   forked_at?: number | null;
   fork_mode?: string | null;
   goal_json?: string | null;
+  second_brain_enabled?: number | null;
   created_at: number;
   updated_at: number;
 }
@@ -865,7 +867,7 @@ export class CoworkStore {
       ${sessionAlias}.status, ${sessionAlias}.pinned, ${sessionAlias}.pin_order,
       ${sessionAlias}.agent_id, ${imPlatformColumn},
       ${sessionAlias}.parent_session_id, ${sessionAlias}.forked_at, ${sessionAlias}.fork_mode,
-      ${sessionAlias}.goal_json,
+      ${sessionAlias}.goal_json, ${sessionAlias}.second_brain_enabled,
       ${sessionAlias}.created_at, ${sessionAlias}.updated_at`;
   }
 
@@ -899,6 +901,7 @@ export class CoworkStore {
       pinned: Boolean(row.pinned),
       pinOrder: row.pin_order ?? null,
       agentId: row.agent_id || 'main',
+      secondBrainEnabled: row.second_brain_enabled !== 0,
       imPlatform: this.normalizeIMPlatform(row.im_platform),
       parentSessionId: row.parent_session_id ?? null,
       forkedAt: row.forked_at ?? null,

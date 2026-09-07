@@ -429,22 +429,8 @@ export async function reExtractAudio(audioId: number): Promise<void> {
   await post<unknown>('/fmp/audio/reExtract', { audioId });
 }
 
-/** 工具函数定义（来自 /fmp/injectTools） */
-export interface FmpToolFunction {
-  name: string;
-  description: string;
-  parameters: {
-    type: string;
-    properties: Record<string, { type: string; description?: string }>;
-    required?: string[];
-  };
-}
 
-/** 工具项（来自 /fmp/injectTools） */
-export interface FmpTool {
-  type: 'function';
-  function: FmpToolFunction;
-}
+
 
 /** /fmp/injectPrompt 响应数据结构（会话级，每次新会话调用） */
 export interface FmpPromptResult {
@@ -455,16 +441,6 @@ export interface FmpPromptResult {
   /** 是否来自后端缓存 */
   cached?: boolean;
 }
-
-/** /fmp/injectTools 响应数据结构（应用级，启动时一次性加载） */
-export interface FmpToolsResult {
-  /** 需要注册给大模型的工具列表 */
-  tools: FmpTool[];
-  /** 数据版本号 */
-  version?: number;
-}
-
-
 
 /** 获取会话级认知注入提示词（GET /fmp/injectPrompt，每次新会话调用） */
 export async function fetchCognitionPrompt(): Promise<FmpPromptResult> {
@@ -478,20 +454,6 @@ export async function fetchCognitionPrompt(): Promise<FmpPromptResult> {
   } catch (err) {
     console.warn('[SecondBrain] fetchCognitionPrompt error:', err);
     return { prompt: '' };
-  }
-}
-
-/** 获取应用级工具列表（GET /fmp/injectTools，应用初始化时调用一次） */
-export async function fetchCognitionTools(): Promise<FmpToolsResult> {
-  try {
-    const res = await get<FmpToolsResult>('/fmp/injectTools');
-    return {
-      tools: Array.isArray(res.tools) ? res.tools : [],
-      version: res.version,
-    };
-  } catch (err) {
-    console.warn('[SecondBrain] fetchCognitionTools error:', err);
-    return { tools: [] };
   }
 }
 
@@ -557,7 +519,6 @@ export const secondBrainApi = {
   deleteChat,
   reExtractDocument,
   fetchCognitionPrompt,
-  fetchCognitionTools,
   reportChatSession,
   fetchPersonaDetail,
   updatePersona,

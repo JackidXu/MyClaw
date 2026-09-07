@@ -22,7 +22,7 @@ import { buildCoworkCapabilitySelection } from '../../services/coworkCapabilityS
 import { expertService } from '../../services/expertService';
 import { i18nService } from '../../services/i18n';
 import { quickActionService } from '../../services/quickAction';
-import { fetchCognitionPrompt, fetchCognitionTools, type FmpTool } from '../../services/secondBrainApi';
+import { fetchCognitionPrompt } from '../../services/secondBrainApi';
 import { vipService } from '../../services/vipService';
 import { RootState } from '../../store';
 import {
@@ -224,23 +224,6 @@ const CoworkView: React.FC<CoworkViewProps> = ({
     homeQuotaReason,
     isHomeView,
   ]);
-
-  // App 级工具元数据同步（仅在拥有第二大脑权限时拉取并注册动态工具定义）
-  const secondBrainToolsRegisteredRef = useRef(false);
-  useEffect(() => {
-    const syncToolsIfGranted = () => {
-      if (!vipService.hasSecondBrainPermission() || secondBrainToolsRegisteredRef.current) return;
-      secondBrainToolsRegisteredRef.current = true;
-      fetchCognitionTools().then((result) => {
-        if (result.tools.length > 0) {
-          void window.electron.secondBrain.registerTools(result.tools);
-        }
-      });
-    };
-
-    syncToolsIfGranted();
-    return vipService.subscribe(syncToolsIfGranted);
-  }, []);
 
   const buildCapabilitySelection = useCallback((skillIds: string[], kitIds: string[]) => {
     return buildCoworkCapabilitySelection(
@@ -616,7 +599,6 @@ const CoworkView: React.FC<CoworkViewProps> = ({
     selectedTextSnippets?: CoworkSelectedTextSnippet[],
     browserAnnotations?: CoworkBrowserAnnotationMessageBatch[],
     collaborationMode: CoworkCollaborationModeType = CoworkCollaborationMode.Default,
-    _fmpTools?: FmpTool[], // 继续会话不重新注入工具
   ) => {
 
     if (!currentSession) return false;

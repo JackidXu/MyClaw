@@ -2,6 +2,9 @@
   "id": "second-brain",
   "name": "SecondBrain",
   "description": "Second Brain cognition retrieval tool powered by HeyClaw.",
+  "activation": {
+    "onStartup": true
+  },
   "contracts": {
     "tools": [
       "retrieve_fmp"

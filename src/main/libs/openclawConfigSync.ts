@@ -2807,6 +2807,10 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
       const dynamicTools = getSecondBrainToolDefinitions();
       entries['second-brain'] = {
         enabled: true,
+        hooks: {
+          allowPromptInjection: true,
+          allowConversationAccess: true,
+        },
         config: {
           callbackUrl: secondBrainCallbackUrl,
           secret: '${LOBSTER_MCP_BRIDGE_SECRET}',
