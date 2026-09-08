@@ -530,6 +530,7 @@ export interface CoworkSession {
   executionMode: CoworkExecutionMode;
   activeSkillIds: string[];
   agentId: string;
+  projectId?: string | null;
   secondBrainEnabled: boolean;
   messages: CoworkMessage[];
   /** Offset of the first loaded message in the full message history. */
@@ -568,11 +569,20 @@ export interface CoworkSessionSummary {
   pinOrder?: number | null;
   agentId: string;
   secondBrainEnabled?: boolean;
+  projectId?: string | null;
   imPlatform?: Platform | null;
   parentSessionId?: string | null;
   forkedAt?: number | null;
   forkMode?: CoworkForkModeType;
   goal?: CoworkGoal | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CoworkProject {
+  id: string;
+  name: string;
+  sortOrder?: number | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -764,6 +774,7 @@ interface CoworkSessionSummaryRow {
   pinned: number | null;
   pin_order: number | null;
   agent_id: string | null;
+  project_id?: string | null;
   im_platform?: string | null;
   parent_session_id?: string | null;
   forked_at?: number | null;
@@ -785,6 +796,7 @@ export interface CreateCoworkSessionOptions {
   scheduledTaskId?: string | null;
   thinkingLevel?: ModelThinkingLevel | '';
   secondBrainEnabled?: boolean;
+  projectId?: string | null;
 }
 
 export class CoworkStore {
@@ -865,7 +877,7 @@ export class CoworkStore {
 
     return `${sessionAlias}.id, ${sessionAlias}.title, ${sessionAlias}.scheduled_task_id,
       ${sessionAlias}.status, ${sessionAlias}.pinned, ${sessionAlias}.pin_order,
-      ${sessionAlias}.agent_id, ${imPlatformColumn},
+      ${sessionAlias}.agent_id, ${sessionAlias}.project_id, ${imPlatformColumn},
       ${sessionAlias}.parent_session_id, ${sessionAlias}.forked_at, ${sessionAlias}.fork_mode,
       ${sessionAlias}.goal_json, ${sessionAlias}.second_brain_enabled,
       ${sessionAlias}.created_at, ${sessionAlias}.updated_at`;
@@ -902,6 +914,7 @@ export class CoworkStore {
       pinOrder: row.pin_order ?? null,
       agentId: row.agent_id || 'main',
       secondBrainEnabled: row.second_brain_enabled !== 0,
+      projectId: row.project_id ?? null,
       imPlatform: this.normalizeIMPlatform(row.im_platform),
       parentSessionId: row.parent_session_id ?? null,
       forkedAt: row.forked_at ?? null,
@@ -939,18 +952,20 @@ export class CoworkStore {
     const scheduledTaskId = options.scheduledTaskId?.trim() || null;
     const thinkingLevel = options.thinkingLevel ?? '';
     const secondBrainEnabledInt = options.secondBrainEnabled !== false ? 1 : 0;
+    const projectId = options.projectId?.trim() || null;
 
     this.db
       .prepare(
         `
-      INSERT INTO cowork_sessions (id, title, claude_session_id, scheduled_task_id, status, cwd, system_prompt, model_override, thinking_level, execution_mode, active_skill_ids, agent_id, second_brain_enabled, pinned, created_at, updated_at)
-      VALUES (?, ?, NULL, ?, 'idle', ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+      INSERT INTO cowork_sessions (id, title, claude_session_id, scheduled_task_id, project_id, status, cwd, system_prompt, model_override, thinking_level, execution_mode, active_skill_ids, agent_id, second_brain_enabled, pinned, created_at, updated_at)
+      VALUES (?, ?, NULL, ?, ?, 'idle', ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
     `,
       )
       .run(
         id,
         title,
         scheduledTaskId,
+        projectId,
         cwd,
         systemPrompt,
         modelOverride,
@@ -974,6 +989,7 @@ export class CoworkStore {
       title,
       claudeSessionId: null,
       scheduledTaskId,
+      projectId,
       status: 'idle',
       pinned: false,
       pinOrder: null,
@@ -1016,6 +1032,7 @@ export class CoworkStore {
       execution_mode?: string | null;
       active_skill_ids?: string | null;
       agent_id?: string | null;
+      project_id?: string | null;
       goal_json?: string | null;
       second_brain_enabled?: number | null;
       created_at: number;
@@ -1024,7 +1041,7 @@ export class CoworkStore {
 
     const row = this.getOne<SessionRow>(
       `
-      SELECT id, title, claude_session_id, scheduled_task_id, status, pinned, pin_order, cwd, system_prompt, model_override, thinking_level, execution_mode, active_skill_ids, agent_id, goal_json, second_brain_enabled, created_at, updated_at
+      SELECT id, title, claude_session_id, scheduled_task_id, project_id, status, pinned, pin_order, cwd, system_prompt, model_override, thinking_level, execution_mode, active_skill_ids, agent_id, goal_json, second_brain_enabled, created_at, updated_at
       FROM cowork_sessions
       WHERE id = ?
     `,
@@ -1055,6 +1072,7 @@ export class CoworkStore {
       title: row.title,
       claudeSessionId: row.claude_session_id,
       scheduledTaskId: row.scheduled_task_id?.trim() || null,
+      projectId: row.project_id ?? null,
       status: row.status as CoworkSessionStatus,
       pinned: Boolean(row.pinned),
       pinOrder: row.pin_order ?? null,
@@ -3783,5 +3801,130 @@ export class CoworkStore {
       installedAt: row.installed_at,
       config: row.config ? JSON.parse(row.config) as Record<string, unknown> : undefined,
     };
+  }
+
+  // ──────────────────────────────────────────────
+  // 项目管理（cowork_projects）
+  // ──────────────────────────────────────────────
+
+  listProjects(): CoworkProject[] {
+    const rows = this.getAll<{
+      id: string;
+      name: string;
+      sort_order: number | null;
+      created_at: number;
+      updated_at: number;
+    }>('SELECT id, name, sort_order, created_at, updated_at FROM cowork_projects ORDER BY COALESCE(sort_order, created_at) ASC');
+    return rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      sortOrder: r.sort_order ?? null,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    }));
+  }
+
+  createProject(name: string): CoworkProject {
+    const id = crypto.randomUUID();
+    const now = Date.now();
+    this.db
+      .prepare('INSERT INTO cowork_projects (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)')
+      .run(id, name.trim(), now, now);
+    return { id, name: name.trim(), sortOrder: null, createdAt: now, updatedAt: now };
+  }
+
+  updateProject(id: string, updates: { name?: string; sortOrder?: number | null }): CoworkProject | null {
+    const now = Date.now();
+    const setParts: string[] = ['updated_at = ?'];
+    const params: (string | number | null)[] = [now];
+    if (updates.name !== undefined) {
+      setParts.push('name = ?');
+      params.push(updates.name.trim());
+    }
+    if (updates.sortOrder !== undefined) {
+      setParts.push('sort_order = ?');
+      params.push(updates.sortOrder ?? null);
+    }
+    params.push(id);
+    const result = this.db
+      .prepare(`UPDATE cowork_projects SET ${setParts.join(', ')} WHERE id = ?`)
+      .run(...params);
+    if (result.changes === 0) return null;
+    const row = this.getOne<{
+      id: string;
+      name: string;
+      sort_order: number | null;
+      created_at: number;
+      updated_at: number;
+    }>('SELECT id, name, sort_order, created_at, updated_at FROM cowork_projects WHERE id = ?', [id]);
+    if (!row) return null;
+    return {
+      id: row.id,
+      name: row.name,
+      sortOrder: row.sort_order,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  deleteProject(id: string): boolean {
+    const result = this.db.transaction(() => {
+      // 解散：将该项目内的所有会话 project_id 重置为 NULL，安全保留会话
+      this.db
+        .prepare('UPDATE cowork_sessions SET project_id = NULL WHERE project_id = ?')
+        .run(id);
+      return this.db
+        .prepare('DELETE FROM cowork_projects WHERE id = ?')
+        .run(id);
+    })();
+    return result.changes > 0;
+  }
+
+  moveSessionToProject(sessionId: string, projectId: string | null): boolean {
+    const result = this.db
+      .prepare('UPDATE cowork_sessions SET project_id = ? WHERE id = ?')
+      .run(projectId ?? null, sessionId);
+    return result.changes > 0;
+  }
+
+  moveSessionsToProject(sessionIds: string[], projectId: string | null): boolean {
+    if (sessionIds.length === 0) return false;
+    const result = this.db.transaction(() => {
+      let changes = 0;
+      const stmt = this.db.prepare('UPDATE cowork_sessions SET project_id = ? WHERE id = ?');
+      for (const sessionId of sessionIds) {
+        changes += stmt.run(projectId ?? null, sessionId).changes;
+      }
+      return changes;
+    })();
+    return result > 0;
+  }
+
+  reorderProjects(projectIds: string[]): CoworkProject[] {
+    const normalizedIds = Array.from(new Set(projectIds.map((id) => id.trim()).filter(Boolean)));
+    if (normalizedIds.length === 0) return this.listProjects();
+
+    const existingProjects = this.listProjects();
+    const existingIds = new Set(existingProjects.map((p) => p.id));
+    const orderedIds = normalizedIds.filter((id) => existingIds.has(id));
+    if (orderedIds.length === 0) return this.listProjects();
+
+    const orderedIdSet = new Set(orderedIds);
+    const finalIds = [
+      ...orderedIds,
+      ...existingProjects.map((p) => p.id).filter((id) => !orderedIdSet.has(id)),
+    ];
+
+    const now = Date.now();
+    const updateSortOrder = this.db.prepare(
+      'UPDATE cowork_projects SET sort_order = ?, updated_at = ? WHERE id = ?',
+    );
+    const reorder = this.db.transaction((ids: string[]) => {
+      ids.forEach((id, index) => {
+        updateSortOrder.run(index + 1, now, id);
+      });
+    });
+    reorder(finalIds);
+    return this.listProjects();
   }
 }

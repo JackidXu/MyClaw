@@ -17,6 +17,7 @@ export interface AgentSidebarTaskNode {
   agentId: string;
   title: string;
   isScheduledTask: boolean;
+  projectId?: string | null;
   status: CoworkSessionStatus;
   pinned: boolean;
   pinOrder?: number | null;
@@ -25,6 +26,14 @@ export interface AgentSidebarTaskNode {
   createdAt: number;
   indicator: AgentSidebarIndicator;
   isSelected: boolean;
+}
+
+export interface AgentSidebarProjectNode {
+  id: string;
+  name: string;
+  sortOrder: number | null;
+  isExpanded: boolean;
+  tasks: AgentSidebarTaskNode[];
 }
 
 export interface AgentSidebarAgentNode extends AgentSidebarAgentSummary {
@@ -40,6 +49,7 @@ export interface AgentSidebarAgentNode extends AgentSidebarAgentSummary {
 export interface AgentSidebarPreferenceState {
   expandedAgentIds: string[];
   expandedTaskListAgentIds: string[];
+  expandedProjectIds?: string[];
   selectedAgentId?: string;
   selectedTaskId?: string;
 }

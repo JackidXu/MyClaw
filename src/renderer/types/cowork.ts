@@ -160,6 +160,7 @@ export interface CoworkSession {
   activeSkillIds: string[];
   activeKitIds?: string[];
   agentId: string;
+  projectId?: string | null;
   secondBrainEnabled?: boolean;
   messages: CoworkMessage[];
   /** Offset of the first loaded message in the full message history. 0 means loaded from the beginning. */
@@ -331,6 +332,15 @@ export interface CoworkSessionSummary {
   forkedAt?: number | null;
   forkMode?: CoworkForkMode;
   goal?: CoworkGoal | null;
+  projectId?: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CoworkProject {
+  id: string;
+  name: string;
+  sortOrder: number | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -373,6 +383,7 @@ export interface CoworkStartOptions {
   modelOverride?: string;
   thinkingLevel?: ModelThinkingLevel;
   secondBrainEnabled?: boolean;
+  projectId?: string;
   imageAttachments?: CoworkImageAttachment[];
   mediaSelection?: { mode: string; modelId?: string; modelName?: string; imageModelId?: string; videoModelId?: string };
   mediaReferences?: import('./mediaGeneration').MediaAttachmentRef[];

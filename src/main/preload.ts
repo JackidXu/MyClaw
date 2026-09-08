@@ -530,6 +530,7 @@ contextBridge.exposeInMainWorld('electron', {
       modelOverride?: string;
       thinkingLevel?: string;
       secondBrainEnabled?: boolean;
+      projectId?: string;
       imageAttachments?: Array<{ name: string; mimeType: string; base64Data: string; sizeBytes?: number; localPath?: string; previewMimeType?: string; previewBase64Data?: string }>;
       mediaSelection?: { mode: string; modelId?: string; modelName?: string; imageModelId?: string; videoModelId?: string }; mediaReferences?: Array<{ token: string; mediaType: string; index: number; fileId: string; fileName: string; mimeType: string; localPath?: string; remoteUrl?: string; dataUrl?: string; role?: string }>;
     }) => ipcRenderer.invoke('cowork:session:start', options),
@@ -675,6 +676,20 @@ contextBridge.exposeInMainWorld('electron', {
     getTempStorageUsage: () => ipcRenderer.invoke(CoworkIpcChannel.TempStorageUsage),
     cleanTempStorage: (options?: { cwds?: string[] }) =>
       ipcRenderer.invoke(CoworkIpcChannel.TempStorageClean, options),
+
+    // Project management
+    listProjects: () => ipcRenderer.invoke(CoworkIpcChannel.ProjectList),
+    createProject: (options: { name: string; sortOrder?: number }) =>
+      ipcRenderer.invoke(CoworkIpcChannel.ProjectCreate, options),
+    updateProject: (options: { id: string; name?: string; sortOrder?: number }) =>
+      ipcRenderer.invoke(CoworkIpcChannel.ProjectUpdate, options),
+    deleteProject: (id: string) => ipcRenderer.invoke(CoworkIpcChannel.ProjectDelete, id),
+    reorderProjects: (projectIds: string[]) =>
+      ipcRenderer.invoke(CoworkIpcChannel.ProjectReorder, projectIds),
+    moveSessionToProject: (options: { sessionId: string; projectId: string | null }) =>
+      ipcRenderer.invoke(CoworkIpcChannel.SessionMoveToProject, options),
+    moveSessionsToProject: (options: { sessionIds: string[]; projectId: string | null }) =>
+      ipcRenderer.invoke(CoworkIpcChannel.SessionBatchMoveToProject, options),
     listMemoryEntries: (input: {
       query?: string;
       status?: 'created' | 'stale' | 'deleted' | 'all';

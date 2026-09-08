@@ -25,6 +25,7 @@ import type {
   AgentSidebarAgentNode,
   AgentSidebarAgentSummary,
   AgentSidebarPreferenceState,
+  AgentSidebarProjectNode,
   AgentSidebarTaskNode,
 } from './types';
 
@@ -72,6 +73,7 @@ const hasSessionChanged = (
     || previous.parentSessionId !== next.parentSessionId
     || previous.updatedAt !== next.updatedAt
     || previous.createdAt !== next.createdAt
+    || previous.projectId !== next.projectId
     || normalizeAgentId(previous.agentId) !== normalizeAgentId(next.agentId);
 };
 
@@ -149,6 +151,7 @@ export const toAgentSidebarTaskNode = (
       session.title,
       session.parentSessionId,
     ),
+    projectId: session.projectId ?? null,
     status: session.status,
     pinned: session.pinned,
     pinOrder: session.pinOrder ?? null,
@@ -214,11 +217,13 @@ export const useAgentSidebarState = ({
   const currentAgentId = useSelector((state: RootState) => state.agent.currentAgentId);
   const currentSessionId = useSelector(selectCurrentSessionId);
   const sessions = useSelector(selectCoworkSessions);
+  const projects = useSelector((state: RootState) => state.cowork.projects);
   const completedUnreadSessionIds = useSelector(selectCompletedUnreadSessionIds);
   const pendingPermissionSessionIds = useSelector(selectPendingPermissionSessionIds);
 
   const [expandedAgentIds, setExpandedAgentIds] = useState<string[]>([]);
   const [expandedTaskListAgentIds, setExpandedTaskListAgentIds] = useState<string[]>([]);
+  const [expandedProjectIds, setExpandedProjectIds] = useState<string[]>([]);
   const [visibleTaskLimitByAgentId, setVisibleTaskLimitByAgentId] = useState<Record<string, number>>({});
   const [taskPreviewsByAgentId, setTaskPreviewsByAgentId] = useState<Record<string, CoworkSessionSummary[]>>({});
   const [hasMoreTasksByAgentId, setHasMoreTasksByAgentId] = useState<Record<string, boolean>>({});
@@ -269,6 +274,7 @@ export const useAgentSidebarState = ({
     () => new Set(expandedTaskListAgentIds),
     [expandedTaskListAgentIds],
   );
+  const expandedProjectIdSet = useMemo(() => new Set(expandedProjectIds), [expandedProjectIds]);
   const loadingAgentIdSet = useMemo(() => new Set(loadingAgentIds), [loadingAgentIds]);
   const failedAgentIdSet = useMemo(() => new Set(failedAgentIds), [failedAgentIds]);
 
@@ -279,6 +285,7 @@ export const useAgentSidebarState = ({
         if (cancelled) return;
         setExpandedAgentIds(preference?.expandedAgentIds ?? []);
         setExpandedTaskListAgentIds(preference?.expandedTaskListAgentIds ?? []);
+        setExpandedProjectIds(preference?.expandedProjectIds ?? []);
       })
       .finally(() => {
         if (!cancelled) {
@@ -295,6 +302,7 @@ export const useAgentSidebarState = ({
     const preference: AgentSidebarPreferenceState = {
       expandedAgentIds,
       expandedTaskListAgentIds,
+      expandedProjectIds,
       selectedAgentId: currentAgentId,
       selectedTaskId: currentSessionId ?? undefined,
     };
@@ -304,6 +312,7 @@ export const useAgentSidebarState = ({
     currentSessionId,
     expandedAgentIds,
     expandedTaskListAgentIds,
+    expandedProjectIds,
     preferenceLoaded,
   ]);
 
@@ -515,6 +524,20 @@ export const useAgentSidebarState = ({
     });
   }, []);
 
+  const toggleProjectExpanded = useCallback((projectId: string) => {
+    setExpandedProjectIds((previous) => {
+      return previous.includes(projectId)
+        ? previous.filter((id) => id !== projectId)
+        : [...previous, projectId];
+    });
+  }, []);
+
+  const expandProject = useCallback((projectId: string) => {
+    setExpandedProjectIds((previous) => {
+      return previous.includes(projectId) ? previous : [...previous, projectId];
+    });
+  }, []);
+
   const loadMoreTasks = useCallback((agentId: string) => {
     const loadedTasks = taskPreviewsByAgentId[agentId] ?? [];
     const currentVisibleLimit =
@@ -696,10 +719,12 @@ export const useAgentSidebarState = ({
 
   const {
     agentNodes,
+    projectNodes,
     activityAgentNodes,
     hasUnreadCompletedTasks,
   } = useMemo<{
     agentNodes: AgentSidebarAgentNode[];
+    projectNodes: AgentSidebarProjectNode[];
     activityAgentNodes: AgentSidebarAgentNode[];
     hasUnreadCompletedTasks: boolean;
   }>(() => {
@@ -708,7 +733,9 @@ export const useAgentSidebarState = ({
     let hasUnreadCompletedTasks = false;
 
     sortedEnabledAgents.forEach((agent) => {
-      const taskPreviews = taskPreviewsByAgentId[agent.id] ?? [];
+      const allTaskPreviews = taskPreviewsByAgentId[agent.id] ?? [];
+      // 关键：属于项目的任务不在此处作为专家的常规任务展示
+      const taskPreviews = allTaskPreviews.filter((t) => !t.projectId);
       const sortedTaskPreviews = sortAgentSidebarTasks(taskPreviews);
       const isTaskListExpanded = expandedTaskListAgentIdSet.has(agent.id);
       const visibleTaskLimit =
@@ -757,8 +784,64 @@ export const useAgentSidebarState = ({
       });
     });
 
+    const allTaskSessions: CoworkSessionSummary[] = [];
+    const seenSessionIds = new Set<string>();
+    Object.values(taskPreviewsByAgentId).forEach((tasks) => {
+      tasks.forEach((task) => {
+        if (!seenSessionIds.has(task.id)) {
+          seenSessionIds.add(task.id);
+          allTaskSessions.push(task);
+        }
+      });
+    });
+    // 补充当前 sessions 中的会话
+    sessions.forEach((session) => {
+      if (!seenSessionIds.has(session.id)) {
+        seenSessionIds.add(session.id);
+        allTaskSessions.push(session);
+      }
+    });
+
+    const projectNodes: AgentSidebarProjectNode[] = [...projects]
+      .map((proj) => {
+        const projTasks = allTaskSessions.filter((s) => s.projectId === proj.id);
+        const sortedProjTasks = sortAgentSidebarTasks(projTasks);
+        const tasks = sortedProjTasks.map((s) =>
+          toAgentSidebarTaskNode(
+            s,
+            currentSessionId,
+            completedUnreadSessionIdSet,
+            pendingPermissionSessionIdSet,
+          ),
+        );
+        const latestTaskActivity = projTasks.reduce(
+          (max, task) => Math.max(max, task.updatedAt || task.createdAt),
+          0,
+        );
+        const latestActivity = Math.max(latestTaskActivity, proj.updatedAt || proj.createdAt || 0);
+
+        return {
+          id: proj.id,
+          name: proj.name,
+          sortOrder: proj.sortOrder,
+          latestActivity,
+          isExpanded: expandedProjectIdSet.has(proj.id),
+          tasks,
+        };
+      })
+      .sort((a, b) => {
+        if (b.latestActivity !== a.latestActivity) {
+          return b.latestActivity - a.latestActivity;
+        }
+        const aSort = a.sortOrder ?? Number.MAX_SAFE_INTEGER;
+        const bSort = b.sortOrder ?? Number.MAX_SAFE_INTEGER;
+        return aSort - bSort;
+      })
+      .map(({ latestActivity: _latestActivity, ...node }) => node);
+
     return {
       agentNodes: visibleNodes,
+      projectNodes,
       activityAgentNodes: activityNodes,
       hasUnreadCompletedTasks,
     };
@@ -766,12 +849,15 @@ export const useAgentSidebarState = ({
     completedUnreadSessionIdSet,
     currentSessionId,
     expandedAgentIdSet,
+    expandedProjectIdSet,
     expandedTaskListAgentIdSet,
     failedAgentIdSet,
     hasMoreTasksByAgentId,
     includeActivityTasks,
     loadingAgentIdSet,
     pendingPermissionSessionIdSet,
+    projects,
+    sessions,
     sortedEnabledAgents,
     taskPreviewsByAgentId,
     visibleTaskLimitByAgentId,
@@ -779,6 +865,7 @@ export const useAgentSidebarState = ({
 
   return {
     agentNodes,
+    projectNodes,
     activityAgentNodes,
     hasUnreadCompletedTasks,
     expandedTaskListAgentIdSet,
@@ -793,5 +880,8 @@ export const useAgentSidebarState = ({
     expandTasks,
     collapseTasks,
     toggleAgentExpanded,
+    expandedProjectIdSet,
+    toggleProjectExpanded,
+    expandProject,
   };
 };

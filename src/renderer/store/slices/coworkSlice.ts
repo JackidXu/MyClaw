@@ -32,6 +32,7 @@ import {
   type CoworkContextUsage,
   type CoworkMessage,
   type CoworkPermissionRequest,
+  type CoworkProject,
   type CoworkSession,
   type CoworkSessionStatus,
   CoworkSessionStatusValue,
@@ -63,6 +64,7 @@ export interface PlanConfirmationStatus {
 }
 
 interface CoworkState {
+  projects: CoworkProject[];
   sessions: CoworkSessionSummary[];
   /** Whether more sessions exist on the server beyond what is currently loaded. */
   hasMoreSessions: boolean;
@@ -85,6 +87,8 @@ interface CoworkState {
   draftCollaborationModes: Record<string, CoworkCollaborationModeType>;
   /** Keyed by draftKey, stores the second brain enabled preference for the draft/session. */
   draftSecondBrainEnabled: Record<string, boolean>;
+  /** Draft project ID for new tasks bound to a specific project from the sidebar menu */
+  draftProjectId: string | null;
   /** Keyed by sessionId, stores the latest proposed plan confirmation UI state. */
   planConfirmations: Record<string, PlanConfirmationStatus>;
   /** Keyed by sessionId, stores ephemeral BTW side-chat windows and messages. */
@@ -122,6 +126,7 @@ interface CoworkState {
 }
 
 const initialState: CoworkState = {
+  projects: [],
   sessions: [],
   hasMoreSessions: false,
   currentSessionId: null,
@@ -135,6 +140,7 @@ const initialState: CoworkState = {
   draftSkillIds: {},
   draftCollaborationModes: {},
   draftSecondBrainEnabled: {},
+  draftProjectId: null,
   planConfirmations: {},
   btwThreadsBySessionId: {},
   steerDrafts: {},
@@ -478,6 +484,7 @@ const toSessionSummary = (session: CoworkSession): CoworkSessionSummary => ({
   forkedAt: session.forkedAt ?? null,
   forkMode: session.forkMode,
   goal: session.goal ?? null,
+  projectId: session.projectId ?? null,
   createdAt: session.createdAt,
   updatedAt: session.updatedAt,
 });
@@ -1313,6 +1320,65 @@ const coworkSlice = createSlice({
       state.config = { ...state.config, ...action.payload };
     },
 
+    setProjects(state, action: PayloadAction<CoworkProject[]>) {
+      state.projects = action.payload;
+    },
+
+    addProject(state, action: PayloadAction<CoworkProject>) {
+      state.projects.unshift(action.payload);
+    },
+
+    updateProjectInState(state, action: PayloadAction<CoworkProject>) {
+      const index = state.projects.findIndex(p => p.id === action.payload.id);
+      if (index !== -1) {
+        state.projects[index] = action.payload;
+      }
+    },
+
+    removeProjectFromState(state, action: PayloadAction<string>) {
+      const projectId = action.payload;
+      state.projects = state.projects.filter(p => p.id !== projectId);
+      // 清空属于该项目的会话关联
+      for (const session of state.sessions) {
+        if (session.projectId === projectId) {
+          session.projectId = null;
+        }
+      }
+      if (state.currentSession?.projectId === projectId) {
+        state.currentSession.projectId = null;
+      }
+    },
+
+    updateSessionProjectInState(
+      state,
+      action: PayloadAction<{ sessionId: string; projectId: string | null }>,
+    ) {
+      const { sessionId, projectId } = action.payload;
+      const session = state.sessions.find(s => s.id === sessionId);
+      if (session) {
+        session.projectId = projectId;
+      }
+      if (state.currentSession?.id === sessionId) {
+        state.currentSession.projectId = projectId;
+      }
+    },
+
+    updateSessionsProjectInState(
+      state,
+      action: PayloadAction<{ sessionIds: string[]; projectId: string | null }>,
+    ) {
+      const { sessionIds, projectId } = action.payload;
+      const idSet = new Set(sessionIds);
+      for (const session of state.sessions) {
+        if (idSet.has(session.id)) {
+          session.projectId = projectId;
+        }
+      }
+      if (state.currentSession && idSet.has(state.currentSession.id)) {
+        state.currentSession.projectId = projectId;
+      }
+    },
+
     clearCurrentSession(
       state,
       action: PayloadAction<{ sessionNavigationTargetId: string } | undefined>,
@@ -1491,6 +1557,10 @@ const coworkSlice = createSlice({
       }
     },
 
+    setDraftProjectId(state, action: PayloadAction<string | null>) {
+      state.draftProjectId = action.payload;
+    },
+
     setMediaModels(state, action: PayloadAction<{
       image: MediaModel[];
       video: MediaModel[];
@@ -1586,6 +1656,12 @@ export const {
   clearPendingPermissions,
   setConfig,
   updateConfig,
+  setProjects,
+  addProject,
+  updateProjectInState,
+  removeProjectFromState,
+  updateSessionProjectInState,
+  updateSessionsProjectInState,
   clearCurrentSession,
   setPlanConfirmationAwaiting,
   setPlanConfirmationHandled,
@@ -1594,6 +1670,7 @@ export const {
   setDraftSkillIds,
   setDraftCollaborationMode,
   setDraftSecondBrainEnabled,
+  setDraftProjectId,
   clearMediaAccountState,
   setMediaModels,
   setMediaSelection,

@@ -126,6 +126,16 @@ export class SqliteStore {
     `);
 
     this.db.exec(`
+      CREATE TABLE IF NOT EXISTS cowork_projects (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        sort_order INTEGER,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+    `);
+
+    this.db.exec(`
       CREATE TABLE IF NOT EXISTS cowork_messages (
         id TEXT PRIMARY KEY,
         session_id TEXT NOT NULL,
@@ -799,6 +809,18 @@ export class SqliteStore {
       this.didRunMigration = true;
     } catch (error) {
       console.warn('Failed to migrate cowork execution mode:', error);
+    }
+
+    // Migration: Add project_id column to cowork_sessions
+    try {
+      const sessionCols = this.db.pragma('table_info(cowork_sessions)') as Array<{ name: string }>;
+      if (!sessionCols.some((col) => col.name === 'project_id')) {
+        this.db.exec('ALTER TABLE cowork_sessions ADD COLUMN project_id TEXT;');
+        this.didRunMigration = true;
+      }
+    } catch (error) {
+      console.error('[SqliteStore] failed to add cowork_sessions.project_id:', error);
+      throw error;
     }
 
     this.migrateLegacyMemoryFileToUserMemories();

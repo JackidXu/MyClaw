@@ -9548,6 +9548,7 @@ if (!gotTheLock) {
         agentId?: string;
         modelOverride?: string;
         thinkingLevel?: string;
+        projectId?: string;
         mediaSelection?: {
           mode: 'auto' | 'image' | 'video' | 'none';
           modelId?: string;
@@ -9653,6 +9654,7 @@ if (!gotTheLock) {
           {
             thinkingLevel: thinkingLevel || '',
             secondBrainEnabled: (options as { secondBrainEnabled?: boolean }).secondBrainEnabled,
+            projectId: options.projectId,
           },
         );
 
@@ -11053,6 +11055,110 @@ if (!gotTheLock) {
         return {
           success: false,
           error: error instanceof Error ? error.message : 'Failed to clean temp storage',
+        };
+      }
+    },
+  );
+
+  ipcMain.handle(CoworkIpcChannel.ProjectList, async () => {
+    try {
+      const projects = getCoworkStore().listProjects();
+      return { success: true, projects };
+    } catch (error) {
+      console.error('[CoworkIPC] failed to list projects:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to list projects',
+      };
+    }
+  });
+
+  ipcMain.handle(
+    CoworkIpcChannel.ProjectCreate,
+    async (_event, options: { name: string; sortOrder?: number }) => {
+      try {
+        const project = getCoworkStore().createProject(options.name);
+        return { success: true, project };
+      } catch (error) {
+        console.error('[CoworkIPC] failed to create project:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to create project',
+        };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    CoworkIpcChannel.ProjectUpdate,
+    async (_event, options: { id: string; name?: string; sortOrder?: number }) => {
+      try {
+        const project = getCoworkStore().updateProject(options.id, options);
+        if (!project) return { success: false, error: 'Project not found or no changes' };
+        return { success: true, project };
+      } catch (error) {
+        console.error('[CoworkIPC] failed to update project:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to update project',
+        };
+      }
+    },
+  );
+
+  ipcMain.handle(CoworkIpcChannel.ProjectDelete, async (_event, id: string) => {
+    try {
+      const deleted = getCoworkStore().deleteProject(id);
+      return { success: true, deleted };
+    } catch (error) {
+      console.error('[CoworkIPC] failed to delete project:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to delete project',
+      };
+    }
+  });
+
+  ipcMain.handle(CoworkIpcChannel.ProjectReorder, async (_event, projectIds: string[]) => {
+    try {
+      const projects = getCoworkStore().reorderProjects(projectIds);
+      return { success: true, projects };
+    } catch (error) {
+      console.error('[CoworkIPC] failed to reorder projects:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to reorder projects',
+      };
+    }
+  });
+
+  ipcMain.handle(
+    CoworkIpcChannel.SessionMoveToProject,
+    async (_event, options: { sessionId: string; projectId: string | null }) => {
+      try {
+        const moved = getCoworkStore().moveSessionToProject(options.sessionId, options.projectId);
+        return { success: true, moved };
+      } catch (error) {
+        console.error('[CoworkIPC] failed to move session to project:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to move session to project',
+        };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    CoworkIpcChannel.SessionBatchMoveToProject,
+    async (_event, options: { sessionIds: string[]; projectId: string | null }) => {
+      try {
+        const count = getCoworkStore().moveSessionsToProject(options.sessionIds, options.projectId);
+        return { success: true, count };
+      } catch (error) {
+        console.error('[CoworkIPC] failed to move sessions to project:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to move sessions to project',
         };
       }
     },
