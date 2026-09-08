@@ -30,6 +30,7 @@ import { store } from '../store';
 import {
   addMessage,
   addPendingSteer,
+  addProject,
   addSession,
   appendBtwEntry,
   appendNewerMessages,
@@ -44,6 +45,7 @@ import {
   markCompactionNotified,
   openBtwThread,
   prependMessages,
+  removeProjectFromState,
   setAgentSessions,
   setConfig,
   setContextCompacting,
@@ -54,18 +56,16 @@ import {
   setMessageRailIndex,
   setMessageRailIndexLoading,
   setMessageWindow,
+  setProjects,
   setRemoteManaged,
   setSessions,
   setStreaming,
   settleBtwEntry,
   updateCurrentSessionModelOverride,
   updateMessageContent,
+  updateProjectInState,
   updateSessionGoal,
   updateSessionPinned,
-  setProjects,
-  addProject,
-  updateProjectInState,
-  removeProjectFromState,
   updateSessionProjectInState,
   updateSessionsProjectInState,
   updateSessionStatus,
@@ -2620,6 +2620,20 @@ class CoworkService {
       return false;
     } catch (error) {
       console.error('[CoworkService] failed to delete project:', error);
+      return false;
+    }
+  }
+
+  async reorderProjects(projectIds: string[]): Promise<boolean> {
+    try {
+      const res = await window.electron.cowork.reorderProjects(projectIds);
+      if (res.success && res.projects) {
+        store.dispatch(setProjects(res.projects));
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('[CoworkService] failed to reorder projects:', error);
       return false;
     }
   }

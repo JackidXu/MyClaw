@@ -354,7 +354,6 @@ import {
 import { DesktopNotificationManager } from './libs/desktopNotificationManager';
 import { getDeviceInfo } from './libs/deviceId';
 import { adaptDoubaoSeedreamSize } from './libs/doubaoMediaSizeAdapter';
-import { enhanceImagePrompt } from './libs/mediaAestheticEnhancer';
 import {
   getHtmlSharePublicBaseUrl,
   getServerApiBaseUrl,
@@ -416,6 +415,7 @@ import {
   setUnauthorizedBroadcastHandler,
 } from './libs/mainHttpClient';
 import { MainLogReporter } from './libs/mainLogReporter';
+import { enhanceImagePrompt } from './libs/mediaAestheticEnhancer';
 import { inferImageMimeTypeFromDataUrl, type PersistedGeneratedImageAsset, persistGeneratedImageAssets, type PersistGeneratedImageAssetsResult, persistGeneratedVideoAssets, type RemoteGeneratedMediaAsset } from './libs/mediaAssetPersistence';
 import {
   installGlobalNetworkInterceptor,
@@ -9540,6 +9540,7 @@ if (!gotTheLock) {
         agentId?: string;
         modelOverride?: string;
         thinkingLevel?: string;
+        projectId?: string;
         mediaSelection?: {
           mode: 'auto' | 'image' | 'video' | 'none';
           modelId?: string;
@@ -9645,6 +9646,7 @@ if (!gotTheLock) {
           {
             thinkingLevel: thinkingLevel || '',
             secondBrainEnabled: (options as { secondBrainEnabled?: boolean }).secondBrainEnabled,
+            projectId: options.projectId,
           },
         );
 
@@ -11099,6 +11101,7 @@ if (!gotTheLock) {
     async (_event, options: { id: string; name?: string; sortOrder?: number }) => {
       try {
         const project = getCoworkStore().updateProject(options.id, options);
+        if (!project) return { success: false, error: 'Project not found or no changes' };
         return { success: true, project };
       } catch (error) {
         console.error('[CoworkIPC] failed to update project:', error);
@@ -11119,6 +11122,19 @@ if (!gotTheLock) {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to delete project',
+      };
+    }
+  });
+
+  ipcMain.handle(CoworkIpcChannel.ProjectReorder, async (_event, projectIds: string[]) => {
+    try {
+      const projects = getCoworkStore().reorderProjects(projectIds);
+      return { success: true, projects };
+    } catch (error) {
+      console.error('[CoworkIPC] failed to reorder projects:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to reorder projects',
       };
     }
   });

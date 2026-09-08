@@ -31,7 +31,7 @@ export interface AgentSidebarTaskNode {
 export interface AgentSidebarProjectNode {
   id: string;
   name: string;
-  sortOrder: number;
+  sortOrder: number | null;
   isExpanded: boolean;
   tasks: AgentSidebarTaskNode[];
 }

@@ -14,6 +14,7 @@ import {
   useSortable,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
+import { PlusIcon } from '@heroicons/react/24/outline';
 import { AgentId } from '@shared/agent';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
@@ -23,7 +24,8 @@ import { coworkService } from '../../services/cowork';
 import { i18nService } from '../../services/i18n';
 import { RootState } from '../../store';
 import { selectCurrentSessionId } from '../../store/selectors/coworkSelectors';
-import { setDraftCollaborationMode } from '../../store/slices/coworkSlice';
+import { setDraftCollaborationMode, setDraftProjectId } from '../../store/slices/coworkSlice';
+import { clearSelection } from '../../store/slices/quickActionSlice';
 import { CoworkCollaborationMode } from '../../types/cowork';
 import { getAgentDisplayName, isDefaultAgentId } from '../../utils/agentDisplay';
 import AgentSettingsPanel from '../agent/AgentSettingsPanel';
@@ -35,6 +37,7 @@ import {
   CoworkUiEvent,
 } from '../cowork/constants';
 import UserGroupIcon from '../icons/UserGroupIcon';
+import Tooltip, { TooltipAlign, TooltipPosition } from '../ui/Tooltip';
 import AgentSidebarActivityView from './AgentSidebarActivityView';
 import AgentTaskRow from './AgentTaskRow';
 import AgentTreeNode from './AgentTreeNode';
@@ -50,7 +53,7 @@ import type {
   AgentSidebarActivityView as AgentSidebarActivityViewModel,
 } from './taskFilter';
 import { buildAgentSidebarActivityView } from './taskFilter';
-import type { AgentSidebarAgentNode, AgentSidebarTaskNode } from './types';
+import type { AgentSidebarAgentNode, AgentSidebarProjectNode, AgentSidebarTaskNode } from './types';
 import { useAgentSidebarState } from './useAgentSidebarState';
 
 interface MyAgentSidebarTreeProps {
@@ -143,6 +146,39 @@ const SortableAgentNode: React.FC<{
   );
 };
 
+const SortableProjectNode: React.FC<{
+  project: AgentSidebarProjectNode;
+  disabled: boolean;
+  children: React.ReactNode;
+}> = ({ project, disabled, children }) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: project.id, disabled });
+  const verticalTransform = transform
+    ? `translate3d(0, ${Math.round(transform.y)}px, 0)`
+    : undefined;
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: verticalTransform,
+        transition,
+      }}
+      className={`${disabled ? '' : 'cursor-grab active:cursor-grabbing'} ${isDragging ? 'relative z-50 opacity-80' : ''}`}
+      {...attributes}
+      {...listeners}
+    >
+      {children}
+    </div>
+  );
+};
+
 const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
   isBatchMode,
   batchAgentId,
@@ -187,6 +223,7 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
     collapseTasks,
     toggleAgentExpanded,
     toggleProjectExpanded,
+    expandProject,
   } = useAgentSidebarState({ includeActivityTasks: isTaskFilterActive });
   const activityView = useMemo(
     () => (
@@ -394,6 +431,43 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
     }
     onEnterBatchMode(task.id, task.agentId);
   };
+
+  const handleCreateProject = useCallback(async () => {
+    await coworkService.createProject({ name: i18nService.t('createProject') });
+  }, []);
+
+  const handleCreateProjectTask = useCallback((project: AgentSidebarProjectNode) => {
+    expandProject(project.id);
+    coworkService.clearSession();
+    dispatch(clearSelection());
+    dispatch(setDraftCollaborationMode({
+      draftKey: '__home__',
+      mode: CoworkCollaborationMode.Default,
+    }));
+    dispatch(setDraftProjectId(project.id));
+    onShowCowork();
+    window.setTimeout(() => {
+      window.dispatchEvent(new CustomEvent(CoworkUiEvent.FocusInput, {
+        detail: { clear: false, resetCollaborationMode: true },
+      }));
+    }, 0);
+  }, [dispatch, expandProject, onShowCowork]);
+
+  const handleReorderProjects = useCallback(async (
+    activeId: string,
+    overId: string,
+    currentProjects: AgentSidebarProjectNode[],
+  ) => {
+    const oldIndex = currentProjects.findIndex((p) => p.id === activeId);
+    const newIndex = currentProjects.findIndex((p) => p.id === overId);
+    if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) return;
+
+    const reorderedIds = arrayMove(currentProjects.map((p) => p.id), oldIndex, newIndex);
+    const updated = await coworkService.reorderProjects(reorderedIds);
+    if (!updated) {
+      window.dispatchEvent(new CustomEvent('app:showToast', { detail: i18nService.t('agentReorderFailed') }));
+    }
+  }, []);
 
   const handleCreateTask = async (agent: AgentSidebarAgentNode) => {
     onSidebarAction?.('agent_create_task', {
@@ -624,34 +698,76 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
             </div>
           )}
 
-          {projectNodes.length > 0 && (
-            <div className="space-y-0.5">
-              <div className="sticky top-0 z-30 -ml-[6px] flex h-9 w-[calc(100%+12px)] items-center bg-surface-raised pl-3 pr-1">
+          <div className="space-y-0.5">
+              <div className="group sticky top-0 z-30 -ml-[6px] flex h-9 w-[calc(100%+12px)] items-center justify-between bg-surface-raised pl-3 pr-1">
                 <h2 className="min-w-0 truncate text-[12px] font-medium text-secondary/75 tracking-wide">
                   {i18nService.t('myProjects')}
                 </h2>
+                <Tooltip
+                  content={i18nService.t('createProject')}
+                  position={TooltipPosition.Bottom}
+                  align={TooltipAlign.End}
+                  delay={300}
+                  className="opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
+                >
+                  <button
+                    type="button"
+                    onClick={() => void handleCreateProject()}
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-md text-secondary/60 transition-colors hover:bg-foreground/[0.04] hover:text-foreground"
+                    aria-label={i18nService.t('createProject')}
+                  >
+                    <PlusIcon className="h-3.5 w-3.5" />
+                  </button>
+                </Tooltip>
               </div>
-              {projectNodes.map((project) => (
-                <ProjectTreeNode
-                  key={project.id}
-                  project={project}
-                  isBatchMode={isBatchMode}
-                  batchAgentId={batchAgentId}
-                  selectedKeys={selectedKeys}
-                  onToggleExpanded={toggleProjectExpanded}
-                  onSelectTask={(task) => void handleSelectTask(task)}
-                  onDeleteTask={handleDeleteTask}
-                  onShareTask={handleShareTask}
-                  onToggleTaskPin={handleToggleTaskPin}
-                  onRenameTask={handleRenameTask}
-                  onToggleSelection={onToggleSelection}
-                  onEnterBatchMode={handleEnterBatchMode}
-                  onSidebarAction={onSidebarAction}
-                  getTaskActionParams={getTaskActionParams}
-                />
-              ))}
+              {projectNodes.length === 0 ? (
+                <div className="-ml-[6px] flex h-7 w-[calc(100%+12px)] items-center pl-3 pr-2.5 text-xs text-secondary/50">
+                  {i18nService.t('noProjectsYet')}
+                </div>
+              ) : (
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={(event: DragEndEvent) => {
+                    const activeId = String(event.active.id);
+                    const overId = event.over?.id ? String(event.over.id) : '';
+                    if (!overId) return;
+                    void handleReorderProjects(activeId, overId, projectNodes);
+                  }}
+                >
+                  <SortableContext
+                    items={projectNodes.map((p) => p.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    {projectNodes.map((project) => (
+                      <SortableProjectNode
+                        key={project.id}
+                        project={project}
+                        disabled={project.isExpanded || isBatchMode}
+                      >
+                        <ProjectTreeNode
+                          project={project}
+                          isBatchMode={isBatchMode}
+                          batchAgentId={batchAgentId}
+                          selectedKeys={selectedKeys}
+                          onToggleExpanded={toggleProjectExpanded}
+                          onCreateTask={handleCreateProjectTask}
+                          onSelectTask={(task) => void handleSelectTask(task)}
+                          onDeleteTask={handleDeleteTask}
+                          onShareTask={handleShareTask}
+                          onToggleTaskPin={handleToggleTaskPin}
+                          onRenameTask={handleRenameTask}
+                          onToggleSelection={onToggleSelection}
+                          onEnterBatchMode={handleEnterBatchMode}
+                          onSidebarAction={onSidebarAction}
+                          getTaskActionParams={getTaskActionParams}
+                        />
+                      </SortableProjectNode>
+                    ))}
+                  </SortableContext>
+                </DndContext>
+              )}
             </div>
-          )}
 
           <MyAgentSidebarHeader
             onCreateAgent={() => onShowExperts?.()}

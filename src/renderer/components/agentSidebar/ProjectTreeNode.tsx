@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import { coworkService } from '../../services/cowork';
 import { i18nService } from '../../services/i18n';
+import ComposeIcon from '../icons/ComposeIcon';
 import EditIcon from '../icons/EditIcon';
 import EllipsisHorizontalIcon from '../icons/EllipsisHorizontalIcon';
 import FolderIcon from '../icons/FolderIcon';
@@ -16,6 +17,7 @@ interface ProjectTreeNodeProps {
   batchAgentId: string | null;
   selectedKeys: Set<string>;
   onToggleExpanded: (projectId: string) => void;
+  onCreateTask?: (project: AgentSidebarProjectNode) => void;
   onSelectTask: (task: AgentSidebarTaskNode) => void;
   onDeleteTask: (task: AgentSidebarTaskNode) => Promise<void>;
   onShareTask: (task: AgentSidebarTaskNode) => Promise<void>;
@@ -35,7 +37,7 @@ interface ProjectTreeNodeProps {
 
 const ACTION_MENU_VIEWPORT_PADDING = 8;
 const ACTION_MENU_VERTICAL_GAP = 4;
-const ACTION_MENU_HEIGHT = 76;
+const ACTION_MENU_HEIGHT = 110;
 
 export const ProjectTreeNode: React.FC<ProjectTreeNodeProps> = ({
   project,
@@ -43,6 +45,7 @@ export const ProjectTreeNode: React.FC<ProjectTreeNodeProps> = ({
   batchAgentId,
   selectedKeys,
   onToggleExpanded,
+  onCreateTask,
   onSelectTask,
   onDeleteTask,
   onShareTask,
@@ -140,32 +143,9 @@ export const ProjectTreeNode: React.FC<ProjectTreeNodeProps> = ({
         tabIndex={0}
         aria-expanded={project.isExpanded}
         onClick={() => onToggleExpanded(project.id)}
-        className="group relative -ml-[6px] flex h-8 w-[calc(100%+12px)] cursor-pointer items-center rounded-md px-2 transition-colors hover:bg-surface-raised"
+        className="group relative -ml-[6px] flex h-8 w-[calc(100%+12px)] cursor-pointer items-center rounded-md pl-3 pr-2 transition-colors hover:bg-surface-raised"
       >
-        <button
-          type="button"
-          tabIndex={-1}
-          aria-hidden="true"
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleExpanded(project.id);
-          }}
-          className="mr-1.5 flex h-4 w-4 shrink-0 items-center justify-center text-secondary/60 hover:text-foreground transition-transform"
-        >
-          <svg
-            className={`h-3 w-3 transform transition-transform duration-200 ${
-              project.isExpanded ? 'rotate-90' : 'rotate-0'
-            }`}
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth="2.5"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-          </svg>
-        </button>
-
-        <div className="mr-2 flex h-5 w-5 shrink-0 items-center justify-center text-primary">
+        <div className="mr-2 flex h-4 w-4 shrink-0 items-center justify-center text-primary">
           <FolderIcon className="h-4 w-4" />
         </div>
 
@@ -220,6 +200,19 @@ export const ProjectTreeNode: React.FC<ProjectTreeNodeProps> = ({
               onClick={(e) => {
                 e.stopPropagation();
                 closeMenu();
+                onCreateTask?.(project);
+              }}
+              className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[13px] text-foreground hover:bg-surface-raised transition-colors"
+              role="menuitem"
+            >
+              <ComposeIcon className="h-3.5 w-3.5" />
+              {i18nService.t('createProjectTask')}
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                closeMenu();
                 setIsEditing(true);
               }}
               className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[13px] text-foreground hover:bg-surface-raised transition-colors"
@@ -259,7 +252,7 @@ export const ProjectTreeNode: React.FC<ProjectTreeNodeProps> = ({
                 isBatchMode={isBatchMode}
                 isSelected={selectedKeys.has(createSessionBatchKey(task.id))}
                 isSelectionDisabled={isBatchMode && batchAgentId !== null && batchAgentId !== task.agentId}
-                showBatchOption={!isBatchMode}
+                showBatchOption={false}
                 onSelect={() => onSelectTask(task)}
                 onDelete={() => onDeleteTask(task)}
                 onShare={() => onShareTask(task)}

@@ -965,6 +965,7 @@ interface IElectronAPI {
       modelOverride?: string;
       thinkingLevel?: string;
       secondBrainEnabled?: boolean;
+      projectId?: string;
       imageAttachments?: Array<{ name: string; mimeType: string; base64Data: string; sizeBytes?: number; localPath?: string; previewMimeType?: string; previewBase64Data?: string }>;
       mediaSelection?: { mode: string; modelId?: string; modelName?: string; imageModelId?: string; videoModelId?: string };
       mediaReferences?: Array<{ token: string; mediaType: string; index: number; fileId: string; fileName: string; mimeType: string; localPath?: string; remoteUrl?: string; dataUrl?: string; role?: string }>;
@@ -1220,6 +1221,7 @@ interface IElectronAPI {
       sortOrder?: number;
     }) => Promise<{ success: boolean; project?: CoworkProject; error?: string }>;
     deleteProject: (id: string) => Promise<{ success: boolean; deleted?: boolean; error?: string }>;
+    reorderProjects: (projectIds: string[]) => Promise<{ success: boolean; projects?: CoworkProject[]; error?: string }>;
     moveSessionToProject: (options: {
       sessionId: string;
       projectId: string | null;

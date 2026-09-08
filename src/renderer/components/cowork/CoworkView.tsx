@@ -31,7 +31,7 @@ import {
   selectIsStreaming,
   selectSessionNavigationTargetId,
 } from '../../store/selectors/coworkSelectors';
-import { addMessage, setCurrentSession, setDraftCollaborationMode, setDraftKitIds, setDraftSkillIds, setStreaming, updateSessionGoal, updateSessionStatus } from '../../store/slices/coworkSlice';
+import { addMessage, setCurrentSession, setDraftCollaborationMode, setDraftKitIds, setDraftProjectId, setDraftSkillIds, setStreaming, updateSessionGoal, updateSessionStatus } from '../../store/slices/coworkSlice';
 import { clearActiveKits } from '../../store/slices/kitSlice';
 import { clearSelection, selectAction, selectPrompt, setActions } from '../../store/slices/quickActionSlice';
 import { clearActiveSkills, setActiveSkillIds } from '../../store/slices/skillSlice';
@@ -135,6 +135,7 @@ const CoworkView: React.FC<CoworkViewProps> = ({
   const isHomeView = !currentSession;
   const sessionNavigationTargetId = useSelector(selectSessionNavigationTargetId);
   const isStreaming = useSelector(selectIsStreaming);
+  const draftProjectId = useSelector((state: RootState) => state.cowork.draftProjectId);
   const isLoggedIn = useSelector((state: RootState) => state.auth.isLoggedIn);
   const enterpriseAccountContext = useSelector(selectEnterpriseAccountContext);
   const enterpriseAccountId = enterpriseAccountContext?.enterpriseId;
@@ -452,6 +453,7 @@ const CoworkView: React.FC<CoworkViewProps> = ({
         activeSkillIds: effectiveRuntimeSkillIds,
         activeKitIds: displayKitIds.length > 0 ? displayKitIds : undefined,
         agentId: currentAgentId,
+        projectId: draftProjectId || null,
         secondBrainEnabled: homeDraftSecondBrainEnabled,
         ...(optimisticGoal !== undefined ? { goal: optimisticGoal } : {}),
         messages: [
@@ -538,12 +540,17 @@ const CoworkView: React.FC<CoworkViewProps> = ({
         modelOverride: sessionModelOverride,
         thinkingLevel: currentAgentThinkingLevel,
         secondBrainEnabled: isSecondBrainEffective,
+        projectId: draftProjectId || undefined,
         imageAttachments,
         mediaSelection: mediaSelection && mediaSelection.mode !== 'none' ? mediaSelection : undefined,
         mediaReferences,
         selectedTextSnippets,
         browserAnnotations,
       });
+
+      if (draftProjectId) {
+        dispatch(setDraftProjectId(null));
+      }
 
 
       if (!startedSession && startError) {

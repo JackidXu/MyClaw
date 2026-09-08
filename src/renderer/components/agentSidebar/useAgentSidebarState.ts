@@ -532,6 +532,12 @@ export const useAgentSidebarState = ({
     });
   }, []);
 
+  const expandProject = useCallback((projectId: string) => {
+    setExpandedProjectIds((previous) => {
+      return previous.includes(projectId) ? previous : [...previous, projectId];
+    });
+  }, []);
+
   const loadMoreTasks = useCallback((agentId: string) => {
     const loadedTasks = taskPreviewsByAgentId[agentId] ?? [];
     const currentVisibleLimit =
@@ -797,7 +803,6 @@ export const useAgentSidebarState = ({
     });
 
     const projectNodes: AgentSidebarProjectNode[] = [...projects]
-      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
       .map((proj) => {
         const projTasks = allTaskSessions.filter((s) => s.projectId === proj.id);
         const sortedProjTasks = sortAgentSidebarTasks(projTasks);
@@ -809,14 +814,30 @@ export const useAgentSidebarState = ({
             pendingPermissionSessionIdSet,
           ),
         );
+        const latestTaskActivity = projTasks.reduce(
+          (max, task) => Math.max(max, task.updatedAt || task.createdAt),
+          0,
+        );
+        const latestActivity = Math.max(latestTaskActivity, proj.updatedAt || proj.createdAt || 0);
+
         return {
           id: proj.id,
           name: proj.name,
           sortOrder: proj.sortOrder,
+          latestActivity,
           isExpanded: expandedProjectIdSet.has(proj.id),
           tasks,
         };
-      });
+      })
+      .sort((a, b) => {
+        if (b.latestActivity !== a.latestActivity) {
+          return b.latestActivity - a.latestActivity;
+        }
+        const aSort = a.sortOrder ?? Number.MAX_SAFE_INTEGER;
+        const bSort = b.sortOrder ?? Number.MAX_SAFE_INTEGER;
+        return aSort - bSort;
+      })
+      .map(({ latestActivity: _latestActivity, ...node }) => node);
 
     return {
       agentNodes: visibleNodes,
@@ -861,5 +882,6 @@ export const useAgentSidebarState = ({
     toggleAgentExpanded,
     expandedProjectIdSet,
     toggleProjectExpanded,
+    expandProject,
   };
 };

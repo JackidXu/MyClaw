@@ -32,11 +32,11 @@ import {
   type CoworkContextUsage,
   type CoworkMessage,
   type CoworkPermissionRequest,
+  type CoworkProject,
   type CoworkSession,
   type CoworkSessionStatus,
   CoworkSessionStatusValue,
   type CoworkSessionSummary,
-  type CoworkProject,
 } from '../../types/cowork';
 import type { MediaGenerationSelection, MediaModel } from '../../types/mediaGeneration';
 import { removeSessionFromState, removeSessionsFromState } from './coworkDeleteState';
@@ -87,6 +87,8 @@ interface CoworkState {
   draftCollaborationModes: Record<string, CoworkCollaborationModeType>;
   /** Keyed by draftKey, stores the second brain enabled preference for the draft/session. */
   draftSecondBrainEnabled: Record<string, boolean>;
+  /** Draft project ID for new tasks bound to a specific project from the sidebar menu */
+  draftProjectId: string | null;
   /** Keyed by sessionId, stores the latest proposed plan confirmation UI state. */
   planConfirmations: Record<string, PlanConfirmationStatus>;
   /** Keyed by sessionId, stores ephemeral BTW side-chat windows and messages. */
@@ -138,6 +140,7 @@ const initialState: CoworkState = {
   draftSkillIds: {},
   draftCollaborationModes: {},
   draftSecondBrainEnabled: {},
+  draftProjectId: null,
   planConfirmations: {},
   btwThreadsBySessionId: {},
   steerDrafts: {},
@@ -480,6 +483,7 @@ const toSessionSummary = (session: CoworkSession): CoworkSessionSummary => ({
   forkedAt: session.forkedAt ?? null,
   forkMode: session.forkMode,
   goal: session.goal ?? null,
+  projectId: session.projectId ?? null,
   createdAt: session.createdAt,
   updatedAt: session.updatedAt,
 });
@@ -1552,6 +1556,10 @@ const coworkSlice = createSlice({
       }
     },
 
+    setDraftProjectId(state, action: PayloadAction<string | null>) {
+      state.draftProjectId = action.payload;
+    },
+
     setMediaModels(state, action: PayloadAction<{
       image: MediaModel[];
       video: MediaModel[];
@@ -1661,6 +1669,7 @@ export const {
   setDraftSkillIds,
   setDraftCollaborationMode,
   setDraftSecondBrainEnabled,
+  setDraftProjectId,
   clearMediaAccountState,
   setMediaModels,
   setMediaSelection,
