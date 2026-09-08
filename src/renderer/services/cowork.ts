@@ -26,7 +26,6 @@ import {
   type CoworkSteerRequest,
   CoworkSteerStatus,
 } from '../../shared/cowork/steer';
-import { isIMChannelSessionTitle } from '../components/cowork/imSessionDisplay';
 import { store } from '../store';
 import {
   addMessage,
@@ -79,7 +78,6 @@ import type {
   CoworkPermissionResult,
   CoworkSession,
   CoworkSessionListResult,
-  CoworkSessionSummary,
   CoworkStartOptions,
   CoworkUserMemoryEntry,
   OpenClawEngineStatus,
@@ -95,8 +93,6 @@ import {
 } from './coworkSessionRefreshPolicy';
 import { i18nService } from './i18n';
 import { reportOnboardingAction } from './onboardingAnalytics';
-import { reportChatSession } from './secondBrainApi';
-import { vipService } from './vipService';
 
 const STREAM_ERROR_DUPLICATE_WINDOW_MS = 10_000;
 
@@ -373,7 +369,6 @@ class CoworkService {
         this.queuedFollowUpCoordinator.handleSessionRunning(sessionId);
       } else if (status === CoworkSessionStatusValue.Completed) {
         this.queuedFollowUpCoordinator.handleSessionCompleted(sessionId);
-        void this.reportChatIfNeeded?.(sessionId);
       } else if (status === CoworkSessionStatusValue.Error) {
         this.queuedFollowUpCoordinator.handleSessionError(sessionId);
       } else if (status === CoworkSessionStatusValue.Idle) {
@@ -465,7 +460,6 @@ class CoworkService {
       // 会话/操作成功响应后自动静默刷新余额
       window.dispatchEvent(new CustomEvent('app:refresh-balance'));
       this.queuedFollowUpCoordinator.handleSessionCompleted(sessionId);
-      void this.reportChatIfNeeded?.(sessionId);
     });
     this.streamListenerCleanups.push(completeCleanup);
 
@@ -2466,105 +2460,6 @@ class CoworkService {
 
   finishSessionNavigation(sessionId: string): void {
     store.dispatch(finishSessionNavigationAction(sessionId));
-  }
-
-  private reportedChatTurnsSet = new Set<string>();
-
-  /** 当开启第二大脑时，在大模型成功响应后进行对话数据上报 */
-  reportChatIfNeeded = async (sessionId: string): Promise<void> => {
-    // 延迟 600ms 保证 SQLite 与 Redux store 消息落库完成
-    await new Promise((resolve) => setTimeout(resolve, 600));
-    try {
-      const coworkState = store.getState().cowork;
-      let session: CoworkSession | CoworkSessionSummary | null = (coworkState.currentSession?.id === sessionId ? coworkState.currentSession : null)
-        ?? (coworkState.sessions.find(s => s.id === sessionId) as CoworkSession | CoworkSessionSummary | undefined)
-        ?? null;
-      if (!session) {
-        const res = await window.electron.cowork.getSession(sessionId);
-        session = res?.session ?? null;
-      }
-      const hasPermission = vipService.hasSecondBrainPermission();
-      const enabled = session?.secondBrainEnabled === true && hasPermission;
-
-      if (!enabled) {
-        console.debug(`[SecondBrain] 对话上报未开启（sessionEnabled=${session?.secondBrainEnabled}, hasPermission=${hasPermission}）`);
-        return;
-      }
-
-      if (isIMChannelSessionTitle(session?.title)) {
-        console.debug('[SecondBrain] IM 渠道会话由 OpenClaw 插件实时上报，跳过前端延迟上报');
-        return;
-      }
-
-      const sessionName = session?.title ?? '';
-
-      // 从本地数据库读取最新完整消息列表
-      const res = await window.electron.cowork.getSessionMessages({ sessionId });
-      let messages = res?.messages ?? [];
-      if (!messages || messages.length === 0) {
-        messages = coworkState.currentSession?.id === sessionId ? coworkState.currentSession.messages : [];
-      }
-
-      if (!messages || messages.length === 0) {
-        console.debug('[SecondBrain] 无法读取到会话消息', sessionId);
-        return;
-      }
-
-      const reversedMsgs = [...messages].reverse();
-      const assistantMsg = reversedMsgs.find(m => m.type === 'assistant');
-      if (!assistantMsg) {
-        console.debug('[SecondBrain] 未找到 assistant 消息');
-        return;
-      }
-
-      // 根据助手消息 ID 去重，避免同一次回答重复上报
-      const dedupeKey = `${sessionId}:${assistantMsg.id}`;
-      if (this.reportedChatTurnsSet.has(dedupeKey)) {
-        return;
-      }
-
-      const assistantIdx = messages.findIndex(m => m.id === assistantMsg.id);
-      const userMsg = [...messages.slice(0, assistantIdx)].reverse().find(m => m.type === 'user');
-      if (!userMsg) {
-        console.debug('[SecondBrain] 未找到对应的 user 消息');
-        return;
-      }
-
-      const extractText = (content: unknown): string => {
-        if (typeof content === 'string') return content;
-        if (typeof content === 'object' && content !== null && 'text' in content && typeof (content as { text?: unknown }).text === 'string') {
-          return (content as { text: string }).text;
-        }
-        return '';
-      };
-
-      const userText = extractText(userMsg.content);
-      const assistantText = extractText(assistantMsg.content);
-
-      if (!userText.trim() || !assistantText.trim()) {
-        console.debug('[SecondBrain] 用户或助手回答内容为空，不上报');
-        return;
-      }
-
-      this.reportedChatTurnsSet.add(dedupeKey);
-      console.log('[SecondBrain] 触发对话上报接口 POST /fmp/chat/report:', {
-        chatId: sessionId,
-        name: sessionName,
-        user: userText.trim(),
-        assistant: assistantText.trim(),
-      });
-
-      await reportChatSession({
-        chatId: sessionId,
-        name: sessionName,
-        messages: [{
-          user: userText.trim(),
-          assistant: assistantText.trim(),
-        }],
-      });
-    } catch (err) {
-      console.warn('[SecondBrain] reportChatIfNeeded error:', err);
-    }
   }
 
   destroy(): void {

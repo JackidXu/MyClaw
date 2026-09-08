@@ -458,26 +458,6 @@ export async function fetchCognitionPrompt(): Promise<FmpPromptResult> {
 }
 
 
-
-
-export interface ChatReportParams {
-  chatId: string;
-  name?: string;
-  messages: Array<{
-    user: string;
-    assistant: string;
-  }>;
-}
-
-/** 对话上报接口 (POST /fmp/chat/report) */
-export async function reportChatSession(params: ChatReportParams): Promise<void> {
-  try {
-    await post<unknown>('/fmp/chat/report', params);
-  } catch (err) {
-    console.warn('[SecondBrain] reportChatSession error:', err);
-  }
-}
-
 /** 人设数据结构 */
 export interface PersonaData {
   name: string;
@@ -519,7 +499,6 @@ export const secondBrainApi = {
   deleteChat,
   reExtractDocument,
   fetchCognitionPrompt,
-  reportChatSession,
   fetchPersonaDetail,
   updatePersona,
   get,

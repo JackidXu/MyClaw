@@ -1,5 +1,14 @@
+import crypto from 'crypto';
+
 import { mainHttpClient } from '../libs/mainHttpClient';
 import { mainVipService } from '../vip/mainVipService';
+
+// 用于查询会话第二大脑启用状态的注入函数
+let sessionSecondBrainEnabledGetter: ((sessionId: string) => boolean | undefined) | null = null;
+
+export function setSessionSecondBrainEnabledGetter(getter: (sessionId: string) => boolean | undefined): void {
+  sessionSecondBrainEnabledGetter = getter;
+}
 
 export interface FmpToolDefinition {
   type: 'function';
@@ -181,6 +190,50 @@ export interface SecondBrainChatReportMessage {
 /**
  * 上报对话记录至第二大脑后端（POST /api/chaohuixie/claw/fmp/chat/report）
  */
+/**
+ * 规范化 chatId：
+ * 1. 桌面端会话（形如 agent:main:lobsterai:<sessionId>）：提取纯净的 sessionId（36字符 UUID）；
+ * 2. IM 渠道（形如 agent:main:openclaw-weixin:...）：提取末尾业务会话 ID，并加上 im_ 标识，确保全局唯一且 <= 64 字符；
+ * 3. 其他超长会话 key：安全截断并附带哈希，保证 <= 64 字符且在 MySQL client_chat_id 中稳定命中。
+ */
+export function normalizeSecondBrainChatId(rawChatId: string): string {
+  const trimmed = rawChatId.trim();
+  if (!trimmed) return '';
+
+  // 1. 桌面端会话：直接提取 UUID sessionId (36位)
+  if (trimmed.includes('lobsterai:')) {
+    const parts = trimmed.split('lobsterai:');
+    const sessionId = parts[1]?.trim();
+    if (sessionId) {
+      return sessionId;
+    }
+  }
+
+  // 2. IM 渠道：提取有效会话主体并规范化
+  // 例如 agent:main:openclaw-weixin:44d4302c917a-im-bot:direct:o9cq806q1vqz16xfqjdww082dg2o@im.wechat
+  if (trimmed.startsWith('agent:')) {
+    const segments = trimmed.split(':');
+    // 取 channel（例如 openclaw-weixin）和 target（例如 direct:xxxx 或 group:xxxx 或末尾段）
+    const channel = segments[2]?.replace(/^openclaw-/, '') || 'im';
+    const target = segments.slice(4).join(':') || segments[segments.length - 1];
+    const candidate = `${channel}:${target}`;
+    if (candidate.length <= 64) {
+      return candidate;
+    }
+    // 超过 64 字符时，保留前缀并加上稳定哈希摘要，严格控制在 48 字符内
+    const hash = crypto.createHash('md5').update(trimmed).digest('hex').slice(0, 16);
+    return `${channel}:${target.slice(0, 24)}_${hash}`;
+  }
+
+  // 3. 通用兜底：长度超过 60 字符时转换为 md5 哈希，防止数据库截断导致无法合并
+  if (trimmed.length > 60) {
+    const hash = crypto.createHash('md5').update(trimmed).digest('hex');
+    return `chat_${hash}`;
+  }
+
+  return trimmed;
+}
+
 export async function reportSecondBrainChat(params: {
   chatId: string;
   name?: string;
@@ -195,10 +248,29 @@ export async function reportSecondBrainChat(params: {
     return { success: false, error: 'No secondBrain VIP permission' };
   }
 
+  // 如果是桌面端会话（形如 agent:main:lobsterai:<sessionId>），校验该会话是否开启了第二大脑
+  if (params.chatId.includes('lobsterai:')) {
+    const parts = params.chatId.split('lobsterai:');
+    const sessionId = parts[1]?.trim();
+    if (sessionId && sessionSecondBrainEnabledGetter) {
+      const enabled = sessionSecondBrainEnabledGetter(sessionId);
+      if (enabled === false) {
+        console.log(`[SecondBrainBridge] skipped report: session ${sessionId} has secondBrain disabled`);
+        return { success: true };
+      }
+    }
+  }
+
+  // 规范化 chatId，避免超长导致后端 MySQL 截断无法合并成同一条对话
+  const normalizedChatId = normalizeSecondBrainChatId(params.chatId);
+
   try {
     const res = await mainHttpClient.biz.post<SecondBrainApiResponse<unknown>>(
       '/api/chaohuixie/claw/fmp/chat/report',
-      params,
+      {
+        ...params,
+        chatId: normalizedChatId,
+      },
     );
 
     if (!res.ok) {

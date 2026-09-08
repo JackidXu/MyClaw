@@ -560,7 +560,7 @@ import {
 } from './openclawSessionPolicy/store';
 import { registerVoiceInputPermissionHandler } from './permissions/voiceInputPermission';
 import { isHiddenUserPluginId } from './plugins/pluginManager';
-import { syncSecondBrainTools } from './secondBrain/secondBrainBridge';
+import { setSessionSecondBrainEnabledGetter, syncSecondBrainTools } from './secondBrain/secondBrainBridge';
 import { SkillManager } from './skills/skillManager';
 import { getSkillServiceManager } from './skills/skillServices';
 import {
@@ -15263,6 +15263,9 @@ if (!gotTheLock) {
 
     // 单源初始化 VIP 状态与第二大脑工具（应用启动时仅拉取一次，供网关配置注入）
     try {
+      setSessionSecondBrainEnabledGetter((sessionId: string) => {
+        return getCoworkStore().getSession(sessionId, 0)?.secondBrainEnabled;
+      });
       await mainVipService.initVipStatus();
       await syncSecondBrainTools();
     } catch (err) {

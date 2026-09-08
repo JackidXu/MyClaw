@@ -229,6 +229,30 @@ function stripInboundMetadata(text: string): string {
   return result.join('\n').trim();
 }
 
+function cleanTurnUserMessage(text: string): string {
+  if (!text) return '';
+
+  // 1. 优先提取桌面端显式的 [Current user request] 段落
+  const currentRequestMatch = text.match(/\[Current user request\]\s*\n([\s\S]*?)(?=\n\s*\[(?:Second Brain reminder|Plan mode|HeyClaw system|Session info)\]|\s*$)/i);
+  if (currentRequestMatch && currentRequestMatch[1]?.trim()) {
+    return currentRequestMatch[1].trim();
+  }
+
+  // 2. 剥离桌面端可能注入的系统指令与上下文头部
+  let cleaned = text
+    .replace(/^\[HeyClaw system instructions\][\s\S]*?(?=\n\n|\n##|\n\[|$)/i, '')
+    .replace(/^##\s*Local Time Context[\s\S]*?(?=\n\n|\n\[|$)/i, '')
+    .replace(/^\[Session info\][\s\S]*?(?=\n\n|\n\[|$)/i, '');
+
+  // 3. 剥离 IM 渠道的信封元数据（JSON 块与时间戳）
+  cleaned = stripInboundMetadata(cleaned);
+
+  // 4. 剥离尾部附加的系统提示词
+  cleaned = cleaned.replace(/\[Second Brain reminder\][\s\S]*$/i, '').trim();
+
+  return cleaned || text.trim();
+}
+
 function extractLatestTurn(messages: unknown[]): { user: string; assistant: string } | null {
   if (!Array.isArray(messages) || messages.length === 0) return null;
 
@@ -246,7 +270,7 @@ function extractLatestTurn(messages: unknown[]): { user: string; assistant: stri
     if (!lastAssistant && role === 'assistant' && text) {
       lastAssistant = text;
     } else if (!lastUser && role === 'user' && text) {
-      lastUser = stripInboundMetadata(text);
+      lastUser = cleanTurnUserMessage(text);
     }
 
     if (lastUser && lastAssistant) {
@@ -374,12 +398,12 @@ const plugin = {
       return undefined;
     });
 
-    // 对话完成上报钩子（仅对 IM 通道会话生效）
+    // 对话完成上报钩子（全渠道统一生效：桌面端与 IM 渠道）
     api.on('agent_end', async (event: unknown, ctx: unknown) => {
       const context = (ctx && typeof ctx === 'object' ? ctx : {}) as { sessionKey?: string };
       const sessionKey = typeof context.sessionKey === 'string' ? context.sessionKey.trim() : '';
 
-      if (!sessionKey || sessionKey.includes('lobsterai:')) {
+      if (!sessionKey) {
         return;
       }
 
@@ -389,7 +413,7 @@ const plugin = {
         const turn = extractLatestTurn(rawMessages);
 
         if (turn) {
-          const sessionName = Array.from(turn.user.replace(/\s+/g, ' ').trim()).slice(0, 50).join('').trim() || 'IM 对话';
+          const sessionName = Array.from(turn.user.replace(/\s+/g, ' ').trim()).slice(0, 50).join('').trim() || '对话';
           void callSecondBrainReportBridge(config, {
             chatId: sessionKey,
             name: sessionName,
