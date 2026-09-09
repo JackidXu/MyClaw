@@ -129,7 +129,7 @@ jobs:
   # ========== Windows 构建 ==========
   build-windows:
     if: ${{ github.event_name == 'push' || inputs.build_windows }}
-    runs-on: [self-hosted, windows]
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       
@@ -190,6 +190,8 @@ jobs:
           CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
           WIN_SIGN_CERT_SHA1: ${{ secrets.WIN_SIGN_CERT_SHA1 }}
+          WIN_SIGN_SERVICE_URL: ${{ secrets.WIN_SIGN_SERVICE_URL }}
+          WIN_SIGN_SERVICE_SECRET: ${{ secrets.WIN_SIGN_SERVICE_SECRET }}
       
       - uses: actions/upload-artifact@v4
         with:

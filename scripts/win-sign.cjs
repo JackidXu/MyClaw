@@ -139,20 +139,17 @@ function normalizeServiceUrl(rawUrl) {
 }
 
 function resolveServiceConfig() {
-  const serviceUrl = (process.env[SERVICE_URL_ENV] || '').trim();
-  const appKey = (process.env[APP_KEY_ENV] || '').trim();
-  const appSecret = (process.env[APP_SECRET_ENV] || '').trim();
-  const username = (process.env[USERNAME_ENV] || '').trim();
-  if (!serviceUrl || !appKey || !appSecret || !username) {
+  const serviceUrl = (process.env.WIN_SIGN_SERVICE_URL || process.env[SERVICE_URL_ENV] || '').trim();
+  const secret = (process.env.WIN_SIGN_SERVICE_SECRET || process.env[APP_KEY_ENV] || '').trim();
+  if (!serviceUrl || !secret) {
     return null;
   }
   const baseUrl = normalizeServiceUrl(serviceUrl);
   return {
     baseUrl,
     headers: {
-      'x-app-key': appKey,
-      'x-app-secret': appSecret,
-      'x-username': username,
+      'x-sign-secret': secret,
+      'x-app-key': secret,
     },
   };
 }
@@ -174,35 +171,19 @@ async function fileToBlob(filePath) {
 
 async function signOnce(serviceConfig, filePath) {
   const fileName = path.basename(filePath);
+  const fileBuffer = await fs.promises.readFile(filePath);
 
-  const formData = new FormData();
-  formData.append('files', await fileToBlob(filePath), fileName);
-
-  const signResponse = await fetch(`${serviceConfig.baseUrl}/api/sign`, {
+  const signResponse = await fetch(`${serviceConfig.baseUrl}/sign`, {
     method: 'POST',
     headers: serviceConfig.headers,
-    body: formData,
+    body: fileBuffer,
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
   if (!signResponse.ok) {
     throw new Error(`[WinSign] sign request failed: HTTP ${signResponse.status} ${await safeText(signResponse)}`);
   }
 
-  const payload = await signResponse.json();
-  const result = Array.isArray(payload?.results) ? payload.results[0] : null;
-  if (!result?.downloadUrl) {
-    throw new Error(`[WinSign] unexpected sign response: ${JSON.stringify(payload).slice(0, 300)}`);
-  }
-
-  const downloadUrl = new URL(result.downloadUrl, `${serviceConfig.baseUrl}/`).toString();
-  const downloadResponse = await fetch(downloadUrl, {
-    headers: serviceConfig.headers,
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-  });
-  if (!downloadResponse.ok) {
-    throw new Error(`[WinSign] download failed: HTTP ${downloadResponse.status} ${await safeText(downloadResponse)}`);
-  }
-  const signedBytes = Buffer.from(await downloadResponse.arrayBuffer());
+  const signedBytes = Buffer.from(await signResponse.arrayBuffer());
 
   const originalSize = fs.statSync(filePath).size;
   if (signedBytes.length < originalSize) {
@@ -300,12 +281,41 @@ async function signWithSigntool(filePath, certSha1) {
  * Returns true when the file ends up signed, false when signing was skipped.
  */
 async function signFile(filePath) {
+  const serviceConfig = resolveServiceConfig();
+  if (serviceConfig) {
+    const normalizedPath = path.resolve(filePath);
+    if (signedThisRun.has(normalizedPath)) {
+      return true;
+    }
+    if (readPeCertTable(normalizedPath)) {
+      console.log(`[WinSign] ${path.basename(normalizedPath)} already carries a signature, skipping`);
+      signedThisRun.add(normalizedPath);
+      return false;
+    }
+
+    const sizeMb = (fs.statSync(normalizedPath).size / (1024 * 1024)).toFixed(1);
+    console.log(`[WinSign] signing ${path.basename(normalizedPath)} (${sizeMb} MB) via ${serviceConfig.baseUrl}`);
+    const t0 = Date.now();
+
+    let lastError = null;
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+      try {
+        await signOnce(serviceConfig, normalizedPath);
+        signedThisRun.add(normalizedPath);
+        console.log(`[WinSign] signed ${path.basename(normalizedPath)} in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+        return true;
+      } catch (error) {
+        lastError = error;
+        console.warn(`[WinSign] attempt ${attempt}/${MAX_ATTEMPTS} failed for ${path.basename(normalizedPath)}:`, error.message);
+      }
+    }
+    throw lastError;
+  }
+
   const certSha1 = (process.env[CERT_SHA1_ENV] || '').trim();
   if (certSha1) {
     return signWithSigntool(filePath, certSha1);
   }
-
-  const serviceConfig = resolveServiceConfig();
   if (!serviceConfig) {
     if (!warnedAboutMissingCredentials) {
       warnedAboutMissingCredentials = true;

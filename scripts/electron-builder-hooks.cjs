@@ -763,8 +763,8 @@ async function afterPack(context) {
       removeAllBinDirsInCfmind(appPath);
       applyMacIconFix(appPath);
       
-      // 只有在未配置正式证书 (CSC_LINK 不存在) 时，才执行 deep 自签名，保证所有动态链接库的签名一致性
-      if (!process.env.CSC_LINK) {
+      // 只有在未配置正式证书 (CSC_LINK 和 CSC_KEYCHAIN 均不存在) 时，才执行 deep 自签名
+      if (!process.env.CSC_LINK && !process.env.CSC_KEYCHAIN) {
         performAdhocSign(appPath);
       }
     } else {
