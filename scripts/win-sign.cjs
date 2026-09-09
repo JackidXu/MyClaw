@@ -34,11 +34,15 @@
 
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
 
 const SERVICE_URL_ENV = 'YD_SIGN_SERVICE_URL';
 const APP_KEY_ENV = 'YD_SIGN_APP_KEY';
 const APP_SECRET_ENV = 'YD_SIGN_APP_SECRET';
 const USERNAME_ENV = 'YD_SIGN_USERNAME';
+const CERT_SHA1_ENV = 'WIN_SIGN_CERT_SHA1';
+const TIMESTAMP_URL_ENV = 'WIN_SIGN_TIMESTAMP_URL';
+const DEFAULT_TIMESTAMP_URL = 'http://time.certum.pl';
 
 const REQUEST_TIMEOUT_MS = 15 * 60 * 1000;
 const MAX_ATTEMPTS = 2;
@@ -221,18 +225,58 @@ async function signOnce(serviceConfig, filePath) {
   }
 }
 
+async function signWithSigntool(filePath, certSha1) {
+  const normalizedPath = path.resolve(filePath);
+  if (signedThisRun.has(normalizedPath)) {
+    return true;
+  }
+  if (readPeCertTable(normalizedPath)) {
+    console.log(`[WinSign] ${path.basename(normalizedPath)} already carries a signature, skipping`);
+    signedThisRun.add(normalizedPath);
+    return false;
+  }
+
+  const timestampUrl = (process.env[TIMESTAMP_URL_ENV] || DEFAULT_TIMESTAMP_URL).trim();
+  const sizeMb = (fs.statSync(normalizedPath).size / (1024 * 1024)).toFixed(1);
+  console.log(`[WinSign] signing ${path.basename(normalizedPath)} (${sizeMb} MB) via signtool (sha1: ${certSha1.slice(0, 8)}..., ts: ${timestampUrl})`);
+  const t0 = Date.now();
+
+  const cmd = `signtool sign /v /fd sha256 /sha1 "${certSha1}" /tr "${timestampUrl}" /td sha256 "${normalizedPath}"`;
+
+  let lastError = null;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+    try {
+      execSync(cmd, { stdio: 'inherit', timeout: 120000 });
+      signedThisRun.add(normalizedPath);
+      console.log(`[WinSign] signed ${path.basename(normalizedPath)} in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+      return true;
+    } catch (error) {
+      lastError = error;
+      console.warn(`[WinSign] signtool attempt ${attempt}/${MAX_ATTEMPTS} failed for ${path.basename(normalizedPath)}:`, error.message);
+    }
+  }
+  throw lastError;
+}
+
 /**
- * Sign one binary in place through the internal service.
- * Returns true when the file ends up signed, false when signing was skipped
- * (no credentials, or the file already carries a signature).
+ * Sign one binary in place.
+ * Priority:
+ * 1. WIN_SIGN_CERT_SHA1 -> local signtool using Windows Certificate Store (SimplySign)
+ * 2. YD_SIGN_* -> remote signing service
+ * Returns true when the file ends up signed, false when signing was skipped.
  */
 async function signFile(filePath) {
+  const certSha1 = (process.env[CERT_SHA1_ENV] || '').trim();
+  if (certSha1) {
+    return signWithSigntool(filePath, certSha1);
+  }
+
   const serviceConfig = resolveServiceConfig();
   if (!serviceConfig) {
     if (!warnedAboutMissingCredentials) {
       warnedAboutMissingCredentials = true;
       console.warn(
-        `[WinSign] ${SERVICE_URL_ENV}/${APP_KEY_ENV}/${APP_SECRET_ENV}/${USERNAME_ENV} are not fully set (env or .env) -- `
+        `[WinSign] Neither ${CERT_SHA1_ENV} nor ${SERVICE_URL_ENV}/${APP_KEY_ENV} are set -- `
         + 'Windows binaries will NOT be signed. This is fine for local dev builds and must never happen on release CI. '
         + 'See .env.example.',
       );

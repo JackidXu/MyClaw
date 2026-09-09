@@ -137,7 +137,16 @@ jobs:
         run: npm run setup:python-runtime
         env:
           LOBSTERAI_PORTABLE_PYTHON_ARCHIVE: ${{ secrets.WINDOWS_PYTHON_ARCHIVE }}
-      
+
+      # 挂载 Certum SimplySign 虚拟智能卡证书
+      - name: Setup SimplySign Certificate
+        if: ${{ secrets.SIMPLYSIGN_USER && secrets.SIMPLYSIGN_OTP_SECRET }}
+        shell: bash
+        run: node scripts/setup-simplysign.cjs
+        env:
+          SIMPLYSIGN_USER: ${{ secrets.SIMPLYSIGN_USER }}
+          SIMPLYSIGN_OTP_SECRET: ${{ secrets.SIMPLYSIGN_OTP_SECRET }}
+
       - name: Build Windows
         shell: bash
         run: |
@@ -155,6 +164,7 @@ jobs:
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          WIN_SIGN_CERT_SHA1: ${{ secrets.WIN_SIGN_CERT_SHA1 }}
       
       - uses: actions/upload-artifact@v4
         with:
