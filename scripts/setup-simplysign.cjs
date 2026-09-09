@@ -143,7 +143,7 @@ async function main() {
   const certSha1 = (process.env.WIN_SIGN_CERT_SHA1 || 'f0d51f084bba92740ced8165475fddfaf0f901e2').toLowerCase();
 
   let mounted = false;
-  for (let i = 0; i < 15; i += 1) {
+  for (let i = 0; i < 30; i += 1) {
     await new Promise((resolve) => setTimeout(resolve, 2000));
     try {
       const output = execSync('certutil -user -store My', { encoding: 'utf8' });
@@ -158,7 +158,8 @@ async function main() {
   }
 
   if (!mounted) {
-    console.warn('[SimplySign] Warning: Target certificate thumbprint was not immediately detected via certutil, but continuing build as SimplySign daemon is running.');
+    console.error(`[SimplySign] Fatal: Certificate (${certSha1.slice(0, 8)}...) was not detected in Windows Certificate Store after 60s. SimplySign login may have failed or the OTP expired. Aborting build.`);
+    process.exit(1);
   } else {
     console.log('[SimplySign] Setup complete and ready for code signing.');
   }

@@ -73,10 +73,44 @@ jobs:
             echo "⚠ OpenClaw runtime not found, build may fail"
           fi
       
+      # 手动创建临时 Keychain 并导入证书
+      # 原因：macos-latest 升级到 macOS 15 (Sequoia) 后，electron-builder 内置的
+      # 自动 Keychain 管理流程中 security set-key-partition-list 行为发生变化导致失败。
+      # 此步骤手动完成 Keychain 创建与证书导入，让 electron-builder 直接使用已配置好的 Keychain。
+      - name: Setup macOS Keychain
+        env:
+          CSC_LINK_B64: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
+
+          # 解码 base64 证书到临时文件
+          echo "$CSC_LINK_B64" | base64 --decode > /tmp/certificate.p12
+
+          # 创建临时 Keychain
+          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+
+          # 导入 p12 证书
+          security import /tmp/certificate.p12 -P "$CSC_KEY_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          security list-keychain -d user -s $KEYCHAIN_PATH
+
+          # 设置分区访问列表（使用 keychain 密码，不是 p12 密码）
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+
+          # 清理临时证书文件
+          rm -f /tmp/certificate.p12
+
+          # 将 keychain 路径传递给后续步骤
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> $GITHUB_ENV
+
       - name: Build macOS
         run: npm run dist:mac:${{ matrix.arch }} -- --publish never
         env:
-          CSC_LINK: ${{ secrets.CSC_LINK }}
+          # 使用预配置好的 Keychain，跳过 electron-builder 的自动导入流程
+          CSC_KEYCHAIN: ${{ env.KEYCHAIN_PATH }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
