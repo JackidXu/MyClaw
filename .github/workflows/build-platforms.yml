@@ -125,7 +125,7 @@ jobs:
   # ========== Windows 构建 ==========
   build-windows:
     if: ${{ github.event_name == 'push' || inputs.build_windows }}
-    runs-on: windows-latest
+    runs-on: [self-hosted, windows]
     steps:
       - uses: actions/checkout@v4
       
@@ -167,14 +167,6 @@ jobs:
         run: npm run setup:python-runtime
         env:
           LOBSTERAI_PORTABLE_PYTHON_ARCHIVE: ${{ secrets.WINDOWS_PYTHON_ARCHIVE }}
-
-      # 挂载 Certum SimplySign 虚拟智能卡证书
-      - name: Setup SimplySign Certificate
-        shell: bash
-        run: node scripts/setup-simplysign.cjs
-        env:
-          SIMPLYSIGN_USER: ${{ secrets.SIMPLYSIGN_USER }}
-          SIMPLYSIGN_OTP_SECRET: ${{ secrets.SIMPLYSIGN_OTP_SECRET }}
 
       - name: Build Windows
         shell: bash
