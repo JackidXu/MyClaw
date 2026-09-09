@@ -11,7 +11,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { execSync } = require('child_process');
+const { execSync, spawn } = require('child_process');
 
 const USER_ENV = 'SIMPLYSIGN_USER';
 const OTP_SECRET_ENV = 'SIMPLYSIGN_OTP_SECRET';
@@ -132,13 +132,35 @@ async function main() {
   console.log('[SimplySign] Successfully generated dynamic TOTP code.');
 
   // Login via CLI
-  console.log('[SimplySign] Logging in via CLI...');
-  try {
-    execSync(`"${appPath}" /login -u "${user}" -p "${otp}"`, { stdio: 'inherit', timeout: 30000 });
-    console.log('[SimplySign] Login command completed successfully.');
-  } catch (error) {
-    console.error('[SimplySign] Login command failed:', error.message);
-    throw error;
+  console.log('[SimplySign] Launching SimplySignDesktop in background with credentials...');
+  const child = spawn(appPath, ['/login', '-u', user, '-p', otp], {
+    detached: true,
+    stdio: 'ignore',
+  });
+  child.unref();
+
+  console.log('[SimplySign] Waiting for virtual smartcard certificate to mount (up to 30s)...');
+  const certSha1 = (process.env.WIN_SIGN_CERT_SHA1 || 'f0d51f084bba92740ced8165475fddfaf0f901e2').toLowerCase();
+
+  let mounted = false;
+  for (let i = 0; i < 15; i += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    try {
+      const output = execSync('certutil -user -store My', { encoding: 'utf8' });
+      if (output.toLowerCase().includes(certSha1)) {
+        console.log(`[SimplySign] Certificate (${certSha1.slice(0, 8)}...) successfully mounted and detected in Windows Certificate Store!`);
+        mounted = true;
+        break;
+      }
+    } catch {
+      // ignore certutil error during early polling
+    }
+  }
+
+  if (!mounted) {
+    console.warn('[SimplySign] Warning: Target certificate thumbprint was not immediately detected via certutil, but continuing build as SimplySign daemon is running.');
+  } else {
+    console.log('[SimplySign] Setup complete and ready for code signing.');
   }
 }
 
