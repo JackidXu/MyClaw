@@ -5069,7 +5069,7 @@ if (!gotTheLock) {
         if (fs.existsSync(logPath)) {
           const content = fs.readFileSync(logPath, 'utf8');
           const lines = content.split('\n');
-          const tailLines = lines.slice(-1500);
+          const tailLines = lines.slice(-8000);
           recentLogSnippet = tailLines
             .map((line) => line
               .replace(/(Bearer\s+)[A-Za-z0-9._-]+/gi, '$1[REDACTED]')
