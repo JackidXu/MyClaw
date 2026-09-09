@@ -151,6 +151,19 @@ async function main() {
   });
   child.unref();
 
+  // 【调试】稍等后检查进程是否还在运行
+  await new Promise((resolve) => setTimeout(resolve, 3000));
+  try {
+    const taskList = execSync('tasklist /FI "IMAGENAME eq SimplySignDesktop.exe" /FO CSV /NH', { encoding: 'utf8' });
+    if (taskList.toLowerCase().includes('simplysigndesktop')) {
+      console.log('[SimplySign][DEBUG] SimplySignDesktop.exe is RUNNING (process alive after 3s).');
+    } else {
+      console.log('[SimplySign][DEBUG] SimplySignDesktop.exe is NOT running (process exited within 3s - likely crashed or rejected CLI args).');
+    }
+  } catch {
+    console.log('[SimplySign][DEBUG] Could not check process status via tasklist.');
+  }
+
   console.log('[SimplySign] Waiting for virtual smartcard certificate to mount (up to 60s)...');
   const certSha1 = (process.env.WIN_SIGN_CERT_SHA1 || 'f0d51f084bba92740ced8165475fddfaf0f901e2').toLowerCase();
 
@@ -169,19 +182,49 @@ async function main() {
     }
   }
 
-  // 【调试】无论是否成功，都打印 SimplySign 的输出
+  // 【调试】读取 SimplySign 的 stdout/stderr 日志
   try {
     fs.closeSync(logStream);
     const logContent = fs.readFileSync(logPath, 'utf8').trim();
     if (logContent) {
-      console.log('[SimplySign][DEBUG] === SimplySign process output ===');
+      console.log('[SimplySign][DEBUG] === SimplySign stdout/stderr output ===');
       console.log(logContent);
-      console.log('[SimplySign][DEBUG] === End of SimplySign output ===');
+      console.log('[SimplySign][DEBUG] === End of stdout/stderr output ===');
     } else {
-      console.log('[SimplySign][DEBUG] SimplySign produced no output (may have failed to start or output to a different location).');
+      console.log('[SimplySign][DEBUG] SimplySign wrote nothing to stdout/stderr (GUI app, expected).');
     }
   } catch {
-    console.log('[SimplySign][DEBUG] Could not read SimplySign log file.');
+    console.log('[SimplySign][DEBUG] Could not read stdout/stderr log file.');
+  }
+
+  // 【调试】尝试读取 SimplySign 自身在 %APPDATA% 里的日志文件
+  const appDataPath = process.env.APPDATA || '';
+  const possibleLogDirs = [
+    path.join(appDataPath, 'Certum', 'SimplySign Desktop', 'Logs'),
+    path.join(appDataPath, 'Certum', 'SimplySign Desktop'),
+    path.join(appDataPath, 'SimplySign Desktop', 'Logs'),
+  ];
+  for (const logDir of possibleLogDirs) {
+    if (fs.existsSync(logDir)) {
+      console.log(`[SimplySign][DEBUG] Found SimplySign log dir: ${logDir}`);
+      try {
+        const logFiles = fs.readdirSync(logDir).filter((f) => /\.(log|txt)$/i.test(f)).slice(-3);
+        for (const lf of logFiles) {
+          const lfPath = path.join(logDir, lf);
+          const content = fs.readFileSync(lfPath, 'utf8').slice(-2000).trim();
+          if (content) {
+            console.log(`[SimplySign][DEBUG] === ${lf} (last 2000 chars) ===`);
+            console.log(content);
+          }
+        }
+      } catch {
+        console.log(`[SimplySign][DEBUG] Could not read log dir: ${logDir}`);
+      }
+      break;
+    }
+  }
+  if (possibleLogDirs.every((d) => !fs.existsSync(d))) {
+    console.log('[SimplySign][DEBUG] No SimplySign log directory found in APPDATA.');
   }
 
   if (!mounted) {
