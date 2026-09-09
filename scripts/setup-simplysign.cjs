@@ -78,17 +78,11 @@ async function main() {
   let appPath = possiblePaths.find((p) => fs.existsSync(p));
 
   if (!appPath) {
-    console.log('[SimplySign] Downloading SimplySign Desktop installer...');
-    const msiUrl = 'https://cloudsign.webnotarius.pl/arc/app/SimplySignDesktop-latest-64-bit-en.msi';
+    console.log('[SimplySign] Downloading SimplySign Desktop installer from CDN...');
+    const msiUrl = (process.env.SIMPLYSIGN_INSTALLER_URL || 'http://scrm0.cdn.banchengyun.com/heyclaw/SimplySignDesktop-9.4.3.90-64-bit-en.msi').trim();
     const msiPath = path.resolve(process.cwd(), 'SimplySignDesktop.msi');
 
-    try {
-      execSync(`curl -fsSL -o "${msiPath}" "${msiUrl}"`, { stdio: 'inherit' });
-    } catch (e) {
-      console.warn('[SimplySign] Failed to download from primary URL, trying fallback...');
-      const fallbackUrl = 'https://files.certum.eu/software/SimplySignDesktop/SimplySignDesktop-9.4.3.90-64-bit-en.msi';
-      execSync(`curl -fsSL -o "${msiPath}" "${fallbackUrl}"`, { stdio: 'inherit' });
-    }
+    execSync(`curl -fsSL -o "${msiPath}" "${msiUrl}"`, { stdio: 'inherit' });
 
     console.log('[SimplySign] Installing SimplySign Desktop silently...');
     execSync(`msiexec /i "${msiPath}" /qn /norestart`, { stdio: 'inherit' });

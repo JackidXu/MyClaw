@@ -2470,6 +2470,106 @@ class CoworkService {
     store.dispatch(finishSessionNavigationAction(sessionId));
   }
 
+  // ==================== Project Management ====================
+
+  async listProjects(): Promise<CoworkProject[]> {
+    try {
+      const res = await window.electron.cowork.listProjects();
+      if (res.success && res.projects) {
+        store.dispatch(setProjects(res.projects));
+        return res.projects;
+      }
+      return [];
+    } catch (error) {
+      console.error('[CoworkService] failed to list projects:', error);
+      return [];
+    }
+  }
+
+  async createProject(options: { name: string; sortOrder?: number }): Promise<CoworkProject | null> {
+    try {
+      const res = await window.electron.cowork.createProject(options);
+      if (res.success && res.project) {
+        store.dispatch(addProject(res.project));
+        return res.project;
+      }
+      return null;
+    } catch (error) {
+      console.error('[CoworkService] failed to create project:', error);
+      return null;
+    }
+  }
+
+  async updateProject(options: { id: string; name?: string; sortOrder?: number }): Promise<CoworkProject | null> {
+    try {
+      const res = await window.electron.cowork.updateProject(options);
+      if (res.success && res.project) {
+        store.dispatch(updateProjectInState(res.project));
+        return res.project;
+      }
+      return null;
+    } catch (error) {
+      console.error('[CoworkService] failed to update project:', error);
+      return null;
+    }
+  }
+
+  async deleteProject(id: string): Promise<boolean> {
+    try {
+      const res = await window.electron.cowork.deleteProject(id);
+      if (res.success) {
+        store.dispatch(removeProjectFromState(id));
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('[CoworkService] failed to delete project:', error);
+      return false;
+    }
+  }
+
+  async reorderProjects(projectIds: string[]): Promise<boolean> {
+    try {
+      const res = await window.electron.cowork.reorderProjects(projectIds);
+      if (res.success && res.projects) {
+        store.dispatch(setProjects(res.projects));
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('[CoworkService] failed to reorder projects:', error);
+      return false;
+    }
+  }
+
+  async moveSessionToProject(sessionId: string, projectId: string | null): Promise<boolean> {
+    try {
+      const res = await window.electron.cowork.moveSessionToProject({ sessionId, projectId });
+      if (res.success) {
+        store.dispatch(updateSessionProjectInState({ sessionId, projectId }));
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('[CoworkService] failed to move session to project:', error);
+      return false;
+    }
+  }
+
+  async moveSessionsToProject(sessionIds: string[], projectId: string | null): Promise<number> {
+    try {
+      const res = await window.electron.cowork.moveSessionsToProject({ sessionIds, projectId });
+      if (res.success && typeof res.count === 'number') {
+        store.dispatch(updateSessionsProjectInState({ sessionIds, projectId }));
+        return res.count;
+      }
+      return 0;
+    } catch (error) {
+      console.error('[CoworkService] failed to move sessions to project:', error);
+      return 0;
+    }
+  }
+
   destroy(): void {
     this.clearNewUserWelcomeAnimation();
     this.cleanupListeners();
