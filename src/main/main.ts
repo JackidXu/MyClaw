@@ -6398,6 +6398,12 @@ if (!gotTheLock) {
       if (args.aspectRatio) params.aspectRatio = args.aspectRatio;
       if (args.resolution) params.resolution = args.resolution;
       if (args.size) params.size = args.size;
+      const rawNegativePrompt = (typeof args.negativePrompt === 'string' && args.negativePrompt.trim())
+        ? args.negativePrompt.trim()
+        : (typeof args.negative === 'string' && args.negative.trim())
+        ? args.negative.trim()
+        : undefined;
+      if (rawNegativePrompt) params.negativePrompt = rawNegativePrompt;
       if (mediaType === 'image') {
         if (args.n != null) params.n = args.n;
         if (args.quality) params.quality = args.quality;
@@ -6655,6 +6661,7 @@ if (!gotTheLock) {
         bodyData = {
           model,
           prompt: enhancedPrompt,
+          ...(params.negativePrompt ? { negative_prompt: params.negativePrompt } : {}),
           n,
           size,
           ...imageParam,

@@ -79,7 +79,7 @@ export const buildMediaGenerationTurnInstruction = (
   if (selection.mode === 'image') {
     lines.push('If the current user request asks to create, generate, draw, render, or make an image/photo/picture.');
     lines.push('Use the current user request and relevant prior conversation as the image prompt (unless overridden by an active skill in <selected_skills>).');
-    lines.push('COMMERCIAL AESTHETIC BASELINE: When constructing image prompts for posters, covers, or products, always apply professional commercial photography standards (studio lighting, realistic depth of field, premium textures). Never place physical products on draft paper, graph/grid notebooks, or crude slide-chart backgrounds; always stage them in authentic lifestyle or elegant studio settings.');
+    lines.push('COMMERCIAL AESTHETIC BASELINE: When constructing image prompts for posters, covers, or products, always apply professional commercial standards. For product photography, use realistic studio lighting and authentic lifestyle settings; never place products on draft paper or crude grid backgrounds. When generating posters, covers, cards, or designs with titles and text, accurately preserve and prioritize the requested typography and font style (e.g. 3D puffy letters, bold heavy title font, round cartoon, brush calligraphy, artistic lettering). Ensure titles are rendered prominently with clear text fidelity, strong visual presence, and crisp edges.');
     lines.push('Do not answer with only a text prompt when the user asked for an image.');
     const imageModel = selection.imageModelId?.trim() || selection.modelId?.trim();
     if (imageModel) {

@@ -154,6 +154,7 @@ const sanitizeArgsForLog = (args: Record<string, unknown>): Record<string, unkno
     action: typeof args.action === 'string' ? args.action : 'generate',
     model: typeof args.model === 'string' ? args.model : '',
     promptLength: prompt.length,
+    hasNegativePrompt: typeof args.negativePrompt === 'string' || typeof args.negative === 'string',
     hasImage: typeof args.image === 'string',
     imageCount: Array.isArray(args.images) ? args.images.length : undefined,
     hasVideo: typeof args.video === 'string',
@@ -272,6 +273,8 @@ async function executeMediaStatusPolling(options: {
 const ImageGenerateSchema = Type.Object({
   action: Type.Optional(Type.String({ description: 'Action to perform: "generate", "list", "status". Default: generate.' })),
   prompt: Type.Optional(Type.String({ description: 'Text prompt describing the image to generate.' })),
+  negativePrompt: Type.Optional(Type.String({ description: 'Negative prompt specifying elements or styles to avoid (e.g. watermark, bad typography, blur).' })),
+  negative: Type.Optional(Type.String({ description: 'Alias of negativePrompt.' })),
   model: Type.Optional(Type.String({ description: 'Model ID for generation. Use action=list to see available models.' })),
   image: Type.Optional(Type.String({ description: 'Single reference image absolute file path, URL, or data URL for image-to-image generation. If a media reference mapping is provided, use the mapped path; do not pass @ media tokens.' })),
   images: Type.Optional(Type.Union([Type.Array(Type.String()), Type.String()], { description: 'Multiple reference image absolute file paths, URLs, or data URLs for multi-image generation. If a media reference mapping is provided, use mapped paths; do not pass @ media tokens.' })),
