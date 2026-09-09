@@ -29,8 +29,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     trayQuit: '退出',
 
     // Quit confirmation (native dialog shown on user-initiated quit)
-    appQuitConfirmTitle: '退出 LobsterAI？',
-    appQuitConfirmDetail: 'LobsterAI 关闭期间，定时任务不会运行，也无法回复 IM 消息。',
+    appQuitConfirmTitle: '退出 HeyClaw？',
+    appQuitConfirmDetail: 'HeyClaw 关闭期间，定时任务不会运行，也无法回复 IM 消息。',
     appQuitConfirmQuit: '退出',
     appQuitConfirmCancel: '取消',
     taskCompletionNotificationTitle: '任务已完成',
@@ -43,7 +43,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     questionNotificationBody: '需要你回答问题后才能继续',
     browserCredentialApprovalHeader: '保存的登录信息',
     browserCredentialApprovalTitle: '允许 Agent 自动登录',
-    browserCredentialApprovalSubtitle: 'LobsterAI 将在隔离页面中填写，密码不会提供给 Agent。',
+    browserCredentialApprovalSubtitle: 'HeyClaw 将在隔离页面中填写，密码不会提供给 Agent。',
     browserCredentialApprovalQuestion: '是否允许 Agent 使用账号 {username} 登录 {origin}？',
     browserCredentialApprovalReason: 'Agent 给出的原因：{reason}',
     browserCredentialApprovalAllow: '允许并继续',
@@ -52,7 +52,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     browserCredentialApprovalDenyDescription: '不使用保存的登录信息',
     browserCredentialSelectionQuestion: '选择允许 Agent 用于登录 {origin} 的账号',
     browserCredentialSelectionTitle: '选择登录账号',
-    browserCredentialSelectionSubtitle: '选定后，LobsterAI 将自动完成账号密码填写。',
+    browserCredentialSelectionSubtitle: '选定后，HeyClaw 将自动完成账号密码填写。',
     browserCredentialSelectionDescription: '使用该账号继续登录',
     contextMenuCut: '剪切',
     contextMenuCopy: '复制',
@@ -89,7 +89,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
 
     // Cowork error messages (shared with renderer via classifyErrorKey)
     coworkErrorAuthInvalid: 'API 密钥无效或已过期，请检查配置。',
-    coworkErrorLobsterAILoginExpired: '登录状态已过期，请重新登录后继续使用 LobsterAI 套餐模型。',
+    coworkErrorLobsterAILoginExpired: '登录状态已过期，请重新登录后继续使用 HeyClaw 套餐模型。',
     coworkErrorOAuthInvalid: 'OAuth 授权已失效或权限不足，请重新授权后重试。',
     coworkErrorModelAccessDenied: '当前账号无权访问该模型，请切换模型或检查服务商账号权限。',
     coworkErrorQuotaExhausted:
@@ -384,8 +384,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     trayQuit: 'Quit',
 
     // Quit confirmation (native dialog shown on user-initiated quit)
-    appQuitConfirmTitle: 'Quit LobsterAI?',
-    appQuitConfirmDetail: 'While LobsterAI is closed, scheduled tasks will not run and IM messages will not be answered.',
+    appQuitConfirmTitle: 'Quit HeyClaw?',
+    appQuitConfirmDetail: 'While HeyClaw is closed, scheduled tasks will not run and IM messages will not be answered.',
     appQuitConfirmQuit: 'Quit',
     appQuitConfirmCancel: 'Cancel',
     taskCompletionNotificationTitle: 'Task Complete',
@@ -398,7 +398,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     questionNotificationBody: 'Waiting for your answer to continue.',
     browserCredentialApprovalHeader: 'Saved login',
     browserCredentialApprovalTitle: 'Allow Agent sign-in',
-    browserCredentialApprovalSubtitle: 'LobsterAI fills the isolated page without revealing the password to the Agent.',
+    browserCredentialApprovalSubtitle: 'HeyClaw fills the isolated page without revealing the password to the Agent.',
     browserCredentialApprovalQuestion: 'Allow the Agent to sign in to {origin} as {username}?',
     browserCredentialApprovalReason: 'Reason from the Agent: {reason}',
     browserCredentialApprovalAllow: 'Allow and continue',
@@ -407,7 +407,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     browserCredentialApprovalDenyDescription: 'Do not use the saved login',
     browserCredentialSelectionQuestion: 'Choose an account the Agent may use to sign in to {origin}',
     browserCredentialSelectionTitle: 'Choose a sign-in account',
-    browserCredentialSelectionSubtitle: 'LobsterAI will fill the selected account automatically.',
+    browserCredentialSelectionSubtitle: 'HeyClaw will fill the selected account automatically.',
     browserCredentialSelectionDescription: 'Continue with this account',
     contextMenuCut: 'Cut',
     contextMenuCopy: 'Copy',
@@ -455,7 +455,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     // Cowork error messages
     coworkErrorAuthInvalid: 'Invalid or expired API key. Please check your configuration.',
     coworkErrorLobsterAILoginExpired:
-      'Your login session has expired. Sign in again to continue using LobsterAI plan models.',
+      'Your login session has expired. Sign in again to continue using HeyClaw plan models.',
     coworkErrorOAuthInvalid: 'OAuth authorization is invalid or missing required access. Re-authenticate and try again.',
     coworkErrorModelAccessDenied: 'This account is not allowed to access the selected model. Switch models or check provider account permissions.',
     coworkErrorQuotaExhausted:
