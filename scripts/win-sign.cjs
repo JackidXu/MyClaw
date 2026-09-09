@@ -225,6 +225,39 @@ async function signOnce(serviceConfig, filePath) {
   }
 }
 
+function resolveSigntoolPath() {
+  // If explicitly configured in environment
+  if (process.env.SIGNTOOL_PATH && fs.existsSync(process.env.SIGNTOOL_PATH)) {
+    return process.env.SIGNTOOL_PATH;
+  }
+
+  // Check if signtool is directly available in PATH
+  try {
+    execSync('signtool /?', { stdio: 'ignore' });
+    return 'signtool';
+  } catch {}
+
+  // Search standard Windows Kits directories on GitHub Actions and local machines
+  const kitsRoot = 'C:\\Program Files (x86)\\Windows Kits\\10\\bin';
+  if (fs.existsSync(kitsRoot)) {
+    try {
+      const versions = fs.readdirSync(kitsRoot)
+        .filter((v) => /^10\./.test(v))
+        .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+
+      for (const ver of versions) {
+        const candidate = path.join(kitsRoot, ver, 'x64', 'signtool.exe');
+        if (fs.existsSync(candidate)) {
+          return candidate;
+        }
+      }
+    } catch {}
+  }
+
+  // Fallback default
+  return 'signtool';
+}
+
 async function signWithSigntool(filePath, certSha1) {
   const normalizedPath = path.resolve(filePath);
   if (signedThisRun.has(normalizedPath)) {
@@ -236,12 +269,13 @@ async function signWithSigntool(filePath, certSha1) {
     return false;
   }
 
+  const signtoolExe = resolveSigntoolPath();
   const timestampUrl = (process.env[TIMESTAMP_URL_ENV] || DEFAULT_TIMESTAMP_URL).trim();
   const sizeMb = (fs.statSync(normalizedPath).size / (1024 * 1024)).toFixed(1);
-  console.log(`[WinSign] signing ${path.basename(normalizedPath)} (${sizeMb} MB) via signtool (sha1: ${certSha1.slice(0, 8)}..., ts: ${timestampUrl})`);
+  console.log(`[WinSign] signing ${path.basename(normalizedPath)} (${sizeMb} MB) via ${path.basename(signtoolExe)} (sha1: ${certSha1.slice(0, 8)}..., ts: ${timestampUrl})`);
   const t0 = Date.now();
 
-  const cmd = `signtool sign /v /fd sha256 /sha1 "${certSha1}" /tr "${timestampUrl}" /td sha256 "${normalizedPath}"`;
+  const cmd = `"${signtoolExe}" sign /v /fd sha256 /sha1 "${certSha1}" /tr "${timestampUrl}" /td sha256 "${normalizedPath}"`;
 
   let lastError = null;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
