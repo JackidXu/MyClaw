@@ -127,10 +127,18 @@ async function main() {
 
   console.log(`[SimplySign] Found executable at: ${appPath}`);
 
-  // 生成 OTP（TOTP 30 秒窗口，尽量在窗口中间段生成）
-  const otp = generateTOTP(secret);
+  // 生成 OTP 前先检查 TOTP 窗口剩余时间
+  // SimplySign 需要时间启动 + 连接 Certum 服务器，若 OTP 快过期则等到下一窗口再生成
+  const MIN_OTP_REMAINING_MS = 12000;
+  const remainingMs = 30000 - (Date.now() % 30000);
+  if (remainingMs < MIN_OTP_REMAINING_MS) {
+    const waitMs = remainingMs + 500; // 多等 0.5s 缓冲
+    console.log(`[SimplySign] TOTP window ending in ${(remainingMs / 1000).toFixed(1)}s (<12s), waiting ${(waitMs / 1000).toFixed(1)}s for next window...`);
+    await new Promise((resolve) => setTimeout(resolve, waitMs));
+  }
   const otpRemainingMs = 30000 - (Date.now() % 30000);
-  console.log(`[SimplySign][DEBUG] Generated TOTP. Remaining in current 30s window: ${(otpRemainingMs / 1000).toFixed(1)}s`);
+  const otp = generateTOTP(secret);
+  console.log(`[SimplySign] Generated TOTP. Remaining in current 30s window: ${(otpRemainingMs / 1000).toFixed(1)}s`);
 
   // 【调试】将 SimplySign 的 stdout/stderr 写入日志文件以便排查
   const logPath = path.resolve(process.cwd(), 'simplysign-debug.log');
