@@ -73,50 +73,42 @@ jobs:
             echo "⚠ OpenClaw runtime not found, build may fail"
           fi
       
-      # 手动创建临时 Keychain 并导入证书
-      # 原因：macos-latest 升级到 macOS 15 (Sequoia) 后，electron-builder 内置的
-      # 自动 Keychain 管理流程中 security set-key-partition-list 行为发生变化导致失败。
-      # 此步骤手动完成 Keychain 创建与证书导入，让 electron-builder 直接使用已配置好的 Keychain。
+      # 标准工业级实践：直接导入系统默认登录钥匙串 (login.keychain-db)
+      # 1. 默认登录钥匙串天然处于系统 search-list 顶层且关联完整的系统 Apple 根证书信任链
+      # 2. 不触发 electron-builder 内部带缺陷的 createKeychain 临时钥匙串逻辑
+      # 3. 显式指定 CSC_NAME，确保 electron-builder 强制绑定该证书进行正式签名，绝不漏签
       - name: Setup macOS Keychain
         env:
           CSC_LINK_B64: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
         run: |
-          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
-          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
-
-          # 解码 base64 证书到临时文件
+          # 1. 解码 base64 证书到临时文件
           echo "$CSC_LINK_B64" | base64 --decode > /tmp/certificate.p12
 
-          # 创建临时 Keychain
-          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          # 2. 解锁 GitHub Actions runner 默认登录钥匙串并允许延长超时（GitHub runner 的 login.keychain-db 密码默认为空）
+          security unlock-keychain -p "" ~/Library/Keychains/login.keychain-db
+          security set-keychain-settings -lut 21600 ~/Library/Keychains/login.keychain-db
 
-          # 导入 p12 证书
-          security import /tmp/certificate.p12 -P "$CSC_KEY_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
-          security list-keychain -d user -s $KEYCHAIN_PATH
+          # 3. 导入正式证书到默认登录钥匙串，并赋予 codesign 与 productbuild 访问权限
+          security import /tmp/certificate.p12 -k ~/Library/Keychains/login.keychain-db -P "$CSC_KEY_PASSWORD" -T /usr/bin/codesign -T /usr/bin/productbuild
 
-          # 设置分区访问列表（使用 keychain 密码，不是 p12 密码）
-          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          # 4. 放行钥匙串私钥分区访问，确保 codesign 静默读取私钥不弹系统确认框
+          security set-key-partition-list -S apple-tool:,apple: -s -k "" ~/Library/Keychains/login.keychain-db
 
-          # 将 keychain 路径及证书文件路径传递给后续步骤
-          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> $GITHUB_ENV
-          echo "CERT_FILE_PATH=/tmp/certificate.p12" >> $GITHUB_ENV
+          # 5. 清理临时证书文件
+          rm -f /tmp/certificate.p12
+
+          # 6. 验证证书已成功加载并被 codesign 识别（日志显式输出以备审计）
+          security find-identity -v -p codesigning
 
       - name: Build macOS
         run: npm run dist:mac:${{ matrix.arch }} -- --publish never
         env:
-          # 使用预配置好的 Keychain，跳过 electron-builder 的自动导入与 createKeychain 逻辑
-          CSC_KEYCHAIN: ${{ env.KEYCHAIN_PATH }}
+          # 显式指定证书身份全称，告知 electron-builder 直接使用已导入的证书
+          CSC_NAME: "Developer ID Application: Huizhou Bancheng Media Co., Ltd. (VNH5J9U65J)"
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-
-      # 清理临时证书文件
-      - name: Cleanup macOS Certificate
-        if: always()
-        run: rm -f /tmp/certificate.p12
       
       - uses: actions/upload-artifact@v4
         with:

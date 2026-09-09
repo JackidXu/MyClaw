@@ -34,6 +34,8 @@
 
 const fs = require('fs');
 const path = require('path');
+const http = require('http');
+const https = require('https');
 const { execSync } = require('child_process');
 
 const SERVICE_URL_ENV = 'YD_SIGN_SERVICE_URL';
@@ -171,29 +173,72 @@ async function fileToBlob(filePath) {
 
 async function signOnce(serviceConfig, filePath) {
   const fileName = path.basename(filePath);
-  const fileBuffer = await fs.promises.readFile(filePath);
-
-  const signResponse = await fetch(`${serviceConfig.baseUrl}/sign`, {
-    method: 'POST',
-    headers: serviceConfig.headers,
-    body: fileBuffer,
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-  });
-  if (!signResponse.ok) {
-    throw new Error(`[WinSign] sign request failed: HTTP ${signResponse.status} ${await safeText(signResponse)}`);
-  }
-
-  const signedBytes = Buffer.from(await signResponse.arrayBuffer());
-
   const originalSize = fs.statSync(filePath).size;
-  if (signedBytes.length < originalSize) {
+  const tmpPath = `${filePath}.ydsign.tmp`;
+
+  await new Promise((resolve, reject) => {
+    const targetUrl = new URL(`${serviceConfig.baseUrl}/sign`);
+    const transport = targetUrl.protocol === 'https:' ? https : http;
+
+    const req = transport.request(
+      targetUrl,
+      {
+        method: 'POST',
+        headers: {
+          ...serviceConfig.headers,
+          'Content-Type': 'application/octet-stream',
+          'Content-Length': originalSize,
+        },
+        timeout: REQUEST_TIMEOUT_MS,
+      },
+      (res) => {
+        if (res.statusCode !== 200) {
+          let errorBody = '';
+          res.on('data', (chunk) => {
+            errorBody += chunk;
+          });
+          res.on('end', () => {
+            reject(new Error(`[WinSign] sign request failed: HTTP ${res.statusCode} ${errorBody.slice(0, 300)}`));
+          });
+          return;
+        }
+
+        const fileOut = fs.createWriteStream(tmpPath);
+        res.pipe(fileOut);
+        fileOut.on('finish', () => {
+          fileOut.close(resolve);
+        });
+        fileOut.on('error', (err) => {
+          fs.rmSync(tmpPath, { force: true });
+          reject(err);
+        });
+      },
+    );
+
+    req.on('timeout', () => {
+      req.destroy(new Error(`[WinSign] request timed out after ${REQUEST_TIMEOUT_MS}ms`));
+    });
+
+    req.on('error', (err) => {
+      reject(err);
+    });
+
+    const fileIn = fs.createReadStream(filePath);
+    fileIn.pipe(req);
+    fileIn.on('error', (err) => {
+      req.destroy(err);
+      reject(err);
+    });
+  });
+
+  const signedSize = fs.statSync(tmpPath).size;
+  if (signedSize < originalSize) {
+    fs.rmSync(tmpPath, { force: true });
     throw new Error(
-      `[WinSign] signed file is smaller than the original (${signedBytes.length} < ${originalSize} bytes), refusing to replace ${fileName}`,
+      `[WinSign] signed file is smaller than original (${signedSize} < ${originalSize} bytes), refusing to replace ${fileName}`,
     );
   }
 
-  const tmpPath = `${filePath}.ydsign.tmp`;
-  fs.writeFileSync(tmpPath, signedBytes);
   try {
     const certTable = readPeCertTable(tmpPath);
     if (!certTable) {
