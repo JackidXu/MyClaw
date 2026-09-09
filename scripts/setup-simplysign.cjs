@@ -71,11 +71,42 @@ async function main() {
 
   // Default installation paths for SimplySign Desktop
   const possiblePaths = [
+    'C:\\Program Files\\Certum\\SimplySign Desktop\\SimplySignDesktop.exe',
+    'C:\\Program Files (x86)\\Certum\\SimplySign Desktop\\SimplySignDesktop.exe',
     'C:\\Program Files\\Certum by Asseco\\SimplySign Desktop\\SimplySignDesktop.exe',
     'C:\\Program Files (x86)\\Certum by Asseco\\SimplySign Desktop\\SimplySignDesktop.exe',
+    'C:\\Program Files\\SimplySign Desktop\\SimplySignDesktop.exe',
+    'C:\\Program Files (x86)\\SimplySign Desktop\\SimplySignDesktop.exe',
   ];
 
-  let appPath = possiblePaths.find((p) => fs.existsSync(p));
+  function findExecutable() {
+    const found = possiblePaths.find((p) => fs.existsSync(p));
+    if (found) return found;
+
+    // Fallback: search Certum directories
+    const searchRoots = ['C:\\Program Files', 'C:\\Program Files (x86)'];
+    for (const root of searchRoots) {
+      if (!fs.existsSync(root)) continue;
+      try {
+        const entries = fs.readdirSync(root);
+        for (const entry of entries) {
+          if (/certum|simply/i.test(entry)) {
+            const subDir = path.join(root, entry);
+            const candidate1 = path.join(subDir, 'SimplySignDesktop.exe');
+            if (fs.existsSync(candidate1)) return candidate1;
+            const subEntries = fs.readdirSync(subDir);
+            for (const sub of subEntries) {
+              const candidate2 = path.join(subDir, sub, 'SimplySignDesktop.exe');
+              if (fs.existsSync(candidate2)) return candidate2;
+            }
+          }
+        }
+      } catch {}
+    }
+    return null;
+  }
+
+  let appPath = findExecutable();
 
   if (!appPath) {
     console.log('[SimplySign] Downloading SimplySign Desktop installer from CDN...');
@@ -87,7 +118,7 @@ async function main() {
     console.log('[SimplySign] Installing SimplySign Desktop silently...');
     execSync(`msiexec /i "${msiPath}" /qn /norestart`, { stdio: 'inherit' });
 
-    appPath = possiblePaths.find((p) => fs.existsSync(p));
+    appPath = findExecutable();
   }
 
   if (!appPath) {
