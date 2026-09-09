@@ -107,10 +107,8 @@ jobs:
       - name: Build macOS
         run: npm run dist:mac:${{ matrix.arch }} -- --publish never
         env:
-          # 使用预配置好的 Keychain 与证书路径，跳过 electron-builder 的自动导入流程并触发正式签名
-          CSC_LINK: ${{ env.CERT_FILE_PATH }}
+          # 使用预配置好的 Keychain，跳过 electron-builder 的自动导入与 createKeychain 逻辑
           CSC_KEYCHAIN: ${{ env.KEYCHAIN_PATH }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
