@@ -85,15 +85,15 @@ jobs:
           # 1. 解码 base64 证书到临时文件
           echo "$CSC_LINK_B64" | base64 --decode > /tmp/certificate.p12
 
-          # 2. 解锁 GitHub Actions runner 默认登录钥匙串并允许延长超时（GitHub runner 的 login.keychain-db 密码默认为空）
-          security unlock-keychain -p "" ~/Library/Keychains/login.keychain-db
-          security set-keychain-settings -lut 21600 ~/Library/Keychains/login.keychain-db
+          # 2. 解锁 GitHub Actions runner 默认登录钥匙串并允许延长超时
+          security unlock-keychain -p "" ~/Library/Keychains/login.keychain-db || true
+          security set-keychain-settings -lut 21600 ~/Library/Keychains/login.keychain-db || true
 
-          # 3. 导入正式证书到默认登录钥匙串，并赋予 codesign 与 productbuild 访问权限
-          security import /tmp/certificate.p12 -k ~/Library/Keychains/login.keychain-db -P "$CSC_KEY_PASSWORD" -T /usr/bin/codesign -T /usr/bin/productbuild
+          # 3. 导入正式证书到默认登录钥匙串 (-A 允许任何工具免密读取私钥，-T 显式放行 codesign 与 productbuild)
+          security import /tmp/certificate.p12 -k ~/Library/Keychains/login.keychain-db -P "$CSC_KEY_PASSWORD" -A -T /usr/bin/codesign -T /usr/bin/productbuild
 
-          # 4. 放行钥匙串私钥分区访问，确保 codesign 静默读取私钥不弹系统确认框
-          security set-key-partition-list -S apple-tool:,apple: -s -k "" ~/Library/Keychains/login.keychain-db
+          # 4. 尝试放行钥匙串私钥分区访问（非阻塞，兼顾不同 runner 密码环境）
+          security set-key-partition-list -S apple-tool:,apple: -s -k "" ~/Library/Keychains/login.keychain-db || true
 
           # 5. 清理临时证书文件
           rm -f /tmp/certificate.p12
