@@ -100,21 +100,25 @@ jobs:
           # 设置分区访问列表（使用 keychain 密码，不是 p12 密码）
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
 
-          # 清理临时证书文件
-          rm -f /tmp/certificate.p12
-
-          # 将 keychain 路径传递给后续步骤
+          # 将 keychain 路径及证书文件路径传递给后续步骤
           echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> $GITHUB_ENV
+          echo "CERT_FILE_PATH=/tmp/certificate.p12" >> $GITHUB_ENV
 
       - name: Build macOS
         run: npm run dist:mac:${{ matrix.arch }} -- --publish never
         env:
-          # 使用预配置好的 Keychain，跳过 electron-builder 的自动导入流程
+          # 使用预配置好的 Keychain 与证书路径，跳过 electron-builder 的自动导入流程并触发正式签名
+          CSC_LINK: ${{ env.CERT_FILE_PATH }}
           CSC_KEYCHAIN: ${{ env.KEYCHAIN_PATH }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      # 清理临时证书文件
+      - name: Cleanup macOS Certificate
+        if: always()
+        run: rm -f /tmp/certificate.p12
       
       - uses: actions/upload-artifact@v4
         with:
