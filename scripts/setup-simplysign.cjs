@@ -127,19 +127,23 @@ async function main() {
 
   console.log(`[SimplySign] Found executable at: ${appPath}`);
 
-  // Generate OTP
+  // 生成 OTP（TOTP 30 秒窗口，尽量在窗口中间段生成）
   const otp = generateTOTP(secret);
-  console.log('[SimplySign] Successfully generated dynamic TOTP code.');
+  const otpRemainingMs = 30000 - (Date.now() % 30000);
+  console.log(`[SimplySign][DEBUG] Generated TOTP. Remaining in current 30s window: ${(otpRemainingMs / 1000).toFixed(1)}s`);
 
-  // Login via CLI
-  console.log('[SimplySign] Launching SimplySignDesktop in background with credentials...');
+  // 【调试】将 SimplySign 的 stdout/stderr 写入日志文件以便排查
+  const logPath = path.resolve(process.cwd(), 'simplysign-debug.log');
+  const logStream = fs.openSync(logPath, 'w');
+  console.log(`[SimplySign][DEBUG] SimplySign output will be captured to: ${logPath}`);
+
   const child = spawn(appPath, ['/login', '-u', user, '-p', otp], {
     detached: true,
-    stdio: 'ignore',
+    stdio: ['ignore', logStream, logStream],
   });
   child.unref();
 
-  console.log('[SimplySign] Waiting for virtual smartcard certificate to mount (up to 30s)...');
+  console.log('[SimplySign] Waiting for virtual smartcard certificate to mount (up to 60s)...');
   const certSha1 = (process.env.WIN_SIGN_CERT_SHA1 || 'f0d51f084bba92740ced8165475fddfaf0f901e2').toLowerCase();
 
   let mounted = false;
@@ -155,6 +159,21 @@ async function main() {
     } catch {
       // ignore certutil error during early polling
     }
+  }
+
+  // 【调试】无论是否成功，都打印 SimplySign 的输出
+  try {
+    fs.closeSync(logStream);
+    const logContent = fs.readFileSync(logPath, 'utf8').trim();
+    if (logContent) {
+      console.log('[SimplySign][DEBUG] === SimplySign process output ===');
+      console.log(logContent);
+      console.log('[SimplySign][DEBUG] === End of SimplySign output ===');
+    } else {
+      console.log('[SimplySign][DEBUG] SimplySign produced no output (may have failed to start or output to a different location).');
+    }
+  } catch {
+    console.log('[SimplySign][DEBUG] Could not read SimplySign log file.');
   }
 
   if (!mounted) {
