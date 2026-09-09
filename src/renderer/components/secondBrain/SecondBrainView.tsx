@@ -59,6 +59,9 @@ const SHOW_RECORDING_CARD_COMING_SOON = false;
 /** 单个上传文档最大限制：2MB */
 const MAX_DOCUMENT_FILE_SIZE = 2 * 1024 * 1024;
 
+/** 单次批量上传文档最大数量限制：10 个 */
+const MAX_DOCUMENT_BATCH_COUNT = 10;
+
 /** 秒级时间戳转可读日期时间 */
 function formatTimestamp(ts: string | number): string {
   const num = typeof ts === 'string' ? Number(ts) : ts;
@@ -245,20 +248,40 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
   };
 
   /** 拉取待审核认知列表 (status: 0) */
-  const loadItems = (page: number) => {
-    setItemsLoading(true);
+  const loadItems = React.useCallback((page: number, options?: { silent?: boolean }): void => {
+    if (!options?.silent) {
+      setItemsLoading(true);
+    }
     fetchCognitionItemList({ status: 0, page, pageSize: 10 })
       .then((res) => {
-        setItems(res.data || []);
-        setItemsLastPage(Number(res.last_page) || 1);
-        setItemsTotal(Number(res.total) || 0);
+        const list = res.data || [];
+        const lastPage = Number(res.last_page) || 1;
+        const total = Number(res.total) || 0;
+
+        // 若当前页已无数据但总数大于0且页码大于1（如整页裁决完毕），自动回退到上一页
+        if (list.length === 0 && total > 0 && page > 1) {
+          const prevPage = Math.min(page - 1, lastPage);
+          setItemsPage(prevPage);
+          loadItems(prevPage, options);
+          return;
+        }
+
+        setItems(list);
+        setItemsLastPage(lastPage);
+        setItemsTotal(total);
       })
       .catch((err) => {
         console.warn('[SecondBrainView] 待审核认知列表接口失败:', err);
-        setItems([]);
+        if (!options?.silent) {
+          setItems([]);
+        }
       })
-      .finally(() => { setItemsLoading(false); });
-  };
+      .finally(() => {
+        if (!options?.silent) {
+          setItemsLoading(false);
+        }
+      });
+  }, []);
 
   /** 拉取今日 AI 自动吸收列表 (status: 1, 当天时间范围) */
   const loadTodayAdopted = () => {
@@ -300,6 +323,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
       loadStats();
       loadTodayAdopted();
       loadTrend();
+      loadItems(itemsPage, { silent: true });
       showToast('success', item.replaces ? '已采纳更新，新萃取认知已覆盖旧认知' : '已采纳该认知，已沉淀至商业第二大脑');
     } catch (err: any) {
       console.warn('[SecondBrainView] 采纳失败:', err);
@@ -321,6 +345,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
       setItems((prev) => prev.filter((i) => i.node_id !== item.node_id));
       setItemsTotal((prev) => Math.max(0, prev - 1));
       loadStats();
+      loadItems(itemsPage, { silent: true });
       showToast('success', item.replaces ? '已驳回，维持存量旧认知不变' : '已驳回该认知');
     } catch (err: any) {
       console.warn('[SecondBrainView] 驳回失败:', err);
@@ -393,7 +418,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
   /** 翻页或挂载时拉取待审核认知列表 */
   useEffect(() => {
     loadItems(itemsPage);
-  }, [itemsPage]);
+  }, [itemsPage, loadItems]);
 
   /** 拉取资料列表（根据当前 Tab 区分文档/对话/录音卡） */
   const loadDocs = React.useCallback((tab: MaterialTab, page: number) => {
@@ -494,6 +519,11 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
     const files = Array.from(e.target.files ?? []);
     if (files.length === 0) return;
     e.target.value = '';
+
+    if (files.length > MAX_DOCUMENT_BATCH_COUNT) {
+      showToast('error', `单次最多支持批量上传 ${MAX_DOCUMENT_BATCH_COUNT} 份文档，请分批选择上传`);
+      return;
+    }
 
     const oversizedFiles: string[] = [];
     const validFiles: File[] = [];
@@ -900,7 +930,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                     {uploading ? '上传中…' : '+ 上传文件'}
                   </button>
                   <div className="pointer-events-none absolute right-0 bottom-full mb-2 z-20 whitespace-nowrap rounded-xl bg-black/90 dark:bg-black px-3.5 py-1.5 text-xs font-medium text-white shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200">
-                    支持 .docx / .md / .txt（最大 2MB）
+                    支持 .docx / .md / .txt（单文件最大 2MB，每批最多 10 个）
                   </div>
                 </div>
               </div>
@@ -1293,7 +1323,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                       <span>{uploading ? '上传中…' : '上传文档'}</span>
                     </button>
                     <div className="pointer-events-none absolute right-0 bottom-full mb-2 z-20 whitespace-nowrap rounded-xl bg-black/90 dark:bg-black px-3.5 py-1.5 text-xs font-medium text-white shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200">
-                      支持 .docx / .md / .txt（最大 2MB）
+                      支持 .docx / .md / .txt（单文件最大 2MB，每批最多 10 个）
                     </div>
                   </div>
                 )}
