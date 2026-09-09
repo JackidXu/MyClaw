@@ -140,7 +140,6 @@ jobs:
 
       # 挂载 Certum SimplySign 虚拟智能卡证书
       - name: Setup SimplySign Certificate
-        if: ${{ secrets.SIMPLYSIGN_USER && secrets.SIMPLYSIGN_OTP_SECRET }}
         shell: bash
         run: node scripts/setup-simplysign.cjs
         env:
