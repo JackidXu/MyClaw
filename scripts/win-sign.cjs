@@ -213,37 +213,25 @@ async function signOnceViaOss(serviceConfig, filePath, ossClient) {
   });
 
   console.log(`[WinSign] Requesting sign from service via OSS: ${serviceConfig.baseUrl}/sign-oss`);
-  const signUrl = `${serviceConfig.baseUrl}/sign-oss`;
+  const serviceUrl = (process.env.WIN_SIGN_SERVICE_URL || serviceConfig.baseUrl).replace(/\/+$/, '');
+  const signSecret = (process.env.WIN_SIGN_SERVICE_SECRET || '').trim();
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const resp = await fetch(`${serviceUrl}/sign-oss`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-sign-secret': signSecret,
+    },
+    body: JSON.stringify({ ossKey }),
+  });
 
-  let signResponse;
-  try {
-    const resp = await fetch(signUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...serviceConfig.headers,
-      },
-      body: JSON.stringify({ ossKey }),
-      signal: controller.signal,
-    });
-
-    if (!resp.ok) {
-      const errText = await resp.text();
-      throw new Error(`[WinSign] /sign-oss failed: HTTP ${resp.status} - ${errText.slice(0, 300)}`);
-    }
-
-    signResponse = await resp.json();
-  } catch (err) {
-    if (err.name === 'AbortError') {
-      throw new Error(`[WinSign] request timed out after ${REQUEST_TIMEOUT_MS}ms`);
-    }
-    throw err;
-  } finally {
-    clearTimeout(timeoutId);
+  if (!resp.ok) {
+    const errText = await resp.text();
+    throw new Error(`[WinSign] /sign-oss failed: HTTP ${resp.status} - ${errText.slice(0, 300)}`);
   }
+
+  const signResponse = await resp.json();
+
 
   const signedOssKey = signResponse.signedOssKey;
   if (!signedOssKey) {
@@ -268,11 +256,13 @@ async function signOnceViaOss(serviceConfig, filePath, ossClient) {
     if (!certTable) {
       throw new Error(`[WinSign] service returned ${fileName} without an Authenticode signature`);
     }
-    fs.renameSync(tmpPath, filePath);
+    fs.copyFileSync(tmpPath, filePath);
+    fs.rmSync(tmpPath, { force: true });
   } catch (error) {
     fs.rmSync(tmpPath, { force: true });
     throw error;
   }
+
 }
 
 async function signOnce(serviceConfig, filePath) {
