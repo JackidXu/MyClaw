@@ -100,14 +100,10 @@ jobs:
               throw new Error(`Signed file is smaller than original (${signedSize} < ${originalSize})`);
             }
 
-            console.log(`[4/4] Cleaning up OSS temporary probe objects...`);
-            await Promise.all([
-              ossClient.delete(ossKey).catch(() => {}),
-              ossClient.delete(signedOssKey).catch(() => {}),
-            ]);
-
             console.log(`🎉 All Windows OSS Sign Probe checks PASSED successfully!`);
           }
+
+
 
           runTest().catch(err => {
             console.error('Probe failed:', err);

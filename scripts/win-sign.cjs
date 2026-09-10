@@ -267,11 +267,6 @@ async function signOnceViaOss(serviceConfig, filePath, ossClient) {
   console.log(`[WinSign] Downloading signed file from OSS: ${signedOssKey}...`);
   await ossClient.get(signedOssKey, tmpPath);
 
-  // 异步清理 OSS 临时文件
-  Promise.all([
-    ossClient.delete(ossKey).catch(() => {}),
-    ossClient.delete(signedOssKey).catch(() => {}),
-  ]).catch(() => {});
 
   const signedSize = fs.statSync(tmpPath).size;
   if (signedSize < originalSize) {
