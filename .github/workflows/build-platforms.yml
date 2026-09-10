@@ -22,9 +22,9 @@ env:
   NODE_OPTIONS: "--max-old-space-size=8192"
 
 jobs:
-  # ========== macOS 构建 (临时关闭，当前由本地打包签名公证) ==========
+  # ========== macOS 构建 ==========
   build-macos:
-    if: false
+    if: ${{ github.event_name == 'push' || inputs.build_macos }}
     runs-on: macos-latest
     strategy:
       matrix:
@@ -165,15 +165,23 @@ jobs:
       - name: Build Windows
         shell: bash
         run: |
-          # 临时构建模式：不传签名凭证，直接输出安装包
-          unset WIN_CSC_LINK
-          unset CSC_LINK
-          unset WIN_CSC_KEY_PASSWORD
-          unset CSC_KEY_PASSWORD
-          unset WIN_SIGN_SERVICE_URL
+          # 如果 WIN_CSC_LINK 既不是有效文件，其长度又明显不是 Base64 证书内容（小于 100 字符），则彻底注销环境变量
+          if [[ ! -f "$WIN_CSC_LINK" && ${#WIN_CSC_LINK} -lt 100 ]]; then
+            echo "[Codesign] 检测到 WIN_CSC_LINK 为无效占位符 (${WIN_CSC_LINK})，彻底注销签名环境变量以跳过签名。"
+            unset WIN_CSC_LINK
+            unset CSC_LINK
+            unset WIN_CSC_KEY_PASSWORD
+            unset CSC_KEY_PASSWORD
+          fi
           npm run dist:win -- --publish never
         env:
-          WIN_SIGN_TIMESTAMP_URL: ${{ secrets.WIN_SIGN_TIMESTAMP_URL }}
+          CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          WIN_SIGN_CERT_SHA1: ${{ secrets.WIN_SIGN_CERT_SHA1 }}
+          WIN_SIGN_SERVICE_URL: ${{ secrets.WIN_SIGN_SERVICE_URL }}
+          WIN_SIGN_SERVICE_SECRET: ${{ secrets.WIN_SIGN_SERVICE_SECRET }}
       
       - uses: actions/upload-artifact@v4
         with:
@@ -183,7 +191,7 @@ jobs:
 
   # ========== 创建 Release ==========
   create-release:
-    needs: [build-windows]
+    needs: [build-macos, build-windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -200,6 +208,8 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
+            artifacts/macos-build-arm64/*.dmg
+            artifacts/macos-build-x64/*.dmg
             artifacts/windows-build/*.exe
           draft: true
           prerelease: ${{ contains(github.ref, '-beta') || contains(github.ref, '-alpha') || contains(github.ref, '-rc') }}
@@ -209,7 +219,7 @@ jobs:
 
   # ========== 自动部署到阿里云 OSS ==========
   deploy-to-oss:
-    needs: [build-windows]
+    needs: [build-macos, build-windows]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     steps:
@@ -251,20 +261,22 @@ jobs:
           # 提取当前 tag 的版本号
           TAG_NAME=${GITHUB_REF#refs/tags/}
           
-          # 寻找对应的包文件名 (兼容仅有 Windows 的情况)
-          WIN_FILE=$(cd oss-dist && ls *.exe 2>/dev/null | head -n 1 || true)
-          MAC_ARM64_FILE=$(cd oss-dist && ls *arm64*.dmg 2>/dev/null | head -n 1 || true)
-          MAC_X64_FILE=$(cd oss-dist && ls *x64*.dmg 2>/dev/null | head -n 1 || true)
+          # 寻找对应的包文件名
+          WIN_FILE=$(cd oss-dist && ls *.exe | head -n 1)
+          MAC_ARM64_FILE=$(cd oss-dist && ls *arm64*.dmg | head -n 1)
+          MAC_X64_FILE=$(cd oss-dist && ls *x64*.dmg | head -n 1)
           
           # 从 Secrets 读取 CDN 前缀
           CDN_PREFIX="${{ secrets.CDN_URL_PREFIX }}"
           
           # 如果配置了 CDN 前缀，就使用绝对链接；否则回退为相对路径文件名
           if [ -n "$CDN_PREFIX" ]; then
+            # 去除末尾斜杠
             CDN_PREFIX="${CDN_PREFIX%/}"
-            WIN_URL=$([ -n "$WIN_FILE" ] && echo "${CDN_PREFIX}/${{ env.OSS_PATH }}/${WIN_FILE}" || echo "")
-            MAC_ARM64_URL=$([ -n "$MAC_ARM64_FILE" ] && echo "${CDN_PREFIX}/${{ env.OSS_PATH }}/${MAC_ARM64_FILE}" || echo "")
-            MAC_X64_URL=$([ -n "$MAC_X64_FILE" ] && echo "${CDN_PREFIX}/${{ env.OSS_PATH }}/${MAC_X64_FILE}" || echo "")
+            # 使用动态决定的 OSS_PATH
+            WIN_URL="${CDN_PREFIX}/${{ env.OSS_PATH }}/${WIN_FILE}"
+            MAC_ARM64_URL="${CDN_PREFIX}/${{ env.OSS_PATH }}/${MAC_ARM64_FILE}"
+            MAC_X64_URL="${CDN_PREFIX}/${{ env.OSS_PATH }}/${MAC_X64_FILE}"
           else
             WIN_URL="${WIN_FILE}"
             MAC_ARM64_URL="${MAC_ARM64_FILE}"
