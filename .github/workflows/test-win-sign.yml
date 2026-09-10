@@ -2,9 +2,9 @@ name: Test Windows OSS Code Sign Probe
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - '.github/workflows/test-win-sign.yml'
+  # push:
+  #   paths:
+  #     - '.github/workflows/test-win-sign.yml'
 
 jobs:
   test-win-sign:
