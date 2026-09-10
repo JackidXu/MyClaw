@@ -166,6 +166,19 @@ jobs:
         env:
           LOBSTERAI_PORTABLE_PYTHON_ARCHIVE: ${{ secrets.WINDOWS_PYTHON_ARCHIVE }}
 
+      - name: Determine Windows Sign OSS Prefix
+        shell: bash
+        run: |
+          WIN_SIGN_OSS_PREFIX="heyclaw-dev/win-sign"
+          BRANCHES=$(git branch -r --contains HEAD || true)
+          echo "Branches containing current commit:"
+          echo "$BRANCHES"
+          if echo "$BRANCHES" | grep -qE "origin/main$|origin/main "; then
+            WIN_SIGN_OSS_PREFIX="heyclaw/win-sign"
+          fi
+          echo "Determined Windows Sign OSS Prefix: $WIN_SIGN_OSS_PREFIX"
+          echo "WIN_SIGN_OSS_PREFIX=$WIN_SIGN_OSS_PREFIX" >> $GITHUB_ENV
+
       - name: Build Windows
         shell: bash
         run: |
@@ -186,8 +199,14 @@ jobs:
           WIN_SIGN_CERT_SHA1: ${{ secrets.WIN_SIGN_CERT_SHA1 }}
           WIN_SIGN_SERVICE_URL: ${{ secrets.WIN_SIGN_SERVICE_URL }}
           WIN_SIGN_SERVICE_SECRET: ${{ secrets.WIN_SIGN_SERVICE_SECRET }}
+          WIN_SIGN_OSS_PREFIX: ${{ env.WIN_SIGN_OSS_PREFIX }}
+          OSS_ENDPOINT: ${{ secrets.OSS_ENDPOINT }}
+          OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
+          OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+          OSS_BUCKET: ${{ secrets.OSS_BUCKET }}
           # electron-builder 下载依赖超时保护（防止大文件下载导致 408）
           ELECTRON_BUILDER_HTTP_TIMEOUT: 600000
+
       
       - uses: actions/upload-artifact@v4
         with:

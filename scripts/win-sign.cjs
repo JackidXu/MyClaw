@@ -171,46 +171,79 @@ async function fileToBlob(filePath) {
   return new Blob([await fs.promises.readFile(filePath)], { type: 'application/octet-stream' });
 }
 
-async function signOnce(serviceConfig, filePath) {
+let aliOssModule = null;
+function getOssClient() {
+  const accessKeyId = (process.env.OSS_ACCESS_KEY_ID || '').trim();
+  const accessKeySecret = (process.env.OSS_ACCESS_KEY_SECRET || '').trim();
+  const endpoint = (process.env.OSS_ENDPOINT || '').trim();
+  const bucket = (process.env.OSS_BUCKET || '').trim();
+
+  if (!accessKeyId || !accessKeySecret || !bucket) {
+    return null;
+  }
+
+  if (!aliOssModule) {
+    try {
+      aliOssModule = require('ali-oss');
+    } catch {
+      return null;
+    }
+  }
+
+  return new aliOssModule({
+    endpoint: endpoint || undefined,
+    accessKeyId,
+    accessKeySecret,
+    bucket,
+  });
+}
+
+async function signOnceViaOss(serviceConfig, filePath, ossClient) {
   const fileName = path.basename(filePath);
   const originalSize = fs.statSync(filePath).size;
   const tmpPath = `${filePath}.ydsign.tmp`;
+  const ossPrefix = (process.env.WIN_SIGN_OSS_PREFIX || 'heyclaw-dev/win-sign').replace(/\/+$/, '');
+  const uniqueId = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
+  const ossKey = `${ossPrefix}/${uniqueId}_${fileName}`;
 
-  await new Promise((resolve, reject) => {
-    const targetUrl = new URL(`${serviceConfig.baseUrl}/sign`);
-    const transport = targetUrl.protocol === 'https:' ? https : http;
+  console.log(`[WinSign] Uploading to OSS: ${ossKey} (${(originalSize / (1024 * 1024)).toFixed(1)} MB)...`);
+  await ossClient.multipartUpload(ossKey, filePath, {
+    parallel: 4,
+    partSize: 10 * 1024 * 1024,
+  });
 
+  console.log(`[WinSign] Requesting sign from service via OSS: ${serviceConfig.baseUrl}/sign-oss`);
+  const targetUrl = new URL(`${serviceConfig.baseUrl}/sign-oss`);
+  const transport = targetUrl.protocol === 'https:' ? https : http;
+
+  const signResponse = await new Promise((resolve, reject) => {
+    const postData = JSON.stringify({ ossKey });
     const req = transport.request(
       targetUrl,
       {
         method: 'POST',
         headers: {
           ...serviceConfig.headers,
-          'Content-Type': 'application/octet-stream',
-          'Content-Length': originalSize,
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(postData),
         },
         timeout: REQUEST_TIMEOUT_MS,
       },
       (res) => {
-        if (res.statusCode !== 200) {
-          let errorBody = '';
-          res.on('data', (chunk) => {
-            errorBody += chunk;
-          });
-          res.on('end', () => {
-            reject(new Error(`[WinSign] sign request failed: HTTP ${res.statusCode} ${errorBody.slice(0, 300)}`));
-          });
-          return;
-        }
-
-        const fileOut = fs.createWriteStream(tmpPath);
-        res.pipe(fileOut);
-        fileOut.on('finish', () => {
-          fileOut.close(resolve);
+        let respBody = '';
+        res.on('data', (chunk) => {
+          respBody += chunk;
         });
-        fileOut.on('error', (err) => {
-          fs.rmSync(tmpPath, { force: true });
-          reject(err);
+        res.on('end', () => {
+          if (res.statusCode !== 200) {
+            reject(new Error(`[WinSign] /sign-oss failed: HTTP ${res.statusCode} ${respBody.slice(0, 300)}`));
+            return;
+          }
+          try {
+            resolve(JSON.parse(respBody));
+          } catch (e) {
+            reject(new Error(`[WinSign] /sign-oss invalid JSON response: ${respBody.slice(0, 300)}`));
+          }
         });
       },
     );
@@ -218,18 +251,27 @@ async function signOnce(serviceConfig, filePath) {
     req.on('timeout', () => {
       req.destroy(new Error(`[WinSign] request timed out after ${REQUEST_TIMEOUT_MS}ms`));
     });
-
     req.on('error', (err) => {
       reject(err);
     });
 
-    const fileIn = fs.createReadStream(filePath);
-    fileIn.pipe(req);
-    fileIn.on('error', (err) => {
-      req.destroy(err);
-      reject(err);
-    });
+    req.write(postData);
+    req.end();
   });
+
+  const signedOssKey = signResponse.signedOssKey;
+  if (!signedOssKey) {
+    throw new Error(`[WinSign] service response missing signedOssKey: ${JSON.stringify(signResponse)}`);
+  }
+
+  console.log(`[WinSign] Downloading signed file from OSS: ${signedOssKey}...`);
+  await ossClient.get(signedOssKey, tmpPath);
+
+  // 异步清理 OSS 临时文件
+  Promise.all([
+    ossClient.delete(ossKey).catch(() => {}),
+    ossClient.delete(signedOssKey).catch(() => {}),
+  ]).catch(() => {});
 
   const signedSize = fs.statSync(tmpPath).size;
   if (signedSize < originalSize) {
@@ -250,6 +292,19 @@ async function signOnce(serviceConfig, filePath) {
     throw error;
   }
 }
+
+async function signOnce(serviceConfig, filePath) {
+  const ossClient = getOssClient();
+  if (!ossClient) {
+    throw new Error(
+      '[WinSign] OSS configuration is missing (OSS_ACCESS_KEY_ID, OSS_ACCESS_KEY_SECRET, OSS_BUCKET). '
+      + 'Windows remote code signing requires OSS relay to prevent network timeouts.',
+    );
+  }
+  return signOnceViaOss(serviceConfig, filePath, ossClient);
+}
+
+
 
 function resolveSigntoolPath() {
   // If explicitly configured in environment
