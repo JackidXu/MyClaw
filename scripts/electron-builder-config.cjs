@@ -174,8 +174,8 @@ if (isWebInstallerEnabled()) {
 console.log(`[Keyfrom] configured artifact keyfrom as ${keyfrom}`);
 console.log(`[ChannelBuild] silentOnDoubleClick=${silentOnDoubleClick}`);
 
-if (!process.env.CSC_LINK) {
-  console.log('[Codesign] CSC_LINK is not set, disabling Mac code signing identity to prevent signature conflicts');
+if (!process.env.CSC_LINK && !process.env.CSC_NAME) {
+  console.log('[Codesign] Neither CSC_LINK nor CSC_NAME is set, disabling Mac code signing identity to prevent signature conflicts');
   if (!config.mac) {
     config.mac = {};
   }
@@ -183,3 +183,4 @@ if (!process.env.CSC_LINK) {
 }
 
 module.exports = config;
+
