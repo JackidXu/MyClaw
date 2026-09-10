@@ -41,6 +41,7 @@ import {
   MANAGEMENT_PAGE_TITLE_TEXT,
 } from '../common/managementTypography';
 import SidebarToggleIcon from '../icons/SidebarToggleIcon';
+import { AutoUploadSettingsModal } from './AutoUploadSettingsModal';
 
 interface SecondBrainViewProps {
   isSidebarCollapsed?: boolean;
@@ -169,6 +170,9 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
   const [reExtractingId, setReExtractingId] = useState<number | null>(null);
   const [moreMenuDocId, setMoreMenuDocId] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  /** 自动同步弹窗控制 */
+  const [showAutoUploadModal, setShowAutoUploadModal] = useState(false);
 
   /** 点击外部关闭更多菜单 */
   useEffect(() => {
@@ -494,6 +498,32 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
   useEffect(() => {
     loadDocs(materialTab, docsPage);
   }, [loadDocs, materialTab, docsPage]);
+
+  const loadDocsRef = useRef(loadDocs);
+  loadDocsRef.current = loadDocs;
+  const loadStatsRef = useRef(loadStats);
+  loadStatsRef.current = loadStats;
+  const showToastRef = useRef(showToast);
+  showToastRef.current = showToast;
+
+  /** 监听自动同步成功事件，自动刷新列表与统计 */
+  useEffect(() => {
+    let isMounted = true;
+    const handleDocUploaded = (e: Event) => {
+      if (!isMounted) return;
+      const customEvt = e as CustomEvent<{ count: number }>;
+      const count = customEvt.detail?.count ?? 1;
+      loadDocsRef.current('文档', 1);
+      loadStatsRef.current();
+      showToastRef.current('success', `自动同步：已成功上传 ${count} 篇新文档并开始 AI 萃取`);
+    };
+    window.addEventListener('secondBrain:docUploaded', handleDocUploaded);
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener('secondBrain:docUploaded', handleDocUploaded);
+    };
+  }, []);
 
   /** Tab 切换处理（即刻清空历史列表，重置回第 1 页） */
   const handleTabChange = (tab: MaterialTab) => {
@@ -1322,6 +1352,14 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                       <span>+</span>
                       <span>{uploading ? '上传中…' : '上传文档'}</span>
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowAutoUploadModal(true)}
+                      className="text-xs px-2.5 py-1.5 rounded-lg border border-border bg-surface-raised/60 hover:bg-surface-raised text-secondary hover:text-foreground transition-colors flex items-center gap-1.5 cursor-pointer font-medium"
+                    >
+                      <span>📁</span>
+                      <span>自动同步</span>
+                    </button>
                     <div className="pointer-events-none absolute right-0 bottom-full mb-2 z-20 whitespace-nowrap rounded-xl bg-black/90 dark:bg-black px-3.5 py-1.5 text-xs font-medium text-white shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200">
                       支持 .docx / .md / .txt（单文件最大 2MB，每批最多 10 个）
                     </div>
@@ -2073,6 +2111,12 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* 自动同步设置弹窗 */}
+      <AutoUploadSettingsModal
+        isOpen={showAutoUploadModal}
+        onClose={() => setShowAutoUploadModal(false)}
+      />
 
       {/* 全局 Toast */}
       {toast && createPortal(

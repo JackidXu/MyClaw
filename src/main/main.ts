@@ -267,6 +267,7 @@ import {
   migrateScheduledTaskAnnounceJobs,
   registerScheduledTaskHandlers,
 } from './ipcHandlers/scheduledTask';
+import { registerSecondBrainIpcHandlers } from './ipcHandlers/secondBrain/handlers';
 import { registerSessionDiagnosticsHandlers } from './ipcHandlers/sessionDiagnostics';
 import { registerSiteIpcHandlers } from './ipcHandlers/site';
 import { registerSkillHandlers } from './ipcHandlers/skills';
@@ -560,6 +561,7 @@ import {
 } from './openclawSessionPolicy/store';
 import { registerVoiceInputPermissionHandler } from './permissions/voiceInputPermission';
 import { isHiddenUserPluginId } from './plugins/pluginManager';
+import { secondBrainAutoUploadService } from './secondBrain/secondBrainAutoUploadService';
 import { setSessionSecondBrainEnabledGetter, syncSecondBrainTools } from './secondBrain/secondBrainBridge';
 import { SkillManager } from './skills/skillManager';
 import { getSkillServiceManager } from './skills/skillServices';
@@ -8963,6 +8965,9 @@ if (!gotTheLock) {
     getOpenClawRuntimeAdapter: () => openClawRuntimeAdapter,
   });
 
+  // SecondBrain Auto Upload IPC handlers
+  registerSecondBrainIpcHandlers();
+
   // Kits IPC handlers
   registerKitHandlers({
     getStore,
@@ -14876,6 +14881,7 @@ if (!gotTheLock) {
     sqliteBackupManager?.stopPeriodicBackupLoop();
     libraryIndexService?.stop();
     libraryThumbnailRenderer.dispose();
+    secondBrainAutoUploadService.dispose();
 
     // Close the SQLite database to flush the WAL and release the file lock.
     try {
@@ -15381,6 +15387,7 @@ if (!gotTheLock) {
       });
       await mainVipService.initVipStatus();
       await syncSecondBrainTools();
+      secondBrainAutoUploadService.initialize(getStore());
     } catch (err) {
       console.warn('[Main] initApp: initVipStatus or syncSecondBrainTools failed (non-fatal):', err);
     }

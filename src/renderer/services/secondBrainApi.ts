@@ -342,8 +342,25 @@ export async function fetchUploadPresignedUrl(): Promise<UploadPresignResponse> 
 }
 
 /** 将文件直接 PUT 上传至 TOS 预签名地址（跨主进程请求绕过 CORS 限制） */
-export async function uploadFileToTos(uploadUrl: string, file: File): Promise<void> {
-  const arrayBuffer = await file.arrayBuffer();
+export async function uploadFileToTos(
+  uploadUrl: string,
+  file: File | Blob | ArrayBuffer | Uint8Array,
+  mimeType?: string,
+): Promise<void> {
+  let arrayBuffer: ArrayBuffer;
+  let contentType = mimeType || 'application/octet-stream';
+
+  if (file instanceof ArrayBuffer) {
+    arrayBuffer = file;
+  } else if (file instanceof Uint8Array) {
+    arrayBuffer = file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength) as ArrayBuffer;
+  } else {
+    arrayBuffer = await file.arrayBuffer();
+    if ('type' in file && file.type) {
+      contentType = file.type;
+    }
+  }
+
   const resp = await (window.electron.api.fetch as (opts: {
     url: string;
     method: string;
@@ -353,7 +370,7 @@ export async function uploadFileToTos(uploadUrl: string, file: File): Promise<vo
     url: uploadUrl,
     method: 'PUT',
     headers: {
-      'Content-Type': file.type || 'application/octet-stream',
+      'Content-Type': contentType,
     },
     body: arrayBuffer,
   });
@@ -363,7 +380,6 @@ export async function uploadFileToTos(uploadUrl: string, file: File): Promise<vo
   }
 }
 
-
 /** 创建资料记录 */
 export async function createDocument(params: {
   name: string;
@@ -371,6 +387,30 @@ export async function createDocument(params: {
   tosKey: string;
 }): Promise<void> {
   await post<unknown>('/fmp/document/create', params);
+}
+
+/**
+ * 统一文档上传与创建记录核心方法（手动上传与自动上传 100% 共用此底层方法）
+ */
+export async function uploadAndCreateDocument(params: {
+  name: string;
+  content: File | Blob | ArrayBuffer | Uint8Array;
+  mimeType?: string;
+}): Promise<{ name: string; tosUrl: string; tosKey: string }> {
+  // 1. 获取预签名参数
+  const { upload_url, tos_url, key } = await fetchUploadPresignedUrl();
+
+  // 2. 直传 TOS
+  await uploadFileToTos(upload_url, params.content, params.mimeType);
+
+  // 3. 录入第二大脑开始 AI 萃取
+  await createDocument({
+    name: params.name,
+    tosUrl: tos_url,
+    tosKey: key,
+  });
+
+  return { name: params.name, tosUrl: tos_url, tosKey: key };
 }
 
 /** 获取资料下载地址 */

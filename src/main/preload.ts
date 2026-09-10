@@ -88,6 +88,12 @@ import { OpenClawEngineIpc } from '../shared/openclawEngine/constants';
 import { PermissionIpcChannel } from '../shared/permissions/constants';
 import type { Platform } from '../shared/platform';
 import {
+  type MarkFileSyncedParams,
+  type SecondBrainAutoUploadConfig,
+  SecondBrainAutoUploadIpc,
+  type SecondBrainAutoUploadStatus,
+} from '../shared/secondBrain/constants';
+import {
   type ShareDeploymentAnalyzeProjectInput,
   type ShareDeploymentCreateNodeInput,
   type ShareDeploymentDetectCandidatesInput,
@@ -129,6 +135,28 @@ contextBridge.exposeInMainWorld('electron', {
     get: (key: string) => ipcRenderer.invoke('store:get', key),
     set: (key: string, value: any) => ipcRenderer.invoke('store:set', key, value),
     remove: (key: string) => ipcRenderer.invoke('store:remove', key),
+  },
+  secondBrainAutoUpload: {
+    selectWatchDir: () => ipcRenderer.invoke(SecondBrainAutoUploadIpc.SelectWatchDir),
+    getConfig: () => ipcRenderer.invoke(SecondBrainAutoUploadIpc.GetConfig),
+    setConfig: (config: Partial<SecondBrainAutoUploadConfig>) =>
+      ipcRenderer.invoke(SecondBrainAutoUploadIpc.SetConfig, config),
+    triggerSync: () => ipcRenderer.invoke(SecondBrainAutoUploadIpc.TriggerSync),
+    scanPendingFiles: () => ipcRenderer.invoke(SecondBrainAutoUploadIpc.ScanPendingFiles),
+    readLocalFile: (filePath: string) =>
+      ipcRenderer.invoke(SecondBrainAutoUploadIpc.ReadLocalFile, filePath),
+    markFileSynced: (params: MarkFileSyncedParams) =>
+      ipcRenderer.invoke(SecondBrainAutoUploadIpc.MarkFileSynced, params),
+    onStatusChanged: (callback: (status: SecondBrainAutoUploadStatus) => void) => {
+      const handler = (_event: any, status: SecondBrainAutoUploadStatus) => callback(status);
+      ipcRenderer.on(SecondBrainAutoUploadIpc.StatusChanged, handler);
+      return () => ipcRenderer.removeListener(SecondBrainAutoUploadIpc.StatusChanged, handler);
+    },
+    onTriggerSyncRequested: (callback: () => void) => {
+      const handler = () => callback();
+      ipcRenderer.on(SecondBrainAutoUploadIpc.TriggerSyncRequested, handler);
+      return () => ipcRenderer.removeListener(SecondBrainAutoUploadIpc.TriggerSyncRequested, handler);
+    },
   },
   skills: {
     list: () => ipcRenderer.invoke('skills:list'),

@@ -658,6 +658,40 @@ interface IElectronAPI {
     set: (key: string, value: any) => Promise<void>;
     remove: (key: string) => Promise<void>;
   };
+  secondBrainAutoUpload: {
+    selectWatchDir: () => Promise<{ success: boolean; path?: string; canceled?: boolean; error?: string }>;
+    getConfig: () => Promise<{
+      success: boolean;
+      config?: import('../../shared/secondBrain/constants').SecondBrainAutoUploadConfig;
+      status?: import('../../shared/secondBrain/constants').SecondBrainAutoUploadStatus;
+      error?: string;
+    }>;
+    setConfig: (config: Partial<import('../../shared/secondBrain/constants').SecondBrainAutoUploadConfig>) => Promise<{
+      success: boolean;
+      config?: import('../../shared/secondBrain/constants').SecondBrainAutoUploadConfig;
+      status?: import('../../shared/secondBrain/constants').SecondBrainAutoUploadStatus;
+      error?: string;
+    }>;
+    triggerSync: () => Promise<{ success: boolean; error?: string }>;
+    scanPendingFiles: () => Promise<{
+      success: boolean;
+      items: import('../../shared/secondBrain/constants').SecondBrainPendingItem[];
+      error?: string;
+    }>;
+    readLocalFile: (filePath: string) => Promise<{
+      success: boolean;
+      data?: Uint8Array;
+      error?: string;
+    }>;
+    markFileSynced: (params: import('../../shared/secondBrain/constants').MarkFileSyncedParams) => Promise<{
+      success: boolean;
+      error?: string;
+    }>;
+    onStatusChanged: (
+      callback: (status: import('../../shared/secondBrain/constants').SecondBrainAutoUploadStatus) => void,
+    ) => () => void;
+    onTriggerSyncRequested: (callback: () => void) => () => void;
+  };
   skills: {
     list: () => Promise<{ success: boolean; skills?: Skill[]; error?: string }>;
     setEnabled: (options: {
