@@ -2,9 +2,9 @@ name: Test macOS Code Sign & Notarize
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - '.github/workflows/test-mac-sign-notarize.yml'
+  # push:
+  #   paths:
+  #     - '.github/workflows/test-mac-sign-notarize.yml'
 
 jobs:
   test-electron-builder-sign-notarize:
