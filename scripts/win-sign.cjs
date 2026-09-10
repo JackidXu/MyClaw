@@ -213,56 +213,43 @@ async function signOnceViaOss(serviceConfig, filePath, ossClient) {
   });
 
   console.log(`[WinSign] Requesting sign from service via OSS: ${serviceConfig.baseUrl}/sign-oss`);
-  const targetUrl = new URL(`${serviceConfig.baseUrl}/sign-oss`);
-  const transport = targetUrl.protocol === 'https:' ? https : http;
+  const signUrl = `${serviceConfig.baseUrl}/sign-oss`;
 
-  const signResponse = await new Promise((resolve, reject) => {
-    const postData = JSON.stringify({ ossKey });
-    const req = transport.request(
-      targetUrl,
-      {
-        method: 'POST',
-        headers: {
-          ...serviceConfig.headers,
-          'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(postData),
-        },
-        timeout: REQUEST_TIMEOUT_MS,
-      },
-      (res) => {
-        let respBody = '';
-        res.on('data', (chunk) => {
-          respBody += chunk;
-        });
-        res.on('end', () => {
-          if (res.statusCode !== 200) {
-            reject(new Error(`[WinSign] /sign-oss failed: HTTP ${res.statusCode} ${respBody.slice(0, 300)}`));
-            return;
-          }
-          try {
-            resolve(JSON.parse(respBody));
-          } catch (e) {
-            reject(new Error(`[WinSign] /sign-oss invalid JSON response: ${respBody.slice(0, 300)}`));
-          }
-        });
-      },
-    );
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
-    req.on('timeout', () => {
-      req.destroy(new Error(`[WinSign] request timed out after ${REQUEST_TIMEOUT_MS}ms`));
-    });
-    req.on('error', (err) => {
-      reject(err);
+  let signResponse;
+  try {
+    const resp = await fetch(signUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...serviceConfig.headers,
+      },
+      body: JSON.stringify({ ossKey }),
+      signal: controller.signal,
     });
 
-    req.write(postData);
-    req.end();
-  });
+    if (!resp.ok) {
+      const errText = await resp.text();
+      throw new Error(`[WinSign] /sign-oss failed: HTTP ${resp.status} - ${errText.slice(0, 300)}`);
+    }
+
+    signResponse = await resp.json();
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      throw new Error(`[WinSign] request timed out after ${REQUEST_TIMEOUT_MS}ms`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   const signedOssKey = signResponse.signedOssKey;
   if (!signedOssKey) {
     throw new Error(`[WinSign] service response missing signedOssKey: ${JSON.stringify(signResponse)}`);
   }
+
 
   console.log(`[WinSign] Downloading signed file from OSS: ${signedOssKey}...`);
   await ossClient.get(signedOssKey, tmpPath);
