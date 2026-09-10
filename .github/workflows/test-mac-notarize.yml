@@ -1,0 +1,64 @@
+name: Test macOS Notarize Probe
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-notarize:
+    runs-on: macos-latest
+    steps:
+      - name: Setup macOS Keychain
+        env:
+          CSC_LINK_B64: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        run: |
+          echo "$CSC_LINK_B64" | base64 --decode > /tmp/certificate.p12
+          security unlock-keychain -p "" ~/Library/Keychains/login.keychain-db || true
+          security set-keychain-settings -lut 21600 ~/Library/Keychains/login.keychain-db || true
+          security import /tmp/certificate.p12 -k ~/Library/Keychains/login.keychain-db -P "$CSC_KEY_PASSWORD" -A -T /usr/bin/codesign -T /usr/bin/productbuild
+          security set-key-partition-list -S apple-tool:,apple: -s -k "" ~/Library/Keychains/login.keychain-db || true
+          rm -f /tmp/certificate.p12
+          echo "=== 已加载的签名证书 ==="
+          security find-identity -v -p codesigning
+
+      - name: Create & Sign Minimal Probe App
+        run: |
+          mkdir -p ProbeApp.app/Contents/MacOS
+          cat << 'EOF' > ProbeApp.app/Contents/MacOS/ProbeApp
+          #!/bin/bash
+          echo "HeyClaw Probe"
+          EOF
+          chmod +x ProbeApp.app/Contents/MacOS/ProbeApp
+          cat << 'EOF' > ProbeApp.app/Contents/Info.plist
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleIdentifier</key>
+            <string>com.heyclaw.probe</string>
+            <key>CFBundleName</key>
+            <string>ProbeApp</string>
+            <key>CFBundleVersion</key>
+            <string>1.0.0</string>
+            <key>CFBundleExecutable</key>
+            <string>ProbeApp</string>
+          </dict>
+          </plist>
+          EOF
+          
+          # 正式签名并开启 hardened runtime
+          codesign --force --deep --sign "Developer ID Application: Huizhou Bancheng Media Co., Ltd. (VNH5J9U65J)" --options runtime --keychain ~/Library/Keychains/login.keychain-db ProbeApp.app
+          codesign -vvv --deep --strict ProbeApp.app
+          ditto -c -k --keepParent ProbeApp.app ProbeApp.zip
+
+      - name: Submit to Apple Notarization Service
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          xcrun notarytool submit ProbeApp.zip \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
