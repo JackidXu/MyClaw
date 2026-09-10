@@ -76,12 +76,13 @@ jobs:
       - name: Run electron-builder Sign & Notarize
         working-directory: probe-app
         env:
-          CSC_NAME: "Developer ID Application: Huizhou Bancheng Media Co., Ltd. (VNH5J9U65J)"
+          CSC_NAME: "Huizhou Bancheng Media Co., Ltd. (VNH5J9U65J)"
           CSC_KEYCHAIN: ${{ env.KEYCHAIN_PATH }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           npx electron-builder --mac --arm64 --publish never
+
 
 
