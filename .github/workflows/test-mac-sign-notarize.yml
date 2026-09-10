@@ -1,0 +1,57 @@
+name: Test macOS Code Sign & Notarize
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/test-mac-sign-notarize.yml'
+
+jobs:
+  test-electron-builder-sign-notarize:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+
+      # 构建极简 Electron 空壳，完全不带业务代码与庞大依赖，实现秒级准备
+      - name: Setup Minimal Electron Probe App
+        run: |
+          mkdir -p probe-app
+          cd probe-app
+          cat << 'EOF' > package.json
+          {
+            "name": "heyclaw-probe",
+            "version": "1.0.0",
+            "main": "main.js",
+            "build": {
+              "appId": "com.bcy.claw",
+              "mac": {
+                "category": "public.app-category.productivity",
+                "hardenedRuntime": true,
+                "gatekeeperAssess": false,
+                "notarize": true
+              }
+            }
+          }
+          EOF
+          cat << 'EOF' > main.js
+          const { app } = require('electron');
+          app.whenReady().then(() => app.quit());
+          EOF
+          npm install electron electron-builder --save-dev
+
+      # 真实测试 electron-builder 内置的签名与公证链路（全自动化处理钥匙串与苹果公证）
+      - name: Run electron-builder Sign & Notarize
+        working-directory: probe-app
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          npx electron-builder --mac --arm64 --publish never
+
