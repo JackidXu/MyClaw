@@ -210,7 +210,8 @@ async function get<T>(path: string): Promise<T> {
   const resp = await httpClient.biz.get<SecondBrainResponse<T>>(apiPath);
 
   if (!resp.ok) {
-    throw new Error(`[SecondBrainApi] 请求失败 ${resp.status}: ${apiPath}`);
+    const errDetail = resp.error || (resp.status === 0 ? '网络未连通或连接超时' : `HTTP ${resp.status}`);
+    throw new Error(`[SecondBrainApi] 请求失败 (${errDetail}): ${apiPath}`);
   }
 
   const body = resp.data;
@@ -229,7 +230,8 @@ async function post<T>(path: string, payload?: unknown): Promise<T> {
   const resp = await httpClient.biz.post<SecondBrainResponse<T>>(apiPath, payload);
 
   if (!resp.ok) {
-    throw new Error(`[SecondBrainApi] 请求失败 ${resp.status}: ${apiPath}`);
+    const errDetail = resp.error || (resp.status === 0 ? '网络未连通或连接超时' : `HTTP ${resp.status}`);
+    throw new Error(`[SecondBrainApi] 请求失败 (${errDetail}): ${apiPath}`);
   }
 
   const body = resp.data;

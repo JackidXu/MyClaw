@@ -692,6 +692,37 @@ interface IElectronAPI {
     ) => () => void;
     onTriggerSyncRequested: (callback: () => void) => () => void;
   };
+  recordingCardWifi: {
+    connect: () => Promise<{ success: boolean; error?: string }>;
+    disconnect: (restoreTargetSsid?: string) => Promise<{ success: boolean }>;
+    getFiles: () => Promise<{
+      success: boolean;
+      files?: Array<{
+        file: string;
+        size: number;
+        creat_time: number;
+        duration_ms: number;
+        index: number;
+      }>;
+      error?: string;
+    }>;
+    downloadFile: (filename: string) => Promise<{
+      success: boolean;
+      data?: Uint8Array<ArrayBuffer>;
+      error?: string;
+    }>;
+    cancel: () => Promise<{ success: boolean }>;
+    onDownloadProgress: (
+      callback: (data: import('../../shared/recordingCard/constants').DownloadProgressData) => void,
+    ) => () => void;
+    onInterrupted: (
+      callback: (data: import('../../shared/recordingCard/constants').DownloadInterruptedData) => void,
+    ) => () => void;
+    autoConnect: (ssid: string, password?: string) => Promise<{ success: boolean; error?: string }>;
+    getCurrentWifi: () => Promise<string | null>;
+    restoreWifi: (targetSsid: string) => Promise<boolean>;
+    checkOnline: () => Promise<boolean>;
+  };
   skills: {
     list: () => Promise<{ success: boolean; skills?: Skill[]; error?: string }>;
     setEnabled: (options: {

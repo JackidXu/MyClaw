@@ -88,6 +88,11 @@ import { OpenClawEngineIpc } from '../shared/openclawEngine/constants';
 import { PermissionIpcChannel } from '../shared/permissions/constants';
 import type { Platform } from '../shared/platform';
 import {
+  type DownloadInterruptedData,
+  type DownloadProgressData,
+  RecordingCardWifiIpc,
+} from '../shared/recordingCard/constants';
+import {
   type MarkFileSyncedParams,
   type SecondBrainAutoUploadConfig,
   SecondBrainAutoUploadIpc,
@@ -157,6 +162,31 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.on(SecondBrainAutoUploadIpc.TriggerSyncRequested, handler);
       return () => ipcRenderer.removeListener(SecondBrainAutoUploadIpc.TriggerSyncRequested, handler);
     },
+  },
+  recordingCardWifi: {
+    connect: () => ipcRenderer.invoke(RecordingCardWifiIpc.Connect),
+    disconnect: (restoreTargetSsid?: string) =>
+      ipcRenderer.invoke(RecordingCardWifiIpc.Disconnect, restoreTargetSsid),
+    getFiles: () => ipcRenderer.invoke(RecordingCardWifiIpc.GetFiles),
+    downloadFile: (filename: string) =>
+      ipcRenderer.invoke(RecordingCardWifiIpc.DownloadFile, filename),
+    cancel: () => ipcRenderer.invoke(RecordingCardWifiIpc.Cancel),
+    onDownloadProgress: (callback: (data: DownloadProgressData) => void) => {
+      const handler = (_event: any, data: DownloadProgressData) => callback(data);
+      ipcRenderer.on(RecordingCardWifiIpc.DownloadProgress, handler);
+      return () => ipcRenderer.removeListener(RecordingCardWifiIpc.DownloadProgress, handler);
+    },
+    onInterrupted: (callback: (data: DownloadInterruptedData) => void) => {
+      const handler = (_event: any, data: DownloadInterruptedData) => callback(data);
+      ipcRenderer.on(RecordingCardWifiIpc.Interrupted, handler);
+      return () => ipcRenderer.removeListener(RecordingCardWifiIpc.Interrupted, handler);
+    },
+    autoConnect: (ssid: string, password?: string) =>
+      ipcRenderer.invoke(RecordingCardWifiIpc.AutoConnectWifi, ssid, password),
+    getCurrentWifi: () => ipcRenderer.invoke(RecordingCardWifiIpc.GetCurrentWifi),
+    restoreWifi: (targetSsid: string) =>
+      ipcRenderer.invoke(RecordingCardWifiIpc.RestoreWifi, targetSsid),
+    checkOnline: () => ipcRenderer.invoke(RecordingCardWifiIpc.CheckOnline),
   },
   skills: {
     list: () => ipcRenderer.invoke('skills:list'),

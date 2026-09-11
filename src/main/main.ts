@@ -260,6 +260,7 @@ import { registerMcpHandlers } from './ipcHandlers/mcp';
 import { registerNimQrLoginHandlers } from './ipcHandlers/nimQrLogin';
 import { registerPermissionIpcHandlers } from './ipcHandlers/permissions/handlers';
 import { registerPluginHandlers } from './ipcHandlers/plugins';
+import { registerRecordingCardIpcHandlers } from './ipcHandlers/recordingCard/handlers';
 import {
   getCronJobService,
   initCronJobServiceManager,
@@ -8968,6 +8969,9 @@ if (!gotTheLock) {
   // SecondBrain Auto Upload IPC handlers
   registerSecondBrainIpcHandlers();
 
+  // RecordingCard Wi-Fi IPC handlers
+  registerRecordingCardIpcHandlers();
+
   // Kits IPC handlers
   registerKitHandlers({
     getStore,
@@ -14368,25 +14372,40 @@ if (!gotTheLock) {
       bluetoothCallback = callback;
 
       if (deviceList.length > 0) {
+        // 优先匹配录音卡特征前缀，若无特定前缀则由于已通过 filters 校验直接选用列表首个设备
+        const target =
+          deviceList.find(
+            (d) =>
+              /^(M1|M2|T240|Record)/i.test(d.deviceName) ||
+              d.deviceName.includes('(BLE)') ||
+              d.deviceName.includes('BLE')
+          ) || deviceList[0];
+
         if (bluetoothScanTimer) {
           clearTimeout(bluetoothScanTimer);
           bluetoothScanTimer = null;
         }
         bluetoothCallback = null;
-        callback(deviceList[0].deviceId);
+        console.log(`[Bluetooth Scan] 🎯 命中目标外设: "${target.deviceName}" (${target.deviceId})，立即连接`);
+        callback(target.deviceId);
         return;
       }
 
-      // 初次触发时如果暂未扫描到外设，保持等待 10 秒（后续每次收到新外设会再次触发此事件）
+      // 若初次触发时暂无设备，设置 15 秒超时保护（期间每次扫描到新设备都会重新触发此事件并立即直通连接）
       if (!bluetoothScanTimer) {
         bluetoothScanTimer = setTimeout(() => {
           bluetoothScanTimer = null;
           if (bluetoothCallback) {
             const cb = bluetoothCallback;
             bluetoothCallback = null;
-            cb('');
+            if (deviceList.length > 0) {
+              cb(deviceList[0].deviceId);
+            } else {
+              console.warn('[Bluetooth Scan] 扫描 15 秒超时，未发现可用蓝牙设备');
+              cb('');
+            }
           }
-        }, 10000);
+        }, 15000);
       }
     });
 

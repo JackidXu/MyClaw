@@ -57,9 +57,9 @@ export class HttpClient {
         body: payloadBody,
         target,
         skipAuth,
-      })) as { ok: boolean; status?: number; data?: any };
+      })) as { ok: boolean; status?: number; data?: any; error?: string };
 
-      const status = resp.status || (resp.ok ? 200 : 500);
+      const status = typeof resp.status === 'number' ? resp.status : (resp.ok ? 200 : 500);
 
       // 全局未授权识别：401/403 状态码、PHP 业务状态码 10001、或包体明确提示未授权/未登录
       const data = resp.data;
@@ -75,11 +75,12 @@ export class HttpClient {
         handleUnauthorized();
       }
 
+      const defaultError = status === 0 ? '网络连接异常或未连通互联网' : `HTTP ${status}`;
       return {
         ok: resp.ok,
         status,
         data: resp.data,
-        error: !resp.ok ? (typeof data === 'object' && (data?.error || data?.message) ? (data.error || data.message) : `HTTP ${status}`) : undefined,
+        error: !resp.ok ? (typeof data === 'object' && (data?.error || data?.message) ? (data.error || data.message) : (resp.error || defaultError)) : undefined,
       };
     } catch (err: any) {
       console.error(`[HttpClient] Request failed: ${method} [${target}] ${url}`, err);

@@ -1,18 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
-import {
-  recordingCardBle,
-  type RecordingCardDevice,
-  type RecordingCardFile,
-} from '../../services/recordingCardBle';
+import { wrapRawOpusToOgg } from '../../services/oggOpusEncoder';
+import * as recordingCardBle from '../../services/recordingCardBle';
 import {
   adoptCognitionItem,
   type AudioListItem,
   type CognitionItem,
   type CognitionStats,
   createAudio,
-  createDocument,
   deleteAudio,
   deleteChat,
   deleteDocument,
@@ -27,14 +23,14 @@ import {
   fetchCognitionTrend,
   fetchDocumentList,
   fetchPersonaDetail,
-  fetchUploadPresignedUrl,
   LAYER_LABEL,
   type PersonaData,
   reExtractAudio,
   reExtractDocument,
   rejectCognitionItem,
-  type TrendWeekItem,
+  TrendWeekItem,
   updatePersona,
+  uploadAndCreateDocument,
   uploadFileToTos,
 } from '../../services/secondBrainApi';
 import {
@@ -62,6 +58,19 @@ const MAX_DOCUMENT_FILE_SIZE = 2 * 1024 * 1024;
 
 /** 单次批量上传文档最大数量限制：10 个 */
 const MAX_DOCUMENT_BATCH_COUNT = 10;
+
+/** 录音卡与第二大脑持久化日志输出函数 */
+const logCard = (level: 'info' | 'warn' | 'error', message: string): void => {
+  if (level === 'error') console.error(`[SecondBrain] ${message}`);
+  else if (level === 'warn') console.warn(`[SecondBrain] ${message}`);
+  else console.log(`[SecondBrain] ${message}`);
+
+  try {
+    (window as any)?.electron?.log?.fromRenderer?.(level, 'SecondBrain', message);
+  } catch {
+    // 忽略
+  }
+};
 
 /** 秒级时间戳转可读日期时间 */
 function formatTimestamp(ts: string | number): string {
@@ -185,10 +194,36 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
     };
   }, []);
 
-  /** 录音卡 BLE 相关状态 */
-  const [bleDevice, setBleDevice] = useState<RecordingCardDevice | null>(null);
+  /** 录音卡设备状态 */
+  const [bleDevice, setBleDevice] = useState<{
+    name: string;
+    sn?: string;
+    battery: number;
+    freeKb: number;
+    totalKb: number;
+    wifiSsid: string;
+    wifiPassword: string;
+    wifiApOpened?: boolean;
+    wifiConnected?: boolean;
+  } | null>(null);
   const [bleConnecting, setBleConnecting] = useState(false);
-  const [bleFiles, setBleFiles] = useState<RecordingCardFile[]>([]);
+  const [wifiConnecting, setWifiConnecting] = useState(false);
+  const [wifiGuideCopied, setWifiGuideCopied] = useState(false);
+  const [showUnbindModal, setShowUnbindModal] = useState(false);
+  const [unbinding, setUnbinding] = useState(false);
+  const [showWifiSyncModal, setShowWifiSyncModal] = useState(false);
+  const pendingSyncActionRef = useRef<(() => Promise<void>) | null>(null);
+  const [openingWifiAp, setOpeningWifiAp] = useState(false);
+  const [autoConnectingWifi, setAutoConnectingWifi] = useState(false);
+  const [autoConnectFailed, setAutoConnectFailed] = useState(false);
+  const originalWifiSsidRef = useRef<string | null>(null);
+  const [bleFiles, setBleFiles] = useState<Array<{
+    name: string;
+    file: string;
+    size: number;
+    duration: number;
+    createTime?: number;
+  }>>([]);
   const [bleLoadingFiles, setBleLoadingFiles] = useState(false);
   const [syncingFileNames, setSyncingFileNames] = useState<Set<string>>(new Set());
   const [syncProgress, setSyncProgress] = useState<Record<string, number>>({});
@@ -525,6 +560,16 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
     };
   }, []);
 
+  /** 组件卸载时断开录音卡连接与 Wi-Fi 同步，恢复原有外网与录音卡常态低功耗待机 */
+  useEffect(() => {
+    return () => {
+      // 由主进程原子化保证：先在存活的 Socket 链路上向录音卡发送退出同步与关 Wi-Fi，再有序切回原有外网
+      window.electron.recordingCardWifi.disconnect(originalWifiSsidRef.current).catch(() => {});
+      recordingCardBle.closeWifi().catch(() => {});
+      recordingCardBle.disconnect();
+    };
+  }, []);
+
   /** Tab 切换处理（即刻清空历史列表，重置回第 1 页） */
   const handleTabChange = (tab: MaterialTab) => {
     if (tab === materialTab) return;
@@ -578,13 +623,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
 
     for (const file of validFiles) {
       try {
-        const { upload_url, tos_url, key } = await fetchUploadPresignedUrl();
-        await uploadFileToTos(upload_url, file);
-        await createDocument({
-          name: file.name,
-          tosUrl: tos_url,
-          tosKey: key,
-        });
+        await uploadAndCreateDocument({ name: file.name, content: file });
         successCount++;
       } catch (err: any) {
         console.warn(`[SecondBrainView] 资料 "${file.name}" 上传失败:`, err);
@@ -682,47 +721,374 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
     }
   };
 
-  /** 连接录音卡 */
+  /** 连接录音卡（BLE 常态连接，不自动开启 Wi-Fi AP，电脑保持正常外网） */
   const handleConnectBle = async () => {
     if (bleConnecting) return;
+    const userId = localStorage.getItem('heyclaw_user_id');
+    if (!userId) {
+      showToast('error', '请先登录 HeyClaw 账号后再连接录音卡');
+      return;
+    }
+
     setBleConnecting(true);
+    logCard('info', `>>> 用户发起连接录音卡蓝牙 (userId: ${userId})...`);
     try {
-      const dev = await recordingCardBle.connect(() => {
+      // 1. 扫描与 BLE 握手（获取设备信息并监听物理断开事件）
+      const handshakeInfo = await recordingCardBle.handshake(userId, () => {
+        logCard('warn', '[SecondBrainView] 监听到录音卡物理断开事件，重置连接状态');
         setBleDevice(null);
-        setBleFiles([]);
-        showToast('error', '录音卡已断开连接，请重新连接');
       });
-      setBleDevice(dev);
-      showToast('success', `已成功连接录音卡：${dev.name}`);
-      // 连接后自动拉取文件列表
-      loadBleFiles();
+
+      // 注意：严格遵循官方 App 设计与对接协议第三章，常态下保持低功耗 BLE 连接，电脑正常连接外网！
+      setBleDevice({
+        name: handshakeInfo.deviceName || 'HeyClaw 录音卡',
+        sn: handshakeInfo.sn,
+        battery: handshakeInfo.battery,
+        freeKb: handshakeInfo.freeKb,
+        totalKb: handshakeInfo.totalKb,
+        wifiSsid: handshakeInfo.wifiSsid,
+        wifiPassword: handshakeInfo.wifiPassword,
+        wifiApOpened: false,
+        wifiConnected: false,
+      });
+
+      logCard('info', `<<< 录音卡蓝牙连接与握手成功！(SN: ${handshakeInfo.sn}, 电量: ${handshakeInfo.battery}%, 剩余: ${handshakeInfo.freeKb}KB, 总计: ${handshakeInfo.totalKb}KB)`);
+      showToast('success', '录音卡蓝牙连接成功，正在读取录音列表…');
+
+      // 3. 握手后立即通过 BLE 第三章第2节读取录音卡内音频列表
+      await loadBleFilesViaBle();
     } catch (err: any) {
-      console.warn('[SecondBrainView] 连接录音卡失败:', err);
-      showToast('error', `连接录音卡失败: ${err?.message || '请确认蓝牙已开启并靠近设备'}`);
+      logCard('error', `[SecondBrainView] 连接录音卡失败: ${err?.message || err}`);
+      const rawMsg = err?.message || String(err);
+      const isScanTimeout =
+        rawMsg.includes('User cancelled the requestDevice') ||
+        rawMsg.includes('no device') ||
+        rawMsg.includes('NotFound');
+      const tip = isScanTimeout
+        ? '未搜索到录音卡蓝牙信号。若设备刚结束传输，正在重启蓝牙广播，请稍候片刻再试'
+        : `连接录音卡失败: ${rawMsg || '请确认蓝牙已开启并靠近设备'}`;
+      showToast('error', tip);
     } finally {
       setBleConnecting(false);
     }
   };
 
+  /** 通过 BLE 读取录音卡内文件列表（常态低功耗，严格对齐协议文档第三章第2节） */
+  const loadBleFilesViaBle = async () => {
+    setBleLoadingFiles(true);
+    logCard('info', '>>> 正在通过 BLE 读取录音卡内音频文件列表 (0x1B 0x00)...');
+    try {
+      const files = await recordingCardBle.getFileListViaBle();
+      const list = files.map((f) => ({
+        name: f.file,
+        file: f.file,
+        size: f.size,
+        duration: Math.round(f.duration_ms / 1000),
+        createTime: f.creat_time,
+      }));
+      setBleFiles(list);
+      logCard('info', `<<< 成功读取到 ${list.length} 个录音文件`);
+    } catch (err: any) {
+      logCard('error', `[SecondBrainView] 通过 BLE 获取录音卡文件列表失败: ${err?.message || err}`);
+      showToast('error', `获取录音文件列表失败: ${err?.message || '未知错误'}`);
+    } finally {
+      setBleLoadingFiles(false);
+    }
+  };
+
+  /** 执行自动连接录音卡 Wi-Fi 与 Socket 通道探测 */
+  const runAutoConnectWifi = async (
+    ssid: string,
+    password?: string,
+    syncAction?: () => Promise<void>,
+    retryCount = 0
+  ) => {
+    setAutoConnectingWifi(true);
+    setAutoConnectFailed(false);
+    logCard('info', `>>> [自动连接${retryCount > 0 ? ` 第${retryCount + 1}次重试` : ''}] 开始自动关联录音卡 Wi-Fi: ${ssid}...`);
+
+    try {
+      // 阶段 1: 触发系统底层自动连接 Wi-Fi（macOS: networksetup, Windows: netsh）
+      // 底层已配置 16 秒充裕超时，给足 WPA2 认证与 DHCP 分配时间
+      const autoRes = await window.electron.recordingCardWifi.autoConnect(ssid, password);
+      if (!autoRes.success) {
+        throw new Error(autoRes.error || '系统连接录音卡 Wi-Fi 超时');
+      }
+      logCard('info', `[自动连接] 系统已下发关联 Wi-Fi 指令 (${ssid})，开始探测 Socket 就绪状态...`);
+
+      // 阶段 2: Wi-Fi 关联后，给局域网 IP 与 TCP 服务留出 6 秒轮询重试窗口（每 600ms 探测一次）
+      const socketDeadline = Date.now() + 6000;
+      let socketConnected = false;
+      let lastSocketErr = '';
+
+      while (Date.now() < socketDeadline) {
+        try {
+          const res = await window.electron.recordingCardWifi.connect();
+          if (res.success) {
+            socketConnected = true;
+            break;
+          }
+          lastSocketErr = res.error || '';
+        } catch (sockErr: any) {
+          lastSocketErr = sockErr?.message || String(sockErr);
+        }
+        await new Promise((r) => setTimeout(r, 600));
+      }
+
+      if (!socketConnected) {
+        throw new Error(lastSocketErr || 'Wi-Fi 关联或录音卡 Socket 通道未就绪');
+      }
+
+      // 自动连接与 Socket 通道全部就绪！
+      setBleDevice((prev) => (prev ? { ...prev, wifiConnected: true } : null));
+      setShowWifiSyncModal(false);
+      setAutoConnectingWifi(false);
+      logCard('info', `🎉 [自动连接] 录音卡 Wi-Fi (${ssid}) 自动连接成功，开始极速同步！`);
+      showToast('success', `已自动连接录音卡 Wi-Fi (${ssid})，正在极速同步...`);
+
+      // 执行挂起的同步任务（优先使用传入的 action，兜底使用 ref）
+      const act = syncAction || pendingSyncActionRef.current;
+      if (act) {
+        pendingSyncActionRef.current = null;
+        logCard('info', '[自动连接] 触发执行音频同步下载动作...');
+        await act();
+      }
+    } catch (err: any) {
+      if (retryCount < 1) {
+        logCard('warn', `[自动连接] 首次切网/通道探测未果 (${err?.message || err})，自动静默重试一次...`);
+        await new Promise((r) => setTimeout(r, 1000));
+        return runAutoConnectWifi(ssid, password, syncAction, retryCount + 1);
+      }
+      logCard('warn', `[自动连接] 自动连接未果 (${err?.message || err})，已平滑切换为手动引导模式`);
+      setAutoConnectingWifi(false);
+      setAutoConnectFailed(true);
+    }
+  };
+
+  /** 确保 Wi-Fi 同步通道就绪后再执行同步动作（优先全自动连接，失败时平滑降级手动向导） */
+  const ensureWifiAndRun = async (action: () => Promise<void>) => {
+    if (!bleDevice) return;
+    // 如果已经建立 Wi-Fi TCP 同步通道，直接执行
+    if (bleDevice.wifiConnected) {
+      await action();
+      return;
+    }
+
+    // 记录挂起的动作并唤出向导弹窗
+    pendingSyncActionRef.current = action;
+    setShowWifiSyncModal(true);
+    setAutoConnectingWifi(true);
+    setAutoConnectFailed(false);
+
+    // 记录宿主机当前连接的原外网 Wi-Fi，以便同步完毕后极速切回
+    try {
+      const currentWifi = await window.electron.recordingCardWifi.getCurrentWifi();
+      if (currentWifi && currentWifi !== bleDevice.wifiSsid) {
+        originalWifiSsidRef.current = currentWifi;
+        logCard('info', `[Wi-Fi] 记录当前外网 Wi-Fi 名称: ${currentWifi}`);
+      }
+    } catch {
+      // 忽略
+    }
+
+    // 若录音卡尚未开启 Wi-Fi AP，则通过 BLE 下发 0x0A 0x00 唤醒
+    if (!bleDevice.wifiApOpened) {
+      setOpeningWifiAp(true);
+      logCard('info', `>>> 准备唤醒录音卡开启 Wi-Fi 热点: ${bleDevice.wifiSsid}...`);
+      try {
+        await recordingCardBle.openWifi();
+        setBleDevice((prev) => (prev ? { ...prev, wifiApOpened: true } : null));
+        logCard('info', `<<< 录音卡 Wi-Fi 热点已就绪: ${bleDevice.wifiSsid}，等待广播信号稳定 (1.5s)...`);
+        // 给录音卡 1.5 秒启动 SoftAP 广播，确保宿主机无线网卡能扫描到
+        await new Promise((r) => setTimeout(r, 1500));
+      } catch (err: any) {
+        logCard('error', `[SecondBrainView] 开启 Wi-Fi 热点失败: ${err?.message || err}`);
+        showToast('error', `开启 Wi-Fi 热点失败: ${err?.message || '未知错误'}`);
+        setAutoConnectingWifi(false);
+        setAutoConnectFailed(true);
+        setOpeningWifiAp(false);
+        return;
+      } finally {
+        setOpeningWifiAp(false);
+      }
+    }
+
+    // 热点就绪后，立即尝试后台全自动连接并传入当前待执行任务
+    void runAutoConnectWifi(bleDevice.wifiSsid, bleDevice.wifiPassword, action);
+  };
+
+  /** 用户确认已连接热点并建立 Wi-Fi TCP 同步通道 */
+  const handleConfirmWifiAndSync = async () => {
+    if (!bleDevice) return;
+    setWifiConnecting(true);
+    logCard('info', '>>> 用户确认连入热点，正在建立 Wi-Fi TCP 同步通道...');
+    try {
+      const res = await window.electron.recordingCardWifi.connect();
+      if (!res.success) {
+        throw new Error(res.error || '建立 Wi-Fi 同步连接失败');
+      }
+      setBleDevice((prev) => (prev ? { ...prev, wifiConnected: true } : null));
+      setShowWifiSyncModal(false);
+      setAutoConnectingWifi(false);
+      logCard('info', '<<< Wi-Fi TCP 同步通道连接成功！');
+      showToast('success', '已成功连接录音卡 Wi-Fi 同步通道，开始极速同步');
+
+      // 执行挂起的同步任务
+      if (pendingSyncActionRef.current) {
+        const act = pendingSyncActionRef.current;
+        pendingSyncActionRef.current = null;
+        logCard('info', '[手动连接] 触发执行音频同步下载动作...');
+        await act();
+      }
+    } catch (err: any) {
+      logCard('error', `[SecondBrainView] 建立 Wi-Fi 同步连接失败: ${err?.message || err}`);
+      showToast('error', `连接同步失败: ${err?.message || '请确认电脑已连入录音卡 Wi-Fi 热点'}`);
+    } finally {
+      setWifiConnecting(false);
+    }
+  };
+
+  // 当 Wi-Fi 极速同步向导弹窗处于手动引导模式时，开启后台静默探测
+  // 一旦检测到电脑连入录音卡热点，自动完成握手、关闭弹窗并触发极速同步，实现无感体验
+  useEffect(() => {
+    if (!showWifiSyncModal || autoConnectingWifi || wifiConnecting || !bleDevice || bleDevice.wifiConnected) {
+      return;
+    }
+
+    let isMounted = true;
+    const probeTimer = setInterval(async () => {
+      try {
+        const res = await window.electron.recordingCardWifi.connect();
+        if (res.success && isMounted) {
+          clearInterval(probeTimer);
+          setBleDevice((prev) => (prev ? { ...prev, wifiConnected: true } : null));
+          setShowWifiSyncModal(false);
+          logCard('info', '🎉 [静默探测] 侦测到电脑已连入录音卡热点，自动开启极速同步！');
+          showToast('success', '已检测到连入录音卡 Wi-Fi，正在极速同步...');
+
+          const act = pendingSyncActionRef.current;
+          if (act) {
+            pendingSyncActionRef.current = null;
+            logCard('info', '[静默探测] 触发执行音频同步下载动作...');
+            await act();
+          }
+        }
+      } catch {
+        // 未连上时静默忽略
+      }
+    }, 1200);
+
+    return () => {
+      isMounted = false;
+      clearInterval(probeTimer);
+    };
+  }, [showWifiSyncModal, autoConnectingWifi, wifiConnecting, bleDevice]);
+
+  /** 关闭 Wi-Fi 热点并断开 Socket（恢复常态低功耗 BLE 状态，电脑切回原有网络，并自动静默回连蓝牙） */
+  const handleCloseWifi = async (showTipOrEvent?: boolean | React.MouseEvent) => {
+    const showTip = typeof showTipOrEvent === 'boolean' ? showTipOrEvent : true;
+    logCard('info', '>>> 正在关闭 Wi-Fi 极速同步并断开 Socket 连接...');
+    try {
+      // 由主进程保证：先在存活的 Socket 链路上向录音卡发送退出同步与关 Wi-Fi，再将电脑网络切回原有 Wi-Fi
+      await window.electron.recordingCardWifi.disconnect(originalWifiSsidRef.current);
+    } catch {
+      // 忽略
+    }
+    try {
+      await recordingCardBle.closeWifi();
+    } catch {
+      // 忽略
+    }
+    setBleDevice((prev) => (prev ? { ...prev, wifiConnected: false, wifiApOpened: false } : null));
+
+    if (showTip) {
+      showToast('success', '已关闭 Wi-Fi 极速同步，录音卡已恢复常态低功耗蓝牙模式');
+    }
+
+    // 录音卡关闭 Wi-Fi 芯片后会自动重新开启 BLE 广播，自动静默回连（重试 5 次，每次间隔 1 秒）
+    logCard('info', '>>> 开始尝试自动静默回连录音卡蓝牙 (重试 5 次)...');
+    try {
+      const reconnected = await recordingCardBle.reconnect(5, 1000);
+      setBleDevice({
+        name: reconnected.deviceName || 'HeyClaw 录音卡',
+        sn: reconnected.sn,
+        battery: reconnected.battery,
+        freeKb: reconnected.freeKb,
+        totalKb: reconnected.totalKb,
+        wifiSsid: reconnected.wifiSsid,
+        wifiPassword: reconnected.wifiPassword,
+        wifiApOpened: false,
+        wifiConnected: false,
+      });
+      logCard('info', `🎉 [Wi-Fi] 录音卡蓝牙已成功自动无感回连！(SN: ${reconnected.sn}, 电量: ${reconnected.battery}%)`);
+    } catch (reconnectErr: any) {
+      logCard('warn', `[Wi-Fi] 自动回连录音卡蓝牙未成功: ${reconnectErr?.message || reconnectErr}`);
+      setBleDevice(null);
+    }
+  };
+
+  /** 等待网络恢复连通外网（调用底层专用静默探针，0 业务请求，0 错误日志） */
+  const waitForInternetOnline = async (maxWaitMs = 25000): Promise<boolean> => {
+    const startTime = Date.now();
+    while (Date.now() - startTime < maxWaitMs) {
+      try {
+        const isOnline = await window.electron.recordingCardWifi.checkOnline();
+        if (isOnline) {
+          return true;
+        }
+      } catch {
+        // 网络还未真正连通，等待下一次轮询
+      }
+      await new Promise((r) => setTimeout(r, 800));
+    }
+    return false;
+  };
+
   /** 断开录音卡连接 */
-  const handleDisconnectBle = () => {
+  const handleDisconnectBle = async () => {
+    try {
+      await window.electron.recordingCardWifi.disconnect(originalWifiSsidRef.current);
+    } catch {
+      // 忽略
+    }
+    try {
+      await recordingCardBle.closeWifi();
+    } catch {
+      // 忽略
+    }
     recordingCardBle.disconnect();
     setBleDevice(null);
     setBleFiles([]);
+    setShowWifiSyncModal(false);
     showToast('success', '录音卡已断开连接');
   };
 
-  /** 读取录音卡内文件列表 */
-  const loadBleFiles = async () => {
-    setBleLoadingFiles(true);
+  /** 解除录音卡绑定（清除配对码，保留录音卡内原始音频） */
+  const handleUnbindBle = async () => {
+    setUnbinding(true);
     try {
-      const list = await recordingCardBle.getFileList();
-      setBleFiles(list);
+      try {
+        await window.electron.recordingCardWifi.disconnect(originalWifiSsidRef.current);
+      } catch {
+        // 忽略
+      }
+      try {
+        await recordingCardBle.closeWifi();
+      } catch {
+        // 忽略
+      }
+      await recordingCardBle.unbind();
+      recordingCardBle.disconnect();
+      setBleDevice(null);
+      setBleFiles([]);
+      setShowUnbindModal(false);
+      setShowWifiSyncModal(false);
+      showToast('success', '已解除录音卡绑定');
     } catch (err: any) {
-      console.warn('[SecondBrainView] 获取录音卡文件列表失败:', err);
-      showToast('error', `获取录音卡文件列表失败: ${err?.message || '未知错误'}`);
+      console.warn('[SecondBrainView] 解绑录音卡失败:', err);
+      showToast('error', `解绑失败: ${err?.message || '未知错误'}`);
     } finally {
-      setBleLoadingFiles(false);
+      setUnbinding(false);
     }
   };
 
@@ -754,35 +1120,71 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
     );
   };
 
-  /** 单个文件同步：下载 -> 上传 TOS -> 创建音频记录 */
-  const handleSyncOneBleFile = async (file: RecordingCardFile) => {
+  /** 单个文件同步：通过 Wi-Fi 下载 -> 封装标准 Ogg Opus -> 关闭 Wi-Fi 退出同步切回蓝牙 -> 外网上传 TOS -> 创建音频记录 */
+  const handleSyncOneBleFile = async (file: { name: string; file: string; size: number }) => {
     if (syncingFileNames.has(file.name)) return;
     const base = file.name.replace(/\.[^.]*$/, '');
-    const uploadFileName = `${base}.wav`;
+    const uploadFileName = `${base}.opus`;
 
     setSyncingFileNames((prev) => new Set(prev).add(file.name));
     setSyncProgress((prev) => ({ ...prev, [file.name]: 1 }));
 
+    let removeProgressListener: (() => void) | null = null;
     try {
-      // 1. 从录音卡通过 BLE 下载
-      const wavBytes = await recordingCardBle.downloadFile(file.name, (progress) => {
-        setSyncProgress((prev) => ({ ...prev, [file.name]: Math.min(95, Math.max(1, progress)) }));
+      logCard('info', `>>> [单文件同步] 开始同步录音: ${file.name} (大小: ${file.size} 字节)...`);
+      // 阶段 1: 注册下载进度监听，通过 Wi-Fi TCP 高速下载音频数据
+      removeProgressListener = window.electron.recordingCardWifi.onDownloadProgress((data) => {
+        if (data.filename === file.file) {
+          const percent = file.size > 0 ? Math.min(95, Math.round((data.receivedBytes / file.size) * 95)) : 50;
+          setSyncProgress((prev) => ({ ...prev, [file.name]: Math.max(1, percent) }));
+        }
       });
 
-      // 2. 获取预签名上传参数
+      const res = await window.electron.recordingCardWifi.downloadFile(file.file);
+      if (!res.success || !res.data) {
+        throw new Error(res.error || '下载文件数据为空');
+      }
+      setSyncProgress((prev) => ({ ...prev, [file.name]: 96 }));
+      logCard('info', `<<< [单文件同步] 音频 "${file.name}" 下载成功，原始字节数: ${res.data.byteLength}`);
+
+      // 阶段 1.5: 录音卡传输的是 80 字节/帧的 Raw Opus 裸流，封装为标准 Ogg Opus 容器
+      logCard('info', `[单文件同步] 正在将 Raw Opus 音频数据封装为标准 Ogg Opus 格式...`);
+      const oggOpusBytes = wrapRawOpusToOgg(res.data);
+      logCard('info', `[单文件同步] Ogg Opus 封装完成，封装后字节数: ${oggOpusBytes.byteLength}`);
+
+      // 阶段 2: 下载完成，立即退出音频同步模式并关闭 Wi-Fi，让录音卡切回蓝牙模式，电脑切回外网
+      await handleCloseWifi(false);
+      showToast('success', `录音 "${uploadFileName}" 已下载完成，正在切回外网上传云端...`);
+      logCard('info', `[单文件同步] 已退出 Wi-Fi 并触发自动回连蓝牙，开始等待外网恢复...`);
+
+      // 阶段 3: 等待电脑网络切回并连通外网
+      const online = await waitForInternetOnline(25000);
+      logCard('info', `[单文件同步] 外网连通性探测结果: online=${online}`);
+      if (!online) {
+        throw new Error('切回外网超时，电脑尚未连通互联网，请检查网络设置后重试');
+      }
+
+      // 阶段 4: 获取预签名参数并上传到 TOS
+      logCard('info', `[单文件同步] 正在请求 TOS 预签名上传地址...`);
       const { upload_url, tos_url, key } = await fetchAudioUploadPresignedUrl();
 
-      // 3. 上传到 TOS
-      const wavBlob = new Blob([wavBytes.buffer as ArrayBuffer], { type: 'audio/wav' });
-      const wavFile = new File([wavBlob], uploadFileName, { type: 'audio/wav' });
-      await uploadFileToTos(upload_url, wavFile);
+      const oggBuffer = oggOpusBytes.buffer.slice(
+        oggOpusBytes.byteOffset,
+        oggOpusBytes.byteOffset + oggOpusBytes.byteLength
+      ) as ArrayBuffer;
+      const oggBlob = new Blob([oggBuffer], { type: 'audio/ogg' });
+      const oggFile = new File([oggBlob], uploadFileName, { type: 'audio/ogg' });
+      logCard('info', `[单文件同步] 正在上传音频到 TOS: key=${key}...`);
+      await uploadFileToTos(upload_url, oggFile);
+      logCard('info', `[单文件同步] TOS 上传成功，正在创建第二大脑音频记录...`);
 
-      // 4. 创建音频记录并触发 ASR 萃取
+      // 阶段 5: 创建音频记录并触发 ASR 萃取
       await createAudio({
         name: uploadFileName,
         tosUrl: tos_url,
         tosKey: key,
       });
+      logCard('info', `🎉 [单文件同步] 录音 "${uploadFileName}" 同步与创建成功！`);
 
       setSyncProgress((prev) => ({ ...prev, [file.name]: 100 }));
       setSyncedFileNames((prev) => new Set(prev).add(file.name).add(uploadFileName));
@@ -790,9 +1192,14 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
       loadDocs('录音卡', 1);
       loadStats();
     } catch (err: any) {
-      console.warn(`[SecondBrainView] 同步录音 "${file.name}" 失败:`, err);
+      logCard('error', `[单文件同步] 同步录音 "${file.name}" 失败: ${err?.message || err}`);
+      // 发生异常时也确保切回蓝牙与关闭 Wi-Fi，防止电脑被一直卡在无外网热点上
+      await handleCloseWifi(false);
       showToast('error', `同步 "${file.name}" 失败: ${err?.message || '未知错误'}`);
     } finally {
+      if (removeProgressListener) {
+        removeProgressListener();
+      }
       setSyncingFileNames((prev) => {
         const next = new Set(prev);
         next.delete(file.name);
@@ -808,16 +1215,129 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
     }
   };
 
-  /** 全部同步 */
+  /** 全部同步：一次性 Wi-Fi 极速下载全部音频 -> 关闭 Wi-Fi 切回外网与蓝牙 -> 批量上传云端 */
   const handleSyncAllBleFiles = async () => {
     const unsynced = bleFiles.filter((f) => !isFileSynced(f.name) && !syncingFileNames.has(f.name));
     if (unsynced.length === 0) {
       showToast('success', '所有录音文件均已同步完成');
       return;
     }
-    for (const f of unsynced) {
-      await handleSyncOneBleFile(f);
+
+    logCard('info', `>>> [批量同步] 开始批量同步录音，待同步数量: ${unsynced.length}`);
+    const downloadedList: {
+      file: (typeof bleFiles)[number];
+      data: Uint8Array;
+      uploadFileName: string;
+    }[] = [];
+
+    let removeProgressListener: (() => void) | null = null;
+
+    try {
+      // 阶段 1: 在 Wi-Fi 热点局域网下，高速逐个下载所有选中的音频
+      for (const f of unsynced) {
+        setSyncingFileNames((prev) => new Set(prev).add(f.name));
+        setSyncProgress((prev) => ({ ...prev, [f.name]: 1 }));
+        logCard('info', `[批量同步] 开始下载文件: ${f.name} (大小: ${f.size} 字节)...`);
+
+        if (removeProgressListener) {
+          removeProgressListener();
+        }
+        removeProgressListener = window.electron.recordingCardWifi.onDownloadProgress((data) => {
+          if (data.filename === f.file) {
+            const percent = f.size > 0 ? Math.min(95, Math.round((data.receivedBytes / f.size) * 95)) : 50;
+            setSyncProgress((prev) => ({ ...prev, [f.name]: Math.max(1, percent) }));
+          }
+        });
+
+        try {
+          const res = await window.electron.recordingCardWifi.downloadFile(f.file);
+          if (res.success && res.data) {
+            const base = f.name.replace(/\.[^.]*$/, '');
+            const uploadFileName = `${base}.opus`;
+            const oggOpusBytes = wrapRawOpusToOgg(res.data);
+            downloadedList.push({ file: f, data: oggOpusBytes, uploadFileName });
+            setSyncProgress((prev) => ({ ...prev, [f.name]: 96 }));
+            logCard('info', `[批量同步] 文件 "${f.name}" 下载并封装 Ogg 成功，字节数: ${oggOpusBytes.byteLength}`);
+          } else {
+            logCard('warn', `[批量同步] 下载 "${f.name}" 失败: ${res.error}`);
+          }
+        } catch (downloadErr: any) {
+          logCard('warn', `[批量同步] 下载 "${f.name}" 异常: ${downloadErr?.message || downloadErr}`);
+        }
+      }
+
+      if (downloadedList.length === 0) {
+        throw new Error('未成功下载到任何音频数据');
+      }
+
+      // 阶段 2: 下载完毕，立即退出同步模式并关闭 Wi-Fi，让录音卡切回蓝牙模式，电脑切回外网
+      logCard('info', `[批量同步] 已成功下载 ${downloadedList.length} 份录音，开始关闭 Wi-Fi 并恢复蓝牙...`);
+      await handleCloseWifi(false);
+      showToast('success', `已成功下载 ${downloadedList.length} 份录音，正在切回外网上传云端...`);
+
+      // 阶段 3: 等待电脑切回互联网
+      logCard('info', '[批量同步] 正在等待电脑网络恢复连通外网...');
+      const online = await waitForInternetOnline(25000);
+      logCard('info', `[批量同步] 外网连通性探测结果: online=${online}`);
+      if (!online) {
+        throw new Error('切回外网超时，电脑尚未连通互联网，请检查网络设置后重试');
+      }
+
+      // 阶段 4: 外网恢复后，批量上传至 TOS 并创建音频记录
+      logCard('info', `[批量同步] 外网已就绪，开始批量上传 ${downloadedList.length} 份音频到云端...`);
+      for (const item of downloadedList) {
+        try {
+          logCard('info', `[批量同步] 正在上传: ${item.uploadFileName}...`);
+          const { upload_url, tos_url, key } = await fetchAudioUploadPresignedUrl();
+          const oggBuffer = item.data.buffer.slice(
+            item.data.byteOffset,
+            item.data.byteOffset + item.data.byteLength
+          ) as ArrayBuffer;
+          const oggBlob = new Blob([oggBuffer], { type: 'audio/ogg' });
+          const oggFile = new File([oggBlob], item.uploadFileName, { type: 'audio/ogg' });
+          await uploadFileToTos(upload_url, oggFile);
+
+          await createAudio({
+            name: item.uploadFileName,
+            tosUrl: tos_url,
+            tosKey: key,
+          });
+
+          setSyncProgress((prev) => ({ ...prev, [item.file.name]: 100 }));
+          setSyncedFileNames((prev) => new Set(prev).add(item.file.name).add(item.uploadFileName));
+          logCard('info', `[批量同步] "${item.uploadFileName}" 上传并创建记录成功！`);
+        } catch (uploadErr: any) {
+          logCard('error', `[批量同步] 上传 "${item.file.name}" 失败: ${uploadErr?.message || uploadErr}`);
+        }
+      }
+
+      logCard('info', `🎉 [批量同步] 录音批量同步全部完成，成功处理 ${downloadedList.length} 份音频！`);
+      showToast('success', `录音批量同步完成，已成功上传 ${downloadedList.length} 份音频并排队萃取`);
+      loadDocs('录音卡', 1);
+      loadStats();
+    } catch (err: any) {
+      logCard('error', `[批量同步] 批量同步录音卡文件失败: ${err?.message || err}`);
+      await handleCloseWifi(false);
+      showToast('error', `批量同步失败: ${err?.message || '未知错误'}`);
+    } finally {
+      if (removeProgressListener) {
+        removeProgressListener();
+      }
+      setSyncingFileNames(new Set());
+      setTimeout(() => {
+        setSyncProgress({});
+      }, 2000);
     }
+  };
+
+  /** 点击单个音频同步（包装 Wi-Fi 连接检查） */
+  const handleTriggerSyncOne = (file: { name: string; file: string; size: number }) => {
+    ensureWifiAndRun(() => handleSyncOneBleFile(file));
+  };
+
+  /** 点击全部音频同步（包装 Wi-Fi 连接检查） */
+  const handleTriggerSyncAll = () => {
+    ensureWifiAndRun(() => handleSyncAllBleFiles());
   };
 
   /** 原型款通用居中分页器 */
@@ -1340,18 +1860,10 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                   ))}
                 </div>
 
-                {/* 仅在文档 Tab 下展示上传文档按钮 */}
+                {/* 仅在文档 Tab 下展示上传与自动同步按钮 */}
                 {materialTab === '文档' && (
-                  <div className="relative group mb-1.5">
-                    <button
-                      type="button"
-                      disabled={uploading}
-                      onClick={handleUploadClick}
-                      className="bg-[#4a8fe7] hover:bg-[#3b7ed4] text-white font-bold text-xs px-3.5 py-1.5 rounded-lg shadow-2xs transition-colors flex items-center gap-1 disabled:opacity-50 cursor-pointer"
-                    >
-                      <span>+</span>
-                      <span>{uploading ? '上传中…' : '上传文档'}</span>
-                    </button>
+                  <div className="flex items-center gap-2 mb-1.5">
+                    {/* 自动同步设置入口 */}
                     <button
                       type="button"
                       onClick={() => setShowAutoUploadModal(true)}
@@ -1360,8 +1872,21 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                       <span>📁</span>
                       <span>自动同步</span>
                     </button>
-                    <div className="pointer-events-none absolute right-0 bottom-full mb-2 z-20 whitespace-nowrap rounded-xl bg-black/90 dark:bg-black px-3.5 py-1.5 text-xs font-medium text-white shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200">
-                      支持 .docx / .md / .txt（单文件最大 2MB，每批最多 10 个）
+
+                    {/* 手动上传文档按钮 */}
+                    <div className="relative group">
+                      <button
+                        type="button"
+                        disabled={uploading}
+                        onClick={handleUploadClick}
+                        className="bg-[#4a8fe7] hover:bg-[#3b7ed4] text-white font-bold text-xs px-3.5 py-1.5 rounded-lg shadow-2xs transition-colors flex items-center gap-1 disabled:opacity-50 cursor-pointer"
+                      >
+                        <span>+</span>
+                        <span>{uploading ? '上传中…' : '上传文档'}</span>
+                      </button>
+                      <div className="pointer-events-none absolute right-0 bottom-full mb-2 z-20 whitespace-nowrap rounded-xl bg-black/90 dark:bg-black px-3.5 py-1.5 text-xs font-medium text-white shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200">
+                        支持 .docx / .md / .txt（单文件最大 2MB，每批最多 10 个）
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1392,28 +1917,69 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                   <div className="space-y-4 pt-1">
                     {/* 设备信息卡 */}
                     {bleDevice ? (
-                      <div className="flex items-center justify-between gap-3 p-3.5 rounded-xl border border-border bg-surface-raised/40">
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="w-10 h-10 rounded-lg bg-[#FF6B35]/10 text-[#FF6B35] flex items-center justify-center text-lg shrink-0">
-                            🎙
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between gap-3 p-3.5 rounded-xl border border-border bg-surface-raised/40">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-10 h-10 rounded-lg bg-[#FF6B35]/10 text-[#FF6B35] flex items-center justify-center text-lg shrink-0">
+                              🎙
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-xs md:text-sm font-bold text-foreground truncate">{bleDevice.name}</span>
+                                {bleDevice.wifiConnected ? (
+                                  <span className="text-[10px] font-bold text-[#2d8a5f] bg-[#2d8a5f]/12 px-1.5 py-0.5 rounded">
+                                    Wi-Fi 极速同步已就绪
+                                  </span>
+                                ) : bleDevice.wifiApOpened ? (
+                                  <span className="text-[10px] font-bold text-[#e67e22] bg-[#e67e22]/12 px-1.5 py-0.5 rounded">
+                                    热点已开启 · 待连接
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] font-bold text-[#1e6ba8] bg-[#1e6ba8]/12 px-1.5 py-0.5 rounded">
+                                    蓝牙已连接
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[11px] text-secondary mt-0.5">
+                                电量 {bleDevice.battery}% · 剩余存储 {(bleDevice.freeKb / (1024 * 1024)).toFixed(1)}GB · 总容量 {(bleDevice.totalKb / (1024 * 1024)).toFixed(1)}GB
+                              </div>
+                            </div>
                           </div>
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-xs md:text-sm font-bold text-foreground truncate">{bleDevice.name}</span>
-                              <span className="text-[10px] font-bold text-[#2d8a5f] bg-[#2d8a5f]/12 px-1.5 py-0.5 rounded">已连接</span>
-                            </div>
-                            <div className="text-[11px] text-secondary mt-0.5">
-                              电量 {bleDevice.battery === 110 ? '充电中' : `${bleDevice.battery}%`} · 剩余存储 {(bleDevice.remainKb / (1024 * 1024)).toFixed(1)}GB · 固件 {bleDevice.firmware || 'v1.0.0'}
-                            </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            {bleDevice.wifiConnected ? (
+                              <button
+                                type="button"
+                                onClick={handleCloseWifi}
+                                className="rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs font-semibold text-secondary hover:bg-surface-raised transition-colors cursor-pointer"
+                                title="关闭录音卡热点，恢复低功耗蓝牙模式"
+                              >
+                                关闭 Wi-Fi
+                              </button>
+                            ) : bleDevice.wifiApOpened ? (
+                              <button
+                                type="button"
+                                onClick={() => setShowWifiSyncModal(true)}
+                                className="rounded-lg border border-primary/40 bg-primary/10 px-2.5 py-1.5 text-xs font-semibold text-primary hover:bg-primary/20 transition-colors cursor-pointer"
+                              >
+                                连接热点
+                              </button>
+                            ) : null}
+                            <button
+                              type="button"
+                              onClick={handleDisconnectBle}
+                              className="rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs font-semibold text-secondary hover:bg-surface-raised transition-colors cursor-pointer"
+                            >
+                              断开连接
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setShowUnbindModal(true)}
+                              className="rounded-lg border border-destructive/30 bg-destructive/5 px-2.5 py-1.5 text-xs font-semibold text-destructive hover:bg-destructive/15 transition-colors cursor-pointer"
+                            >
+                              解除绑定
+                            </button>
                           </div>
                         </div>
-                        <button
-                          type="button"
-                          onClick={handleDisconnectBle}
-                          className="rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-secondary hover:bg-surface-raised hover:text-destructive transition-colors shrink-0 cursor-pointer"
-                        >
-                          断开连接
-                        </button>
                       </div>
                     ) : (
                       <div className="flex items-center justify-between gap-3 p-3.5 rounded-xl border border-dashed border-border bg-surface-raised/20">
@@ -1423,7 +1989,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                           </div>
                           <div>
                             <div className="text-xs md:text-sm font-bold text-foreground">录音卡未连接</div>
-                            <div className="text-[11px] text-secondary mt-0.5">连接后可直接读取设备内录音并一键萃取</div>
+                            <div className="text-[11px] text-secondary mt-0.5">通过低功耗蓝牙读取录音列表，按需 Wi-Fi 极速同步并一键萃取</div>
                           </div>
                         </div>
                         <button
@@ -1437,7 +2003,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                       </div>
                     )}
 
-                    {/* 录音卡文件列表工具栏（当有设备连接且有文件时） */}
+                    {/* 录音卡文件列表工具栏（只要蓝牙已连接即常态展示） */}
                     {bleDevice && (
                       <div className="space-y-2.5">
                         <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -1452,14 +2018,14 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                             <button
                               type="button"
                               disabled={bleLoadingFiles}
-                              onClick={loadBleFiles}
+                              onClick={loadBleFilesViaBle}
                               className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs font-semibold text-secondary hover:bg-surface-raised transition-colors cursor-pointer"
                             >
-                              {bleLoadingFiles ? '刷新中…' : '刷新列表'}
+                              {bleLoadingFiles ? '读取中…' : '刷新列表'}
                             </button>
                             <button
                               type="button"
-                              onClick={handleSyncAllBleFiles}
+                              onClick={handleTriggerSyncAll}
                               className="rounded-lg bg-[#FF6B35] hover:bg-[#E85A28] px-3 py-1 text-xs font-bold text-white shadow-2xs transition-colors cursor-pointer"
                             >
                               全部同步
@@ -1469,7 +2035,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
 
                         {/* 录音卡内文件项列表 */}
                         {bleLoadingFiles ? (
-                          <div className="py-6 text-center text-xs text-secondary/60">读取录音卡文件列表中…</div>
+                          <div className="py-6 text-center text-xs text-secondary/60">正在通过蓝牙读取录音卡文件列表中…</div>
                         ) : bleFiles.length === 0 ? (
                           <div className="py-6 text-center text-xs text-secondary">录音卡内暂无录音文件</div>
                         ) : (
@@ -1522,7 +2088,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                                     <button
                                       type="button"
                                       disabled={isSynced || isSyncing}
-                                      onClick={() => handleSyncOneBleFile(file)}
+                                      onClick={() => handleTriggerSyncOne(file)}
                                       className={`rounded-lg px-2.5 py-1 text-xs font-bold transition-colors cursor-pointer ${
                                         isSynced
                                           ? 'border border-border text-secondary/40 cursor-not-allowed'
@@ -2110,6 +2676,215 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* 解除录音卡绑定确认弹窗 */}
+      {showUnbindModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+          <div className="w-full max-w-sm rounded-2xl bg-surface border border-border p-5 shadow-2xl space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-destructive/10 text-destructive flex items-center justify-center text-lg shrink-0">
+                ⚠️
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-foreground">解除录音卡绑定</h3>
+                <p className="text-xs text-secondary mt-0.5">此操作不会删除设备内音频</p>
+              </div>
+            </div>
+            <p className="text-xs text-secondary leading-relaxed">
+              确定要解除与当前录音卡的绑定吗？解绑后将清除与本电脑的配对记录，录音卡内存储的原始录音将完整保留。
+            </p>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                disabled={unbinding}
+                onClick={() => setShowUnbindModal(false)}
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-border hover:bg-surface-raised transition-colors cursor-pointer"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                disabled={unbinding}
+                onClick={handleUnbindBle}
+                className="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-destructive hover:bg-destructive/90 text-white shadow-2xs transition-colors disabled:opacity-50 cursor-pointer"
+              >
+                {unbinding ? '解绑中…' : '确认解绑'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 录音卡 Wi-Fi 极速同步向导弹窗 */}
+      {showWifiSyncModal && bleDevice && createPortal(
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in duration-200"
+          onClick={() => !wifiConnecting && setShowWifiSyncModal(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-surface border border-border p-6 shadow-2xl space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <div className="flex items-center gap-2.5">
+                <span className="text-xl">📡</span>
+                <div>
+                  <h3 className="text-sm font-bold text-foreground">
+                    {autoConnectingWifi ? '正在自动连接录音卡 Wi-Fi' : '开启 Wi-Fi 极速同步'}
+                  </h3>
+                  <p className="text-[11px] text-secondary">音频文件较大，通过专用高速热点毫秒级传输</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={wifiConnecting}
+                onClick={() => {
+                  setShowWifiSyncModal(false);
+                  setAutoConnectingWifi(false);
+                }}
+                className="text-secondary hover:text-foreground text-sm cursor-pointer disabled:opacity-40"
+              >
+                ✕
+              </button>
+            </div>
+
+            {openingWifiAp ? (
+              <div className="py-8 flex flex-col items-center justify-center gap-3 text-xs text-secondary">
+                <div className="w-6 h-6 border-2 border-primary/20 border-t-primary rounded-full animate-spin" />
+                <span>正在唤醒录音卡高速 Wi-Fi 热点，请稍候…</span>
+              </div>
+            ) : autoConnectingWifi ? (
+              <div className="py-6 flex flex-col items-center justify-center gap-3.5 text-center">
+                <div className="relative flex items-center justify-center">
+                  <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-xl">
+                    📡
+                  </div>
+                  <div className="absolute inset-0 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+                </div>
+                <div className="space-y-1">
+                  <div className="text-xs font-bold text-foreground">
+                    正在尝试自动连接录音卡热点
+                  </div>
+                  <div className="text-[11px] text-primary font-mono font-bold">
+                    {bleDevice.wifiSsid}
+                  </div>
+                </div>
+                <div className="text-[11px] text-secondary/80 max-w-[280px] leading-relaxed">
+                  系统正在尝试自动直连。通常首次需连接 1 次，电脑记住热点后后续将免密自动同步。
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAutoConnectingWifi(false);
+                    setAutoConnectFailed(true);
+                  }}
+                  className="mt-1 text-[11px] font-semibold text-primary hover:underline cursor-pointer"
+                >
+                  切换为手动连接模式 →
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3.5 text-xs">
+                {autoConnectFailed && (
+                  <div className="p-2.5 rounded-lg bg-warning/10 border border-warning/20 text-warning text-[11px] flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5">
+                      <span>💡</span>
+                      <span>未能自动直连，可手动选择热点（或重试）</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void runAutoConnectWifi(bleDevice.wifiSsid, bleDevice.wifiPassword);
+                      }}
+                      className="text-primary hover:underline font-semibold cursor-pointer shrink-0"
+                    >
+                      重试自动连接
+                    </button>
+                  </div>
+                )}
+                <div className="p-3 rounded-xl bg-surface-raised/60 border border-border/80 space-y-2">
+                  <div className="text-[11.5px] font-semibold text-foreground">
+                    ① 打开电脑 Wi-Fi 设置，连接设备热点：
+                  </div>
+                  <div className="grid grid-cols-1 gap-2">
+                    <div className="flex items-center justify-between p-2 rounded-lg bg-surface border border-border">
+                      <span className="text-secondary text-[11px]">Wi-Fi 热点名称 (SSID)</span>
+                      <span className="font-mono font-bold text-foreground select-all">{bleDevice.wifiSsid}</span>
+                    </div>
+                    <div className="flex items-center justify-between p-2 rounded-lg bg-surface border border-border">
+                      <span className="text-secondary text-[11px]">Wi-Fi 密码</span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-bold text-foreground select-all">{bleDevice.wifiPassword}</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(bleDevice.wifiPassword);
+                            setWifiGuideCopied(true);
+                            setTimeout(() => setWifiGuideCopied(false), 2000);
+                          }}
+                          className="text-[11px] font-semibold text-primary hover:underline cursor-pointer"
+                        >
+                          {wifiGuideCopied ? '已复制' : '复制密码'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 极速同步须知（免密记忆 + 临时切网说明） */}
+                <div className="p-3 rounded-xl bg-surface-raised/80 border border-border/80 space-y-2 text-[11px] leading-relaxed">
+                  <div className="flex items-center gap-1.5 text-foreground font-semibold">
+                    <span className="text-primary text-xs">💡</span>
+                    <span>极速同步须知</span>
+                  </div>
+                  <div className="space-y-1.5 text-secondary pl-3.5">
+                    <div className="relative before:content-['•'] before:absolute before:-left-3 before:text-secondary">
+                      <strong className="text-foreground">免输密码</strong>：通常仅需首次连接时输入 1 次密码。电脑记住热点后，后续日常同步将<strong>全自动无感直连</strong>。
+                    </div>
+                    <div className="relative before:content-['•'] before:absolute before:-left-3 before:text-secondary">
+                      <strong className="text-foreground">临时占用网络</strong>：为实现超高速传输，同步期间电脑 Wi-Fi 将<strong>短暂占用数秒至数十秒</strong>直连设备，传输完成后<strong>立即自动恢复原有网络</strong>。若当前正在进行重要网络会议或通话，建议结束后再开启同步。
+                    </div>
+                  </div>
+                </div>
+
+                <div className="text-[11px] text-secondary leading-relaxed">
+                  ② 电脑连上热点后，点击下方【我已连接，开始极速同步】，系统将自动建立高速通道并完成同步。传输完成后会自动切回原有网络。
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+                  <button
+                    type="button"
+                    disabled={wifiConnecting}
+                    onClick={() => {
+                      setShowWifiSyncModal(false);
+                      setAutoConnectingWifi(false);
+                    }}
+                    className="px-3.5 py-1.5 text-xs font-semibold rounded-lg border border-border text-secondary hover:bg-surface-raised transition-colors cursor-pointer disabled:opacity-40"
+                  >
+                    暂不同步
+                  </button>
+                  <button
+                    type="button"
+                    disabled={wifiConnecting}
+                    onClick={handleConfirmWifiAndSync}
+                    className="px-4 py-1.5 text-xs font-bold rounded-lg bg-primary hover:bg-primary-hover text-white shadow-2xs transition-colors disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
+                  >
+                    {wifiConnecting ? (
+                      <>
+                        <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
+                        <span>正在建立同步…</span>
+                      </>
+                    ) : (
+                      '我已连接热点，开始极速同步'
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>,
+        document.body
       )}
 
       {/* 自动同步设置弹窗 */}
