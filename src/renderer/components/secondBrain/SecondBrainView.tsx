@@ -234,14 +234,14 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
   const [backendAudioList, setBackendAudioList] = useState<AudioListItem[]>([]);
 
   /** Toast 提示状态 */
-  const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [toast, setToast] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
 
   /** 每周趋势数据 */
   const [trendWeeks, setTrendWeeks] = useState<TrendWeekItem[]>([]);
   const [trendLoading, setTrendLoading] = useState(false);
   const [hoveredWeekIndex, setHoveredWeekIndex] = useState<number | null>(null);
 
-  const showToast = (type: 'success' | 'error', message: string) => {
+  const showToast = (type: 'success' | 'error' | 'info', message: string) => {
     setToast({ type, message });
     setTimeout(() => {
       setToast(null);
@@ -567,7 +567,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
   useEffect(() => {
     return () => {
       // 由主进程原子化保证：先在存活的 Socket 链路上向录音卡发送退出同步与关 Wi-Fi，再有序切回原有外网
-      window.electron.recordingCardWifi.disconnect(originalWifiSsidRef.current).catch(() => {});
+      window.electron.recordingCardWifi.disconnect(originalWifiSsidRef.current || undefined).catch(() => {});
       recordingCardBle.closeWifi().catch(() => {});
       recordingCardBle.disconnect();
     };
@@ -1045,7 +1045,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
     logCard('info', '>>> 正在关闭 Wi-Fi 极速同步并断开 Socket 连接...');
     try {
       // 由主进程保证：先在存活的 Socket 链路上向录音卡发送退出同步与关 Wi-Fi，再将电脑网络切回原有 Wi-Fi
-      await window.electron.recordingCardWifi.disconnect(originalWifiSsidRef.current);
+      await window.electron.recordingCardWifi.disconnect(originalWifiSsidRef.current || undefined);
     } catch {
       // 忽略
     }
@@ -1142,7 +1142,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
   /** 断开录音卡连接 */
   const handleDisconnectBle = async () => {
     try {
-      await window.electron.recordingCardWifi.disconnect(originalWifiSsidRef.current);
+      await window.electron.recordingCardWifi.disconnect(originalWifiSsidRef.current || undefined);
     } catch {
       // 忽略
     }
@@ -1163,7 +1163,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
     setUnbinding(true);
     try {
       try {
-        await window.electron.recordingCardWifi.disconnect(originalWifiSsidRef.current);
+        await window.electron.recordingCardWifi.disconnect(originalWifiSsidRef.current || undefined);
       } catch {
         // 忽略
       }
@@ -3027,9 +3027,9 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
       {toast && createPortal(
         <div
           className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-xl text-xs font-medium shadow-lg transition-all ${
-            toast.type === 'success'
-              ? 'bg-foreground text-background dark:bg-white dark:text-black'
-              : 'bg-destructive text-destructive-foreground'
+            toast.type === 'error'
+              ? 'bg-destructive text-destructive-foreground'
+              : 'bg-foreground text-background dark:bg-white dark:text-black'
           }`}
         >
           {toast.message}
