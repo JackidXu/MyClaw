@@ -1385,6 +1385,34 @@ interface IElectronAPI {
       reason?: string;
       expiredAt?: string;
     }>;
+    /** 强制从服务端拉取并刷新主进程权威 VIP 状态 */
+    refreshStatus: () => Promise<{
+      authorized: boolean;
+      subscriptions: Array<{
+        expertId: string;
+        expiredAt: string;
+        isActive: boolean;
+        revokedAt?: string;
+      }>;
+      permissions: string[];
+      reason?: string;
+      expiredAt?: string;
+    }>;
+    /** 监听主进程广播的权威 VIP 状态变更 */
+    onStatusChanged?: (
+      callback: (status: {
+        authorized: boolean;
+        subscriptions: Array<{
+          expertId: string;
+          expiredAt: string;
+          isActive: boolean;
+          revokedAt?: string;
+        }>;
+        permissions: string[];
+        reason?: string;
+        expiredAt?: string;
+      }) => void,
+    ) => () => void;
   };
   dialog: {
     selectDirectory: () => Promise<{ success: boolean; path: string | null }>;

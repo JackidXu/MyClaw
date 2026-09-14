@@ -33,6 +33,15 @@ class VipService {
 
   private listeners: Set<VipChangeListener> = new Set();
 
+  constructor() {
+    if (typeof window !== 'undefined' && window.electron?.vip?.onStatusChanged) {
+      window.electron.vip.onStatusChanged((data) => {
+        console.log('[VipService] Received VIP status broadcast from main process:', data);
+        this.applyStatusData(data);
+      });
+    }
+  }
+
   public getState(): VipStatusState {
     return this.state;
   }
@@ -85,6 +94,66 @@ class VipService {
     return this.isPermissionGranted('secondBrain');
   }
 
+  private applyStatusData(data: any): void {
+    if (data && data.authorized) {
+      this.state = {
+        authorized: true,
+        subscriptions: data.subscriptions || [],
+        permissions: data.permissions || [],
+        loading: false,
+        lastUpdated: Date.now(),
+      };
+    } else {
+      this.state = {
+        authorized: false,
+        subscriptions: [],
+        permissions: [],
+        reason: data?.reason,
+        expiredAt: data?.expiredAt,
+        loading: false,
+        lastUpdated: Date.now(),
+      };
+
+      if (data?.reason === 'device_limit') {
+        console.warn('[VipService] 设备注册数量已达上限 (5台)');
+      } else if (data?.reason === 'account_expired') {
+        console.warn(`[VipService] 账号使用权限已到期 (${data.expiredAt || ''})`);
+      }
+    }
+
+    // 自动清洗与收回已被撤销权限的付费专家
+    void this.syncRevokedAgents();
+
+    this.notify();
+  }
+
+  /**
+   * 应用冷启动时初始化本地 VIP 状态（纯只读读取主进程权威缓存，绝不发网络请求）
+   */
+  public async initStatus(): Promise<VipStatusState> {
+    const session = localStorage.getItem('heyclaw_session');
+    if (!session) {
+      this.state = {
+        authorized: false,
+        subscriptions: [],
+        permissions: [],
+        loading: false,
+        lastUpdated: Date.now(),
+      };
+      this.notify();
+      return this.state;
+    }
+
+    try {
+      const data = await window.electron.vip.getStatus();
+      this.applyStatusData(data);
+    } catch (err) {
+      console.warn('[VipService] Failed to get VIP status from main process on startup:', err);
+    }
+
+    return this.state;
+  }
+
   public async refreshStatus(): Promise<VipStatusState> {
     const session = localStorage.getItem('heyclaw_session');
 
@@ -104,45 +173,20 @@ class VipService {
     this.notify();
 
     try {
-      const data = await window.electron.vip.getStatus();
-      if (data && data.authorized) {
-        this.state = {
-          authorized: true,
-          subscriptions: data.subscriptions || [],
-          permissions: data.permissions || [],
-          loading: false,
-          lastUpdated: Date.now(),
-        };
-      } else {
-        this.state = {
-          authorized: false,
-          subscriptions: [],
-          permissions: [],
-          reason: data?.reason,
-          expiredAt: data?.expiredAt,
-          loading: false,
-          lastUpdated: Date.now(),
-        };
-
-        if (data?.reason === 'device_limit') {
-          console.warn('[VipService] 设备注册数量已达上限 (5台)');
-        } else if (data?.reason === 'account_expired') {
-          console.warn(`[VipService] 账号使用权限已到期 (${data.expiredAt || ''})`);
-        }
-      }
+      const data = window.electron.vip.refreshStatus
+        ? await window.electron.vip.refreshStatus()
+        : await window.electron.vip.getStatus();
+      this.applyStatusData(data);
     } catch (err) {
-      console.error('[VipService] Failed to get VIP status from main process:', err);
+      console.error('[VipService] Failed to refresh VIP status from main process:', err);
       this.state = {
         ...this.state,
         loading: false,
         lastUpdated: Date.now(),
       };
+      this.notify();
     }
 
-    // 自动清洗与收回已被撤销权限的付费专家
-    await this.syncRevokedAgents();
-
-    this.notify();
     return this.state;
   }
 

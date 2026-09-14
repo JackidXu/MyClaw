@@ -71,6 +71,7 @@ import { authService } from './services/auth';
 import { logoutAndDeactivate } from './services/authStorage';
 import { configService } from './services/config';
 import { coworkService } from './services/cowork';
+import { handleUnauthorized } from './services/httpClient';
 import { i18nService } from './services/i18n';
 import {
   beginLatestAsyncRequest,
@@ -637,7 +638,7 @@ const App: React.FC = () => {
       const userId = localStorage.getItem('heyclaw_user_id');
       const session = localStorage.getItem('heyclaw_session');
       if (session) {
-        void window.electron.auth.syncUserSession(session);
+        await window.electron.auth.syncUserSession(session);
       }
       // 核心登录三要素凭证：apiKey、userId、session 必须同时具备
       let activated = !!(apiKey && userId && session);
@@ -646,12 +647,12 @@ const App: React.FC = () => {
         // 若凭证残缺不全，彻底清理残余缓存并同步注销状态（静默重置）
         logoutAndDeactivate({ silent: true });
       } else {
-        // 已登录状态下初始化拉取与注册 VIP 状态
+        // 已登录状态下初始化读取主进程权威 VIP 状态缓存（冷启动不发网络请求）
         try {
-          await vipService.refreshStatus();
-          mark('vipService.refreshStatus done');
+          await vipService.initStatus();
+          mark('vipService.initStatus done');
         } catch (vipErr) {
-          console.warn('[App] vipService refresh failed on startup:', vipErr);
+          console.warn('[App] vipService init failed on startup:', vipErr);
         }
       }
 
@@ -1981,11 +1982,6 @@ const App: React.FC = () => {
 
         dispatch(setAvailableModels([]));
         dispatch(setDefaultSelectedModel(null as any));
-        try {
-          await coworkService.restartOpenClawGateway();
-        } catch (e) {
-          console.warn('[App] restartOpenClawGateway on deactivate failed:', e);
-        }
       } catch (err) {
         console.error('[App] Deactivate failed:', err);
       } finally {
@@ -1995,6 +1991,14 @@ const App: React.FC = () => {
     window.addEventListener('app:deactivate', handleDeactivate);
     return () => window.removeEventListener('app:deactivate', handleDeactivate);
   }, [dispatch]);
+
+  // 监听来自主进程的全局未授权广播（如主进程 HTTP 401 拦截），统一退回登录态
+  useEffect(() => {
+    const unsub = window.electron?.ipcRenderer?.on('app:unauthorized', () => {
+      handleUnauthorized();
+    });
+    return () => unsub?.();
+  }, []);
 
   // Listen for ask-ai events: close settings, open a new chat, and pre-fill its input.
   useEffect(() => {
@@ -2259,6 +2263,16 @@ const App: React.FC = () => {
             }
             syncModelsToRedux();
             setIsActivated(true);
+            // 登录成功切入主应用后，若网关此前处于错误状态，自动触发恢复启动
+            try {
+              const engineStatus = coworkService.getOpenClawEngineStatusSnapshot();
+              if (engineStatus?.phase === 'error') {
+                console.log('[App] Gateway was in error state before login, triggering recovery restart...');
+                void coworkService.restartOpenClawGateway();
+              }
+            } catch (gwErr) {
+              console.warn('[App] Failed to auto-recover gateway on login success:', gwErr);
+            }
           }} 
         />
       </div>

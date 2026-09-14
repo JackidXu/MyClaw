@@ -7554,6 +7554,8 @@ if (!gotTheLock) {
       store?.set('user_access_token', session);
     } else {
       store?.delete('user_access_token');
+      // 用户登出或凭证清除：重置 VIP 状态为未授权
+      mainVipService.resetVipStatus();
     }
     return { success: true };
   });
@@ -15129,6 +15131,7 @@ if (!gotTheLock) {
     setMainHttpClientStoreGetter(() => store);
     setUnauthorizedBroadcastHandler(() => {
       try {
+        mainVipService.resetVipStatus();
         mainWindow?.webContents.send('app:unauthorized');
       } catch {
         // 容错
@@ -15399,13 +15402,20 @@ if (!gotTheLock) {
     await getOpenClawEngineManager().prepareRuntimeForStartupConfigSync();
     profiler.measure('prepareOpenClawRuntime');
 
-    // 单源初始化 VIP 状态与第二大脑工具（应用启动时仅拉取一次，供网关配置注入）
+    // 单源初始化 VIP 状态与第二大脑工具（供网关配置与权限控制联动）
     try {
       setSessionSecondBrainEnabledGetter((sessionId: string) => {
         return getCoworkStore().getSession(sessionId, 0)?.secondBrainEnabled;
       });
+      // 监听权威 VIP 状态变更，自动联动第二大脑工具的注册与清空
+      mainVipService.onStatusChange(async () => {
+        try {
+          await syncSecondBrainTools();
+        } catch (err) {
+          console.warn('[Main] VIP status change: syncSecondBrainTools failed:', err);
+        }
+      });
       await mainVipService.initVipStatus();
-      await syncSecondBrainTools();
       secondBrainAutoUploadService.initialize(getStore());
     } catch (err) {
       console.warn('[Main] initApp: initVipStatus or syncSecondBrainTools failed (non-fatal):', err);

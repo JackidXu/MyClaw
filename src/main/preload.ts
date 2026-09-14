@@ -127,6 +127,7 @@ import type {
   SkinGetActiveResponse,
   SkinListResponse,
 } from '../shared/skin/types';
+import { VipIpcChannel } from '../shared/vip/constants';
 import { NimQrLoginIpc } from './ipcHandlers/nimQrLogin';
 import { OpenClawSessionIpc } from './openclawSession/constants';
 import { OpenClawSessionPolicyIpc } from './openclawSessionPolicy/constants';
@@ -881,8 +882,16 @@ contextBridge.exposeInMainWorld('electron', {
     },
   },
   vip: {
-    /** 获取主进程权威 VIP 状态（只读） */
-    getStatus: () => ipcRenderer.invoke('vip:get-status'),
+    /** 获取主进程权威 VIP 状态（只读缓存） */
+    getStatus: () => ipcRenderer.invoke(VipIpcChannel.GetStatus),
+    /** 强制向服务端请求拉取并刷新主进程权威 VIP 状态 */
+    refreshStatus: () => ipcRenderer.invoke(VipIpcChannel.RefreshStatus),
+    /** 监听来自主进程的权威 VIP 状态变更广播 */
+    onStatusChanged: (handler: (status: any) => void) => {
+      const listener = (_event: any, status: any) => handler(status);
+      ipcRenderer.on(VipIpcChannel.StatusChanged, listener);
+      return () => ipcRenderer.removeListener(VipIpcChannel.StatusChanged, listener);
+    },
   },
   dialog: {
     selectDirectory: () => ipcRenderer.invoke('dialog:selectDirectory'),

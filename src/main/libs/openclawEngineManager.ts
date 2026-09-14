@@ -910,6 +910,13 @@ export class OpenClawEngineManager extends EventEmitter {
     console.log(`${gwDiagTs()} restartGateway: reason=${reason}, pid=${pid}, port=${this.gatewayPort ?? 'none'}`);
     console.log(`${gwDiagTs()} restartGateway: stopping existing gateway...`);
     await this.stopGateway();
+    if (this.startGatewayPromise) {
+      try {
+        await this.startGatewayPromise;
+      } catch {
+        // 忽略前序被打断的启动 promise 报错
+      }
+    }
     // Reset restart counter on manual restart so user can always retry
     this.gatewayRestartAttempt = 0;
     console.log(`${gwDiagTs()} restartGateway: starting gateway with new env...`);

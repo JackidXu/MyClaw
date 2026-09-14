@@ -85,7 +85,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
       localStorage.setItem('heyclaw_user_id', String(userId));
       if (session) {
         localStorage.setItem('heyclaw_session', session);
-        void window.electron.auth.syncUserSession(session);
+        await window.electron.auth.syncUserSession(session);
       }
       
       const formattedKey = apiKey.startsWith('sk-') ? apiKey : `sk-${apiKey}`;

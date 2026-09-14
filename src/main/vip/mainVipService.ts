@@ -1,5 +1,6 @@
-import { ipcMain } from 'electron';
+import { BrowserWindow, ipcMain } from 'electron';
 
+import { VipIpcChannel } from '../../shared/vip/constants';
 import { getDeviceInfo } from '../libs/deviceId';
 import { mainHttpClient } from '../libs/mainHttpClient';
 
@@ -24,13 +25,23 @@ const DEFAULT_VIP_STATUS: MainVipStatus = {
   permissions: [],
 };
 
+type VipStatusChangeListener = (status: MainVipStatus) => void;
+
 class MainVipService {
   private status: MainVipStatus = { ...DEFAULT_VIP_STATUS };
+  private listeners: Set<VipStatusChangeListener> = new Set();
 
   /**
    * 应用启动时由主进程初始化 VIP 状态（全局权威单源）
    */
   async initVipStatus(): Promise<MainVipStatus> {
+    return this.refreshVipStatus();
+  }
+
+  /**
+   * 主动从服务端拉取最新 VIP 状态并更新主进程内存单源
+   */
+  async refreshVipStatus(): Promise<MainVipStatus> {
     try {
       const deviceInfo = getDeviceInfo();
       const res = await mainHttpClient.admin.post<{
@@ -55,17 +66,66 @@ class MainVipService {
           expiredAt: data.expiredAt,
         };
       } else {
-        this.status = { ...DEFAULT_VIP_STATUS };
+        this.status = {
+          ...DEFAULT_VIP_STATUS,
+          reason: res.data?.reason,
+        };
       }
     } catch (error) {
-      console.warn('[MainVipService] initVipStatus failed:', error);
+      console.warn('[MainVipService] refreshVipStatus failed:', error);
       this.status = { ...DEFAULT_VIP_STATUS };
     }
 
     console.log(
-      `[MainVipService] VIP status initialized: authorized=${this.status.authorized}, permissions=[${this.status.permissions.join(', ')}]`,
+      `[MainVipService] VIP status refreshed: authorized=${this.status.authorized}, permissions=[${this.status.permissions.join(', ')}]`,
     );
+
+    this.notifyListeners();
+    this.broadcastStatus();
+
     return this.status;
+  }
+
+  /**
+   * 重置 VIP 状态（登出或凭证失效时复位）
+   */
+  resetVipStatus(): void {
+    this.status = { ...DEFAULT_VIP_STATUS };
+    console.log('[MainVipService] VIP status reset to default (unauthorized)');
+    this.notifyListeners();
+    this.broadcastStatus();
+  }
+
+  /** 订阅主进程内部 VIP 状态变更事件 */
+  onStatusChange(listener: VipStatusChangeListener): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  private notifyListeners(): void {
+    for (const listener of this.listeners) {
+      try {
+        listener(this.status);
+      } catch (err) {
+        console.error('[MainVipService] Error in status change listener:', err);
+      }
+    }
+  }
+
+  /** 向所有渲染进程窗口广播最新的权威 VIP 状态 */
+  private broadcastStatus(): void {
+    try {
+      const windows = BrowserWindow.getAllWindows();
+      for (const win of windows) {
+        if (!win.isDestroyed()) {
+          win.webContents.send(VipIpcChannel.StatusChanged, this.status);
+        }
+      }
+    } catch (err) {
+      console.warn('[MainVipService] Failed to broadcast VIP status to windows:', err);
+    }
   }
 
   /** 获取当前权威状态 */
@@ -83,12 +143,17 @@ class MainVipService {
     return this.hasPermission('secondBrain');
   }
 
-  /** 注册供渲染进程只读调用的 IPC 通道 */
+  /** 注册供渲染进程调用的 IPC 通道 */
   registerIpc(): void {
-    ipcMain.handle('vip:get-status', () => {
+    ipcMain.handle(VipIpcChannel.GetStatus, () => {
       return this.getVipStatus();
+    });
+
+    ipcMain.handle(VipIpcChannel.RefreshStatus, async () => {
+      return this.refreshVipStatus();
     });
   }
 }
 
 export const mainVipService = new MainVipService();
+
