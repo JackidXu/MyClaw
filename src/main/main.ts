@@ -14286,7 +14286,7 @@ if (!gotTheLock) {
         webSecurity: true,
         preload: PRELOAD_PATH,
         backgroundThrottling: false,
-        devTools: isDev,
+        devTools: true,
         spellcheck: false,
         webviewTag: true,
         enableWebSQL: false,
