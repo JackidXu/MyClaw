@@ -1,6 +1,6 @@
 ---
 name: 素材库管家
-version: 1.0.0
+version: 1.1.0
 description: 素材库管家（content-material-library）—— 帮客户建立和管理结构化素材库：素材分类、标注、入库、增量更新，并生成索引表（_索引表.csv）作为 AI 检索唯一入口。被 content-video-cutter（切片入库）和 content-material-matcher（选题匹配）调用。当用户说「素材整理」「素材分类」「素材入库」「帮我整理这些素材」「我的素材库」时使用。
 compatibility: heyclaw
 ---
@@ -9,6 +9,21 @@ compatibility: heyclaw
 
 > 帮客户建立和管理结构化素材库。素材分类、标注、入库、增量更新。
 > 这是素材处理的基础skill，被 content-video-cutter（切片入库）和 content-material-matcher（选题匹配读取）调用。
+
+---
+
+## 0. 第二大脑集成（数据源双通道）
+
+本Skill支持从客户第二大脑获取IP档案完善素材标注，提升标注精度。
+
+**工作模式**：启动时检索第二大脑IP档案 → 有 → 用IP档案的三维定调+业务资料库增强标注；无 → 按原有通用框架标注。
+
+**检索策略**：
+- `retrieve_fmp(query="这个客户的IP档案、三维定调、业务分类、故事弹药", layer=3)`
+
+**Skill行为约束**：
+- 第二大脑提供的是标注增强（如"这个素材属于'业务性感→客户案例'子枝"），不是替代素材库管理
+- 素材文件本身仍需存在本地文件夹中，第二大脑不存原始文件
 
 ---
 

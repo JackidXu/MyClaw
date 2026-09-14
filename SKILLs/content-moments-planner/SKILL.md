@@ -1,6 +1,6 @@
 ---
 name: 朋友圈双轨规划
-version: 1.0.0
+version: 1.1.0
 description: 朋友圈双轨规划（content-moments-planner）—— 私域朋友圈运营规划：与公域短视频共享弹药库的一鱼多吃、Phase三阶段排期、四柱映射、行业适配与7条运营纪律。被营销战略地图 模式C（月/周规划）调用，也可独立使用。Moments (private-domain) dual-track planning skill.
 compatibility: heyclaw
 ---
@@ -8,6 +8,21 @@ compatibility: heyclaw
 # content-moments-planner — 朋友圈双轨规划
 
 > 朋友圈是IP私域运营的核心渠道。短视频在公域"立骨架"吸引新客户，朋友圈在私域"养信任"培育潜在客户。双轨并行，形成"公域引流→私域养信→临门转化"的完整闭环。
+
+---
+
+## 0. 第二大脑集成（数据源双通道）
+
+本Skill支持从客户第二大脑获取IP档案和内容策略四柱，让朋友圈规划与公域策略对齐。
+
+**工作模式**：启动时检索第二大脑IP档案 → 有 → 用四柱配比+IP类型调整朋友圈规划；无 → 按默认比例规划。
+
+**检索策略**：
+- `retrieve_fmp(query="这个客户的IP档案、内容策略四柱、IP象限、红线和纪律", layer=3)`
+
+**Skill行为约束**：
+- 无IP档案时朋友圈规划仍可执行，但配比使用默认值
+- 第二大脑提供的是规划参考，不替代用户对发布节奏的判断
 
 ---
 

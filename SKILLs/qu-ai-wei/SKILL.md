@@ -1,6 +1,6 @@
 ---
 name: 文案人味润色
-version: 1.0.0
+version: 1.1.0
 description: >
   文案人味润色（qu-ai-wei）—— 去除简体中文文本里的 AI 写作痕迹，不虚构事实，让终稿干净、精准、像真人写的。
 

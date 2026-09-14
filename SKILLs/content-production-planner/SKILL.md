@@ -1,6 +1,6 @@
 ---
 name: 制作策划
-version: 1.1.0
+version: 1.2.0
 description: 制作策划（content-production-planner）—— 把脚本翻译成可执行的拍摄方案：每段旁白对应拍什么画面、哪些素材已有、拍摄顺序怎么排最高效、现场该问IP什么问题。Production planner.
 compatibility: heyclaw
 ---
@@ -8,6 +8,21 @@ compatibility: heyclaw
 # content-production-planner — 制作策划
 
 > 脚本写完了，拿着一堆文字去拍还是不知道怎么下手。这个skill把脚本翻译成可执行的拍摄方案——每段旁白对应拍什么画面、哪些素材已经有了、拍摄顺序怎么排最高效、现场该问IP什么问题。
+
+---
+
+## 0. 第二大脑集成（数据源双通道）
+
+本Skill支持从客户第二大脑获取IP档案辅助拍摄方案，让拍摄风格与IP调性一致。
+
+**工作模式**：启动时检索第二大脑IP档案 → 有 → 用IP风格参考+视频类型适配调整拍摄配置；无 → 用默认拍摄配置。
+
+**检索策略**：
+- `retrieve_fmp(query="这个客户的IP档案、视觉风格、账号四件套、视频类型偏好", layer=3)`
+
+**Skill行为约束**：
+- 无IP档案时拍摄方案仍可执行，但使用通用三机位+标准景别
+- IP视觉风格只做参考，拍摄团队可按实际情况调整
 
 ---
 

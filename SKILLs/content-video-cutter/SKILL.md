@@ -1,6 +1,6 @@
 ---
 name: 内容切片法
-version: 1.0.0
+version: 1.1.0
 description: 内容切片法（content-video-cutter）—— 把客户丢来的长视频按内容自然断点切成多段可用素材，每段独立分类标注入库。区别于按时长傻切，强调按内容理解切。切片完成后调用 content-material-library 的标注体系和入库流程入库。当用户说「把这个长视频切一下」「视频切片」「帮我把这段口播拆成片段」时使用。
 compatibility: heyclaw
 ---
