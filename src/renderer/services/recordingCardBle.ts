@@ -203,7 +203,13 @@ async function connectAndHandshake(
   isHandshaking = true;
   try {
     logBle('info', `匹配到设备: ${device.name || '未知'}, ID: ${device.id}, 正在建立 GATT 连接...`);
-    const server = await device.gatt!.connect();
+    // 强制增加 6 秒超时熔断保护，彻底杜绝目标设备未开启广播时 Chromium 的 gatt.connect() 无限期死锁挂起
+    const server = await Promise.race([
+      device.gatt!.connect(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('[BleV2] GATT 连接 6 秒超时，设备广播未就绪')), 6000)
+      ),
+    ]);
     logBle('info', 'GATT 连接建立成功，正在发现 0x1910 服务...');
     const bleService = await server.getPrimaryService(SERVICE_UUID);
 
@@ -503,7 +509,7 @@ export async function handshake(
  * 自动静默回连录音卡蓝牙（退出 Wi-Fi 或临时断开后调用）
  * 直接复用已授权的 BluetoothDevice 实例，无需弹出设备选择窗
  */
-export async function reconnect(retries = 3, delayMs = 1000): Promise<HandshakeResult> {
+export async function reconnect(retries = 3, delayMs = 1500): Promise<HandshakeResult> {
   if (!cachedDevice || !cachedUserId) {
     throw new Error('[BleV2] 无历史连接设备，无法自动回连');
   }
@@ -519,9 +525,11 @@ export async function reconnect(retries = 3, delayMs = 1000): Promise<HandshakeR
       return result;
     } catch (err: any) {
       lastError = err;
-      logBle('warn', `第 ${i} 次回连未就绪: ${err?.message || '未知异常'}，等待 ${delayMs}ms 后重试...`);
+      // 递增退避重试（1.5s -> 2.5s），给足录音卡芯片固件退出 Wi-Fi 模式并重新拉起低功耗广播的时间
+      const currentDelay = delayMs + (i - 1) * 1000;
+      logBle('warn', `第 ${i} 次回连未就绪: ${err?.message || '未知异常'}，等待 ${currentDelay}ms 后重试...`);
       if (i < retries) {
-        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        await new Promise((resolve) => setTimeout(resolve, currentDelay));
       }
     }
   }
@@ -740,4 +748,11 @@ export function disconnect(): void {
 /** 是否已连接 */
 export function isConnected(): boolean {
   return session !== null && session.server.connected;
+}
+
+/** 强制重置并终止当前所有进行中的 BLE 操作（给上层提供随时打断与释放状态的后悔药） */
+export function abortBleOperations(): void {
+  isHandshaking = false;
+  isWifiTransferring = false;
+  disconnect();
 }

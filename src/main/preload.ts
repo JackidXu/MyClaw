@@ -188,6 +188,8 @@ contextBridge.exposeInMainWorld('electron', {
     restoreWifi: (targetSsid: string) =>
       ipcRenderer.invoke(RecordingCardWifiIpc.RestoreWifi, targetSsid),
     checkOnline: () => ipcRenderer.invoke(RecordingCardWifiIpc.CheckOnline),
+    hasSavedWifi: (ssid: string) =>
+      ipcRenderer.invoke(RecordingCardWifiIpc.HasSavedWifi, ssid),
   },
   skills: {
     list: () => ipcRenderer.invoke('skills:list'),

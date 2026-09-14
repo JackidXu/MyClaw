@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
+import { copyTextToClipboard } from '../../services/clipboard';
 import { wrapRawOpusToOgg } from '../../services/oggOpusEncoder';
 import * as recordingCardBle from '../../services/recordingCardBle';
 import {
@@ -213,6 +214,8 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
   const [unbinding, setUnbinding] = useState(false);
   const [showWifiSyncModal, setShowWifiSyncModal] = useState(false);
   const pendingSyncActionRef = useRef<(() => Promise<void>) | null>(null);
+  const isWifiProbingRef = useRef(false);
+  const wifiProbeTriggeredRef = useRef(false);
   const [openingWifiAp, setOpeningWifiAp] = useState(false);
   const [autoConnectingWifi, setAutoConnectingWifi] = useState(false);
   const [autoConnectFailed, setAutoConnectFailed] = useState(false);
@@ -816,8 +819,8 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
       }
       logCard('info', `[自动连接] 系统已下发关联 Wi-Fi 指令 (${ssid})，开始探测 Socket 就绪状态...`);
 
-      // 阶段 2: Wi-Fi 关联后，给局域网 IP 与 TCP 服务留出 6 秒轮询重试窗口（每 600ms 探测一次）
-      const socketDeadline = Date.now() + 6000;
+      // 阶段 2: Wi-Fi 关联后，给局域网 IP 与 TCP 服务留出 10 秒弹性轮询重试窗口（每 600ms 探测一次）
+      const socketDeadline = Date.now() + 10000;
       let socketConnected = false;
       let lastSocketErr = '';
 
@@ -865,6 +868,20 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
     }
   };
 
+  /** 取消 Wi-Fi 同步并释放所有挂起状态（彻底防假死与死锁兜底） */
+  const handleCancelWifiSync = () => {
+    setShowWifiSyncModal(false);
+    setAutoConnectingWifi(false);
+    setAutoConnectFailed(false);
+    setWifiConnecting(false);
+    setOpeningWifiAp(false);
+    isWifiProbingRef.current = false;
+    wifiProbeTriggeredRef.current = false;
+    pendingSyncActionRef.current = null;
+    recordingCardBle.abortBleOperations();
+    logCard('info', '[Wi-Fi 同步] 用户主动取消同步流程，已重置所有通道状态');
+  };
+
   /** 确保 Wi-Fi 同步通道就绪后再执行同步动作（优先全自动连接，失败时平滑降级手动向导） */
   const ensureWifiAndRun = async (action: () => Promise<void>) => {
     if (!bleDevice) return;
@@ -874,11 +891,10 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
       return;
     }
 
-    // 记录挂起的动作并唤出向导弹窗
+    // 重置静默探测锁并记录挂起的动作
+    isWifiProbingRef.current = false;
+    wifiProbeTriggeredRef.current = false;
     pendingSyncActionRef.current = action;
-    setShowWifiSyncModal(true);
-    setAutoConnectingWifi(true);
-    setAutoConnectFailed(false);
 
     // 记录宿主机当前连接的原外网 Wi-Fi，以便同步完毕后极速切回
     try {
@@ -898,22 +914,35 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
       try {
         await recordingCardBle.openWifi();
         setBleDevice((prev) => (prev ? { ...prev, wifiApOpened: true } : null));
-        logCard('info', `<<< 录音卡 Wi-Fi 热点已就绪: ${bleDevice.wifiSsid}，等待广播信号稳定 (1.5s)...`);
-        // 给录音卡 1.5 秒启动 SoftAP 广播，确保宿主机无线网卡能扫描到
-        await new Promise((r) => setTimeout(r, 1500));
+        logCard('info', `<<< 录音卡 Wi-Fi 热点已就绪: ${bleDevice.wifiSsid}，等待广播信号稳定 (3.5s)...`);
+        // 给录音卡 3.5 秒启动 SoftAP 广播并使宿主机无线网卡完成信道发现
+        await new Promise((r) => setTimeout(r, 3500));
       } catch (err: any) {
-        logCard('error', `[SecondBrainView] 开启 Wi-Fi 热点失败: ${err?.message || err}`);
-        showToast('error', `开启 Wi-Fi 热点失败: ${err?.message || '未知错误'}`);
-        setAutoConnectingWifi(false);
-        setAutoConnectFailed(true);
         setOpeningWifiAp(false);
+        logCard('error', `唤醒录音卡开启 Wi-Fi 失败: ${err?.message || err}`);
+        showToast('error', '唤醒录音卡 Wi-Fi 失败，请确认录音卡在电脑附近且电量充足');
         return;
       } finally {
         setOpeningWifiAp(false);
       }
     }
 
-    // 热点就绪后，立即尝试后台全自动连接并传入当前待执行任务
+    // 50毫秒预检：查询当前操作系统是否已保存该录音卡 Wi-Fi 凭证（新老用户精准分流）
+    const hasSaved = await window.electron.recordingCardWifi.hasSavedWifi(bleDevice.wifiSsid).catch(() => false);
+    if (!hasSaved) {
+      // 新用户（未保存密码）：0 延迟直接展示手动向导，彻底消灭徒劳无功的自动连接干等
+      logCard('info', `[Wi-Fi 极速同步] 操作系统尚未保存录音卡 Wi-Fi (${bleDevice.wifiSsid}) 凭证，直接弹出手动向导...`);
+      setAutoConnectingWifi(false);
+      setAutoConnectFailed(false);
+      setShowWifiSyncModal(true);
+      return;
+    }
+
+    // 老用户（已保存密码）：展示自动连接加载态，优先发起免密静默自动切网
+    logCard('info', `[Wi-Fi 极速同步] 操作系统已保存热点凭证，启动后台无感免密自动连接...`);
+    setAutoConnectingWifi(true);
+    setAutoConnectFailed(false);
+    setShowWifiSyncModal(true);
     void runAutoConnectWifi(bleDevice.wifiSsid, bleDevice.wifiPassword, action);
   };
 
@@ -948,19 +977,30 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
     }
   };
 
-  // 当 Wi-Fi 极速同步向导弹窗处于手动引导模式时，开启后台静默探测
+  // 当 Wi-Fi 极速同步向导弹窗处于手动引导模式时，开启后台串行静默探测
   // 一旦检测到电脑连入录音卡热点，自动完成握手、关闭弹窗并触发极速同步，实现无感体验
+  // 严格机制：前一个探针未结束绝不发起下一个，单次触发后立即彻底切断后续探测，杜绝并发冲击录音卡单片机
   useEffect(() => {
-    if (!showWifiSyncModal || autoConnectingWifi || wifiConnecting || !bleDevice || bleDevice.wifiConnected) {
+    if (
+      !showWifiSyncModal ||
+      autoConnectingWifi ||
+      wifiConnecting ||
+      !bleDevice?.wifiApOpened ||
+      bleDevice?.wifiConnected
+    ) {
       return;
     }
 
     let isMounted = true;
-    const probeTimer = setInterval(async () => {
+    let timer: NodeJS.Timeout | null = null;
+
+    const probe = async () => {
+      if (!isMounted || isWifiProbingRef.current || wifiProbeTriggeredRef.current) return;
+      isWifiProbingRef.current = true;
       try {
         const res = await window.electron.recordingCardWifi.connect();
-        if (res.success && isMounted) {
-          clearInterval(probeTimer);
+        if (res.success && isMounted && !wifiProbeTriggeredRef.current) {
+          wifiProbeTriggeredRef.current = true;
           setBleDevice((prev) => (prev ? { ...prev, wifiConnected: true } : null));
           setShowWifiSyncModal(false);
           logCard('info', '🎉 [静默探测] 侦测到电脑已连入录音卡热点，自动开启极速同步！');
@@ -972,17 +1012,32 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
             logCard('info', '[静默探测] 触发执行音频同步下载动作...');
             await act();
           }
+          return;
         }
       } catch {
         // 未连上时静默忽略
+      } finally {
+        isWifiProbingRef.current = false;
+        if (isMounted && !wifiProbeTriggeredRef.current) {
+          timer = setTimeout(probe, 1500);
+        }
       }
-    }, 1200);
+    };
+
+    // 首次等待 1 秒后开始探针
+    timer = setTimeout(probe, 1000);
 
     return () => {
       isMounted = false;
-      clearInterval(probeTimer);
+      if (timer) clearTimeout(timer);
     };
-  }, [showWifiSyncModal, autoConnectingWifi, wifiConnecting, bleDevice]);
+  }, [
+    showWifiSyncModal,
+    autoConnectingWifi,
+    wifiConnecting,
+    bleDevice?.wifiApOpened,
+    bleDevice?.wifiConnected,
+  ]);
 
   /** 关闭 Wi-Fi 热点并断开 Socket（恢复常态低功耗 BLE 状态，电脑切回原有网络，并自动静默回连蓝牙） */
   const handleCloseWifi = async (showTipOrEvent?: boolean | React.MouseEvent) => {
@@ -1005,10 +1060,11 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
       showToast('success', '已关闭 Wi-Fi 极速同步，录音卡已恢复常态低功耗蓝牙模式');
     }
 
-    // 录音卡关闭 Wi-Fi 芯片后会自动重新开启 BLE 广播，自动静默回连（重试 5 次，每次间隔 1 秒）
+    // 录音卡关闭 Wi-Fi 芯片后需 2~3 秒完成硬件射频切换并重新拉起 BLE 广播，静默等待 2.5 秒避开物理盲区
+    await new Promise((r) => setTimeout(r, 2500));
     logCard('info', '>>> 开始尝试自动静默回连录音卡蓝牙 (重试 5 次)...');
     try {
-      const reconnected = await recordingCardBle.reconnect(5, 1000);
+      const reconnected = await recordingCardBle.reconnect(5, 1500);
       setBleDevice({
         name: reconnected.deviceName || 'HeyClaw 录音卡',
         sn: reconnected.sn,
@@ -1027,21 +1083,60 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
     }
   };
 
-  /** 等待网络恢复连通外网（调用底层专用静默探针，0 业务请求，0 错误日志） */
-  const waitForInternetOnline = async (maxWaitMs = 25000): Promise<boolean> => {
-    const startTime = Date.now();
-    while (Date.now() - startTime < maxWaitMs) {
-      try {
-        const isOnline = await window.electron.recordingCardWifi.checkOnline();
-        if (isOnline) {
-          return true;
-        }
-      } catch {
-        // 网络还未真正连通，等待下一次轮询
+  /** 等待网络恢复连通外网（调用底层专用静默探针 + 浏览器原生 online 事件双重保障，放宽至 60 秒以容纳网卡全频段扫描） */
+  const waitForInternetOnline = async (maxWaitMs = 60000): Promise<boolean> => {
+    // 1. 优先使用底层专用探针做一次快速权威检查
+    try {
+      if (await window.electron.recordingCardWifi.checkOnline()) {
+        return true;
       }
-      await new Promise((r) => setTimeout(r, 800));
+    } catch {
+      // 忽略
     }
-    return false;
+
+    return new Promise((resolve) => {
+      let settled = false;
+      let timer: NodeJS.Timeout | null = null;
+      let interval: NodeJS.Timeout | null = null;
+
+      const finish = (result: boolean) => {
+        if (!settled) {
+          settled = true;
+          if (timer) clearTimeout(timer);
+          if (interval) clearInterval(interval);
+          window.removeEventListener('online', onOnline);
+          resolve(result);
+        }
+      };
+
+      const onOnline = async () => {
+        // 浏览器原生 online 事件触发时，底层探针做真实连通性确认
+        try {
+          const ok = await window.electron.recordingCardWifi.checkOnline();
+          if (ok) finish(true);
+        } catch {
+          // 忽略
+        }
+      };
+
+      window.addEventListener('online', onOnline);
+
+      timer = setTimeout(() => {
+        finish(false);
+      }, maxWaitMs);
+
+      // 周期性轮询底层静默探针（每 1000ms 探测一次）
+      interval = setInterval(async () => {
+        try {
+          const isOnline = await window.electron.recordingCardWifi.checkOnline();
+          if (isOnline) {
+            finish(true);
+          }
+        } catch {
+          // 网络还未真正连通，等待下一次轮询
+        }
+      }, 1000);
+    });
   };
 
   /** 断开录音卡连接 */
@@ -1130,6 +1225,8 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
     setSyncProgress((prev) => ({ ...prev, [file.name]: 1 }));
 
     let removeProgressListener: (() => void) | null = null;
+    let wifiClosed = false;
+
     try {
       logCard('info', `>>> [单文件同步] 开始同步录音: ${file.name} (大小: ${file.size} 字节)...`);
       // 阶段 1: 注册下载进度监听，通过 Wi-Fi TCP 高速下载音频数据
@@ -1152,13 +1249,14 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
       const oggOpusBytes = wrapRawOpusToOgg(res.data);
       logCard('info', `[单文件同步] Ogg Opus 封装完成，封装后字节数: ${oggOpusBytes.byteLength}`);
 
-      // 阶段 2: 下载完成，立即退出音频同步模式并关闭 Wi-Fi，让录音卡切回蓝牙模式，电脑切回外网
+      // 阶段 2: 下载与封装完成，数据已 100% 安全落地！立即退出 Wi-Fi，让录音卡切回蓝牙模式，电脑切回外网
+      wifiClosed = true;
       await handleCloseWifi(false);
-      showToast('success', `录音 "${uploadFileName}" 已下载完成，正在切回外网上传云端...`);
+      showToast('info', `录音 "${uploadFileName}" 已安全下载，正在切回外网上传云端...`);
       logCard('info', `[单文件同步] 已退出 Wi-Fi 并触发自动回连蓝牙，开始等待外网恢复...`);
 
-      // 阶段 3: 等待电脑网络切回并连通外网
-      const online = await waitForInternetOnline(25000);
+      // 阶段 3: 等待电脑网络切回并连通外网（弹性等待 60 秒，容纳系统网卡全频段扫描与 DHCP 协商时延）
+      const online = await waitForInternetOnline(60000);
       logCard('info', `[单文件同步] 外网连通性探测结果: online=${online}`);
       if (!online) {
         throw new Error('切回外网超时，电脑尚未连通互联网，请检查网络设置后重试');
@@ -1193,8 +1291,10 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
       loadStats();
     } catch (err: any) {
       logCard('error', `[单文件同步] 同步录音 "${file.name}" 失败: ${err?.message || err}`);
-      // 发生异常时也确保切回蓝牙与关闭 Wi-Fi，防止电脑被一直卡在无外网热点上
-      await handleCloseWifi(false);
+      // 只有在未曾退出 Wi-Fi 时才退出，杜绝二次下发指令冲撞
+      if (!wifiClosed) {
+        await handleCloseWifi(false);
+      }
       showToast('error', `同步 "${file.name}" 失败: ${err?.message || '未知错误'}`);
     } finally {
       if (removeProgressListener) {
@@ -1231,6 +1331,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
     }[] = [];
 
     let removeProgressListener: (() => void) | null = null;
+    let wifiClosed = false;
 
     try {
       // 阶段 1: 在 Wi-Fi 热点局域网下，高速逐个下载所有选中的音频
@@ -1270,14 +1371,15 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
         throw new Error('未成功下载到任何音频数据');
       }
 
-      // 阶段 2: 下载完毕，立即退出同步模式并关闭 Wi-Fi，让录音卡切回蓝牙模式，电脑切回外网
+      // 阶段 2: 下载完毕，所有数据已 100% 安全落地！立即退出 Wi-Fi，让录音卡切回蓝牙模式，电脑切回外网
+      wifiClosed = true;
       logCard('info', `[批量同步] 已成功下载 ${downloadedList.length} 份录音，开始关闭 Wi-Fi 并恢复蓝牙...`);
       await handleCloseWifi(false);
-      showToast('success', `已成功下载 ${downloadedList.length} 份录音，正在切回外网上传云端...`);
+      showToast('info', `已成功下载 ${downloadedList.length} 份录音，正在切回外网上传云端...`);
 
-      // 阶段 3: 等待电脑切回互联网
+      // 阶段 3: 等待电脑切回互联网（弹性等待 60 秒，容纳系统网卡全频段扫描与 DHCP 协商时延）
       logCard('info', '[批量同步] 正在等待电脑网络恢复连通外网...');
-      const online = await waitForInternetOnline(25000);
+      const online = await waitForInternetOnline(60000);
       logCard('info', `[批量同步] 外网连通性探测结果: online=${online}`);
       if (!online) {
         throw new Error('切回外网超时，电脑尚未连通互联网，请检查网络设置后重试');
@@ -1317,7 +1419,9 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
       loadStats();
     } catch (err: any) {
       logCard('error', `[批量同步] 批量同步录音卡文件失败: ${err?.message || err}`);
-      await handleCloseWifi(false);
+      if (!wifiClosed) {
+        await handleCloseWifi(false);
+      }
       showToast('error', `批量同步失败: ${err?.message || '未知错误'}`);
     } finally {
       if (removeProgressListener) {
@@ -2679,9 +2783,15 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
       )}
 
       {/* 解除录音卡绑定确认弹窗 */}
-      {showUnbindModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in duration-200">
-          <div className="w-full max-w-sm rounded-2xl bg-surface border border-border p-5 shadow-2xl space-y-4">
+      {showUnbindModal && createPortal(
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 animate-in fade-in duration-200"
+          onClick={() => !unbinding && setShowUnbindModal(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl bg-surface border border-border p-5 shadow-2xl space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-destructive/10 text-destructive flex items-center justify-center text-lg shrink-0">
                 ⚠️
@@ -2699,7 +2809,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                 type="button"
                 disabled={unbinding}
                 onClick={() => setShowUnbindModal(false)}
-                className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-border hover:bg-surface-raised transition-colors cursor-pointer"
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-border hover:bg-surface-raised transition-colors cursor-pointer disabled:opacity-50"
               >
                 取消
               </button>
@@ -2713,14 +2823,15 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* 录音卡 Wi-Fi 极速同步向导弹窗 */}
       {showWifiSyncModal && bleDevice && createPortal(
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in duration-200"
-          onClick={() => !wifiConnecting && setShowWifiSyncModal(false)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 animate-in fade-in duration-200"
+          onClick={() => !wifiConnecting && handleCancelWifiSync()}
         >
           <div
             className="w-full max-w-md rounded-2xl bg-surface border border-border p-6 shadow-2xl space-y-4"
@@ -2733,16 +2844,13 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                   <h3 className="text-sm font-bold text-foreground">
                     {autoConnectingWifi ? '正在自动连接录音卡 Wi-Fi' : '开启 Wi-Fi 极速同步'}
                   </h3>
-                  <p className="text-[11px] text-secondary">音频文件较大，通过专用高速热点毫秒级传输</p>
+                  <p className="text-[11px] text-secondary">专用局域网高速传输，传输完成后自动切回原有网络</p>
                 </div>
               </div>
               <button
                 type="button"
                 disabled={wifiConnecting}
-                onClick={() => {
-                  setShowWifiSyncModal(false);
-                  setAutoConnectingWifi(false);
-                }}
+                onClick={handleCancelWifiSync}
                 className="text-secondary hover:text-foreground text-sm cursor-pointer disabled:opacity-40"
               >
                 ✕
@@ -2755,14 +2863,14 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                 <span>正在唤醒录音卡高速 Wi-Fi 热点，请稍候…</span>
               </div>
             ) : autoConnectingWifi ? (
-              <div className="py-6 flex flex-col items-center justify-center gap-3.5 text-center">
+              <div className="py-3 flex flex-col items-center justify-center gap-3 text-center">
                 <div className="relative flex items-center justify-center">
                   <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-xl">
                     📡
                   </div>
                   <div className="absolute inset-0 rounded-full border-2 border-primary border-t-transparent animate-spin" />
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-0.5">
                   <div className="text-xs font-bold text-foreground">
                     正在尝试自动连接录音卡热点
                   </div>
@@ -2770,19 +2878,42 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                     {bleDevice.wifiSsid}
                   </div>
                 </div>
-                <div className="text-[11px] text-secondary/80 max-w-[280px] leading-relaxed">
-                  系统正在尝试自动直连。通常首次需连接 1 次，电脑记住热点后后续将免密自动同步。
+
+                {/* 自动连接状态下的极速同步须知（临时切网/断网说明） */}
+                <div className="w-full text-left p-3 rounded-xl bg-surface-raised/80 border border-border/80 space-y-2 text-[11px] leading-relaxed">
+                  <div className="flex items-center gap-1.5 text-foreground font-semibold">
+                    <span className="text-primary text-xs">💡</span>
+                    <span>极速同步须知</span>
+                  </div>
+                  <div className="space-y-1.5 text-secondary pl-3.5">
+                    <div className="relative before:content-['•'] before:absolute before:-left-3 before:text-secondary">
+                      <strong className="text-foreground">免输密码</strong>：电脑已保存该热点凭证，系统正进行<strong>全自动无感直连</strong>。
+                    </div>
+                    <div className="relative before:content-['•'] before:absolute before:-left-3 before:text-secondary">
+                      <strong className="text-foreground">临时占用网络</strong>：为实现超高速传输，同步期间电脑 Wi-Fi 将<strong>短暂占用数秒至数十秒</strong>直连设备，传输完成后<strong>立即自动恢复原有网络</strong>。若当前正在进行重要网络会议或通话，建议结束后再开启同步。
+                    </div>
+                  </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAutoConnectingWifi(false);
-                    setAutoConnectFailed(true);
-                  }}
-                  className="mt-1 text-[11px] font-semibold text-primary hover:underline cursor-pointer"
-                >
-                  切换为手动连接模式 →
-                </button>
+
+                <div className="w-full flex items-center justify-between pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAutoConnectingWifi(false);
+                      setAutoConnectFailed(true);
+                    }}
+                    className="text-[11px] font-semibold text-primary hover:underline cursor-pointer"
+                  >
+                    切换为手动连接模式 →
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCancelWifiSync}
+                    className="px-3 py-1 text-xs font-semibold rounded-lg border border-border text-secondary hover:bg-surface-raised transition-colors cursor-pointer"
+                  >
+                    暂不同步
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="space-y-3.5 text-xs">
@@ -2818,10 +2949,12 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                         <span className="font-mono font-bold text-foreground select-all">{bleDevice.wifiPassword}</span>
                         <button
                           type="button"
-                          onClick={() => {
-                            navigator.clipboard.writeText(bleDevice.wifiPassword);
-                            setWifiGuideCopied(true);
-                            setTimeout(() => setWifiGuideCopied(false), 2000);
+                          onClick={async () => {
+                            const ok = await copyTextToClipboard(bleDevice.wifiPassword);
+                            if (ok) {
+                              setWifiGuideCopied(true);
+                              setTimeout(() => setWifiGuideCopied(false), 2000);
+                            }
                           }}
                           className="text-[11px] font-semibold text-primary hover:underline cursor-pointer"
                         >
@@ -2856,10 +2989,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                   <button
                     type="button"
                     disabled={wifiConnecting}
-                    onClick={() => {
-                      setShowWifiSyncModal(false);
-                      setAutoConnectingWifi(false);
-                    }}
+                    onClick={handleCancelWifiSync}
                     className="px-3.5 py-1.5 text-xs font-semibold rounded-lg border border-border text-secondary hover:bg-surface-raised transition-colors cursor-pointer disabled:opacity-40"
                   >
                     暂不同步

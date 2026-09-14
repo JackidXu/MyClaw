@@ -76,6 +76,37 @@ class WifiManager {
   }
 
   /**
+   * 检查宿主机操作系统是否已经保存过该 Wi-Fi 热点的密码/配置文件
+   * 用于新老用户精准分流：
+   * - 若已保存 (老用户)：优先享受无感免密自动切网；
+   * - 若未保存 (新用户 / 移除过网络)：0 延迟直接弹窗展示手动向导，省去徒劳无功的自动切网尝试。
+   */
+  async hasSavedWifiProfile(ssid: string): Promise<boolean> {
+    const cleanSsid = ssid.trim();
+    if (!cleanSsid) return false;
+    const platform = process.platform;
+
+    try {
+      if (platform === 'darwin') {
+        const device = await this.getMacWifiDevice();
+        const { stdout } = await execFileAsync('networksetup', ['-listpreferredwirelessnetworks', device]);
+        // 按行精确匹配，杜绝子串误判
+        const lines = stdout.split('\n').map((l) => l.trim());
+        return lines.includes(cleanSsid);
+      }
+
+      if (platform === 'win32') {
+        const { stdout } = await execFileAsync('netsh', ['wlan', 'show', 'profile', `name=${cleanSsid}`]);
+        return !stdout.includes('not found') && !stdout.includes('找不到');
+      }
+    } catch {
+      return false;
+    }
+
+    return false;
+  }
+
+  /**
    * 权威探测是否已连入录音卡局域网且服务端口可达（IP: 192.168.1.1, Port: 32769）
    * 彻底解决 macOS 14/15 对第三方进程屏蔽 SSID 导致永远返回 null 误判超时的问题
    */
@@ -149,30 +180,61 @@ class WifiManager {
       }
 
       if (platform === 'darwin') {
-        const device = await this.getMacWifiDevice();
-        const args = ['-setairportnetwork', device, cleanSsid];
-        if (cleanPassword) {
-          args.push(cleanPassword);
+        // 若未显式传入密码，属于已保存凭证的免密直连：
+        // macOS 系统 CoreWLAN 会自动利用已存钥匙串凭据接入热点，无需调用必报 -3900 的 networksetup，直接依靠权威端口探针验证连通
+        if (!cleanPassword) {
+          const deadline = Date.now() + 10000;
+          while (Date.now() < deadline) {
+            if (await this.isRecorderReachable(600)) {
+              return { success: true };
+            }
+            const cur = await this.getCurrentWifi().catch((): string | null => null);
+            if (cur === cleanSsid) {
+              return { success: true };
+            }
+            await new Promise((r) => setTimeout(r, 600));
+          }
+
+          if (await this.isRecorderReachable(800)) {
+            return { success: true };
+          }
+          return {
+            success: false,
+            error: `系统自动免密连入 Wi-Fi 热点 (${cleanSsid}) 超时`,
+          };
         }
 
-        // 调用 networksetup 发起连接，支持在热点刚开时的信道重试（最多 3 次，间隔 1.2 秒）
+        // 若传入了密码，调用 networksetup 发起显式连接
+        const device = await this.getMacWifiDevice();
+        const args = ['-setairportnetwork', device, cleanSsid, cleanPassword];
+
         let triggerSuccess = false;
         let lastErr: any = null;
-        for (let attempt = 0; attempt < 3; attempt++) {
+        for (let attempt = 0; attempt < 2; attempt++) {
           try {
-            await execFileAsync('networksetup', args);
+            const { stdout, stderr } = await execFileAsync('networksetup', args);
+            const output = `${stdout || ''} ${stderr || ''}`.trim();
+            if (
+              output.includes('Could not find') ||
+              output.includes('Failed to join') ||
+              output.includes('Error:') ||
+              output.includes('3900')
+            ) {
+              lastErr = new Error(output);
+              await new Promise((r) => setTimeout(r, 1000));
+              continue;
+            }
             triggerSuccess = true;
             break;
           } catch (err: any) {
             lastErr = err;
             const errMsg = String(err?.message || err);
-            // 如果录音卡热点刚开启广播尚未被系统网卡扫描到 (-3900 或 Could not find network)，等待后重试
             if (
               errMsg.includes('3900') ||
               errMsg.includes('Could not find network') ||
               errMsg.includes('Failed to join')
             ) {
-              await new Promise((r) => setTimeout(r, 1200));
+              await new Promise((r) => setTimeout(r, 1000));
               continue;
             }
             break;

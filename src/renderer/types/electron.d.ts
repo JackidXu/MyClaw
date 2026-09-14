@@ -722,6 +722,7 @@ interface IElectronAPI {
     getCurrentWifi: () => Promise<string | null>;
     restoreWifi: (targetSsid: string) => Promise<boolean>;
     checkOnline: () => Promise<boolean>;
+    hasSavedWifi: (ssid: string) => Promise<boolean>;
   };
   skills: {
     list: () => Promise<{ success: boolean; skills?: Skill[]; error?: string }>;

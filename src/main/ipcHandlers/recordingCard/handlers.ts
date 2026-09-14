@@ -105,4 +105,9 @@ export function registerRecordingCardIpcHandlers(): void {
   ipcMain.handle(RecordingCardWifiIpc.CheckOnline, async () => {
     return await wifiManager.isInternetOnline();
   });
+
+  // 10. 检查宿主机是否已保存指定 Wi-Fi 热点凭证
+  ipcMain.handle(RecordingCardWifiIpc.HasSavedWifi, async (_event, ssid: string) => {
+    return await wifiManager.hasSavedWifiProfile(ssid);
+  });
 }

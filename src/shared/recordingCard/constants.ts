@@ -22,6 +22,8 @@ export const RecordingCardWifiIpc = {
   RestoreWifi: 'recording-card-wifi:restore-wifi',
   /** 渲染→主进程：探测宿主机是否真正连通公网（底层原生探针） */
   CheckOnline: 'recording-card-wifi:check-online',
+  /** 渲染→主进程：检查宿主机是否已保存过指定 Wi-Fi 热点凭证 */
+  HasSavedWifi: 'recording-card-wifi:has-saved-wifi',
 } as const;
 
 export type RecordingCardWifiIpc =
