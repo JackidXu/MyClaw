@@ -195,6 +195,7 @@ function getOssClient() {
     accessKeyId,
     accessKeySecret,
     bucket,
+    timeout: 300000,
   });
 }
 
@@ -210,6 +211,7 @@ async function signOnceViaOss(serviceConfig, filePath, ossClient) {
   await ossClient.multipartUpload(ossKey, filePath, {
     parallel: 4,
     partSize: 10 * 1024 * 1024,
+    timeout: 300000,
   });
 
   console.log(`[WinSign] Requesting sign from service via OSS: ${serviceConfig.baseUrl}/sign-oss`);
