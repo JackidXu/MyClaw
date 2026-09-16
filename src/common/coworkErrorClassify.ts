@@ -40,11 +40,7 @@ const ERROR_RULES: Array<[RegExp, string]> = [
   [/Agent couldn't generate a response/i, CoworkErrorI18nKey.IncompleteTurn],
   // OAuth / token refresh failures. Must precede generic auth handling.
   [/oauth.*(invalid|expired|failed|error|scope|token|callback|authorization|not completed)|auth[_ ]refresh|refresh[_ ]timeout|callback[_ ](timeout|validation)|token.*(expired|invalid)|invalid.*token|authorization method/i, CoworkErrorI18nKey.OAuthInvalid],
-  // Provider/model permission errors. Must precede generic auth handling.
-  [/无权访问|没有权限|access denied|access.*forbidden|forbidden|permission denied|\b403\b|auth[_ ]scope/i, CoworkErrorI18nKey.ModelAccessDenied],
-  // Auth: Anthropic, DeepSeek, OpenAI, Gemini, HTTP 401
-  [new RegExp(`authentication[_ ](error|fails?)|${API_KEY_PATTERN}.*(invalid|expired|deleted|inactive|not[_ ]valid|not\\s+valid)|invalid.*${API_KEY_PATTERN}|incorrect.*${API_KEY_PATTERN}|unauthorized|PERMISSION_DENIED|\\b401\\b`, 'i'), CoworkErrorI18nKey.AuthInvalid],
-  // LobsterAI plan/free quota. Must precede generic 402/billing handling.
+  // LobsterAI plan/free quota. Must precede generic auth/billing handling.
   [LOBSTERAI_QUOTA_EXHAUSTED_PATTERN, CoworkErrorI18nKey.QuotaExhausted],
   // Provider/model capacity failures. Must precede rate-limit matching because
   // capacity errors may also contain phrases such as "too many requests".
@@ -52,8 +48,13 @@ const ERROR_RULES: Array<[RegExp, string]> = [
   // Rate limit: HTTP 429 and Gemini RESOURCE_EXHAUSTED
   // (must precede billing so "RESOURCE_EXHAUSTED: quota exceeded" maps to rate-limit)
   [/\b429\b|rate[_ ]limit|too many requests|RESOURCE_EXHAUSTED/i, CoworkErrorI18nKey.RateLimit],
-  // Billing: DeepSeek 402, OpenAI, OpenRouter, Qwen, StepFun
-  [/insufficient.*(balance|quota|credits)|billing|quota[_ ]exceeded|Arrearage|account.*not.*in.*good.*standing|余额不足|\b402\b/i, CoworkErrorI18nKey.InsufficientBalance],
+  // Billing / Quota: DeepSeek 402, NewAPI/OneAPI, OpenAI, OpenRouter, Qwen, StepFun
+  // Must precede generic 403 (ModelAccessDenied) and 401 (AuthInvalid) so quota errors with 403/401 map to InsufficientBalance.
+  [/insufficient.*(?:balance|quota|credits)|user\s*quota\s*is\s*not\s*enough|token\s*quota\s*is\s*not\s*enough|insufficient_(?:user|token)_quota|quota.*(?:exceeded|not\s*enough)|billing|Arrearage|account.*not.*in.*good.*standing|余额不足|额度不足|算力不足|算力余额不足|预扣费|剩余额度|\b402\b/i, CoworkErrorI18nKey.InsufficientBalance],
+  // Provider/model permission errors. Must precede generic auth handling.
+  [/无权访问|没有权限|access denied|access.*forbidden|forbidden|permission denied|\b403\b|auth[_ ]scope/i, CoworkErrorI18nKey.ModelAccessDenied],
+  // Auth: Anthropic, DeepSeek, OpenAI, Gemini, HTTP 401
+  [new RegExp(`authentication[_ ](error|fails?)|${API_KEY_PATTERN}.*(invalid|expired|deleted|inactive|not[_ ]valid|not\\s+valid)|invalid.*${API_KEY_PATTERN}|incorrect.*${API_KEY_PATTERN}|unauthorized|PERMISSION_DENIED|\\b401\\b`, 'i'), CoworkErrorI18nKey.AuthInvalid],
   // Oversized Cowork/OpenClaw gateway message payloads.
   [/chat\.send payload too large|max payload size exceeded|gateway closed \(1009\)|message too big/i, 'coworkErrorMessageTooLarge'],
   // Input too long: context length, HTTP 413, Qwen, payload too large

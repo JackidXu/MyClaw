@@ -14,7 +14,6 @@ import {
 import type { CoworkGoal } from '../../../shared/cowork/goal';
 import { dedupeArtifactsForDisplay } from '../../services/artifactParser';
 import { coworkService } from '../../services/cowork';
-import { getPortalPricingUrl } from '../../services/endpoints';
 import { i18nService } from '../../services/i18n';
 import { selectCurrentSession } from '../../store/selectors/coworkSelectors';
 import type { Artifact } from '../../types/artifact';
@@ -254,20 +253,9 @@ const logCreditQuotaBannerEvent = (
 };
 
 const CreditQuotaExhaustedBanner: React.FC = () => {
-  const handlePurchase = async () => {
-    const pricingUrl = getPortalPricingUrl();
+  const handlePurchase = () => {
     logCreditQuotaBannerEvent('debug', 'purchase action clicked');
-    try {
-      const result = await window.electron?.shell?.openExternal(pricingUrl);
-      if (!result?.success) {
-        logCreditQuotaBannerEvent(
-          'warn',
-          `pricing page open failed: ${result?.error ?? 'unknown error'}`,
-        );
-      }
-    } catch (error) {
-      logCreditQuotaBannerEvent('warn', 'pricing page open threw an error', error);
-    }
+    window.dispatchEvent(new CustomEvent('app:openPayModal'));
   };
 
   return (
@@ -583,6 +571,9 @@ const AssistantTurnBlock: React.FC<{
     const rawErrorText = typeof message.metadata?.error === 'string' ? message.metadata.error : null;
     const classifiedKey = (rawErrorText ? classifyErrorKey(rawErrorText) : null) ?? classifyErrorKey(rawContent);
     const isContextOrInterruption = isContextOrInterruptionErrorKey(classifiedKey);
+    const isInsufficientBalance = classifiedKey === CoworkErrorI18nKey.InsufficientBalance
+      || classifiedKey === CoworkErrorI18nKey.QuotaExhausted
+      || classifiedKey === CoworkErrorI18nKey.FreeQuotaExhausted;
 
     return (
       <div className="rounded-lg border border-border bg-background px-3 py-2">
@@ -602,6 +593,19 @@ const AssistantTurnBlock: React.FC<{
           <div className="mt-1 pl-6 text-xs text-muted">{errorModelLine}</div>
         )}
         {errorDetail && <SystemErrorTechnicalDetail detail={errorDetail} />}
+        {isInsufficientBalance && (
+          <div className="mt-2.5 pl-6 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                window.dispatchEvent(new CustomEvent('app:openPayModal'));
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
+            >
+              <span>{i18nService.t('coworkActionRecharge')}</span>
+            </button>
+          </div>
+        )}
         {isContextOrInterruption && (
           <div className="mt-2.5 pl-6 flex flex-wrap items-center gap-2">
             <button

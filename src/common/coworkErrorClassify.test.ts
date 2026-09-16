@@ -113,6 +113,26 @@ test('billing: HTTP 402', () => {
   expect(classifyError('Request failed with status 402')).toBe('coworkErrorInsufficientBalance');
 });
 
+test('billing: NewAPI user quota is not enough with HTTP 403', () => {
+  expect(classifyError('Request failed with status 403: {"error":{"message":"user quota is not enough","type":"new_api_error","code":"insufficient_user_quota"}}')).toBe('coworkErrorInsufficientBalance');
+});
+
+test('billing: NewAPI token quota is not enough with HTTP 403', () => {
+  expect(classifyError('Request failed with status 403: {"error":{"message":"token quota is not enough","type":"new_api_error","code":"insufficient_token_quota"}}')).toBe('coworkErrorInsufficientBalance');
+});
+
+test('billing: NewAPI quota error with HTTP 401', () => {
+  expect(classifyError('Request failed with status 401: {"error":{"message":"user quota is not enough","type":"new_api_error"}}')).toBe('coworkErrorInsufficientBalance');
+});
+
+test('billing: 算力余额不足', () => {
+  expect(classifyError('算力余额不足，请充值后继续使用')).toBe('coworkErrorInsufficientBalance');
+});
+
+test('billing: NewAPI 403 预扣费额度失败', () => {
+  expect(classifyError('403 预扣费额度失败, 用户剩余额度: ¥0.068838, 需要预扣费额度: ¥0.116732 (request id: sha256:4aa1df1bc67a)')).toBe('coworkErrorInsufficientBalance');
+});
+
 // ==================== Input too long ====================
 
 test('input: context length exceeded', () => {

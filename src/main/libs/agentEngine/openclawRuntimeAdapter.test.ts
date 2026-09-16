@@ -657,13 +657,21 @@ test('resolveOpenClawRuntimeErrorMessage restores recent quota error hidden by O
   });
 
   expect(resolveOpenClawRuntimeErrorMessage('LLM request failed.')).toContain(
-    '额度已用完',
+    '当前账号算力余额不足',
   );
   expect(consumeRecentOpenClawTokenProxyQuotaError()).toBeNull();
 });
 
 test('resolveOpenClawRuntimeErrorMessage classifies raw LobsterAI quota errors', () => {
-  expect(resolveOpenClawRuntimeErrorMessage('本月积分已用完')).toContain('额度已用完');
+  expect(resolveOpenClawRuntimeErrorMessage('本月积分已用完')).toContain('当前账号算力余额不足');
+});
+
+test('resolveOpenClawRuntimeErrorMessage classifies NewAPI 403 预扣费额度失败 over failoverReason auth', () => {
+  expect(resolveOpenClawRuntimeErrorMessage('LLM request failed.', {
+    failoverReason: 'auth',
+    httpCode: '403',
+    rawErrorPreview: '403 预扣费额度失败, 用户剩余额度: ¥0.068838, 需要预扣费额度: ¥0.116732 (request id: sha256:4aa1df1bc67a)',
+  })).toContain('当前账号算力余额不足');
 });
 
 test('resolveOpenClawRuntimeError keeps structured enterprise quota reason', () => {
@@ -5221,8 +5229,8 @@ test('chat error can consume quota signal after lifecycle error schedules fallba
 
     const persistedError = session.messages.find((message) => message.type === 'system');
     expect(session.status).toBe('error');
-    expect(errorSpy).toHaveBeenCalledWith(session.id, expect.stringContaining('额度已用完'));
-    expect(persistedError?.content).toContain('额度已用完');
+    expect(errorSpy).toHaveBeenCalledWith(session.id, expect.stringContaining('当前账号算力余额不足'));
+    expect(persistedError?.content).toContain('当前账号算力余额不足');
     expect(abortRequest).not.toHaveBeenCalled();
     expect(consumeRecentOpenClawTokenProxyQuotaError()).toBeNull();
   } finally {

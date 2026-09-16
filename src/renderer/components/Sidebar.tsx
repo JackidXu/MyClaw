@@ -345,6 +345,25 @@ const Sidebar: React.FC<SidebarProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // 监听全局唤起算力充值弹窗事件
+  useEffect(() => {
+    const handleOpenPayModal = () => {
+      const config = configService.getConfig();
+      const oneapiConfig = config.providers?.['oneapi'];
+      const apiKey = oneapiConfig?.apiKey?.trim();
+      if (!apiKey) {
+        window.dispatchEvent(new CustomEvent('app:showToast', { detail: '未激活系统，请先输入激活码' }));
+        return;
+      }
+      setIsPayModalOpen(true);
+    };
+
+    window.addEventListener('app:openPayModal', handleOpenPayModal);
+    return () => {
+      window.removeEventListener('app:openPayModal', handleOpenPayModal);
+    };
+  }, []);
+
   // 连续点击头像唤起开发者工具
   const avatarClickCountRef = useRef<number>(0);
   const avatarClickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);

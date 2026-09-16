@@ -2006,20 +2006,19 @@ const translations: Record<LanguageType, Record<string, string>> = {
     coworkErrorLobsterAILoginExpired: '登录状态已过期，请重新登录后继续使用 HeyClaw 套餐模型。',
     coworkErrorOAuthInvalid: 'OAuth 授权已失效或权限不足，请重新授权后重试。',
     coworkErrorModelAccessDenied: '当前账号无权访问该模型，请切换模型或检查服务商账号权限。',
-    coworkErrorQuotaExhausted:
-      '大模型额度已用完，请联系管理员，或在设置中配置您的自定义 API Key。',
-    coworkErrorFreeQuotaExhausted:
-      '大模型额度已耗尽，请联系管理员进行手动充值，或在设置中配置您的自定义 API Key。',
-    coworkErrorInsufficientBalance: 'API 余额不足，请联系管理员进行手动充值，或在设置中配置您的自定义 API Key。',
+    coworkErrorQuotaExhausted: '当前账号算力余额不足，请充值后继续使用。',
+    coworkErrorFreeQuotaExhausted: '当前账号算力余额不足，请充值后继续使用。',
+    coworkErrorInsufficientBalance: '当前账号算力余额不足，请充值后继续使用。',
     coworkErrorIncompleteTurnWithTools:
       'AI 生成回复中断（对话上下文过长或模型输出异常）。部分工具操作已执行，建议压缩上下文或开启新会话继续。',
     coworkErrorIncompleteTurn:
       'AI 生成回复中断（对话上下文过长或模型输出异常），请重试或开启新会话。',
     coworkActionCompactContext: '一键压缩上下文',
     coworkActionNewSession: '开启新任务',
-    coworkCreditQuotaBannerTitle: '积分已用尽，请及时充值。',
-    coworkCreditQuotaBannerDescription: '已达到使用上限，需购买 token 继续使用。',
-    coworkCreditQuotaBannerAction: '去购买',
+    coworkActionRecharge: '立即充值',
+    coworkCreditQuotaBannerTitle: '算力余额不足，请及时充值。',
+    coworkCreditQuotaBannerDescription: '当前账号算力余额已用尽，充值后可继续使用。',
+    coworkCreditQuotaBannerAction: '立即充值',
     coworkErrorInputTooLong: '输入内容过长，超出模型上下文限制，请缩短对话内容后重试。',
     coworkErrorMessageTooLarge:
       '本次消息过大，请减少附件、压缩图片或拆分提交。（单次整体需小于 30MB）',
@@ -5959,19 +5958,21 @@ const translations: Record<LanguageType, Record<string, string>> = {
     coworkErrorModelAccessDenied:
       'This account is not allowed to access the selected model. Switch models or check provider account permissions.',
     coworkErrorQuotaExhausted:
-      'Your credits have been used up. Please contact your administrator, or configure your own API Key in Settings.',
+      'Insufficient computing balance in your account. Please recharge to continue.',
     coworkErrorFreeQuotaExhausted:
-      'The quota has been used up. Please contact your administrator for manual recharge, or configure your own API Key in Settings.',
-    coworkErrorInsufficientBalance: 'Insufficient API balance. Please contact your administrator for manual recharge, or configure your own API Key in Settings.',
+      'Insufficient computing balance in your account. Please recharge to continue.',
+    coworkErrorInsufficientBalance:
+      'Insufficient computing balance in your account. Please recharge to continue.',
     coworkErrorIncompleteTurnWithTools:
       'AI response was interrupted (conversation context too long or model output ended abnormally). Some actions were executed. Please compact context or start a new task.',
     coworkErrorIncompleteTurn:
       'AI response was interrupted (conversation context too long or model output ended abnormally). Please retry or start a new task.',
     coworkActionCompactContext: 'Compact Context',
     coworkActionNewSession: 'New Task',
-    coworkCreditQuotaBannerTitle: 'Credits used up. Please recharge.',
-    coworkCreditQuotaBannerDescription: 'You have reached the usage limit. Purchase tokens to continue.',
-    coworkCreditQuotaBannerAction: 'Buy',
+    coworkActionRecharge: 'Recharge',
+    coworkCreditQuotaBannerTitle: 'Insufficient computing balance. Please recharge.',
+    coworkCreditQuotaBannerDescription: 'Computing power balance has been used up. Please recharge to continue.',
+    coworkCreditQuotaBannerAction: 'Recharge',
     coworkErrorInputTooLong:
       'Input too long, exceeding model context limit. Please shorten the conversation and try again.',
     coworkErrorMessageTooLarge:

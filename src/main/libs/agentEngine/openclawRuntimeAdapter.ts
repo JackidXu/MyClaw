@@ -1659,16 +1659,24 @@ function classifyOpenClawSafeRuntimeErrorMetadata(
     return CoworkErrorI18nKey.ModelAccessDenied;
   }
 
-  // Some providers return an HTTP 200 SSE response whose terminal error text
-  // contains an inner 503 capacity failure. OpenClaw can classify that text as
-  // rate_limit because it also says "too many requests" or "throttled". Let
-  // the high-confidence capacity signal in the preserved raw preview win after
-  // retaining LobsterAI's explicit HTTP 403 access-denial rule above.
-  const rawErrorClassifiedKey = metadata.rawErrorPreview
-    ? classifyErrorKey(metadata.rawErrorPreview)
-    : null;
-  if (rawErrorClassifiedKey === CoworkErrorI18nKey.ModelOverloaded) {
-    return rawErrorClassifiedKey;
+  // 优先检查原始错误文本中的高置信度业务错误（算力余额不足、配额耗尽、服务过载、限频等）
+  // 必须优先于 failoverReason，因为 OpenClaw 网关常将 403 预扣费额度失败、401 额度不足等错误粗暴标记为 failoverReason: 'auth'
+  for (const candidate of [
+    metadata.rawErrorPreview,
+    metadata.errorMessage,
+    metadata.error,
+    metadata.providerErrorType,
+  ]) {
+    if (!candidate) continue;
+    const classifiedKey = classifyErrorKey(candidate);
+    if (
+      classifiedKey === CoworkErrorI18nKey.InsufficientBalance
+      || classifiedKey === CoworkErrorI18nKey.QuotaExhausted
+      || classifiedKey === CoworkErrorI18nKey.ModelOverloaded
+      || classifiedKey === CoworkErrorI18nKey.RateLimit
+    ) {
+      return classifiedKey;
+    }
   }
 
   const failureKind = metadata.providerRuntimeFailureKind?.trim();
