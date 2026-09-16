@@ -376,10 +376,6 @@ const AgentCreateModal: React.FC<AgentCreateModalProps> = ({
     });
     setCreating(true);
     try {
-      const avatarUrl = icon && icon.startsWith('avatar_')
-        ? `https://scrm0.cdn.banchengyun.com/heyclaw/server-assets/avatars/${icon.replace(/\.(png|jpg)$/i, '')}.jpg`
-        : icon;
-
       const agent = await agentService.createAgent({
         name: name.trim(),
         description: description.trim(),
@@ -388,7 +384,7 @@ const AgentCreateModal: React.FC<AgentCreateModalProps> = ({
         model: model ? toOpenClawModelRef(model) : '',
         thinkingLevel: resolveThinkingLevelForModel(model),
         workingDirectory: workingDirectory.trim(),
-        avatar: avatarUrl,
+        avatar: icon,
         skillIds,
         subagentAllowAgentIds,
         level,

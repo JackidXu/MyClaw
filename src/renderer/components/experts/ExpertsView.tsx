@@ -112,6 +112,18 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
     return installedAgents.filter((a) => a.source === 'custom' && a.id !== 'main');
   }, [installedAgents]);
 
+  // 检查专家是否已在左侧菜单栏“我的专家”列表中（已召唤）
+  const isAgentSummoned = useMemo(() => {
+    const summonedIdSet = new Set<string>();
+    for (const a of installedAgents) {
+      if (a.enabled !== false) {
+        if (a.id) summonedIdSet.add(a.id);
+        if (a.presetId) summonedIdSet.add(a.presetId);
+      }
+    }
+    return (id: string) => summonedIdSet.has(id);
+  }, [installedAgents]);
+
   // 当前专家 Tab 展示的部门分类
   const departments = useMemo(() => {
     const set = new Set<string>();
@@ -478,6 +490,7 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
                       expert={expert}
                       hiringId={hiringId}
                       isCustom={false}
+                      isSummoned={isAgentSummoned(expert.id)}
                       onStartWork={handleStartWork}
                     />
                   ))}
@@ -521,6 +534,7 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
                       expert={expert as any}
                       hiringId={hiringId}
                       isCustom={true}
+                      isSummoned={isAgentSummoned(expert.id)}
                       onStartWork={handleStartWork}
                       onEdit={() => setEditingAgentId(expert.id)}
                       onDelete={() => setAgentToDelete(expert)}
@@ -555,7 +569,7 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
                 </span>
               </div>
               <div className="text-xs text-secondary mt-1">
-                作者 · {selectedTeamDetail.author || '黑墙'}
+                {!!selectedTeamDetail.author && <>作者 · {selectedTeamDetail.author}</>}
                 {selectedTeamDetail.usesCount && (
                   <span className="ml-3">{selectedTeamDetail.usesCount} 次使用</span>
                 )}
@@ -852,67 +866,83 @@ const PrototypeExpertCard: React.FC<{
   expert: PresetAgent;
   hiringId: string | null;
   isCustom: boolean;
+  isSummoned?: boolean;
   onStartWork: (expert: any) => void;
   onEdit?: () => void;
   onDelete?: () => void;
-}> = ({ expert, hiringId, isCustom, onStartWork, onEdit, onDelete }) => {
+}> = ({ expert, hiringId, isCustom, isSummoned = false, onStartWork, onEdit, onDelete }) => {
   const department = expert.department && expert.department.trim() !== '其他' ? expert.department.trim() : null;
-  const author = expert.author || '黑墙';
+  const author = expert.author;
 
   return (
     <div
-      className="group relative flex gap-3.5 bg-surface border border-border hover:border-amber-500/80 rounded-2xl p-4 transition-all duration-150 items-start shadow-xs hover:shadow-sm will-change-transform"
+      className="group relative flex gap-4 bg-surface border border-border hover:border-amber-500/80 rounded-2xl p-4 transition-all duration-200 items-start shadow-xs hover:shadow-md will-change-transform"
     >
-      {/* 左侧头像 */}
-      <div className="shrink-0 pt-0.5">
-        <AgentAvatarIcon
-          avatar={expert.avatar}
-          className="h-12 w-12 rounded-full shadow-xs ring-1 ring-border group-hover:scale-105 transition-transform"
-        />
+      {/* 左侧头像：纯净无边框 */}
+      <div className="shrink-0 relative">
+        <div className="w-18 h-18 sm:w-20 sm:h-20 rounded-2xl overflow-hidden flex items-center justify-center">
+          <AgentAvatarIcon
+            avatar={expert.avatar}
+            className="w-full h-full rounded-2xl object-cover group-hover:scale-105 transition-transform duration-300"
+          />
+        </div>
       </div>
 
       {/* 右侧内容 */}
-      <div className={`flex-1 min-w-0 flex flex-col gap-1 ${isCustom ? 'pr-7' : ''}`}>
-        <div className="flex items-center justify-between gap-1.5">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <h4 className="text-sm font-bold text-foreground truncate">{expert.name}</h4>
-            {!isCustom ? (
-              <span className="text-[10px] font-bold text-white bg-amber-500 px-1.5 py-0.2 rounded-full leading-tight shrink-0">
-                官方
-              </span>
-            ) : (
-              <span className="text-[10px] font-bold text-blue-600 bg-blue-50 border border-blue-200 px-1.5 py-0.2 rounded-full leading-tight shrink-0">
-                自定义
-              </span>
-            )}
+      <div className={`flex-1 min-w-0 flex flex-col justify-between self-stretch gap-1.5 ${isCustom ? 'pr-7' : ''}`}>
+        <div>
+          <div className="flex items-center justify-between gap-1.5">
+            <div className="flex items-center gap-2 min-w-0">
+              <h4 className="text-base font-bold text-foreground truncate">{expert.name}</h4>
+              {!isCustom ? (
+                <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/50 border border-amber-200/80 dark:border-amber-900 px-1.5 py-0.2 rounded-full shrink-0">
+                  官方
+                </span>
+              ) : (
+                <span className="text-[10px] font-semibold text-blue-600 bg-blue-50 border border-blue-200 px-1.5 py-0.2 rounded-full shrink-0">
+                  自定义
+                </span>
+              )}
+            </div>
+
+            {/* 鼠标悬停展示统一按钮：已召唤显示“对话”，未召唤显示“召唤” */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onStartWork(expert);
+              }}
+              disabled={hiringId !== null}
+              className="opacity-0 group-hover:opacity-100 transition-opacity px-3 py-1 rounded-full bg-foreground text-background text-xs font-semibold hover:opacity-90 active:scale-95 shrink-0 cursor-pointer disabled:opacity-50"
+            >
+              {hiringId === expert.id ? '...' : (isSummoned ? '对话' : '召唤')}
+            </button>
           </div>
 
-          {/* 鼠标悬停展示统一的“召唤”按钮 */}
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onStartWork(expert);
-            }}
-            disabled={hiringId !== null}
-            className="opacity-0 group-hover:opacity-100 transition-opacity px-2.5 py-1 rounded-full bg-foreground text-background text-[11px] font-semibold hover:opacity-90 active:scale-95 shrink-0 cursor-pointer disabled:opacity-50"
-          >
-            {hiringId === expert.id ? '...' : '召唤'}
-          </button>
-        </div>
-
-        {/* 作者 / 部门 */}
-        <div className="text-[11px] text-secondary">
-          作者 · {author}
+          {/* 状态指示点（已召唤 / 未召唤）与作者 */}
+          <div className="flex items-center gap-2 text-[11px] text-secondary mt-1">
+            {isSummoned ? (
+              <span className="inline-flex items-center gap-1.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                已召唤
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 text-[10px] font-medium text-secondary bg-surface-raised border border-border/50 px-2 py-0.5 rounded-full">
+                <span className="w-1.5 h-1.5 rounded-full bg-secondary/40"></span>
+                未召唤
+              </span>
+            )}
+            {!!author && <span>作者 · {author}</span>}
+          </div>
         </div>
 
         {/* 描述摘要 */}
-        <p className="text-xs text-secondary/90 leading-relaxed line-clamp-2 text-justify mt-0.5">
+        <p className="text-xs text-secondary/90 leading-relaxed line-clamp-2 text-justify">
           {expert.description}
         </p>
 
         {/* 标签栏 */}
-        <div className="flex flex-wrap gap-1.5 mt-2">
+        <div className="flex flex-wrap gap-1.5 mt-1">
           {department && (
             <span className="text-[10.5px] text-amber-700 bg-amber-50 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-900 px-2 py-0.5 rounded-full whitespace-nowrap font-medium">
               {department}

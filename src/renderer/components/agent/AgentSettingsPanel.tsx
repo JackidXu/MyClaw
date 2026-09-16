@@ -385,10 +385,6 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
     });
     setSaving(true);
     try {
-      const avatarUrl = icon && icon.startsWith('avatar_')
-        ? `https://scrm0.cdn.banchengyun.com/heyclaw/server-assets/avatars/${icon.replace(/\.(png|jpg)$/i, '')}.jpg`
-        : icon;
-
       const modelRef = model ? toOpenClawModelRef(model) : '';
       const result = await agentService.updateAgent(agentId, {
         name: name.trim(),
@@ -400,7 +396,7 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
           ? { thinkingLevel: resolveThinkingLevelForModel(model) }
           : {}),
         workingDirectory: workingDirectory.trim(),
-        avatar: avatarUrl,
+        avatar: icon,
         skillIds,
         subagentAllowAgentIds,
         level,

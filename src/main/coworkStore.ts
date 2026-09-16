@@ -3558,11 +3558,7 @@ export class CoworkStore {
       model: row.model,
       thinkingLevel: parseModelThinkingLevel(row.thinking_level) ?? '',
       workingDirectory: row.working_directory || '',
-      avatar: (row.icon && row.icon.startsWith('http'))
-        ? row.icon
-        : (row.icon && row.icon.startsWith('avatar_'))
-          ? `https://scrm0.cdn.banchengyun.com/heyclaw/server-assets/avatars/${row.icon.replace(/\.(png|jpg)$/i, '')}.jpg`
-          : (row.icon || ''),
+      avatar: row.icon || '',
       skillIds,
       subagentAllowAgentIds,
       level: (row.level || '高级') as '高级' | '中级' | '初级',

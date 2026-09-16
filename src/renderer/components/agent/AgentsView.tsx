@@ -192,22 +192,24 @@ const AgentCard: React.FC<{
   <button
     type="button"
     onClick={onClick}
-    className={`flex flex-col items-start gap-2 p-4 rounded-xl border-2 text-left transition-all min-h-[140px] hover:shadow-md hover:bg-surface-raised ${
+    className={`group flex flex-col items-start gap-3 p-4 rounded-2xl border-2 text-left transition-all min-h-[160px] hover:shadow-md hover:bg-surface-raised ${
       isActive
         ? 'border-primary bg-primary/5'
-        : 'border-border'
+        : 'border-border bg-surface'
     }`}
   >
-    <AgentAvatarIcon
-      avatar={icon}
-      className="h-11 w-11"
-    />
+    <div className="w-14 h-14 rounded-2xl overflow-hidden flex items-center justify-center">
+      <AgentAvatarIcon
+        avatar={icon}
+        className="w-full h-full rounded-2xl object-cover group-hover:scale-105 transition-transform duration-300"
+      />
+    </div>
     <div className="min-w-0 w-full">
-      <div className="text-sm font-semibold text-foreground truncate">
+      <div className="text-sm font-bold text-foreground truncate">
         {name}
       </div>
       {description && (
-        <div className="text-xs text-secondary mt-0.5 line-clamp-2">
+        <div className="text-xs text-secondary mt-1 line-clamp-2 leading-relaxed">
           {description}
         </div>
       )}
@@ -224,17 +226,19 @@ const UninstalledPresetCard: React.FC<{
   isAdding: boolean;
   onAdd: () => void;
 }> = ({ icon, name, description, isAdding, onAdd }) => (
-  <div className="flex flex-col items-start gap-2 p-4 rounded-xl border-2 border-dashed border-border opacity-60 hover:opacity-80 transition-opacity min-h-[140px]">
-    <AgentAvatarIcon
-      avatar={icon}
-      className="h-11 w-11"
-    />
+  <div className="group flex flex-col items-start gap-3 p-4 rounded-2xl border-2 border-dashed border-border opacity-70 hover:opacity-100 transition-all min-h-[160px] bg-surface/50">
+    <div className="w-14 h-14 rounded-2xl overflow-hidden flex items-center justify-center">
+      <AgentAvatarIcon
+        avatar={icon}
+        className="w-full h-full rounded-2xl object-cover"
+      />
+    </div>
     <div className="min-w-0 w-full flex-1">
-      <div className="text-sm font-semibold text-foreground truncate">
+      <div className="text-sm font-bold text-foreground truncate">
         {name}
       </div>
       {description && (
-        <div className="text-xs text-secondary mt-0.5 line-clamp-2">
+        <div className="text-xs text-secondary mt-1 line-clamp-2 leading-relaxed">
           {description}
         </div>
       )}

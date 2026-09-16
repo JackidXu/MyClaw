@@ -36,8 +36,6 @@ export const AVATAR_IMAGES: Record<string, string> = {
   avatar_16: avatar16,
 };
 
-const MAIN_AGENT_CDN_AVATAR = 'https://scrm0.cdn.banchengyun.com/heyclaw/server-assets/avatars/avatar_1.jpg';
-
 interface AgentAvatarIconProps {
   avatar?: string | null;
   agentId?: string;
@@ -56,13 +54,11 @@ const AgentAvatarIcon: React.FC<AgentAvatarIconProps> = ({
   let finalUrl = avatar1;
 
   if (rawInput && !imgError) {
-    if (rawInput.startsWith('avatar_')) {
-      const cleanName = rawInput.replace(/\.(png|jpg)$/i, '');
-      if (AVATAR_IMAGES[cleanName]) {
-        finalUrl = AVATAR_IMAGES[cleanName];
-      } else {
-        finalUrl = `https://scrm0.cdn.banchengyun.com/heyclaw/server-assets/avatars/${cleanName}.jpg`;
-      }
+    const avatarMatch = rawInput.match(/avatar_(\d+)(?:\.(png|jpg|jpeg))?/i);
+    const matchedKey = avatarMatch ? `avatar_${avatarMatch[1]}` : null;
+
+    if (matchedKey && AVATAR_IMAGES[matchedKey]) {
+      finalUrl = AVATAR_IMAGES[matchedKey];
     } else if (
       rawInput.startsWith('http') ||
       rawInput.startsWith('data:') ||
@@ -73,8 +69,11 @@ const AgentAvatarIcon: React.FC<AgentAvatarIconProps> = ({
     }
   }
 
+  const hasCustomRounded = className.includes('rounded-');
+  const roundedClass = hasCustomRounded ? '' : 'rounded-full';
+
   return (
-    <span className={`inline-flex shrink-0 items-center justify-center rounded-full overflow-hidden ${className}`}>
+    <span className={`inline-flex shrink-0 items-center justify-center overflow-hidden ${roundedClass} ${className}`}>
       <img
         src={finalUrl}
         alt="Avatar"
@@ -82,7 +81,7 @@ const AgentAvatarIcon: React.FC<AgentAvatarIconProps> = ({
         onError={(e) => {
           if (!imgError) {
             setImgError(true);
-            (e.target as HTMLImageElement).src = MAIN_AGENT_CDN_AVATAR;
+            (e.target as HTMLImageElement).src = avatar1;
           }
         }}
       />
