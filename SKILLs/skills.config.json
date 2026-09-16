@@ -174,6 +174,50 @@
       "order": 47,
       "enabled": true
     },
+    "xhs-console": {
+      "order": 51,
+      "enabled": true
+    },
+    "xhs-positioning": {
+      "order": 52,
+      "enabled": true
+    },
+    "xhs-topic": {
+      "order": 53,
+      "enabled": true
+    },
+    "xhs-writer": {
+      "order": 54,
+      "enabled": true
+    },
+    "xhs-title": {
+      "order": 55,
+      "enabled": true
+    },
+    "xhs-cover": {
+      "order": 56,
+      "enabled": true
+    },
+    "xhs-html": {
+      "order": 57,
+      "enabled": true
+    },
+    "xhs-image": {
+      "order": 58,
+      "enabled": true
+    },
+    "xhs-account-audit": {
+      "order": 59,
+      "enabled": true
+    },
+    "xhs-note-analytics": {
+      "order": 60,
+      "enabled": true
+    },
+    "xhs-branded": {
+      "order": 61,
+      "enabled": true
+    },
     "docx": {
       "order": 10010,
       "enabled": true
