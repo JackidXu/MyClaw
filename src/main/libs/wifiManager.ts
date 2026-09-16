@@ -18,7 +18,7 @@ class WifiManager {
   /**
    * 获取 macOS Wi-Fi 硬件接口设备名（如 en0）
    */
-  private async getMacWifiDevice(): Promise<string> {
+  async getMacWifiDevice(): Promise<string> {
     if (this.cachedWifiDevice) return this.cachedWifiDevice;
     try {
       const { stdout } = await execFileAsync('networksetup', ['-listallhardwareports']);
@@ -107,10 +107,62 @@ class WifiManager {
   }
 
   /**
-   * 权威探测是否已连入录音卡局域网且服务端口可达（IP: 192.168.1.1, Port: 32769）
-   * 彻底解决 macOS 14/15 对第三方进程屏蔽 SSID 导致永远返回 null 误判超时的问题
+   * 解析连接录音卡所需的 Socket 目标端点与出口网卡 IP（防多网卡/有线网路由冲突）
+   */
+  async resolveRecorderEndpoints(): Promise<{ targetIp: string; localIp?: string }> {
+    let targetIp = '192.168.1.1';
+    let localIp: string | undefined;
+
+    try {
+      if (process.platform === 'darwin') {
+        const router = await this.getMacWifiRouter().catch((): string | null => null);
+        if (router && net.isIP(router)) {
+          targetIp = router;
+        }
+        const device = await this.getMacWifiDevice().catch((): string => 'en0');
+        const ifaces = os.networkInterfaces();
+        const targetIface = ifaces[device];
+        if (targetIface) {
+          const ipv4 = targetIface.find((i) => i.family === 'IPv4' && !i.internal);
+          if (ipv4) localIp = ipv4.address;
+        }
+        if (!localIp) {
+          for (const name of Object.keys(ifaces)) {
+            const ipv4 = (ifaces[name] || []).find(
+              (i) => i.family === 'IPv4' && !i.internal && i.address.startsWith('192.168.1.')
+            );
+            if (ipv4) {
+              localIp = ipv4.address;
+              break;
+            }
+          }
+        }
+      } else if (process.platform === 'win32') {
+        const ifaces = os.networkInterfaces();
+        for (const name of Object.keys(ifaces)) {
+          const ipv4 = (ifaces[name] || []).find(
+            (i) => i.family === 'IPv4' && !i.internal && i.address.startsWith('192.168.1.')
+          );
+          if (ipv4) {
+            localIp = ipv4.address;
+            break;
+          }
+        }
+      }
+    } catch {
+      // 忽略探测异常，使用默认值
+    }
+
+    return { targetIp, localIp };
+  }
+
+  /**
+   * 权威探测是否已连入录音卡局域网且服务端口可达
+   * 动态解析真实网关并强制绑定无线网卡出口 IP（localAddress），杜绝多网卡（有线网/VPN）路由抢占导致的 EHOSTUNREACH
    */
   async isRecorderReachable(timeoutMs = 600): Promise<boolean> {
+    const { targetIp, localIp } = await this.resolveRecorderEndpoints();
+
     return new Promise((resolve) => {
       const socket = new net.Socket();
       let settled = false;
@@ -130,7 +182,12 @@ class WifiManager {
       socket.once('error', () => finish(false));
 
       try {
-        socket.connect(32769, '192.168.1.1');
+        const connectOptions: net.TcpSocketConnectOpts = {
+          port: 32769,
+          host: targetIp,
+          ...(localIp ? { localAddress: localIp } : {}),
+        };
+        socket.connect(connectOptions);
       } catch {
         finish(false);
       }

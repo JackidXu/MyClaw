@@ -13,6 +13,7 @@ import {
   type DownloadProgressData,
   RecordingCardWifiIpc,
 } from '../../shared/recordingCard/constants';
+import { wifiManager } from './wifiManager';
 
 // ─────────────────────────────────────────────
 // 协议常量
@@ -216,7 +217,7 @@ export class RecordingCardWifiManager {
     console.log('[RecordingCardWifi] <<< 录音卡已成功进入音频同步状态');
   }
 
-  /** 连接 TCP Socket（加装单飞互斥锁，防止并发创建多个连接挤爆单片机） */
+  /** 连接 TCP Socket（加装单飞互斥锁，支持动态探测网关与多网卡 localAddress 绑定，防止并发挤爆单片机） */
   connect(): Promise<void> {
     // 1. 若当前 Socket 存活且健康，直接复用，绝不重建
     if (this.socket && !this.socket.destroyed) {
@@ -227,58 +228,70 @@ export class RecordingCardWifiManager {
       return this.connectingPromise;
     }
 
-    this.connectingPromise = new Promise<void>((resolve, reject) => {
-      console.log(`[RecordingCardWifi] 正在连接录音卡 TCP Socket (${DEVICE_IP}:${DEVICE_PORT})...`);
-      const sock = new net.Socket();
-      let settled = false;
+    this.connectingPromise = (async () => {
+      const { targetIp, localIp } = await wifiManager.resolveRecorderEndpoints();
 
-      const finish = (err?: Error) => {
-        if (settled) return;
-        settled = true;
-        this.connectingPromise = null;
-        if (err) {
-          reject(err);
-        } else {
-          resolve();
-        }
-      };
+      return new Promise<void>((resolve, reject) => {
+        console.log(
+          `[RecordingCardWifi] 正在连接录音卡 TCP Socket (${targetIp}:${DEVICE_PORT}${localIp ? ` via ${localIp}` : ''})...`
+        );
+        const sock = new net.Socket();
+        let settled = false;
 
-      const timer = setTimeout(() => {
-        sock.destroy();
-        console.warn(`[RecordingCardWifi] TCP 连接超时 (${CONNECT_TIMEOUT_MS}ms)`);
-        finish(new Error(`[WifiManager] 连接超时 (${CONNECT_TIMEOUT_MS}ms)，请确认已连接录音卡 Wi-Fi 热点`));
-      }, CONNECT_TIMEOUT_MS);
+        const finish = (err?: Error) => {
+          if (settled) return;
+          settled = true;
+          this.connectingPromise = null;
+          if (err) {
+            reject(err);
+          } else {
+            resolve();
+          }
+        };
 
-      sock.connect(DEVICE_PORT, DEVICE_IP, () => {
-        clearTimeout(timer);
-        this.socket = sock;
-        console.log(`[RecordingCardWifi] TCP Socket 连接建立成功！等待设备上报就绪信号 (0x0C 0x00)...`);
-        finish();
+        const timer = setTimeout(() => {
+          sock.destroy();
+          console.warn(`[RecordingCardWifi] TCP 连接超时 (${CONNECT_TIMEOUT_MS}ms)`);
+          finish(new Error(`[WifiManager] 连接超时 (${CONNECT_TIMEOUT_MS}ms)，请确认已连接录音卡 Wi-Fi 热点`));
+        }, CONNECT_TIMEOUT_MS);
+
+        const connectOptions: net.TcpSocketConnectOpts = {
+          port: DEVICE_PORT,
+          host: targetIp,
+          ...(localIp ? { localAddress: localIp } : {}),
+        };
+
+        sock.connect(connectOptions, () => {
+          clearTimeout(timer);
+          this.socket = sock;
+          console.log(`[RecordingCardWifi] TCP Socket 连接建立成功！等待设备上报就绪信号 (0x0C 0x00)...`);
+          finish();
+        });
+
+        sock.on('data', (chunk: Buffer) => {
+          this.recvBuf = Buffer.concat([this.recvBuf, chunk]);
+          const { frames, remainder } = parseWifiFrames(this.recvBuf);
+          this.recvBuf = remainder;
+          for (const frame of frames) {
+            this.dispatchFrame(frame);
+          }
+        });
+
+        sock.on('error', (err: Error) => {
+          clearTimeout(timer);
+          console.warn('[RecordingCardWifi] Socket 错误:', err.message);
+          this.handleSocketClose();
+          finish(err);
+        });
+
+        sock.on('close', () => {
+          clearTimeout(timer);
+          console.log('[RecordingCardWifi] Socket 连接已关闭');
+          this.handleSocketClose();
+          finish(new Error('[WifiManager] Socket 连接已关闭'));
+        });
       });
-
-      sock.on('data', (chunk: Buffer) => {
-        this.recvBuf = Buffer.concat([this.recvBuf, chunk]);
-        const { frames, remainder } = parseWifiFrames(this.recvBuf);
-        this.recvBuf = remainder;
-        for (const frame of frames) {
-          this.dispatchFrame(frame);
-        }
-      });
-
-      sock.on('error', (err: Error) => {
-        clearTimeout(timer);
-        console.warn('[RecordingCardWifi] Socket 错误:', err.message);
-        this.handleSocketClose();
-        finish(err);
-      });
-
-      sock.on('close', () => {
-        clearTimeout(timer);
-        console.log('[RecordingCardWifi] Socket 连接已关闭');
-        this.handleSocketClose();
-        finish(new Error('[WifiManager] Socket 连接已关闭'));
-      });
-    });
+    })();
 
     return this.connectingPromise;
   }

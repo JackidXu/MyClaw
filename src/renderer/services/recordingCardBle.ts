@@ -173,6 +173,9 @@ async function sendBleCommandAndExpect(
   data?: Uint8Array,
   timeoutMs = CMD_TIMEOUT_MS
 ): Promise<Uint8Array> {
+  if (!session) {
+    throw new Error('[BleV2] 录音卡未连接');
+  }
   const hexCmd = `0x${cmdL.toString(16).padStart(2, '0')} 0x${cmdH.toString(16).padStart(2, '0')}`;
   // 必须提前挂上专用匹配器，绝不被任何历史残留帧或异步上报包误消费
   const promise = waitNotifyMatch(
@@ -180,7 +183,13 @@ async function sendBleCommandAndExpect(
     timeoutMs,
     `命令 ${hexCmd} 回复`
   );
-  await sendBleCommand(cmdL, cmdH, data);
+  try {
+    await sendBleCommand(cmdL, cmdH, data);
+  } catch (err) {
+    // 若发送失败，安全吸收 waiter 的 promise 拒绝态，杜绝生成孤立的 Uncaught (in promise)
+    promise.catch(() => {});
+    throw err;
+  }
   return promise;
 }
 
@@ -686,6 +695,7 @@ export async function openWifi(): Promise<void> {
 
 /** 关闭 Wi-Fi（严格对齐文档第二章第23节 0x0B 0x00） */
 export async function closeWifi(): Promise<void> {
+  if (!session) return;
   logBle('info', '>>> 下发关闭设备 Wi-Fi 指令 (0x0B 0x00)...');
   isWifiTransferring = false;
   await sendBleCommandAndExpect(0x0b, 0x00).catch(() => { /* 忽略超时 */ });
@@ -694,6 +704,7 @@ export async function closeWifi(): Promise<void> {
 
 /** 解绑设备（严格对齐文档第二章第6节 0x05 0x00 0x00，保留音频） */
 export async function unbind(): Promise<void> {
+  if (!session) return;
   logBle('info', '>>> 下发解除配对绑定指令 (0x05 0x00 0x00 保留音频)...');
   cachedDevice = null;
   cachedUserId = null;
