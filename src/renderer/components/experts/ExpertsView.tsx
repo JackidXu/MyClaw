@@ -880,7 +880,7 @@ const PrototypeExpertCard: React.FC<{
     >
       {/* 左侧头像：纯净无边框 */}
       <div className="shrink-0 relative">
-        <div className="w-18 h-18 sm:w-20 sm:h-20 rounded-2xl overflow-hidden flex items-center justify-center">
+        <div className="w-18 h-18 sm:w-20 sm:h-20 rounded-2xl overflow-hidden flex items-center justify-center bg-slate-100 dark:bg-zinc-800">
           <AgentAvatarIcon
             avatar={expert.avatar}
             className="w-full h-full rounded-2xl object-cover group-hover:scale-105 transition-transform duration-300"

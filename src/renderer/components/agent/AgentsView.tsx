@@ -198,7 +198,7 @@ const AgentCard: React.FC<{
         : 'border-border bg-surface'
     }`}
   >
-    <div className="w-14 h-14 rounded-2xl overflow-hidden flex items-center justify-center">
+    <div className="w-14 h-14 rounded-2xl overflow-hidden flex items-center justify-center bg-slate-100 dark:bg-zinc-800">
       <AgentAvatarIcon
         avatar={icon}
         className="w-full h-full rounded-2xl object-cover group-hover:scale-105 transition-transform duration-300"
@@ -227,7 +227,7 @@ const UninstalledPresetCard: React.FC<{
   onAdd: () => void;
 }> = ({ icon, name, description, isAdding, onAdd }) => (
   <div className="group flex flex-col items-start gap-3 p-4 rounded-2xl border-2 border-dashed border-border opacity-70 hover:opacity-100 transition-all min-h-[160px] bg-surface/50">
-    <div className="w-14 h-14 rounded-2xl overflow-hidden flex items-center justify-center">
+    <div className="w-14 h-14 rounded-2xl overflow-hidden flex items-center justify-center bg-slate-100 dark:bg-zinc-800">
       <AgentAvatarIcon
         avatar={icon}
         className="w-full h-full rounded-2xl object-cover"

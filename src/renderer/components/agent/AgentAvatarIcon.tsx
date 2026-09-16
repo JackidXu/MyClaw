@@ -73,11 +73,11 @@ const AgentAvatarIcon: React.FC<AgentAvatarIconProps> = ({
   const roundedClass = hasCustomRounded ? '' : 'rounded-full';
 
   return (
-    <span className={`inline-flex shrink-0 items-center justify-center overflow-hidden ${roundedClass} ${className}`}>
+    <span className={`inline-flex shrink-0 items-center justify-center overflow-hidden bg-slate-100 dark:bg-zinc-800 ${roundedClass} ${className}`}>
       <img
         src={finalUrl}
         alt="Avatar"
-        className="w-full h-full object-cover select-none"
+        className="w-full h-full object-cover select-none mix-blend-multiply dark:mix-blend-normal"
         onError={(e) => {
           if (!imgError) {
             setImgError(true);
