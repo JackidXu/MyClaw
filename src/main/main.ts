@@ -6656,9 +6656,12 @@ if (!gotTheLock) {
             ? { image: (params.images as string[]).length === 1 ? (params.images as string[])[0] : params.images }
             : { images: params.images })
           : {};
-        const enhancedPrompt = enhanceImagePrompt(prompt, { model });
+        const hasRefImage = Array.isArray(params.images) && (params.images as string[]).length > 0;
+        const enhancedPrompt = enhanceImagePrompt(prompt, { model, hasReferenceImage: hasRefImage });
         if (enhancedPrompt !== prompt) {
           console.log(`[MediaGeneration] Enhanced image prompt for aesthetic quality (originalLen=${prompt.length}, enhancedLen=${enhancedPrompt.length})`);
+        } else if (hasRefImage) {
+          console.log(`[MediaGeneration] Skipped prompt enhancement (hasReferenceImage=true, promptLen=${prompt.length})`);
         }
 
         bodyData = {
@@ -6676,7 +6679,8 @@ if (!gotTheLock) {
         }
       }
 
-      console.warn(`[DEBUG-BODY] images=${JSON.stringify(bodyData.images)} imageRoles=${JSON.stringify(bodyData.imageRoles)}`);
+
+      console.warn(`[DEBUG-BODY] image=${typeof bodyData.image === 'string' ? bodyData.image.slice(0, 80) + '...' : JSON.stringify(bodyData.image)} images=${JSON.stringify(bodyData.images)} imageRoles=${JSON.stringify(bodyData.imageRoles)}`);
       console.log('[MediaGeneration] sending OneAPI generate request:', {
         url: oneapiUrl,
         model,

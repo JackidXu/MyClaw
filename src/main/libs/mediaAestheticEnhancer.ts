@@ -13,6 +13,8 @@
 
 export interface EnhanceImagePromptOptions {
   model?: string;
+  /** 携带参考图时置为 true：优先让模型从参考图继承视觉特征，不追加增强词以免干扰图生图效果 */
+  hasReferenceImage?: boolean;
 }
 
 /**
@@ -93,13 +95,19 @@ const cleanDraftPaperBackground = (prompt: string): string => {
  * @param options 配置项
  * @returns 增强后的 Prompt
  */
-export const enhanceImagePrompt = (prompt: string, _options?: EnhanceImagePromptOptions): string => {
+export const enhanceImagePrompt = (prompt: string, options?: EnhanceImagePromptOptions): string => {
   if (!prompt || typeof prompt !== 'string') {
     return prompt;
   }
 
   let cleanedPrompt = prompt.trim();
   cleanedPrompt = cleanDraftPaperBackground(cleanedPrompt);
+
+  // 携带参考图时，优先让模型从参考图继承字体、背景、细节等视觉特征，
+  // 追加大段增强词会分散模型注意力，反而削弱参考图的继承效果，直接返回。
+  if (options?.hasReferenceImage) {
+    return cleanedPrompt;
+  }
 
   const lower = cleanedPrompt.toLowerCase();
   const isDesignScene = isPosterOrTypographyDesign(lower);
