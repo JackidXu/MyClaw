@@ -2513,6 +2513,7 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
           compaction: {
             truncateAfterCompaction: true,
             maxActiveTranscriptBytes: OpenClawTranscriptSafetyLimit.SoftConfigValue,
+            reserveTokensFloor: 96000,
           },
           ...(taskWorkingDirectory ? { cwd: path.resolve(taskWorkingDirectory) } : {}),
           memorySearch: {
