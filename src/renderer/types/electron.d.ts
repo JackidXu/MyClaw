@@ -1238,6 +1238,7 @@ interface IElectronAPI {
         status: 'running' | 'done' | 'error';
         createdAt: number;
         endedAt: number | null;
+        error?: string | null;
       }>;
       error?: string;
     }>;
@@ -1261,6 +1262,7 @@ interface IElectronAPI {
         status: 'running' | 'done' | 'error';
         createdAt: number;
         endedAt: number | null;
+        error?: string | null;
       }>;
       hasMore?: boolean;
       error?: string;

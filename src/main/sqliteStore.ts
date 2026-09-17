@@ -307,7 +307,8 @@ export class SqliteStore {
         label TEXT,
         status TEXT NOT NULL DEFAULT 'running',
         created_at INTEGER NOT NULL,
-        ended_at INTEGER
+        ended_at INTEGER,
+        error TEXT
       );
     `);
     this.db.exec(`
@@ -344,6 +345,10 @@ export class SqliteStore {
       }
       if (!subagentCols.some(c => c.name === 'child_cowork_session_id')) {
         this.db.exec('ALTER TABLE subagent_runs ADD COLUMN child_cowork_session_id TEXT;');
+        this.didRunMigration = true;
+      }
+      if (!subagentCols.some(c => c.name === 'error')) {
+        this.db.exec('ALTER TABLE subagent_runs ADD COLUMN error TEXT;');
         this.didRunMigration = true;
       }
     } catch {

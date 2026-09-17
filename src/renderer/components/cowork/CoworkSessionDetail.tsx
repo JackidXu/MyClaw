@@ -2241,6 +2241,7 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
         status: run.status,
         createdAt: run.createdAt,
         endedAt: run.endedAt,
+        error: run.error ?? null,
       })));
     } catch {
       if (targetSessionId === currentSession?.id) {
@@ -2258,9 +2259,15 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
     void fetchSubagents(sessionId, { showLoading: subagents.length === 0 });
   }, [fetchSubagents, messagesLength, sessionId, subagents.length]);
 
+  const hasRunningSubagents = useMemo(
+    () => subagents.some(subagent => subagent.status === 'running'),
+    [subagents],
+  );
+  const isWaitingForSubagents = !isStreaming && hasRunningSubagents;
+  const isSessionActive = isSessionBusy || isWaitingForSubagents;
+
   useEffect(() => {
     if (!sessionId) return undefined;
-    const hasRunningSubagents = subagents.some(subagent => subagent.status === 'running');
     const shouldPoll = isSubagentPreviewTabOpen ||
       hasRunningSubagents ||
       currentSession?.status === CoworkSessionStatusValue.Running;
@@ -2272,9 +2279,9 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
   }, [
     currentSession?.status,
     fetchSubagents,
+    hasRunningSubagents,
     isSubagentPreviewTabOpen,
     sessionId,
-    subagents,
   ]);
 
   const subagentsByRunId = useMemo(() => new Map(
@@ -5970,7 +5977,7 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
   const renderConversationTurns = () => {
     let railCounter = 0;
     if (turns.length === 0) {
-      if (!isSessionBusy) return null;
+      if (!isSessionBusy && !isWaitingForSubagents) return null;
       return (
         <div data-export-role="assistant-block">
           <AssistantTurnBlock
@@ -5983,7 +5990,9 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
             localServiceDirectory={currentSession?.cwd}
             showActivityIndicator
             activityStatusOverride={
-              isContextMaintenance ? i18nService.t('coworkContextMaintenanceRunning') : null
+              isContextMaintenance
+                ? i18nService.t('coworkContextMaintenanceRunning')
+                : (isWaitingForSubagents ? i18nService.t('coworkActivityLiveWaitSubagents') : null)
             }
             showCopyButtons={!isStreaming}
             completedGoal={
@@ -6003,9 +6012,15 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
 
     return turns.map((turn, index) => {
       const isLastTurn = index === turns.length - 1;
+      // Subagents spawned in this turn that are still working keep the
+      // turn's process unfolded until they finish.
+      const turnHasRunningSubagents = turn.assistantItems.some(
+        item => item.type === 'tool_group'
+          && getToolGroupSubagents(item.group).some(subagent => subagent.status === 'running'),
+      );
       // Persistent busy-state indicator at the insertion point of the
-      // running turn (Codex/ChatGPT style: visible for the whole run).
-      const showActivityIndicator = isSessionBusy && isLastTurn;
+      // running turn (Codex/ChatGPT style: visible for the whole run or while subagents are running).
+      const showActivityIndicator = (isSessionBusy || (isWaitingForSubagents && (turnHasRunningSubagents || isLastTurn))) && isLastTurn;
       const showAssistantBlock = turn.assistantItems.length > 0 || showActivityIndicator;
       // Always render last 3 turns (needed for streaming, auto-scroll, and smooth UX).
       // While exporting the conversation image, force-render every turn:
@@ -6024,12 +6039,6 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
       const turnMessageIds = getTurnMessageIds(turn);
       const turnArtifacts = rawSessionArtifacts.filter(
         a => turnMessageIds.has(a.messageId) && PREVIEWABLE_ARTIFACT_TYPES.has(a.type)
-      );
-      // Subagents spawned in this turn that are still working keep the
-      // turn's process unfolded until they finish.
-      const turnHasRunningSubagents = turn.assistantItems.some(
-        item => item.type === 'tool_group'
-          && getToolGroupSubagents(item.group).some(subagent => subagent.status === 'running'),
       );
 
       return (
@@ -6081,7 +6090,11 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
                 }}
                 showActivityIndicator={showActivityIndicator}
                 activityStatusOverride={
-                  isContextMaintenance ? i18nService.t('coworkContextMaintenanceRunning') : null
+                  isContextMaintenance
+                    ? i18nService.t('coworkContextMaintenanceRunning')
+                    : (isWaitingForSubagents && isLastTurn
+                        ? i18nService.t('coworkActivityLiveWaitSubagents')
+                        : null)
                 }
                 showCopyButtons={!isStreaming || !isLastTurn}
                 hiddenSystemMessageId={enterpriseQuotaPromptMessageId}
@@ -6095,7 +6108,7 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
                 onAdjustPlan={handleAdjustPlan}
                 searchTargetMessageId={activeConversationSearchMatch?.messageId}
                 isStreamingTurn={isStreaming && isLastTurn}
-                hasRunningSubagents={turnHasRunningSubagents}
+                hasRunningSubagents={turnHasRunningSubagents || (isWaitingForSubagents && isLastTurn)}
               />
             </div>
           )}
@@ -6937,7 +6950,7 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
             </div>
           </div>
         )}
-        {isArtifactPanelExpanded && (expandedConversationPreview || isSessionBusy) && (
+        {isArtifactPanelExpanded && (expandedConversationPreview || isSessionActive) && (
           <div className={`${COWORK_DETAIL_CONTENT_CLASS} mb-1`}>
             <div className="overflow-hidden rounded-2xl border border-border bg-surface-raised shadow-subtle">
               <button
@@ -6965,10 +6978,12 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
                 <span className="min-w-0 flex-1 truncate">
                   {expandedConversationPreview?.latest.summary ?? i18nService.t('coworkExpandedConversationPreviewEmpty')}
                 </span>
-                {isSessionBusy && (
+                {isSessionActive && (
                   <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium leading-4 text-primary">
                     <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" aria-hidden="true" />
-                    {i18nService.t('coworkExpandedConversationStatusRunning')}
+                    {isWaitingForSubagents
+                      ? i18nService.t('coworkActivityLiveWaitSubagents')
+                      : i18nService.t('coworkExpandedConversationStatusRunning')}
                   </span>
                 )}
                 {isExpandedConversationPreviewOpen ? (
@@ -7007,10 +7022,12 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
                         </div>
                       </div>
                     ))}
-                    {isSessionBusy && (
+                    {isSessionActive && (
                       <div className="flex items-center gap-2 rounded-xl bg-primary/10 px-2.5 py-2 text-xs font-medium text-primary">
                         <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" aria-hidden="true" />
-                        {i18nService.t('coworkExpandedConversationStatusRunning')}
+                        {isWaitingForSubagents
+                          ? i18nService.t('coworkActivityLiveWaitSubagents')
+                          : i18nService.t('coworkExpandedConversationStatusRunning')}
                       </div>
                     )}
                   </div>

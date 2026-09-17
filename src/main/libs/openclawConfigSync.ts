@@ -566,6 +566,51 @@ const MANAGED_HEARTBEAT_POLICY_PROMPT = [
   '- On a heartbeat poll with nothing that needs attention, reply `HEARTBEAT_OK`; do not go looking for work.',
 ].join('\n');
 
+function buildManagedSubagentPolicyPrompt(agent?: Agent, allAgents?: Agent[]): string {
+  const selfId = agent?.id?.trim() || 'main';
+  const selfName = agent?.name?.trim() || (selfId === 'main' ? '全能助手' : selfId);
+  const allowIds = (agent?.subagentAllowAgentIds || []).map(id => id.trim()).filter(Boolean);
+
+  const peerList = allowIds
+    .filter(id => id !== selfId)
+    .map(id => {
+      const peer = allAgents?.find(a => a.id === id);
+      const name = peer?.name?.trim() || id;
+      const desc = peer?.description?.trim() || '';
+      return desc ? `- 协同专家 ID: \`${id}\`（${name}）：${desc}` : `- 协同专家 ID: \`${id}\`（${name}）`;
+    });
+
+  const lines = [
+    '## 子任务与协同专家调用规范 (Subagents & Delegation Policy)',
+    `- 当前运行的 Agent ID: \`${selfId}\`（名称: ${selfName}）。`,
+  ];
+
+  if (peerList.length > 0) {
+    lines.push(
+      '- 可调用的协同专家成员列表：',
+      ...peerList,
+      '',
+      '【使用 `sessions_spawn` 委托或启动子任务的重要规则】：',
+      '1. **`agentId` 必须显式传递**，绝对不可省略：',
+      '   - 委托协同专家执行时，必须显式传入对应专家的 ID（如上述专家 ID）；',
+      `   - 若由你自身在后台处理耗时复杂任务（如生成长篇报告/全量大文件），必须显式传入你自己的 ID：\`agentId: "${selfId}"\`；`,
+      '2. **`task` 必须自包含且完整**：包含全部背景要求、数据、目标交付物和文件写入路径；',
+      '3. **`taskName` 必须提供英文/拼音标识**（如 `report-generation`）。',
+    );
+  } else {
+    lines.push(
+      '',
+      '【使用 `sessions_spawn` 启动后台子任务的重要规则】：',
+      '当你面对长篇巨幅报告、全量大文件编写或耗时复杂的后台任务时，推荐使用 `sessions_spawn` 启动子任务在后台分步执行：',
+      `1. **\`agentId\` 必须显式传递**：必须显式传入你自己的 ID：\`agentId: "${selfId}"\`，严禁省略！`,
+      '2. **`task` 必须自包含且完整**：包含全部背景要求、数据、目标交付物和文件写入路径；',
+      '3. **`taskName` 必须提供英文/拼音标识**（如 `report-generation`）。',
+    );
+  }
+
+  return lines.join('\n');
+}
+
 const FALLBACK_OPENCLAW_AGENTS_TEMPLATE = [
   '# AGENTS.md - Your Workspace',
   '',
@@ -2117,7 +2162,12 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
         // Still sync AGENTS.md even when API is not configured — skills/systemPrompt
         // may already be set and should be available when the user configures a model.
         const mainWorkspacePath = getMainAgentWorkspacePath(this.engineManager.getStateDir());
-        const agentsMdWarning = this.syncAgentsMd(mainWorkspacePath, coworkConfig);
+        const allAgents = this.getAgents?.() ?? [];
+        const mainAgent = allAgents.find(a => a.id === 'main');
+        const agentsMdWarning = this.syncAgentsMd(mainWorkspacePath, coworkConfig, {
+          currentAgent: mainAgent,
+          allAgents,
+        });
         this.syncPerAgentWorkspaces(mainWorkspacePath, coworkConfig);
         if (agentsMdWarning) result.agentsMdWarning = agentsMdWarning;
         return result;
@@ -3440,7 +3490,12 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
     // Sync AGENTS.md with skills routing prompt to the OpenClaw workspace directory.
     // This runs on every sync regardless of openclaw.json changes, because skills
     // may have been installed/enabled/disabled independently.
-    const agentsMdWarning = this.syncAgentsMd(mainWorkspacePath, coworkConfig);
+    const allAgents = this.getAgents?.() ?? [];
+    const mainAgent = allAgents.find(a => a.id === 'main');
+    const agentsMdWarning = this.syncAgentsMd(mainWorkspacePath, coworkConfig, {
+      currentAgent: mainAgent,
+      allAgents,
+    });
 
     // Sync per-agent workspace files (SOUL.md, IDENTITY.md, AGENTS.md) for non-main agents
     this.syncPerAgentWorkspaces(mainWorkspacePath, coworkConfig);
@@ -3885,7 +3940,11 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
    * native channel connectors (DingTalk, Feishu, etc.) can discover and
    * invoke HeyClaw skills.
    */
-  private syncAgentsMd(workspaceDir: string, coworkConfig: CoworkConfig): string | undefined {
+  private syncAgentsMd(
+    workspaceDir: string,
+    coworkConfig: CoworkConfig,
+    agentContext?: { currentAgent?: Agent; allAgents?: Agent[] },
+  ): string | undefined {
     const MARKER = '<!-- HeyClaw managed: do not edit below this line -->';
 
     try {
@@ -3914,6 +3973,7 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
       sections.push(MANAGED_MATH_FORMAT_PROMPT);
       sections.push(MANAGED_MEMORY_POLICY_PROMPT);
       sections.push(MANAGED_HEARTBEAT_POLICY_PROMPT);
+      sections.push(buildManagedSubagentPolicyPrompt(agentContext?.currentAgent, agentContext?.allAgents));
       sections.push(buildManagedSkillCreationPrompt(resolveSkillCreationPath()));
 
       // Keep scheduled-task policy after skills so native channel sessions
@@ -4157,11 +4217,18 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
         const identityContent = (agent.identity || '').trim();
         this.syncFileIfChanged(identityPath, identityContent ? `${identityContent}\n` : '');
 
-        // Sync AGENTS.md for this agent (reuse same logic as main agent)
-        this.syncAgentsMd(agentWorkspace, {
-          ...coworkConfig,
-          systemPrompt: agent.systemPrompt || '',
-        });
+        // Sync AGENTS.md for this agent
+        this.syncAgentsMd(
+          agentWorkspace,
+          {
+            ...coworkConfig,
+            systemPrompt: agent.systemPrompt || '',
+          },
+          {
+            currentAgent: agent,
+            allAgents: agents,
+          },
+        );
 
         // Ensure memory directory exists
         const memoryDir = path.join(agentWorkspace, 'memory');

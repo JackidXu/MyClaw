@@ -68,6 +68,8 @@ export class SubagentTracker {
   private readonly subagentToolCallIdToAgentId = new Map<string, string>();
   /** Maps toolCallId → lifecycle status */
   private readonly subagentStatus = new Map<string, 'running' | 'done' | 'error'>();
+  /** Maps toolCallId → failure reason / error message */
+  private readonly subagentErrors = new Map<string, string>();
   /** Reverse map: agentId → Set of toolCallIds (for lookups from sessions_resume args) */
   private readonly agentIdToToolCallIds = new Map<string, Set<string>>();
   /** Run ids explicitly deleted by the user. Suppresses late spawn/backfill re-inserts. */
@@ -223,6 +225,7 @@ export class SubagentTracker {
   tryMarkTerminalFromSessionKey(
     sessionKey: string,
     status: 'done' | 'error',
+    error?: string,
   ): boolean {
     if (!sessionKey) return false;
     for (const [toolCallId, childSessionKey] of this.subagentSessionKeys) {
@@ -231,12 +234,17 @@ export class SubagentTracker {
       if (currentStatus === 'done' && status === 'error') {
         return true;
       }
+      if (error) {
+        this.subagentErrors.set(toolCallId, error);
+      }
       if (currentStatus !== status) {
         this.logTerminalState('session-key', toolCallId, status);
         this.subagentStatus.set(toolCallId, status);
-        this.store.updateSubagentRunStatus(toolCallId, status, Date.now());
-        console.log('[SubagentTracker] marked subagent as terminal via session key:', toolCallId, status);
+        this.store.updateSubagentRunStatus(toolCallId, status, Date.now(), error ?? null);
+        console.log('[SubagentTracker] marked subagent as terminal via session key:', toolCallId, status, error ?? '');
         this.tryPersistCachedMessages(toolCallId);
+      } else if (error) {
+        this.store.updateSubagentRunStatus(toolCallId, status, undefined, error);
       }
       return true;
     }
@@ -251,6 +259,7 @@ export class SubagentTracker {
       this.subagentSessionKeys.clear();
       this.subagentMessages.clear();
       this.subagentStatus.clear();
+      this.subagentErrors.clear();
       this.subagentToolCallIdToAgentId.clear();
       this.agentIdToToolCallIds.clear();
       this.pendingSpawnInfo.clear();
@@ -315,11 +324,14 @@ export class SubagentTracker {
     status: 'running' | 'done' | 'error';
     createdAt: number;
     endedAt: number | null;
+    error: string | null;
   }> {
     const runs = this.store.listSubagentRuns(parentSessionId);
     return runs.map((run) => {
       const memoryStatus = this.subagentStatus.get(run.id);
       const memorySessionKey = this.subagentSessionKeys.get(run.id);
+      const memoryError = this.subagentErrors.get(run.id);
+      const effectiveError = memoryError ?? run.error ?? null;
 
       // Stale 'running' record from a previous session: no in-memory tracking means
       // it was never committed in this app lifecycle → mark as error and persist.
@@ -336,6 +348,7 @@ export class SubagentTracker {
           status: 'error' as const,
           createdAt: run.createdAt,
           endedAt,
+          error: effectiveError,
         };
       }
 
@@ -349,6 +362,7 @@ export class SubagentTracker {
         status: memoryStatus ?? run.status,
         createdAt: run.createdAt,
         endedAt: run.endedAt,
+        error: effectiveError,
       };
     });
   }
@@ -364,6 +378,8 @@ export class SubagentTracker {
       .map((run) => {
         const memoryStatus = this.subagentStatus.get(run.id);
         const memorySessionKey = this.subagentSessionKeys.get(run.id);
+        const memoryError = this.subagentErrors.get(run.id);
+        const effectiveError = memoryError ?? run.error ?? null;
         if (run.status === 'running' && !memoryStatus && !this.pendingSpawnInfo.has(run.id)) {
           const endedAt = Date.now();
           this.store.updateSubagentRunStatus(run.id, 'error', endedAt);
@@ -372,12 +388,14 @@ export class SubagentTracker {
             status: 'error' as const,
             sessionKey: memorySessionKey ?? run.sessionKey,
             endedAt,
+            error: effectiveError,
           };
         }
         return {
           ...run,
           status: memoryStatus ?? run.status,
           sessionKey: memorySessionKey ?? run.sessionKey,
+          error: effectiveError,
         };
       });
     const total = this.store.countSubagentRunsByAgent(agentId);
@@ -439,6 +457,9 @@ export class SubagentTracker {
     const isAccepted = parsed?.status === 'accepted' && Boolean(childSessionKey);
     const isError = !isAccepted;
     const status: SubagentChildSessionCandidateParams['status'] = isError ? 'error' : 'running';
+    const errorMessage = isError
+      ? (typeof parsed?.error === 'string' ? parsed.error : (typeof parsed?.message === 'string' ? parsed.message : null))
+      : null;
 
     // Store session key in memory
     const hadSessionKey = this.subagentSessionKeys.has(toolCallId);
@@ -454,7 +475,10 @@ export class SubagentTracker {
       }
       if (isError && this.subagentStatus.get(toolCallId) !== 'error') {
         this.subagentStatus.set(toolCallId, 'error');
-        this.store.updateSubagentRunStatus(toolCallId, 'error', Date.now());
+        if (errorMessage) {
+          this.subagentErrors.set(toolCallId, errorMessage);
+        }
+        this.store.updateSubagentRunStatus(toolCallId, 'error', Date.now(), errorMessage ?? null);
       }
       return;
     }
@@ -465,8 +489,11 @@ export class SubagentTracker {
     if (existingRun) {
       const nextStatus = isError && existingRun.status !== 'done' ? 'error' : existingRun.status;
       this.subagentStatus.set(toolCallId, nextStatus);
-      if (nextStatus !== existingRun.status) {
-        this.store.updateSubagentRunStatus(toolCallId, nextStatus, Date.now());
+      if (errorMessage) {
+        this.subagentErrors.set(toolCallId, errorMessage);
+      }
+      if (nextStatus !== existingRun.status || (isError && errorMessage)) {
+        this.store.updateSubagentRunStatus(toolCallId, nextStatus, Date.now(), errorMessage ?? undefined);
       }
       if (childSessionKey && existingRun.sessionKey !== childSessionKey) {
         this.store.updateSubagentRunSessionKey(toolCallId, childSessionKey);
@@ -499,6 +526,9 @@ export class SubagentTracker {
 
     // First time: insert the DB record
     this.subagentStatus.set(toolCallId, status);
+    if (errorMessage) {
+      this.subagentErrors.set(toolCallId, errorMessage);
+    }
     const pending = this.pendingSpawnInfo.get(toolCallId);
     if (pending) {
       const displayLabel = pending.label ?? resolveSpawnDisplayLabel(parsed);
@@ -527,6 +557,7 @@ export class SubagentTracker {
         status,
         createdAt: pending.createdAt,
         endedAt: isError ? Date.now() : null,
+        error: errorMessage,
       });
       if (shouldMaterialize && childCoworkSessionId) {
         this.materializeChildSession({

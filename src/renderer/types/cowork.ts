@@ -366,6 +366,7 @@ export interface SubagentSessionSummary {
   status: 'running' | 'done' | 'error';
   createdAt: number;
   endedAt: number | null;
+  error?: string | null;
 }
 
 // Start session options

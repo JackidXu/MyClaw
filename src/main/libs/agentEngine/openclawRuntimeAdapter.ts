@@ -7769,16 +7769,25 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
 
     if (stream === 'lifecycle'
       && (lifecyclePhase === AgentLifecyclePhase.End || lifecyclePhase === AgentLifecyclePhase.Error)
-      && sessionKey
-      && this.subagentTracker.tryMarkTerminalFromSessionKey(
+      && sessionKey) {
+      const isLifecycleError = lifecyclePhase === AgentLifecyclePhase.Error;
+      const dataField = isRecord(agentPayload?.data) ? agentPayload.data as Record<string, unknown> : null;
+      const lifecycleErrorMsg = isLifecycleError
+        ? (typeof dataField?.error === 'string'
+            ? dataField.error.trim()
+            : (typeof dataField?.message === 'string' ? dataField.message.trim() : 'Subagent execution failed'))
+        : undefined;
+      if (this.subagentTracker.tryMarkTerminalFromSessionKey(
         sessionKey,
-        lifecyclePhase === AgentLifecyclePhase.Error ? 'error' : 'done',
+        isLifecycleError ? 'error' : 'done',
+        lifecycleErrorMsg,
       )) {
-      this.subagentSessionMaterializer.finalizePassive(
-        sessionKey,
-        lifecyclePhase === AgentLifecyclePhase.Error ? 'error' : 'done',
-      );
-      return;
+        this.subagentSessionMaterializer.finalizePassive(
+          sessionKey,
+          isLifecycleError ? 'error' : 'done',
+        );
+        return;
+      }
     }
 
     const sessionIdByRunId = runId ? this.sessionIdByRunId.get(runId) : undefined;
@@ -8997,16 +9006,22 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     }
     if (!sessionId) {
       if ((state === 'final' || state === 'aborted' || state === 'error')
-        && sessionKey
-        && this.subagentTracker.tryMarkTerminalFromSessionKey(
+        && sessionKey) {
+        const isErrorState = state === 'error' || state === 'aborted';
+        const chatErrorMessage = state === 'error'
+          ? (chatPayload.errorMessage?.trim() || 'Subagent chat failed')
+          : (state === 'aborted' ? 'Subagent run aborted' : undefined);
+        if (this.subagentTracker.tryMarkTerminalFromSessionKey(
           sessionKey,
-          state === 'final' ? 'done' : 'error',
+          isErrorState ? 'error' : 'done',
+          chatErrorMessage,
         )) {
-        this.subagentSessionMaterializer.finalizePassive(
-          sessionKey,
-          state === 'final' ? 'done' : 'error',
-        );
-        return;
+          this.subagentSessionMaterializer.finalizePassive(
+            sessionKey,
+            isErrorState ? 'error' : 'done',
+          );
+          return;
+        }
       }
       if (state === 'final' || state === 'aborted' || state === 'error') {
         console.warn(
@@ -9036,16 +9051,22 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     const turn = this.activeTurns.get(sessionId);
     if (!turn) {
       if ((state === 'final' || state === 'aborted' || state === 'error')
-        && sessionKey
-        && this.subagentTracker.tryMarkTerminalFromSessionKey(
+        && sessionKey) {
+        const isErrorState = state === 'error' || state === 'aborted';
+        const chatErrorMessage = state === 'error'
+          ? (chatPayload.errorMessage?.trim() || 'Subagent chat failed')
+          : (state === 'aborted' ? 'Subagent run aborted' : undefined);
+        if (this.subagentTracker.tryMarkTerminalFromSessionKey(
           sessionKey,
-          state === 'final' ? 'done' : 'error',
+          isErrorState ? 'error' : 'done',
+          chatErrorMessage,
         )) {
-        this.subagentSessionMaterializer.finalizePassive(
-          sessionKey,
-          state === 'final' ? 'done' : 'error',
-        );
-        return;
+          this.subagentSessionMaterializer.finalizePassive(
+            sessionKey,
+            isErrorState ? 'error' : 'done',
+          );
+          return;
+        }
       }
       console.debug('[OpenClawRuntime] handleChatEvent — no active turn for sessionId:', sessionId);
       return;
@@ -10565,6 +10586,10 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     const errorDetail = this.buildTurnErrorDetail(sessionId, turn, resolved.detailRawErrorMessage, errorMessage, errorMetadata);
 
     const erroredSessionKey = turn.sessionKey;
+    if (erroredSessionKey) {
+      this.subagentTracker.tryMarkTerminalFromSessionKey(erroredSessionKey, 'error', errorMessage);
+      this.subagentSessionMaterializer.finalizePassive(erroredSessionKey, 'error');
+    }
     this.clearContextMaintenanceState(sessionId, turn, 'chat error');
     this.store.updateSession(sessionId, { status: 'error' });
     // Persist error message to SQLite so it survives session switches

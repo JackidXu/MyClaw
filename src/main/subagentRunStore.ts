@@ -13,6 +13,7 @@ export interface SubagentRun {
   status: SubagentRunStatus;
   createdAt: number;
   endedAt: number | null;
+  error?: string | null;
 }
 
 export interface SubagentRunWithParent extends SubagentRun {
@@ -32,14 +33,15 @@ export class SubagentRunStore {
     run: Omit<SubagentRun, 'endedAt' | 'childCoworkSessionId'> & {
       childCoworkSessionId?: string | null;
       endedAt?: number | null;
+      error?: string | null;
     },
   ): void {
     this.db
       .prepare(
         `INSERT OR REPLACE INTO subagent_runs (
-          id, parent_session_id, session_key, child_cowork_session_id, agent_id, task, label, status, created_at, ended_at
+          id, parent_session_id, session_key, child_cowork_session_id, agent_id, task, label, status, created_at, ended_at, error
         )
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         run.id,
@@ -52,16 +54,32 @@ export class SubagentRunStore {
         run.status,
         run.createdAt,
         run.endedAt ?? null,
+        run.error ?? null,
       );
   }
 
-  updateSubagentRunStatus(id: string, status: SubagentRunStatus, endedAt?: number): void {
-    if (endedAt != null) {
-      this.db.prepare('UPDATE subagent_runs SET status = ?, ended_at = ? WHERE id = ?')
+  updateSubagentRunStatus(
+    id: string,
+    status: SubagentRunStatus,
+    endedAt?: number,
+    error?: string | null,
+  ): void {
+    if (error !== undefined) {
+      if (endedAt != null) {
+        this.db
+          .prepare('UPDATE subagent_runs SET status = ?, ended_at = ?, error = ? WHERE id = ?')
+          .run(status, endedAt, error, id);
+      } else {
+        this.db
+          .prepare('UPDATE subagent_runs SET status = ?, error = ? WHERE id = ?')
+          .run(status, error, id);
+      }
+    } else if (endedAt != null) {
+      this.db
+        .prepare('UPDATE subagent_runs SET status = ?, ended_at = ? WHERE id = ?')
         .run(status, endedAt, id);
     } else {
-      this.db.prepare('UPDATE subagent_runs SET status = ? WHERE id = ?')
-        .run(status, id);
+      this.db.prepare('UPDATE subagent_runs SET status = ? WHERE id = ?').run(status, id);
     }
   }
 
@@ -92,6 +110,7 @@ export class SubagentRunStore {
       status: string;
       created_at: number;
       ended_at: number | null;
+      error: string | null;
     }
 
     const rows = this.db
@@ -109,6 +128,7 @@ export class SubagentRunStore {
       status: row.status as SubagentRunStatus,
       createdAt: row.created_at,
       endedAt: row.ended_at,
+      error: row.error ?? null,
     }));
   }
 
@@ -124,6 +144,7 @@ export class SubagentRunStore {
       status: string;
       created_at: number;
       ended_at: number | null;
+      error: string | null;
       parent_agent_id: string | null;
       parent_title: string | null;
       parent_updated_at: number | null;
@@ -155,6 +176,7 @@ export class SubagentRunStore {
       status: row.status as SubagentRunStatus,
       createdAt: row.created_at,
       endedAt: row.ended_at,
+      error: row.error ?? null,
       parentAgentId: row.parent_agent_id,
       parentTitle: row.parent_title,
       parentUpdatedAt: row.parent_updated_at,

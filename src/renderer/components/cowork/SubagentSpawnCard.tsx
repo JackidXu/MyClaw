@@ -58,7 +58,10 @@ const SubagentSpawnCard: React.FC<{
                   </span>
                 )}
                 {subagent.status === 'error' && (
-                  <span className="flex-shrink-0 text-xs text-red-500">
+                  <span
+                    className="flex-shrink-0 text-xs font-medium text-red-500"
+                    title={subagent.error || undefined}
+                  >
                     {i18nService.t('subagentFailed')}
                   </span>
                 )}
@@ -69,11 +72,15 @@ const SubagentSpawnCard: React.FC<{
                   </span>
                 )}
               </span>
-              {subagent.task && (
+              {subagent.status === 'error' && subagent.error ? (
+                <span className="mt-0.5 block truncate text-xs text-red-500/90" title={subagent.error}>
+                  {subagent.error}
+                </span>
+              ) : subagent.task ? (
                 <span className="mt-0.5 block truncate text-xs text-muted">
                   {subagent.task}
                 </span>
-              )}
+              ) : null}
             </span>
             <ChevronRightIcon className="h-3.5 w-3.5 flex-shrink-0 text-muted transition-colors group-hover:text-secondary" />
           </button>

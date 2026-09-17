@@ -74,11 +74,15 @@ const SubagentPanelRow: React.FC<{
           <span className="truncate text-sm font-medium text-foreground">{displayName}</span>
           <SubagentStatusDot status={subagent.status} />
         </span>
-        {subagent.task?.trim() && (
+        {subagent.status === 'error' && subagent.error ? (
+          <span className="mt-0.5 block truncate text-xs text-red-500/90" title={subagent.error}>
+            {subagent.error}
+          </span>
+        ) : subagent.task?.trim() ? (
           <span className="mt-0.5 block truncate text-xs text-secondary">
             {subagent.task}
           </span>
-        )}
+        ) : null}
       </span>
       <span className="shrink-0 text-xs text-muted">
         {subagent.status === 'running' ? i18nService.t('subagentWorking') : duration}
@@ -95,6 +99,7 @@ const SubagentDetailContent: React.FC<{
   const [messages, setMessages] = useState<CoworkMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<SubagentSessionSummary['status']>(subagent.status);
+  const [errorMessage, setErrorMessage] = useState<string | null>(subagent.error ?? null);
   const contentRef = useRef<HTMLDivElement>(null);
   const previousMessageCountRef = useRef(0);
 
@@ -125,6 +130,9 @@ const SubagentDetailContent: React.FC<{
       if (run?.status) {
         setStatus(run.status);
       }
+      if (run?.error) {
+        setErrorMessage(run.error);
+      }
     } catch {
       // Keep the last known status; detail history may still be readable.
     }
@@ -133,9 +141,10 @@ const SubagentDetailContent: React.FC<{
   useEffect(() => {
     setMessages([]);
     setStatus(subagent.status);
+    setErrorMessage(subagent.error ?? null);
     void fetchHistory(true);
     void fetchStatus();
-  }, [fetchHistory, fetchStatus, subagent.id, subagent.status]);
+  }, [fetchHistory, fetchStatus, subagent.error, subagent.id, subagent.status]);
 
   useEffect(() => {
     if (status !== 'running') return undefined;
@@ -192,6 +201,12 @@ const SubagentDetailContent: React.FC<{
           <span>{getSubagentStatusLabel(status)}</span>
         </span>
       </div>
+      {status === 'error' && errorMessage && (
+        <div className="mx-3 mt-2 flex items-start gap-2 rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2 text-xs text-red-500">
+          <span className="font-semibold shrink-0">{i18nService.t('subagentFailed')}:</span>
+          <span className="break-all">{errorMessage}</span>
+        </div>
+      )}
       <div ref={contentRef} className="min-h-0 flex-1 overflow-y-auto">
         {loading ? (
           <div className="flex h-full items-center justify-center px-4 text-sm text-secondary">

@@ -1,0 +1,75 @@
+diff --git a/src/agents/subagent-task-name.ts b/src/agents/subagent-task-name.ts
+index dba65672c7..0f0eb85e86 100644
+--- a/src/agents/subagent-task-name.ts
++++ b/src/agents/subagent-task-name.ts
+@@ -7,20 +7,30 @@ type NormalizeSubagentTaskNameResult =
+   | { taskName?: string; error?: undefined }
+   | { taskName?: undefined; error: string };
+ 
++function sanitizeTaskName(raw: string): string {
++  let clean = raw
++    .toLowerCase()
++    .replace(/[^a-z0-9_-]/g, "_")
++    .replace(/_+/g, "_")
++    .replace(/^_+|_+$/g, "");
++  if (!clean || !/^[a-z]/.test(clean)) {
++    clean = `task_${clean}`.replace(/^task__+/, "task_").replace(/_+$/, "");
++  }
++  clean = clean.slice(0, 64).replace(/_+$/, "");
++  if (RESERVED_SUBAGENT_TASK_NAMES.has(clean) || clean === "task") {
++    clean = `task_${Date.now().toString(36)}`;
++  }
++  return clean;
++}
++
+ export function normalizeSubagentTaskName(value: unknown): NormalizeSubagentTaskNameResult {
+   const taskName = normalizeOptionalString(value);
+   if (!taskName) {
+     return {};
+   }
+-  if (!SUBAGENT_TASK_NAME_RE.test(taskName)) {
+-    return {
+-      error: `Invalid taskName "${taskName}". Use 1-64 chars matching [a-z][a-z0-9_-]*.`,
+-    };
+-  }
+-  if (RESERVED_SUBAGENT_TASK_NAMES.has(taskName)) {
+-    return {
+-      error: `Invalid taskName "${taskName}". Reserved subagent targets cannot be used as taskName values.`,
+-    };
+-  }
+-  return { taskName };
++  const cleanTaskName =
++    SUBAGENT_TASK_NAME_RE.test(taskName) && !RESERVED_SUBAGENT_TASK_NAMES.has(taskName)
++      ? taskName
++      : sanitizeTaskName(taskName);
++  return { taskName: cleanTaskName };
+ }
+diff --git a/src/agents/tools/sessions-spawn-tool.ts b/src/agents/tools/sessions-spawn-tool.ts
+index 3c8ec4b7b4..266fa0c181 100644
+--- a/src/agents/tools/sessions-spawn-tool.ts
++++ b/src/agents/tools/sessions-spawn-tool.ts
+@@ -171,7 +171,12 @@ function createSessionsSpawnToolSchema(params: {
+     runtime: optionalStringEnum(
+       params.acpAvailable ? SESSIONS_SPAWN_RUNTIMES : (["subagent"] as const),
+     ),
+-    agentId: Type.Optional(Type.String()),
++    agentId: Type.Optional(
++      Type.String({
++        description:
++          "Target agent ID for this subtask (REQUIRED). When delegating to a peer expert, provide their agentId. When running a heavy background task for yourself, explicitly provide your own agentId. Do NOT omit this parameter.",
++      }),
++    ),
+     model: Type.Optional(Type.String()),
+     thinking: Type.Optional(Type.String()),
+     cwd: Type.Optional(Type.String()),
+@@ -303,7 +308,9 @@ export function createSessionsSpawnTool(
+         });
+       }
+       const taskName = taskNameResult.taskName;
+-      const label = readStringParam(params, "label") ?? "";
++      const label =
++        readStringParam(params, "label") ??
++        (typeof params.taskName === "string" ? params.taskName.trim() : "");
+       const runtime = params.runtime === "acp" ? "acp" : "subagent";
+       const requestedAgentId = readStringParam(params, "agentId");
+       const resumeSessionId = readStringParam(params, "resumeSessionId");
