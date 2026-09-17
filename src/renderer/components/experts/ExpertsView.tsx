@@ -942,16 +942,20 @@ const PrototypeExpertCard: React.FC<{
         </p>
 
         {/* 标签栏 */}
-        <div className="flex flex-wrap gap-1.5 mt-1">
-          {department && (
-            <span className="text-[10.5px] text-amber-700 bg-amber-50 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-900 px-2 py-0.5 rounded-full whitespace-nowrap font-medium">
-              {department}
-            </span>
-          )}
-          <span className="text-[10.5px] text-secondary bg-surface-raised border border-border px-2 py-0.5 rounded-full whitespace-nowrap">
-            {expert.level || '实战专家'}
-          </span>
-        </div>
+        {!isCustom &&
+          <div className="flex flex-wrap gap-1.5 mt-1">
+            {department && (
+              <span className="text-[10.5px] text-amber-700 bg-amber-50 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-900 px-2 py-0.5 rounded-full whitespace-nowrap font-medium">
+                {department}
+              </span>
+            )}
+            {expert.level && (
+              <span className="text-[10.5px] text-secondary bg-surface-raised border border-border px-2 py-0.5 rounded-full whitespace-nowrap">
+                {expert.level}
+              </span>
+            )}
+          </div>
+        }
       </div>
 
       {/* 自定义专家的三点操作菜单（固定在右上角，独立区域，不与召唤按钮重合） */}
