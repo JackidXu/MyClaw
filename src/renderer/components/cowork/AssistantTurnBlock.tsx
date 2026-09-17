@@ -208,10 +208,8 @@ export const ActivityIndicator: React.FC<{
 
 const getSystemMessageDisplayContent = (message: CoworkMessage, content: string): string => {
   const errorText = typeof message.metadata?.error === 'string' ? message.metadata.error : null;
-  if (!errorText) return content;
-
-  const key = classifyErrorKey(errorText) ?? classifyErrorKey(content);
-  return key ? i18nService.t(key) : content;
+  const key = (errorText ? classifyErrorKey(errorText) : null) ?? classifyErrorKey(content);
+  return key ? i18nService.t(key) : (errorText ?? content);
 };
 
 const getSystemMessageErrorKey = (message: CoworkMessage, content: string): string | null => {

@@ -15,6 +15,7 @@ export const CoworkErrorI18nKey = {
   FreeQuotaExhausted: 'coworkErrorFreeQuotaExhausted',
   InsufficientBalance: 'coworkErrorInsufficientBalance',
   RateLimit: 'coworkErrorRateLimit',
+  RateLimitTpm: 'coworkErrorRateLimitTpm',
   ModelOverloaded: 'coworkErrorModelOverloaded',
   ModelResponseTimeout: 'coworkErrorModelResponseTimeout',
   NetworkError: 'coworkErrorNetworkError',
@@ -45,9 +46,11 @@ const ERROR_RULES: Array<[RegExp, string]> = [
   // Provider/model capacity failures. Must precede rate-limit matching because
   // capacity errors may also contain phrases such as "too many requests".
   [MODEL_CAPACITY_OVERLOAD_PATTERN, CoworkErrorI18nKey.ModelOverloaded],
-  // Rate limit: HTTP 429 and Gemini RESOURCE_EXHAUSTED
+  // Token per minute (TPM) limit exceeded (e.g. DeepSeek / Doubao / Volcano Engine via NewAPI)
+  [/\bTPM\b|tokens?\s*per\s*minute/i, CoworkErrorI18nKey.RateLimitTpm],
+  // Rate limit: HTTP 429, RPM, and Gemini RESOURCE_EXHAUSTED
   // (must precede billing so "RESOURCE_EXHAUSTED: quota exceeded" maps to rate-limit)
-  [/\b429\b|rate[_ ]limit|too many requests|RESOURCE_EXHAUSTED/i, CoworkErrorI18nKey.RateLimit],
+  [/\b429\b|rate[_ ]limit|too many requests|RESOURCE_EXHAUSTED|\bRPM\b|requests?\s*per\s*minute/i, CoworkErrorI18nKey.RateLimit],
   // Billing / Quota: DeepSeek 402, NewAPI/OneAPI, OpenAI, OpenRouter, Qwen, StepFun
   // Must precede generic 403 (ModelAccessDenied) and 401 (AuthInvalid) so quota errors with 403/401 map to InsufficientBalance.
   [/insufficient.*(?:balance|quota|credits)|user\s*quota\s*is\s*not\s*enough|token\s*quota\s*is\s*not\s*enough|insufficient_(?:user|token)_quota|quota.*(?:exceeded|not\s*enough)|billing|Arrearage|account.*not.*in.*good.*standing|余额不足|额度不足|算力不足|算力余额不足|预扣费|剩余额度|\b402\b/i, CoworkErrorI18nKey.InsufficientBalance],

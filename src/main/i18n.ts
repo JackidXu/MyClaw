@@ -115,8 +115,12 @@ const translations: Record<LanguageType, Record<string, string>> = {
       'OpenClaw 正在等待活动任务结束后应用配置。请完成或停止活动任务，然后重试。',
     coworkErrorModelResponseTimeout: '模型响应超时，请稍后重试。',
     coworkErrorNetworkError: '网络连接失败，请检查网络设置。',
-    coworkErrorRateLimit: '请求过于频繁，请稍后再试。',
-    coworkErrorModelOverloaded: '模型服务当前繁忙或容量不足，请稍后重试。',
+    coworkErrorRateLimit:
+      '当前提问过于频繁，已触发该模型的请求频率限制。建议切换其他模型继续对话，或稍等 1~2 分钟后再试。',
+    coworkErrorRateLimitTpm:
+      '发送的内容较长或提问过快，已触发该模型的单分钟处理上限（TPM）。建议切换其他模型继续对话，或稍等 1~2 分钟后再试。',
+    coworkErrorModelOverloaded:
+      '大模型服务当前排队拥堵或算力紧张。建议切换其他模型继续对话，或稍等片刻后重试。',
     coworkErrorContentFiltered: '内容未通过安全审核，请修改后重试。',
     coworkErrorToolLoopBlocked:
       '检测到 AI 在重复执行同一个工具调用且没有新的进展（通常是在等待一个耗时较长的后台任务），本轮已被安全停止。后台任务可能仍在运行，可以继续发消息让 AI 接着处理。',
@@ -482,9 +486,12 @@ const translations: Record<LanguageType, Record<string, string>> = {
       'OpenClaw is waiting for active tasks to finish before applying configuration. Complete or stop the active tasks, then try again.',
     coworkErrorModelResponseTimeout: 'The model response timed out. Please try again.',
     coworkErrorNetworkError: 'Network connection failed. Please check your network settings.',
-    coworkErrorRateLimit: 'Too many requests. Please try again later.',
+    coworkErrorRateLimit:
+      'Too many requests. Rate limit reached for this model. Switching to another model is recommended, or try again in 1-2 minutes.',
+    coworkErrorRateLimitTpm:
+      'Token rate limit exceeded (TPM). Prompt was too long or sent too quickly. Switching to another model is recommended, or try again in 1-2 minutes.',
     coworkErrorModelOverloaded:
-      'The model service is temporarily busy or at capacity. Please try again later.',
+      'The model service is currently overloaded or busy. Switching to another model is recommended, or try again in a moment.',
     coworkErrorContentFiltered:
       'Content did not pass the safety review. Please modify and try again.',
     coworkErrorToolLoopBlocked:

@@ -265,6 +265,18 @@ test('rate: too many requests', () => {
   expect(classifyError('Too many requests, please slow down')).toBe('coworkErrorRateLimit');
 });
 
+test('rate: RPM limit exceeded', () => {
+  expect(classifyError('RPM limit reached, requests per minute exceeded')).toBe('coworkErrorRateLimit');
+});
+
+test('rate: TPM limit exceeded', () => {
+  expect(classifyError('TPM (Tokens Per Minute) limit of deepseek-v4-1-flash is exceeded')).toBe('coworkErrorRateLimitTpm');
+});
+
+test('rate: tokens per minute exceeded', () => {
+  expect(classifyError('tokens per minute limit exceeded')).toBe('coworkErrorRateLimitTpm');
+});
+
 test('capacity: Anthropic overloaded', () => {
   expect(classifyError('overloaded_error: Overloaded')).toBe('coworkErrorModelOverloaded');
 });
