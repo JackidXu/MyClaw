@@ -22,7 +22,6 @@ import { buildCoworkCapabilitySelection } from '../../services/coworkCapabilityS
 import { expertService } from '../../services/expertService';
 import { i18nService } from '../../services/i18n';
 import { quickActionService } from '../../services/quickAction';
-import { fetchCognitionPrompt } from '../../services/secondBrainApi';
 import { vipService } from '../../services/vipService';
 import { RootState } from '../../store';
 import {
@@ -485,17 +484,6 @@ const CoworkView: React.FC<CoworkViewProps> = ({
       dispatch(clearSelection());
       let finalSkillPrompt = skillPrompt;
       const isSecondBrainEffective = homeDraftSecondBrainEnabled && vipService.hasSecondBrainPermission();
-      // 认知注入只在 Session 首次创建（新会话第一条消息）时触发，避免多轮对话 systemPrompt 频繁变化破坏 Prompt Cache
-      if (isSecondBrainEffective) {
-        try {
-          const injection = await fetchCognitionPrompt();
-          if (injection.prompt?.trim()) {
-            finalSkillPrompt = [skillPrompt, injection.prompt.trim()].filter(Boolean).join('\n\n');
-          }
-        } catch (err) {
-          console.warn('[CoworkView] fetchCognitionPrompt failed during startSession:', err);
-        }
-      }
 
       // Combine skill prompt with system prompt.
       // OpenClaw loads skills natively via skills.load.extraDirs, so skip the

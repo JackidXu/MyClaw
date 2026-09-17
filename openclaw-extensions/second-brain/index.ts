@@ -358,32 +358,24 @@ const plugin = {
       }
     }
 
-    const sessionPromptMap = new Map<string, string>();
-
-    // 会话级认知注入钩子（仅对 IM 通道会话生效，桌面端由前端处理）
+    // 会话级认知注入钩子（全渠道统一：桌面端与 IM 渠道原生 System 注入）
     api.on('before_prompt_build', async (event: unknown, ctx: unknown) => {
       const context = (ctx && typeof ctx === 'object' ? ctx : {}) as { sessionKey?: string; sessionId?: string };
       const sessionKey = typeof context.sessionKey === 'string' ? context.sessionKey.trim() : '';
 
-      api.logger.info(`[second-brain] before_prompt_build hook triggered: sessionKey="${sessionKey}" cached=${sessionPromptMap.has(sessionKey)}`);
-
-      // 忽略无 sessionKey 或桌面端会话（lobsterai: 开头）
-      if (!sessionKey || sessionKey.includes('lobsterai:')) {
+      if (!sessionKey) {
         return undefined;
       }
 
-      try {
-        if (!sessionPromptMap.has(sessionKey)) {
-          api.logger.info(`[second-brain] fetching cognition prompt for IM session: ${sessionKey}`);
-          const prompt = await callSecondBrainPromptBridge(config, sessionKey);
-          sessionPromptMap.set(sessionKey, prompt);
-        }
+      api.logger.info(`[second-brain] before_prompt_build hook triggered: sessionKey="${sessionKey}"`);
 
-        const cachedPrompt = sessionPromptMap.get(sessionKey);
-        if (cachedPrompt) {
-          api.logger.info(`[second-brain] injected prompt into IM session: ${sessionKey} (length=${cachedPrompt.length})`);
+      try {
+        // 请求主进程本地 Bridge（1~2ms），主进程依据当前 Session 开关与 VIP 权限实时决策
+        const prompt = await callSecondBrainPromptBridge(config, sessionKey);
+        if (prompt && prompt.trim()) {
+          api.logger.info(`[second-brain] injected prompt into session: ${sessionKey} (length=${prompt.length})`);
           return {
-            prependSystemContext: cachedPrompt,
+            prependSystemContext: prompt.trim(),
             appendContext: [
               '[Second Brain reminder]',
               'Second Brain is active for this session. Keep the expert\'s Second Brain cognition framework and viewpoints in mind when answering.',

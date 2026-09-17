@@ -144,16 +144,41 @@ export function hasSecondBrainPermission(): boolean {
   return mainVipService.hasSecondBrainPermission();
 }
 
+let cachedPromptText: string | null = null;
+let cachedPromptFetchedAt = 0;
+const PROMPT_CACHE_TTL_MS = 5 * 60 * 1000;
+
 /**
  * 获取第二大脑认知注入提示词（会话级）
- * 供 IM 通道在会话首条消息时动态获取人设认知（默认开启，仅受 VIP 权限管控）
+ * 全渠道统一走原生 System 注入：
+ * 1. 第一重控制：VIP 权限管控（全渠道通用）；
+ * 2. 第二重控制：桌面端单独校验 session.secondBrainEnabled 开关。
  */
 export async function fetchSecondBrainPrompt(sessionKey?: string): Promise<{ prompt: string }> {
-  // VIP 权限检查（与桌面端 vipService 完全对齐）
+  // 1. VIP 权限检查（第一重控制，与桌面端 vipService 完全对齐）
   const granted = hasSecondBrainPermission();
   if (!granted) {
     console.log('[SecondBrainBridge] skipped prompt injection: no secondBrain VIP permission');
     return { prompt: '' };
+  }
+
+  // 2. 桌面端会话独立开关检查（第二重控制，形如 agent:main:lobsterai:<sessionId>）
+  if (sessionKey && sessionKey.includes('lobsterai:')) {
+    const parts = sessionKey.split('lobsterai:');
+    const sessionId = parts[1]?.trim();
+    if (sessionId && sessionSecondBrainEnabledGetter) {
+      const enabled = sessionSecondBrainEnabledGetter(sessionId);
+      if (enabled === false) {
+        console.log(`[SecondBrainBridge] skipped prompt injection: session ${sessionId} has secondBrain disabled`);
+        return { prompt: '' };
+      }
+    }
+  }
+
+  // 检查内存缓存，避免多轮对话频繁请求 PHP 后端接口
+  const now = Date.now();
+  if (cachedPromptText !== null && now - cachedPromptFetchedAt < PROMPT_CACHE_TTL_MS) {
+    return { prompt: cachedPromptText };
   }
 
   const startedAt = Date.now();
@@ -164,13 +189,15 @@ export async function fetchSecondBrainPrompt(sessionKey?: string): Promise<{ pro
 
     if (!res.ok || !res.data) {
       console.warn('[SecondBrainBridge] fetchPrompt failed HTTP status:', res.status, res.error);
-      return { prompt: '' };
+      return { prompt: cachedPromptText ?? '' };
     }
 
     const promptText = res.data.data?.prompt;
     if (typeof promptText === 'string' && promptText.trim()) {
-      console.log(`[SecondBrainBridge] fetchPrompt success: length=${promptText.trim().length} elapsedMs=${Date.now() - startedAt}`);
-      return { prompt: promptText.trim() };
+      cachedPromptText = promptText.trim();
+      cachedPromptFetchedAt = Date.now();
+      console.log(`[SecondBrainBridge] fetchPrompt success: length=${cachedPromptText.length} elapsedMs=${Date.now() - startedAt}`);
+      return { prompt: cachedPromptText };
     }
 
     console.log(`[SecondBrainBridge] fetchPrompt returned empty prompt: code=${res.data.code} message="${res.data.message}"`);
@@ -178,7 +205,7 @@ export async function fetchSecondBrainPrompt(sessionKey?: string): Promise<{ pro
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.warn('[SecondBrainBridge] fetchPrompt exception:', message, 'sessionKey:', sessionKey);
-    return { prompt: '' };
+    return { prompt: cachedPromptText ?? '' };
   }
 }
 
