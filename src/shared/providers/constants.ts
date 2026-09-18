@@ -218,6 +218,7 @@ const PROVIDER_DEFINITIONS = [
     defaultModels: [
       { id: 'deepseek-v4-flash', name: 'DeepSeek V4 Flash', supportsImage: false, supportsThinking: true, contextWindow: DEEPSEEK_V4_CONTEXT_WINDOW },
       { id: 'deepseek-v4-pro', name: 'DeepSeek V4 Pro', supportsImage: false, supportsThinking: true, contextWindow: DEEPSEEK_V4_CONTEXT_WINDOW },
+      { id: 'deepseek-v4.1-flash', name: 'DeepSeek V4.1 Flash', supportsImage: false, supportsThinking: true, contextWindow: DEEPSEEK_V4_CONTEXT_WINDOW },
       { id: 'deepseek-reasoner', name: 'DeepSeek Reasoner', supportsImage: false, supportsThinking: true },
     ],
   },
@@ -297,6 +298,8 @@ const PROVIDER_DEFINITIONS = [
     region: 'china',
     enPriority: 0,
     defaultModels: [
+      { id: 'glm-5.3-flash', name: 'GLM 5.3 Flash', supportsImage: false, supportsThinking: true, contextWindow: 202_800 },
+      { id: 'glm-5.2', name: 'GLM 5.2', supportsImage: false, supportsThinking: true, contextWindow: 202_800 },
       { id: 'glm-5.1', name: 'GLM 5.1', supportsImage: false, supportsThinking: true, contextWindow: 202_800 },
       { id: 'glm-5', name: 'GLM 5', supportsImage: false, supportsThinking: true, contextWindow: 202_800 },
       { id: 'glm-4.7', name: 'GLM 4.7', supportsImage: false, supportsThinking: true, contextWindow: 204_800 },
@@ -343,10 +346,13 @@ const PROVIDER_DEFINITIONS = [
     region: 'china',
     enPriority: 0,
     defaultModels: [
-      { id: 'doubao-seed-2-0-pro-260215', name: 'Doubao-Seed-2.0-pro', supportsImage: true, supportsThinking: true },
+      { id: 'doubao-seed-2.0-pro', name: 'Doubao-Seed-2.0-pro', supportsImage: true, supportsThinking: true, contextWindow: 256_000 },
+      { id: 'doubao-seed-2.0-mini', name: 'Doubao-Seed-2.0-mini', supportsImage: true, supportsThinking: true, contextWindow: 256_000 },
+      { id: 'doubao-seed-2.0-lite', name: 'Doubao-Seed-2.0-lite', supportsImage: true, supportsThinking: true, contextWindow: 256_000 },
+      { id: 'doubao-seed-2-0-pro-260215', name: 'Doubao-Seed-2.0-pro', supportsImage: true, supportsThinking: true, contextWindow: 256_000 },
       { id: 'ark-code-latest', name: 'Auto', supportsImage: true, supportsThinking: true },
-      { id: 'doubao-seed-2-0-lite-260215', name: 'Doubao-Seed-2.0-lite', supportsImage: true, supportsThinking: true },
-      { id: 'doubao-seed-2-0-mini-260215', name: 'Doubao-Seed-2.0-mini', supportsImage: true, supportsThinking: true },
+      { id: 'doubao-seed-2-0-lite-260215', name: 'Doubao-Seed-2.0-lite', supportsImage: true, supportsThinking: true, contextWindow: 256_000 },
+      { id: 'doubao-seed-2-0-mini-260215', name: 'Doubao-Seed-2.0-mini', supportsImage: true, supportsThinking: true, contextWindow: 256_000 },
     ],
   },
   {
@@ -635,6 +641,84 @@ export interface ProviderDef {
 const isValidContextWindow = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value) && value > 0;
 
+/**
+ * Normalizes a model identifier for flexible matching:
+ * - Trims whitespace and converts to lower case
+ * - Strips vendor prefixes (e.g. "openai/", "deepseek/")
+ * - Strips common Chinese channel decorators (e.g. "正式版", "测试版", "预览版", "高可用")
+ * - Converts underscores/spaces to hyphens
+ */
+export function normalizeModelLookupKey(modelId: string): string {
+  if (!modelId) return '';
+  let key = modelId.trim().toLowerCase();
+  const slashIdx = key.lastIndexOf('/');
+  if (slashIdx >= 0) {
+    key = key.slice(slashIdx + 1);
+  }
+  key = key.replace(/(?:正式版|测试版|预览版|高可用|极速版|官方版)$/, '');
+  key = key.replace(/[_\s]+/g, '-');
+  return key.trim();
+}
+
+const DEFAULT_FAMILY_DEEPSEEK_V4_CONTEXT_WINDOW = 1_000_000;
+const DEFAULT_FAMILY_GLM_5_CONTEXT_WINDOW = 204_800;
+const DEFAULT_FAMILY_DOUBAO_SEED_CONTEXT_WINDOW = 256_000;
+const DEFAULT_FAMILY_MINIMAX_M3_CONTEXT_WINDOW = 1_000_000;
+const DEFAULT_FAMILY_KIMI_K3_CONTEXT_WINDOW = 1_048_576;
+const DEFAULT_FAMILY_QWEN_CONTEXT_WINDOW = 1_000_000;
+
+function resolveFamilyContextWindow(normalizedKey: string): number | undefined {
+  if (normalizedKey.startsWith('deepseek-v4') || normalizedKey.startsWith('deepseek-r2')) {
+    return DEFAULT_FAMILY_DEEPSEEK_V4_CONTEXT_WINDOW;
+  }
+  if (normalizedKey.startsWith('glm-5') || normalizedKey.startsWith('glm-4')) {
+    return DEFAULT_FAMILY_GLM_5_CONTEXT_WINDOW;
+  }
+  if (normalizedKey.startsWith('doubao-seed')) {
+    return DEFAULT_FAMILY_DOUBAO_SEED_CONTEXT_WINDOW;
+  }
+  if (normalizedKey.startsWith('minimax-m3')) {
+    return DEFAULT_FAMILY_MINIMAX_M3_CONTEXT_WINDOW;
+  }
+  if (normalizedKey.startsWith('kimi-k3')) {
+    return DEFAULT_FAMILY_KIMI_K3_CONTEXT_WINDOW;
+  }
+  if (normalizedKey.startsWith('qwen3')) {
+    return DEFAULT_FAMILY_QWEN_CONTEXT_WINDOW;
+  }
+  return undefined;
+}
+
+function resolveFamilyMaxTokens(normalizedKey: string): number | undefined {
+  if (normalizedKey.startsWith('deepseek-v4')) {
+    return 32_768;
+  }
+  if (normalizedKey.startsWith('glm-5') || normalizedKey.startsWith('glm-4')) {
+    return 65_536;
+  }
+  if (normalizedKey.startsWith('doubao-seed')) {
+    return 32_768;
+  }
+  if (normalizedKey.startsWith('kimi-k3')) {
+    return 8_192;
+  }
+  return undefined;
+}
+
+
+function resolveFamilySupportsImage(normalizedKey: string): boolean | undefined {
+  if (normalizedKey.startsWith('doubao-seed')) {
+    return true;
+  }
+  if (normalizedKey.startsWith('kimi-k')) {
+    return true;
+  }
+  if (normalizedKey.startsWith('qwen3')) {
+    return true;
+  }
+  return undefined;
+}
+
 class ProviderRegistryImpl {
   private readonly defs: readonly ProviderDef[];
   private readonly idIndex: ReadonlyMap<string, ProviderDef>;
@@ -653,20 +737,36 @@ class ProviderRegistryImpl {
     for (const def of definitions) {
       idx.set(def.id, def);
       for (const model of [...def.defaultModels, ...(def.codingPlanModels ?? [])]) {
+        const canonicalKey = normalizeModelLookupKey(model.id);
+
         const existing = modelIdx.get(model.id);
-        modelIdx.set(model.id, existing === true || model.supportsImage);
+        const hasImage = existing === true || model.supportsImage;
+        modelIdx.set(model.id, hasImage);
+        modelIdx.set(canonicalKey, hasImage);
+
         const existingVideo = modelVideoIdx.get(model.id);
-        modelVideoIdx.set(model.id, existingVideo === true || model.supportsVideo === true);
+        const hasVideo = existingVideo === true || model.supportsVideo === true;
+        modelVideoIdx.set(model.id, hasVideo);
+        modelVideoIdx.set(canonicalKey, hasVideo);
+
         if (isValidContextWindow(model.contextWindow)) {
           const existingContextWindow = contextWindowIdx.get(model.id);
           if (existingContextWindow === undefined || model.contextWindow > existingContextWindow) {
             contextWindowIdx.set(model.id, model.contextWindow);
+          }
+          const existingCanonical = contextWindowIdx.get(canonicalKey);
+          if (existingCanonical === undefined || model.contextWindow > existingCanonical) {
+            contextWindowIdx.set(canonicalKey, model.contextWindow);
           }
         }
         if (isValidContextWindow(model.maxTokens)) {
           const existingMaxTokens = maxTokensIdx.get(model.id);
           if (existingMaxTokens === undefined || model.maxTokens > existingMaxTokens) {
             maxTokensIdx.set(model.id, model.maxTokens);
+          }
+          const existingCanonical = maxTokensIdx.get(canonicalKey);
+          if (existingCanonical === undefined || model.maxTokens > existingCanonical) {
+            maxTokensIdx.set(canonicalKey, model.maxTokens);
           }
         }
       }
@@ -725,57 +825,79 @@ class ProviderRegistryImpl {
   getProviderModelSupportsImage(providerName: string, modelId: string): boolean | undefined {
     const def = this.idIndex.get(providerName);
     if (!def) return undefined;
+    const normKey = normalizeModelLookupKey(modelId);
     const model = [...def.defaultModels, ...(def.codingPlanModels ?? [])]
-      .find(candidate => candidate.id === modelId);
+      .find(candidate => candidate.id === modelId || normalizeModelLookupKey(candidate.id) === normKey);
     return model?.supportsImage;
   }
 
   getKnownModelSupportsImage(modelId: string): boolean | undefined {
-    return this.modelCapabilityIndex.get(modelId);
+    const direct = this.modelCapabilityIndex.get(modelId);
+    if (direct !== undefined) return direct;
+    const normKey = normalizeModelLookupKey(modelId);
+    const normalized = this.modelCapabilityIndex.get(normKey);
+    if (normalized !== undefined) return normalized;
+    return resolveFamilySupportsImage(normKey);
   }
 
   getProviderModelSupportsVideo(providerName: string, modelId: string): boolean | undefined {
     const def = this.idIndex.get(providerName);
     if (!def) return undefined;
+    const normKey = normalizeModelLookupKey(modelId);
     const model = [...def.defaultModels, ...(def.codingPlanModels ?? [])]
-      .find(candidate => candidate.id === modelId);
+      .find(candidate => candidate.id === modelId || normalizeModelLookupKey(candidate.id) === normKey);
     return model?.supportsVideo;
   }
 
   getKnownModelSupportsVideo(modelId: string): boolean | undefined {
-    return this.modelVideoCapabilityIndex.get(modelId);
+    const direct = this.modelVideoCapabilityIndex.get(modelId);
+    if (direct !== undefined) return direct;
+    return this.modelVideoCapabilityIndex.get(normalizeModelLookupKey(modelId));
   }
 
   getProviderModelSupportsThinking(providerName: string, modelId: string): boolean | undefined {
     const def = this.idIndex.get(providerName);
     if (!def) return undefined;
+    const normKey = normalizeModelLookupKey(modelId);
     const model = [...def.defaultModels, ...(def.codingPlanModels ?? [])]
-      .find(candidate => candidate.id === modelId);
+      .find(candidate => candidate.id === modelId || normalizeModelLookupKey(candidate.id) === normKey);
     return model?.supportsThinking;
   }
 
   getProviderModelContextWindow(providerName: string, modelId: string): number | undefined {
     const def = this.idIndex.get(providerName);
     if (!def) return undefined;
+    const normKey = normalizeModelLookupKey(modelId);
     const model = [...def.defaultModels, ...(def.codingPlanModels ?? [])]
-      .find(candidate => candidate.id === modelId);
+      .find(candidate => candidate.id === modelId || normalizeModelLookupKey(candidate.id) === normKey);
     return model?.contextWindow;
   }
 
   getKnownModelContextWindow(modelId: string): number | undefined {
-    return this.modelContextWindowIndex.get(modelId);
+    const direct = this.modelContextWindowIndex.get(modelId);
+    if (direct !== undefined) return direct;
+    const normKey = normalizeModelLookupKey(modelId);
+    const normalized = this.modelContextWindowIndex.get(normKey);
+    if (normalized !== undefined) return normalized;
+    return resolveFamilyContextWindow(normKey);
   }
 
   getProviderModelMaxTokens(providerName: string, modelId: string): number | undefined {
     const def = this.idIndex.get(providerName);
     if (!def) return undefined;
+    const normKey = normalizeModelLookupKey(modelId);
     const model = [...def.defaultModels, ...(def.codingPlanModels ?? [])]
-      .find(candidate => candidate.id === modelId);
+      .find(candidate => candidate.id === modelId || normalizeModelLookupKey(candidate.id) === normKey);
     return model?.maxTokens;
   }
 
   getKnownModelMaxTokens(modelId: string): number | undefined {
-    return this.modelMaxTokensIndex.get(modelId);
+    const direct = this.modelMaxTokensIndex.get(modelId);
+    if (direct !== undefined) return direct;
+    const normKey = normalizeModelLookupKey(modelId);
+    const normalized = this.modelMaxTokensIndex.get(normKey);
+    if (normalized !== undefined) return normalized;
+    return resolveFamilyMaxTokens(normKey);
   }
 
   resolveModelSupportsImage(

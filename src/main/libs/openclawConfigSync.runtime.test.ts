@@ -2081,6 +2081,49 @@ describe('OpenClawConfigSync runtime config output', () => {
     expect(selection.providerConfig.models[0].maxTokens).toBe(32768);
   });
 
+  test('writes correct contextWindow for NewAPI camelCase and variant models', async () => {
+    const { buildProviderSelection } = await import('./openclawConfigSync');
+
+    const dsFlash = buildProviderSelection({
+      apiKey: 'sk-oneapi',
+      baseURL: 'https://token.chaohui.ai/v1',
+      modelId: 'DeepSeek-V4-flash',
+      apiType: 'openai',
+      providerName: 'openai',
+      authType: 'apikey',
+      codingPlanEnabled: false,
+      supportsImage: false,
+      modelName: 'DeepSeek-V4-flash',
+    });
+    expect(dsFlash.providerConfig.models[0].contextWindow).toBe(1_000_000);
+
+    const dsFlashZh = buildProviderSelection({
+      apiKey: 'sk-oneapi',
+      baseURL: 'https://token.chaohui.ai/v1',
+      modelId: 'DeepSeek-V4-Flash正式版',
+      apiType: 'openai',
+      providerName: 'openai',
+      authType: 'apikey',
+      codingPlanEnabled: false,
+      supportsImage: false,
+      modelName: 'DeepSeek-V4-Flash正式版',
+    });
+    expect(dsFlashZh.providerConfig.models[0].contextWindow).toBe(1_000_000);
+
+    const glm52 = buildProviderSelection({
+      apiKey: 'sk-oneapi',
+      baseURL: 'https://token.chaohui.ai/v1',
+      modelId: 'GLM-5.2',
+      apiType: 'openai',
+      providerName: 'openai',
+      authType: 'apikey',
+      codingPlanEnabled: false,
+      supportsImage: false,
+      modelName: 'GLM-5.2',
+    });
+    expect(glm52.providerConfig.models[0].contextWindow).toBe(202_800);
+  });
+
   test('repairs stale image capability for known Qwen models before writing OpenClaw input', async () => {
     const { OpenClawProviderId, ProviderName } = await import('../../shared/providers');
     const { buildProviderSelection } = await import('./openclawConfigSync');
