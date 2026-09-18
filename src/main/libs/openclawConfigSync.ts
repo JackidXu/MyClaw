@@ -187,7 +187,7 @@ export const modelCompatConfigChangeRequiresRestart = (
   !== buildModelCompatRestartFingerprint(nextConfig)
 );
 export const OPENCLAW_BINDING_ANY_ACCOUNT_ID = '*';
-const OPENCLAW_DEFAULT_MODEL_MAX_TOKENS = 8192;
+const OPENCLAW_DEFAULT_MODEL_MAX_TOKENS = 32768;
 const CHROME_PROXY_SERVER_ARG_PREFIX = '--proxy-server=';
 
 const OpenClawContextCacheProvider = {

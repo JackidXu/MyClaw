@@ -376,6 +376,7 @@ describe('OpenClawConfigSync runtime config output', () => {
     expect(config.agents.defaults.compaction).toEqual({
       truncateAfterCompaction: true,
       maxActiveTranscriptBytes: '32mb',
+      reserveTokensFloor: 96000,
     });
   });
 
@@ -1315,7 +1316,7 @@ describe('OpenClawConfigSync runtime config output', () => {
       reasoning: true,
       input: ['text', 'image', 'video'],
       contextWindow: 1_048_576,
-      maxTokens: 8192,
+      maxTokens: 32768,
       thinkingLevelMap: {
         off: null,
         minimal: 'max',
@@ -1338,7 +1339,7 @@ describe('OpenClawConfigSync runtime config output', () => {
       reasoning: true,
       input: ['text', 'image', 'video'],
       contextWindow: 1_048_576,
-      maxTokens: 8192,
+      maxTokens: 32768,
     });
     expect(config.agents.defaults.models['custom_0/kimi-k3']).toEqual({
       params: {
@@ -2031,6 +2032,8 @@ describe('OpenClawConfigSync runtime config output', () => {
     expect(resolveOpenClawCatalogModelMaxTokens('minimax', 'MiniMax-M3')).toBe(131_072);
     expect(resolveOpenClawCatalogModelMaxTokens('minimax-portal', 'MiniMax-M3')).toBe(131_072);
     expect(resolveOpenClawCatalogModelMaxTokens('anthropic', 'claude-sonnet-4-6')).toBe(64_000);
+    expect(resolveOpenClawCatalogModelMaxTokens('openai', 'GLM-5.2')).toBe(65_536);
+    expect(resolveOpenClawCatalogModelMaxTokens('openai', 'DeepSeek-V4-Pro正式版')).toBe(32_768);
     expect(resolveOpenClawCatalogModelMaxTokens('custom_0', 'MiniMax-M3')).toBeUndefined();
   });
 
@@ -2053,7 +2056,7 @@ describe('OpenClawConfigSync runtime config output', () => {
 
     expect(selection.providerConfig.api).toBe(OpenClawApi.AnthropicMessages);
     expect(selection.providerConfig.models[0].contextWindow).toBe(1_000_000);
-    expect(selection.providerConfig.models[0].maxTokens).toBe(8192);
+    expect(selection.providerConfig.models[0].maxTokens).toBe(32768);
   });
 
   test('does not use OpenClaw catalog maxTokens when custom provider id does not match', async () => {
@@ -2075,7 +2078,7 @@ describe('OpenClawConfigSync runtime config output', () => {
 
     expect(selection.providerConfig.api).toBe(OpenClawApi.AnthropicMessages);
     expect(selection.providerConfig.models[0].contextWindow).toBe(1_000_000);
-    expect(selection.providerConfig.models[0].maxTokens).toBe(8192);
+    expect(selection.providerConfig.models[0].maxTokens).toBe(32768);
   });
 
   test('repairs stale image capability for known Qwen models before writing OpenClaw input', async () => {
