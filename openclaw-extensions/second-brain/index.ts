@@ -376,11 +376,6 @@ const plugin = {
           api.logger.info(`[second-brain] injected prompt into session: ${sessionKey} (length=${prompt.length})`);
           return {
             prependSystemContext: prompt.trim(),
-            appendContext: [
-              '[Second Brain reminder]',
-              'Second Brain is active for this session. Keep the expert\'s Second Brain cognition framework and viewpoints in mind when answering.',
-              'If the current context is insufficient or requires specialized insights, use the available Second Brain tools to assist before replying.',
-            ].join('\n'),
           };
         }
       } catch (err) {
