@@ -25,24 +25,23 @@ const runtimeDir = process.argv[2]
 
 const bundleOutPath = path.join(runtimeDir, 'gateway-bundle.mjs');
 
-// Prefer runtime dist entry (which has local production node_modules ready)
-const gatewayEntryPath = path.join(runtimeDir, 'dist', 'gateway-entry.js');
-const fullEntryPath = path.join(runtimeDir, 'dist', 'entry.js');
-
-// Fallback to local openclaw source if runtime dist is not built yet
+// Prefer local openclaw source if present (ensures versioned patches in ../openclaw/src are included)
 const openclawSrcDir = process.env.OPENCLAW_SRC || path.resolve(rootDir, '../openclaw');
 const srcGatewayEntry = path.join(openclawSrcDir, 'src', 'gateway-entry.ts');
 const srcFullEntry = path.join(openclawSrcDir, 'src', 'entry.ts');
 
+const gatewayEntryPath = path.join(runtimeDir, 'dist', 'gateway-entry.js');
+const fullEntryPath = path.join(runtimeDir, 'dist', 'entry.js');
+
 let entryPath;
-if (fs.existsSync(gatewayEntryPath)) {
-  entryPath = gatewayEntryPath;
-} else if (fs.existsSync(fullEntryPath)) {
-  entryPath = fullEntryPath;
-} else if (fs.existsSync(srcGatewayEntry)) {
+if (fs.existsSync(srcGatewayEntry)) {
   entryPath = srcGatewayEntry;
 } else if (fs.existsSync(srcFullEntry)) {
   entryPath = srcFullEntry;
+} else if (fs.existsSync(gatewayEntryPath)) {
+  entryPath = gatewayEntryPath;
+} else if (fs.existsSync(fullEntryPath)) {
+  entryPath = fullEntryPath;
 }
 
 if (!fs.existsSync(entryPath)) {
