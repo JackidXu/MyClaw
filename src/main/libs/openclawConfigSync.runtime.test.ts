@@ -376,6 +376,7 @@ describe('OpenClawConfigSync runtime config output', () => {
     expect(config.agents.defaults.compaction).toEqual({
       truncateAfterCompaction: true,
       maxActiveTranscriptBytes: '32mb',
+      reserveTokensFloor: 96000,
     });
   });
 
@@ -1315,7 +1316,7 @@ describe('OpenClawConfigSync runtime config output', () => {
       reasoning: true,
       input: ['text', 'image', 'video'],
       contextWindow: 1_048_576,
-      maxTokens: 8192,
+      maxTokens: 32768,
       thinkingLevelMap: {
         off: null,
         minimal: 'max',
@@ -1338,7 +1339,7 @@ describe('OpenClawConfigSync runtime config output', () => {
       reasoning: true,
       input: ['text', 'image', 'video'],
       contextWindow: 1_048_576,
-      maxTokens: 8192,
+      maxTokens: 32768,
     });
     expect(config.agents.defaults.models['custom_0/kimi-k3']).toEqual({
       params: {
@@ -2031,6 +2032,8 @@ describe('OpenClawConfigSync runtime config output', () => {
     expect(resolveOpenClawCatalogModelMaxTokens('minimax', 'MiniMax-M3')).toBe(131_072);
     expect(resolveOpenClawCatalogModelMaxTokens('minimax-portal', 'MiniMax-M3')).toBe(131_072);
     expect(resolveOpenClawCatalogModelMaxTokens('anthropic', 'claude-sonnet-4-6')).toBe(64_000);
+    expect(resolveOpenClawCatalogModelMaxTokens('openai', 'GLM-5.2')).toBe(65_536);
+    expect(resolveOpenClawCatalogModelMaxTokens('openai', 'DeepSeek-V4-Pro正式版')).toBe(32_768);
     expect(resolveOpenClawCatalogModelMaxTokens('custom_0', 'MiniMax-M3')).toBeUndefined();
   });
 
@@ -2053,7 +2056,7 @@ describe('OpenClawConfigSync runtime config output', () => {
 
     expect(selection.providerConfig.api).toBe(OpenClawApi.AnthropicMessages);
     expect(selection.providerConfig.models[0].contextWindow).toBe(1_000_000);
-    expect(selection.providerConfig.models[0].maxTokens).toBe(8192);
+    expect(selection.providerConfig.models[0].maxTokens).toBe(32768);
   });
 
   test('does not use OpenClaw catalog maxTokens when custom provider id does not match', async () => {
@@ -2075,7 +2078,50 @@ describe('OpenClawConfigSync runtime config output', () => {
 
     expect(selection.providerConfig.api).toBe(OpenClawApi.AnthropicMessages);
     expect(selection.providerConfig.models[0].contextWindow).toBe(1_000_000);
-    expect(selection.providerConfig.models[0].maxTokens).toBe(8192);
+    expect(selection.providerConfig.models[0].maxTokens).toBe(32768);
+  });
+
+  test('writes correct contextWindow for NewAPI camelCase and variant models', async () => {
+    const { buildProviderSelection } = await import('./openclawConfigSync');
+
+    const dsFlash = buildProviderSelection({
+      apiKey: 'sk-oneapi',
+      baseURL: 'https://token.chaohui.ai/v1',
+      modelId: 'DeepSeek-V4-flash',
+      apiType: 'openai',
+      providerName: 'openai',
+      authType: 'apikey',
+      codingPlanEnabled: false,
+      supportsImage: false,
+      modelName: 'DeepSeek-V4-flash',
+    });
+    expect(dsFlash.providerConfig.models[0].contextWindow).toBe(1_000_000);
+
+    const dsFlashZh = buildProviderSelection({
+      apiKey: 'sk-oneapi',
+      baseURL: 'https://token.chaohui.ai/v1',
+      modelId: 'DeepSeek-V4-Flash正式版',
+      apiType: 'openai',
+      providerName: 'openai',
+      authType: 'apikey',
+      codingPlanEnabled: false,
+      supportsImage: false,
+      modelName: 'DeepSeek-V4-Flash正式版',
+    });
+    expect(dsFlashZh.providerConfig.models[0].contextWindow).toBe(1_000_000);
+
+    const glm52 = buildProviderSelection({
+      apiKey: 'sk-oneapi',
+      baseURL: 'https://token.chaohui.ai/v1',
+      modelId: 'GLM-5.2',
+      apiType: 'openai',
+      providerName: 'openai',
+      authType: 'apikey',
+      codingPlanEnabled: false,
+      supportsImage: false,
+      modelName: 'GLM-5.2',
+    });
+    expect(glm52.providerConfig.models[0].contextWindow).toBe(202_800);
   });
 
   test('repairs stale image capability for known Qwen models before writing OpenClaw input', async () => {

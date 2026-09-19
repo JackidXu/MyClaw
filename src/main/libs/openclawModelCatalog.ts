@@ -61,18 +61,31 @@ const BUILT_IN_MODEL_MAX_TOKENS = new Map<string, number>([
   ['minimax-portal/minimax-m2.7-highspeed', 131_072],
   ['minimax-portal/minimax-m2.5', 131_072],
   ['minimax-portal/minimax-m2.5-highspeed', 131_072],
-  ['openai/deepseek-v4-flash', 16_384],
-  ['openai/deepseek-v4-pro', 16_384],
-  ['deepseek/deepseek-v4-flash', 16_384],
-  ['deepseek/deepseek-v4-pro', 16_384],
-  ['volcengine/deepseek-v4-flash', 16_384],
-  ['volcengine/deepseek-v4-pro', 16_384],
-  ['volcengine/doubao-seed-2.0-lite', 16_384],
-  ['volcengine/doubao-seed-2.0-mini', 16_384],
-  ['volcengine/doubao-seed-2.0-pro', 16_384],
-  ['openai/doubao-seed-2.0-lite', 16_384],
-  ['openai/doubao-seed-2.0-mini', 16_384],
-  ['openai/doubao-seed-2.0-pro', 16_384],
+  ['openai/deepseek-v4-flash', 32_768],
+  ['openai/deepseek-v4-pro', 32_768],
+  ['deepseek/deepseek-v4-flash', 32_768],
+  ['deepseek/deepseek-v4-pro', 32_768],
+  ['volcengine/deepseek-v4-flash', 32_768],
+  ['volcengine/deepseek-v4-pro', 32_768],
+  ['volcengine/doubao-seed-2.0-lite', 32_768],
+  ['volcengine/doubao-seed-2.0-mini', 32_768],
+  ['volcengine/doubao-seed-2.0-pro', 32_768],
+  ['openai/doubao-seed-2.0-lite', 32_768],
+  ['openai/doubao-seed-2.0-mini', 32_768],
+  ['openai/doubao-seed-2.0-pro', 32_768],
+  ['openai/glm-5.2', 65_536],
+  ['openai/glm-5.3-flash', 65_536],
+  ['openai/glm-5', 65_536],
+  ['openai/glm-4-plus', 65_536],
+  ['openai/glm-4.7', 65_536],
+  ['zhipu/glm-5.2', 65_536],
+  ['zhipu/glm-5.3-flash', 65_536],
+  ['zhipu/glm-5', 65_536],
+  ['zhipu/glm-4-plus', 65_536],
+  ['zhipu/glm-4.7', 65_536],
+  ['volcengine/glm-5.2', 65_536],
+  ['volcengine/glm-5.3-flash', 65_536],
+  ['volcengine/glm-5', 65_536],
 ]);
 
 const BUILT_IN_PROVIDER_ALIASES = new Map<string, string>([
@@ -89,10 +102,15 @@ const resolveBuiltInModelMaxTokens = (
   if (!providerCandidate) return undefined;
 
   const normalizedModel = normalizeLookupPart(modelId);
+  const strippedChineseModel = normalizedModel.replace(/[\u4e00-\u9fa5]+/g, '').replace(/[-_]+$/, '');
   const modelCandidates = [
     normalizedModel,
+    strippedChineseModel,
     normalizedModel.includes('/')
       ? normalizedModel.slice(normalizedModel.lastIndexOf('/') + 1)
+      : '',
+    strippedChineseModel.includes('/')
+      ? strippedChineseModel.slice(strippedChineseModel.lastIndexOf('/') + 1)
       : '',
     normalizedModel.startsWith('claude-') && normalizedModel.includes('.')
       ? normalizedModel.replace(/\./g, '-')

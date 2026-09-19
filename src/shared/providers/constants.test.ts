@@ -177,6 +177,19 @@ describe('ProviderRegistry', () => {
     expect(ProviderRegistry.resolveModelContextWindow(ProviderName.DeepSeek, 'deepseek-v4-pro', 200_000)).toBe(200_000);
     expect(ProviderRegistry.resolveModelContextWindow(ProviderName.OpenAI, 'gpt-5.6-sol')).toBe(1_050_000);
     expect(ProviderRegistry.resolveModelContextWindow(ProviderName.Xai, 'grok-4.5')).toBe(500_000);
+
+    // Case-insensitivity and Chinese channel decorator stripping
+    expect(ProviderRegistry.resolveModelContextWindow(ProviderName.Oneapi, 'DeepSeek-V4-flash')).toBe(1_000_000);
+    expect(ProviderRegistry.resolveModelContextWindow(ProviderName.Oneapi, 'DeepSeek-V4-Flash正式版')).toBe(1_000_000);
+    expect(ProviderRegistry.resolveModelContextWindow(ProviderName.Oneapi, 'DeepSeek-V4-pro')).toBe(1_000_000);
+    expect(ProviderRegistry.resolveModelContextWindow(ProviderName.Oneapi, 'DeepSeek-V4-Pro正式版')).toBe(1_000_000);
+    expect(ProviderRegistry.resolveModelContextWindow(ProviderName.Oneapi, 'DeepSeek-V4.1-Flash')).toBe(1_000_000);
+
+    // GLM and Doubao models
+    expect(ProviderRegistry.resolveModelContextWindow(ProviderName.Oneapi, 'GLM-5.2')).toBe(202_800);
+    expect(ProviderRegistry.resolveModelContextWindow(ProviderName.Oneapi, 'GLM-5.3-Flash')).toBe(202_800);
+    expect(ProviderRegistry.resolveModelContextWindow(ProviderName.Oneapi, 'Doubao-Seed-2.0-mini')).toBe(256_000);
+    expect(ProviderRegistry.resolveModelContextWindow(ProviderName.Oneapi, 'Doubao-Seed-2.0-pro')).toBe(256_000);
   });
 
   test('resolves Kimi K3 video and output token metadata', () => {
