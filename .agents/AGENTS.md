@@ -245,5 +245,40 @@ HeyClaw 采用双后端支撑体系：
   - **遇到意图不明确、业务边界模糊或方案存在分歧时**，严禁自作主张、凭空盲猜乱做，必须第一时间主动向用户提问沟通，由用户做最终决策；
   - 始终保持全过程透明，绝不剥夺用户的知情权与决策权。
 
-
-
+### 2.22 NewAPI / 模型网关服务器排查规范与权限安全铁律 (Server Diagnostics & Read-Only Iron Rule)
+- **【核心安全铁律（强制执行）】**：
+  - **永远只能查，仅用于排查定位问题，绝对不可以擅自增删改任何配置或数据，除非得到用户的明确当次文字许可！**
+  - **禁止项包括**：绝对严禁擅自修改服务器配置（如 `/config/traefik.yml`、`/config/http.yml` 等）；绝对严禁擅自执行容器重启（`docker restart`）、停止（`docker stop`）或更新镜像；绝对严禁对数据库执行写操作；
+  - 任何涉及修改配置、重载服务或变更线上状态的操作，**必须先形成明确方案向用户汇报，并在拿到用户明确许可后方可执行**。
+- **服务器基本资产信息**：
+  - **公网服务域名**：`token.chaohui.ai`
+  - **公网 IP**：`43.99.44.42`
+  - **阿里云地域 (Region)**：`cn-hongkong`（中国香港）
+  - **ECS 实例 ID**：`i-j6cc6ew2bqkj0fn4ioer`
+  - **核心容器拓扑**：
+    - `traefik`：七层反向代理与 TLS 网关（静态配置 `/config/traefik.yml`，动态路由 `/config/http.yml`）；
+    - `newapi`：NewAPI 中转服务容器（映射端口 3000，核心二进制 `/new-api`）；
+    - `claw-admin`：后台管理服务容器。
+  - **NewAPI 数据库只读查询**：
+    - Host: `pc-bp14g47881fwu0z42pub.rwlb.rds.aliyuncs.com:3306`，DB: `oneapi`（仅限 `SELECT` 查询 `logs`、`channels` 等表排查调用明细）。
+- **常用排查指令工具箱（免交互 Workbench 快速诊断）**：
+  - **通用远程执行语法**：
+    ```bash
+    workbench exec -r cn-hongkong -i i-j6cc6ew2bqkj0fn4ioer -c "<linux命令>"
+    ```
+  - **常用排查命令合集**：
+    - 检查容器运行状态：`workbench exec -r cn-hongkong -i i-j6cc6ew2bqkj0fn4ioer -c "docker ps"`
+    - 查看 Traefik 访问日志（含时间戳、IP、耗时 Duration、状态码 DownstreamStatus/OriginStatus、请求体大小 RequestContentSize 等）：
+      `workbench exec -r cn-hongkong -i i-j6cc6ew2bqkj0fn4ioer -c "docker logs --tail 200 traefik"`
+    - 快速定位 Traefik 异常请求（如过滤 499 / 504 / 500）：
+      `workbench exec -r cn-hongkong -i i-j6cc6ew2bqkj0fn4ioer -c "docker logs traefik 2>&1 | grep '\"DownstreamStatus\":499' | tail -n 20"`
+    - 查看 NewAPI 容器业务日志与路由报错（GIN 日志、预扣费、渠道转发）：
+      `workbench exec -r cn-hongkong -i i-j6cc6ew2bqkj0fn4ioer -c "docker logs --tail 200 newapi"`
+    - 检索 NewAPI 异常请求（按请求 ID 或错误关键字 grep）：
+      `workbench exec -r cn-hongkong -i i-j6cc6ew2bqkj0fn4ioer -c "docker logs newapi 2>&1 | grep '<requestId或关键词>'"`
+    - 查看 Traefik 静态超时配置：
+      `workbench exec -r cn-hongkong -i i-j6cc6ew2bqkj0fn4ioer -c "docker exec traefik cat /config/traefik.yml"`
+    - 查看 Traefik 动态路由与服务映射配置：
+      `workbench exec -r cn-hongkong -i i-j6cc6ew2bqkj0fn4ioer -c "docker exec traefik cat /config/http.yml"`
+  - **交互式终端直连**（仅供极端复杂场景）：
+    `workbench connect -r cn-hongkong -i i-j6cc6ew2bqkj0fn4ioer`
