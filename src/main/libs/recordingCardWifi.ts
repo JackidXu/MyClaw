@@ -230,10 +230,14 @@ export class RecordingCardWifiManager {
 
     this.connectingPromise = (async () => {
       const { targetIp, localIp } = await wifiManager.resolveRecorderEndpoints();
+      if (!localIp) {
+        this.connectingPromise = null;
+        throw new Error('[WifiManager] 正在等待操作系统获取录音卡局域网 IP (192.168.1.x)...');
+      }
 
       return new Promise<void>((resolve, reject) => {
         console.log(
-          `[RecordingCardWifi] 正在连接录音卡 TCP Socket (${targetIp}:${DEVICE_PORT}${localIp ? ` via ${localIp}` : ''})...`
+          `[RecordingCardWifi] 正在连接录音卡 TCP Socket (${targetIp}:${DEVICE_PORT} via ${localIp})...`
         );
         const sock = new net.Socket();
         let settled = false;
@@ -258,7 +262,7 @@ export class RecordingCardWifiManager {
         const connectOptions: net.TcpSocketConnectOpts = {
           port: DEVICE_PORT,
           host: targetIp,
-          ...(localIp ? { localAddress: localIp } : {}),
+          localAddress: localIp,
         };
 
         sock.connect(connectOptions, () => {

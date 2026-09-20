@@ -841,8 +841,8 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
       }
       logCard('info', `[自动连接] 系统已下发关联 Wi-Fi 指令 (${ssid})，开始探测 Socket 就绪状态...`);
 
-      // 阶段 2: Wi-Fi 关联后，给局域网 IP 与 TCP 服务留出 10 秒弹性轮询重试窗口（每 600ms 探测一次）
-      const socketDeadline = Date.now() + 10000;
+      // 阶段 2: Wi-Fi 关联后，给局域网 IP 与 TCP 服务留出 16 秒充裕轮询重试窗口（每 600ms 探测一次）
+      const socketDeadline = Date.now() + 16000;
       let socketConnected = false;
       let lastSocketErr = '';
 
@@ -992,8 +992,8 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
     isWifiFlowRunningRef.current = true;
     logCard('info', '>>> 用户确认连入热点，正在建立 Wi-Fi TCP 同步通道...');
     try {
-      // 给局域网 IP 与 TCP 服务留出 8 秒弹性轮询重试窗口（每 600ms 探测一次），避免单次失败直接判死刑
-      const socketDeadline = Date.now() + 8000;
+      // 给局域网 IP 与 TCP 服务留出 12 秒充裕轮询重试窗口（每 600ms 探测一次），避免单次失败直接判死刑
+      const socketDeadline = Date.now() + 12000;
       let socketConnected = false;
       let lastSocketErr = '';
 
