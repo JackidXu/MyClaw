@@ -86,6 +86,7 @@
     "entitlementsInherit": "build/entitlements.mac.plist",
     "extendInfo": {
       "CFBundleIconName": "icon",
+      "NSLocalNetworkUsageDescription": "HeyClaw 需要访问本地网络以连接和同步录音卡硬件设备。",
       "NSMicrophoneUsageDescription": "HeyClaw 需要访问您的麦克风来录制语音输入并进行语音识别。",
       "NSCalendarsUsageDescription": "HeyClaw 需要访问您的日历来帮助您查看和管理日程安排，例如查找事件、创建会议等。",
       "NSRemindersUsageDescription": "HeyClaw 需要访问您的提醒事项来帮助您管理待办事项。",
