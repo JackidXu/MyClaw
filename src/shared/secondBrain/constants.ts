@@ -17,6 +17,10 @@ export const SecondBrainAutoUploadIpc = {
   ReadLocalFile: 'secondBrain:readLocalFile',
   /** 标记文件已同步 */
   MarkFileSynced: 'secondBrain:markFileSynced',
+  /** 标记文件同步失败 */
+  MarkFileFailed: 'secondBrain:autoUpload:markFileFailed',
+  /** 计算文件或数据的 MD5 哈希（复用主进程 Node crypto） */
+  ComputeFileHash: 'secondBrain:computeFileHash',
   /** 状态变更通知（主进程 -> 渲染进程） */
   StatusChanged: 'secondBrain:autoUploadStatusChanged',
   /** 主进程定时器触发同步请求（主进程 -> 渲染进程） */
@@ -58,10 +62,20 @@ export interface SecondBrainPendingItem {
   filePath: string;
   fileName: string;
   mtimeMs: number;
+  fileHash: string;
 }
 
 /** 标记文件已同步的参数 */
 export interface MarkFileSyncedParams {
   filePath: string;
   mtimeMs: number;
+  fileHash?: string;
+}
+
+/** 标记文件同步失败的参数 */
+export interface MarkFileFailedParams {
+  filePath: string;
+  mtimeMs: number;
+  fileHash?: string;
+  errorMsg?: string;
 }

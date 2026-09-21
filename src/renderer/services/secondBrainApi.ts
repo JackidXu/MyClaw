@@ -338,9 +338,42 @@ export async function fetchChatList(params: {
   return get<ChatListResponse>(`/fmp/chat/list?${query.toString()}`);
 }
 
-/** 获取预签名上传参数 */
-export async function fetchUploadPresignedUrl(): Promise<UploadPresignResponse> {
-  return get<UploadPresignResponse>('/fmp/document/upload');
+export interface PresignedUrlResult {
+  alreadyExists?: boolean;
+  message?: string;
+  data?: UploadPresignResponse;
+}
+
+/** 获取预签名上传参数（支持 md5 哈希查重检测） */
+export async function fetchUploadPresignedUrl(md5?: string): Promise<PresignedUrlResult> {
+  const query = md5 ? `?md5=${encodeURIComponent(md5)}` : '';
+  const apiPath = buildPath(`/fmp/document/upload${query}`);
+  const resp = await httpClient.biz.get<SecondBrainResponse<UploadPresignResponse>>(apiPath);
+
+  if (!resp.ok) {
+    const errDetail = resp.error || (resp.status === 0 ? '网络未连通或连接超时' : `HTTP ${resp.status}`);
+    throw new Error(`[SecondBrainApi] 获取预签名上传参数失败 (${errDetail})`);
+  }
+
+  const body = resp.data;
+  // 1. 命中文件哈希已存在（code === 40001 或 message 包含已上传）
+  if (body?.code === 40001 || (body?.status === 'error' && body?.message?.includes('已上传'))) {
+    return {
+      alreadyExists: true,
+      message: body?.message || '该文件已上传过，无需重复上传',
+    };
+  }
+
+  // 2. 正常成功
+  if (body && body.status === 'success' && body.code === 1 && body.data) {
+    return {
+      alreadyExists: false,
+      data: body.data,
+    };
+  }
+
+  // 3. 其它业务错误
+  throw new Error(body?.message || resp.error || '获取上传参数失败');
 }
 
 /** 将文件直接 PUT 上传至 TOS 预签名地址（跨主进程请求绕过 CORS 限制） */
@@ -398,9 +431,58 @@ export async function uploadAndCreateDocument(params: {
   name: string;
   content: File | Blob | ArrayBuffer | Uint8Array;
   mimeType?: string;
-}): Promise<{ name: string; tosUrl: string; tosKey: string }> {
-  // 1. 获取预签名参数
-  const { upload_url, tos_url, key } = await fetchUploadPresignedUrl();
+  fileHash?: string;
+  silentDuplicate?: boolean;
+}): Promise<{ name: string; tosUrl?: string; tosKey?: string; alreadyExists?: boolean }> {
+  // 1. 若未显式传入 fileHash，通过主进程 Node 原生 crypto 计算 MD5 哈希
+  let fileHash = params.fileHash;
+  if (!fileHash && params.content) {
+    try {
+      const localPath = (params.content as any).path;
+      if (typeof localPath === 'string' && localPath) {
+        const hashRes = await window.electron.secondBrainAutoUpload?.computeFileHash?.({ filePath: localPath });
+        if (hashRes?.success && hashRes.hash) {
+          fileHash = hashRes.hash;
+        }
+      } else {
+        let uint8Array: Uint8Array | undefined;
+        if (params.content instanceof Uint8Array) {
+          uint8Array = params.content;
+        } else if (params.content instanceof ArrayBuffer) {
+          uint8Array = new Uint8Array(params.content);
+        } else if (params.content instanceof Blob) {
+          const ab = await params.content.arrayBuffer();
+          uint8Array = new Uint8Array(ab);
+        }
+        if (uint8Array) {
+          const hashRes = await window.electron.secondBrainAutoUpload?.computeFileHash?.({ buffer: uint8Array });
+          if (hashRes?.success && hashRes.hash) {
+            fileHash = hashRes.hash;
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // 2. 获取预签名参数（携带 md5 查重）
+  const presignRes = await fetchUploadPresignedUrl(fileHash);
+
+  if (presignRes.alreadyExists) {
+    if (params.silentDuplicate) {
+      // 自动同步场景：静默返回命中状态，上层直接在本地记账且不弹窗
+      return { name: params.name, alreadyExists: true };
+    }
+    // 手动上传场景：抛出后端真实 message，以便界面精准弹出提示
+    throw new Error(presignRes.message || '该文件已上传过，无需重复上传');
+  }
+
+  if (!presignRes.data) {
+    throw new Error('未获取到有效的预签名上传凭据');
+  }
+
+  const { upload_url, tos_url, key } = presignRes.data;
 
   // 2. 直传 TOS
   await uploadFileToTos(upload_url, params.content, params.mimeType);
@@ -412,7 +494,7 @@ export async function uploadAndCreateDocument(params: {
     tosKey: key,
   });
 
-  return { name: params.name, tosUrl: tos_url, tosKey: key };
+  return { name: params.name, tosUrl: tos_url, tosKey: key, alreadyExists: false };
 }
 
 /** 获取资料下载地址 */

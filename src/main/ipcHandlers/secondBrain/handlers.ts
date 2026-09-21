@@ -1,6 +1,7 @@
 import { BrowserWindow, dialog, ipcMain } from 'electron';
 
 import {
+  MarkFileFailedParams,
   MarkFileSyncedParams,
   SecondBrainAutoUploadConfig,
   SecondBrainAutoUploadIpc,
@@ -126,6 +127,40 @@ export function registerSecondBrainIpcHandlers(): void {
         return {
           success: false,
           error: error instanceof Error ? error.message : '记录文件同步状态失败',
+        };
+      }
+    },
+  );
+
+  // 8. 标记单个文件同步失败入 SQLite
+  ipcMain.handle(
+    SecondBrainAutoUploadIpc.MarkFileFailed,
+    async (_event, params: MarkFileFailedParams) => {
+      try {
+        secondBrainAutoUploadService.markFileFailed(params);
+        return { success: true };
+      } catch (error) {
+        console.warn('[SecondBrainIpc] Failed to mark file failed:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : '记录文件同步失败状态失败',
+        };
+      }
+    },
+  );
+
+  // 9. 计算文件或数据的 MD5 哈希（100% 复用 Node 原生 crypto）
+  ipcMain.handle(
+    SecondBrainAutoUploadIpc.ComputeFileHash,
+    async (_event, input: { filePath?: string; buffer?: Uint8Array }) => {
+      try {
+        const hash = secondBrainAutoUploadService.computeHash(input);
+        return { success: true, hash };
+      } catch (error) {
+        console.warn('[SecondBrainIpc] Failed to compute hash:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : '计算文件哈希失败',
         };
       }
     },

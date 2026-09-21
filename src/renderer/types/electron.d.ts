@@ -687,6 +687,15 @@ interface IElectronAPI {
       success: boolean;
       error?: string;
     }>;
+    markFileFailed: (params: import('../../shared/secondBrain/constants').MarkFileFailedParams) => Promise<{
+      success: boolean;
+      error?: string;
+    }>;
+    computeFileHash: (input: { filePath?: string; buffer?: Uint8Array }) => Promise<{
+      success: boolean;
+      hash?: string | null;
+      error?: string;
+    }>;
     onStatusChanged: (
       callback: (status: import('../../shared/secondBrain/constants').SecondBrainAutoUploadStatus) => void,
     ) => () => void;

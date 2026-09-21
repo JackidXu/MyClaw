@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo,useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 import { copyTextToClipboard } from '../../services/clipboard';
@@ -34,6 +34,7 @@ import {
   uploadAndCreateDocument,
   uploadFileToTos,
 } from '../../services/secondBrainApi';
+import { secondBrainAutoUploadService } from '../../services/secondBrainAutoUpload';
 import {
   MANAGEMENT_PAGE_TITLE_TEXT,
 } from '../common/managementTypography';
@@ -183,6 +184,55 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
 
   /** 自动同步弹窗控制 */
   const [showAutoUploadModal, setShowAutoUploadModal] = useState(false);
+  const [autoUploadWatchDir, setAutoUploadWatchDir] = useState<string>('');
+  const [autoUploadSyncing, setAutoUploadSyncing] = useState<boolean>(false);
+
+  const refreshAutoUploadStatus = React.useCallback(() => {
+    void secondBrainAutoUploadService.getConfigAndStatus().then((res) => {
+      if (res) {
+        setAutoUploadWatchDir(res.config.watchDir || '');
+        setAutoUploadSyncing(res.status.isSyncing);
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    refreshAutoUploadStatus();
+    const cleanup = window.electron.secondBrainAutoUpload?.onStatusChanged?.((status) => {
+      setAutoUploadWatchDir(status.watchDir || '');
+      setAutoUploadSyncing(status.isSyncing);
+    });
+    return () => {
+      cleanup?.();
+    };
+  }, [refreshAutoUploadStatus]);
+
+  /** 触发立即同步操作 */
+  const handleTriggerAutoSync = async () => {
+    if (!autoUploadWatchDir) {
+      showToast('error', '未设置自动同步目录，请先在“设置”中选择目录');
+      return;
+    }
+    if (autoUploadSyncing) return;
+
+    setAutoUploadSyncing(true);
+    try {
+      const result = await secondBrainAutoUploadService.triggerSync();
+      if (result.success) {
+        if (result.count === 0) {
+          showToast('info', '已是最新，暂无可同步文档');
+        } else {
+          showToast('success', `已成功同步并提交萃取 ${result.count} 篇文档`);
+        }
+      } else {
+        showToast('error', '同步扫描失败，请检查目录是否有效');
+      }
+    } catch {
+      showToast('error', '同步执行异常');
+    } finally {
+      setAutoUploadSyncing(false);
+    }
+  };
 
   /** 点击外部关闭更多菜单 */
   useEffect(() => {
@@ -643,15 +693,16 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
 
     setUploading(true);
     let successCount = 0;
-    const failedNames: string[] = [];
+    const failedDetails: Array<{ name: string; message: string }> = [];
 
     for (const file of validFiles) {
       try {
-        await uploadAndCreateDocument({ name: file.name, content: file });
+        await uploadAndCreateDocument({ name: file.name, content: file, silentDuplicate: false });
         successCount++;
       } catch (err: any) {
         console.warn(`[SecondBrainView] 资料 "${file.name}" 上传失败:`, err);
-        failedNames.push(file.name);
+        const errMsg = err instanceof Error ? err.message : String(err || '上传失败');
+        failedDetails.push({ name: file.name, message: errMsg });
       }
     }
 
@@ -660,16 +711,22 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
       loadStats();
     }
 
-    if (failedNames.length === 0) {
+    if (failedDetails.length === 0) {
       if (files.length === 1) {
         showToast('success', `资料 "${files[0].name}" 上传成功，系统正自动萃取中`);
       } else {
         showToast('success', `成功上传 ${successCount} 份资料，系统正自动萃取中`);
       }
     } else if (successCount > 0) {
-      showToast('error', `成功上传 ${successCount} 份资料，${failedNames.length} 份上传失败 (${failedNames.join(', ')})`);
+      const failSummary = failedDetails.map((f) => `${f.name} (${f.message})`).join('；');
+      showToast('error', `成功上传 ${successCount} 份资料，${failedDetails.length} 份失败：${failSummary}`);
     } else {
-      showToast('error', `资料上传失败：${failedNames.join(', ')}`);
+      if (failedDetails.length === 1) {
+        showToast('error', `资料 "${failedDetails[0].name}" 上传失败：${failedDetails[0].message}`);
+      } else {
+        const failSummary = failedDetails.map((f) => `${f.name} (${f.message})`).join('；');
+        showToast('error', `资料上传失败：${failSummary}`);
+      }
     }
 
     setUploading(false);
@@ -2055,15 +2112,50 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                 {/* 仅在文档 Tab 下展示上传与自动同步按钮 */}
                 {materialTab === '文档' && (
                   <div className="flex items-center gap-2 mb-1.5">
-                    {/* 自动同步设置入口 */}
-                    <button
-                      type="button"
-                      onClick={() => setShowAutoUploadModal(true)}
-                      className="text-xs px-2.5 py-1.5 rounded-lg border border-border bg-surface-raised/60 hover:bg-surface-raised text-secondary hover:text-foreground transition-colors flex items-center gap-1.5 cursor-pointer font-medium"
-                    >
-                      <span>📁</span>
-                      <span>自动同步</span>
-                    </button>
+                    {/* 自动同步悬停菜单入口 */}
+                    <div className="relative group">
+                      <button
+                        type="button"
+                        onClick={() => setShowAutoUploadModal(true)}
+                        className="text-xs px-2.5 py-1.5 rounded-lg border border-border bg-surface-raised/60 hover:bg-surface-raised text-secondary hover:text-foreground transition-colors flex items-center gap-1.5 cursor-pointer font-medium"
+                      >
+                        <span className={autoUploadSyncing ? 'animate-spin' : ''}>
+                          {autoUploadSyncing ? '🔄' : '📁'}
+                        </span>
+                        <span>自动同步</span>
+                        <span className="text-[10px] text-secondary/60 group-hover:text-foreground transition-transform duration-150 group-hover:rotate-180">
+                          ▾
+                        </span>
+                      </button>
+
+                      {/* 鼠标悬浮下拉菜单 */}
+                      <div className="invisible opacity-0 group-hover:visible group-hover:opacity-100 transition-all duration-150 absolute left-0 top-full pt-1 z-30">
+                        <div className="min-w-[124px] bg-surface border border-border rounded-xl shadow-modal p-1 space-y-0.5 text-xs backdrop-blur-md">
+                          <button
+                            type="button"
+                            onClick={() => setShowAutoUploadModal(true)}
+                            className="w-full px-2.5 py-1.5 text-left rounded-lg hover:bg-surface-raised text-foreground transition-colors flex items-center gap-2 cursor-pointer"
+                          >
+                            <span>⚙️</span>
+                            <span>设置</span>
+                          </button>
+                          <button
+                            type="button"
+                            disabled={!autoUploadWatchDir || autoUploadSyncing}
+                            onClick={handleTriggerAutoSync}
+                            title={!autoUploadWatchDir ? '未设置同步目录，请点击设置选择目录' : undefined}
+                            className={`w-full px-2.5 py-1.5 text-left rounded-lg transition-colors flex items-center gap-2 ${
+                              !autoUploadWatchDir || autoUploadSyncing
+                                ? 'opacity-40 cursor-not-allowed text-secondary'
+                                : 'hover:bg-surface-raised text-foreground cursor-pointer'
+                            }`}
+                          >
+                            <span className={autoUploadSyncing ? 'animate-spin' : ''}>🔄</span>
+                            <span>{autoUploadSyncing ? '正在同步…' : '立即同步'}</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
 
                     {/* 手动上传文档按钮 */}
                     <div className="relative group">
@@ -3116,7 +3208,10 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
       {/* 自动同步设置弹窗 */}
       <AutoUploadSettingsModal
         isOpen={showAutoUploadModal}
-        onClose={() => setShowAutoUploadModal(false)}
+        onClose={() => {
+          setShowAutoUploadModal(false);
+          refreshAutoUploadStatus();
+        }}
       />
 
       {/* 录音卡同步中页面级专属受控 Toast（受同步状态控制：同步进行中常驻显现，完成后自动平滑消失） */}
