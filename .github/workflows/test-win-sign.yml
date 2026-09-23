@@ -46,11 +46,15 @@ jobs:
           const OSS = require('ali-oss');
 
           async function runTest() {
+            const endpoint = (process.env.OSS_ENDPOINT || '').replace(/^https?:\/\//i, '').replace(/\/+$/, '');
             const ossClient = new OSS({
-              endpoint: process.env.OSS_ENDPOINT,
+              endpoint: endpoint || undefined,
               accessKeyId: process.env.OSS_ACCESS_KEY_ID,
               accessKeySecret: process.env.OSS_ACCESS_KEY_SECRET,
               bucket: process.env.OSS_BUCKET,
+              secure: true,
+              timeout: 120000,
+              retryMax: 3,
             });
 
             const filePath = path.resolve('test-installer.exe');
@@ -60,8 +64,9 @@ jobs:
             console.log(`[1/4] Uploading real package to OSS: ${ossKey} (${(originalSize / 1024 / 1024).toFixed(1)} MB)...`);
             const t0 = Date.now();
             await ossClient.multipartUpload(ossKey, filePath, {
-              parallel: 4,
-              partSize: 10 * 1024 * 1024
+              parallel: 2,
+              partSize: 4 * 1024 * 1024,
+              timeout: 120000,
             });
             console.log(`✓ Upload complete in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 

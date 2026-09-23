@@ -175,12 +175,15 @@ let aliOssModule = null;
 function getOssClient() {
   const accessKeyId = (process.env.OSS_ACCESS_KEY_ID || '').trim();
   const accessKeySecret = (process.env.OSS_ACCESS_KEY_SECRET || '').trim();
-  const endpoint = (process.env.OSS_ENDPOINT || '').trim();
+  let endpoint = (process.env.OSS_ENDPOINT || '').trim();
   const bucket = (process.env.OSS_BUCKET || '').trim();
 
   if (!accessKeyId || !accessKeySecret || !bucket) {
     return null;
   }
+
+  // 规范化 endpoint，去除协议前缀并统一由 secure: true 走 HTTPS (443 端口)
+  endpoint = endpoint.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
 
   if (!aliOssModule) {
     try {
@@ -195,7 +198,9 @@ function getOssClient() {
     accessKeyId,
     accessKeySecret,
     bucket,
-    timeout: 300000,
+    secure: true, // 强制走 443 端口 HTTPS，避免海外到国内 OSS 明文 HTTP 80 丢包阻断
+    timeout: 120000, // 单请求超时 120 秒
+    retryMax: 3, // 开启 SDK 级单分片超时与网络抖动自动重试
   });
 }
 
@@ -208,15 +213,34 @@ async function signOnceViaOss(serviceConfig, filePath, ossClient) {
   const ossKey = `${ossPrefix}/${uniqueId}_${fileName}`;
 
   console.log(`[WinSign] Uploading to OSS: ${ossKey} (${(originalSize / (1024 * 1024)).toFixed(1)} MB)...`);
-  await ossClient.multipartUpload(ossKey, filePath, {
-    parallel: 4,
-    partSize: 10 * 1024 * 1024,
-    timeout: 300000,
-  });
+
+  // 分片断点续传机制：4MB 轻量分片、2 并发，降低跨国弱网重试代价
+  let checkpoint = null;
+  const maxUploadAttempts = 3;
+  for (let uploadAttempt = 1; uploadAttempt <= maxUploadAttempts; uploadAttempt += 1) {
+    try {
+      await ossClient.multipartUpload(ossKey, filePath, {
+        parallel: 2,
+        partSize: 4 * 1024 * 1024,
+        timeout: 120000,
+        checkpoint,
+        progress: (p, cpt) => {
+          checkpoint = cpt;
+        },
+      });
+      break;
+    } catch (uploadError) {
+      console.warn(`[WinSign] OSS upload attempt ${uploadAttempt}/${maxUploadAttempts} failed for ${fileName}: ${uploadError.message}`);
+      if (uploadAttempt === maxUploadAttempts) {
+        throw uploadError;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+  }
 
   console.log(`[WinSign] Requesting sign from service via OSS: ${serviceConfig.baseUrl}/sign-oss`);
-  const serviceUrl = (process.env.WIN_SIGN_SERVICE_URL || serviceConfig.baseUrl).replace(/\/+$/, '');
-  const signSecret = (process.env.WIN_SIGN_SERVICE_SECRET || '').trim();
+  const serviceUrl = serviceConfig.baseUrl;
+  const signSecret = serviceConfig.headers['x-sign-secret'] || (process.env.WIN_SIGN_SERVICE_SECRET || '').trim();
 
   const resp = await fetch(`${serviceUrl}/sign-oss`, {
     method: 'POST',
@@ -234,16 +258,13 @@ async function signOnceViaOss(serviceConfig, filePath, ossClient) {
 
   const signResponse = await resp.json();
 
-
   const signedOssKey = signResponse.signedOssKey;
   if (!signedOssKey) {
     throw new Error(`[WinSign] service response missing signedOssKey: ${JSON.stringify(signResponse)}`);
   }
 
-
   console.log(`[WinSign] Downloading signed file from OSS: ${signedOssKey}...`);
   await ossClient.get(signedOssKey, tmpPath);
-
 
   const signedSize = fs.statSync(tmpPath).size;
   if (signedSize < originalSize) {
@@ -264,7 +285,6 @@ async function signOnceViaOss(serviceConfig, filePath, ossClient) {
     fs.rmSync(tmpPath, { force: true });
     throw error;
   }
-
 }
 
 async function signOnce(serviceConfig, filePath) {
@@ -390,45 +410,16 @@ async function signFile(filePath) {
   if (certSha1) {
     return signWithSigntool(filePath, certSha1);
   }
-  if (!serviceConfig) {
-    if (!warnedAboutMissingCredentials) {
-      warnedAboutMissingCredentials = true;
-      console.warn(
-        `[WinSign] Neither ${CERT_SHA1_ENV} nor ${SERVICE_URL_ENV}/${APP_KEY_ENV} are set -- `
-        + 'Windows binaries will NOT be signed. This is fine for local dev builds and must never happen on release CI. '
-        + 'See .env.example.',
-      );
-    }
-    return false;
-  }
 
-  const normalizedPath = path.resolve(filePath);
-  if (signedThisRun.has(normalizedPath)) {
-    return true;
+  if (!warnedAboutMissingCredentials) {
+    warnedAboutMissingCredentials = true;
+    console.warn(
+      `[WinSign] Neither ${CERT_SHA1_ENV} nor ${SERVICE_URL_ENV}/${APP_KEY_ENV} are set -- `
+      + 'Windows binaries will NOT be signed. This is fine for local dev builds and must never happen on release CI. '
+      + 'See .env.example.',
+    );
   }
-  if (readPeCertTable(normalizedPath)) {
-    console.log(`[WinSign] ${path.basename(normalizedPath)} already carries a signature, skipping`);
-    signedThisRun.add(normalizedPath);
-    return false;
-  }
-
-  const sizeMb = (fs.statSync(normalizedPath).size / (1024 * 1024)).toFixed(1);
-  console.log(`[WinSign] signing ${path.basename(normalizedPath)} (${sizeMb} MB) via ${serviceConfig.baseUrl}`);
-  const t0 = Date.now();
-
-  let lastError = null;
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
-    try {
-      await signOnce(serviceConfig, normalizedPath);
-      signedThisRun.add(normalizedPath);
-      console.log(`[WinSign] signed ${path.basename(normalizedPath)} in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
-      return true;
-    } catch (error) {
-      lastError = error;
-      console.warn(`[WinSign] attempt ${attempt}/${MAX_ATTEMPTS} failed for ${path.basename(normalizedPath)}:`, error.message);
-    }
-  }
-  throw lastError;
+  return false;
 }
 
 /**
