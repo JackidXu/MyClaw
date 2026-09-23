@@ -115,7 +115,7 @@ class VipService {
       };
 
       if (data?.reason === 'device_limit') {
-        console.warn('[VipService] 设备注册数量已达上限 (5台)');
+        console.warn('[VipService] 设备注册数量已达上限 (20台)');
       } else if (data?.reason === 'account_expired') {
         console.warn(`[VipService] 账号使用权限已到期 (${data.expiredAt || ''})`);
       }
