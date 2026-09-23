@@ -1,0 +1,91 @@
+diff --git a/src/auto-reply/reply/reply-turn-admission.test.ts b/src/auto-reply/reply/reply-turn-admission.test.ts
+index f72f21534e..a8cd200bcc 100644
+--- a/src/auto-reply/reply/reply-turn-admission.test.ts
++++ b/src/auto-reply/reply/reply-turn-admission.test.ts
+@@ -76,6 +76,37 @@ describe("reply turn admission", () => {
+     }
+   });
+ 
++  it("recovers and admits visible turn when previous non-streaming run hangs past timeout", async () => {
++    vi.useFakeTimers();
++    try {
++      const active = createReplyOperation({
++        sessionKey: "agent:main:wecom:group:42",
++        sessionId: "hanging-session",
++        resetTriggered: false,
++      });
++      active.setPhase("running");
++
++      const admitted = admitReplyTurn({
++        sessionKey: "agent:main:wecom:group:42",
++        sessionId: "waiting-session",
++        kind: "visible",
++        resetTriggered: false,
++      });
++
++      // Advance past the 30s default timeout
++      await vi.advanceTimersByTimeAsync(31_000);
++
++      const result = await admitted;
++      expect(result.status).toBe("owned");
++      if (result.status === "owned") {
++        result.operation.complete();
++      }
++    } finally {
++      await vi.runOnlyPendingTimersAsync();
++      vi.useRealTimers();
++    }
++  });
++
+   it("keeps the cleanup settle timeout for queued follow-up retry", async () => {
+     vi.useFakeTimers();
+     try {
+diff --git a/src/auto-reply/reply/reply-turn-admission.ts b/src/auto-reply/reply/reply-turn-admission.ts
+index 3b1cdfa849..cea5cea52c 100644
+--- a/src/auto-reply/reply/reply-turn-admission.ts
++++ b/src/auto-reply/reply/reply-turn-admission.ts
+@@ -20,6 +20,9 @@ function isAbortSignalAborted(signal: AbortSignal | undefined): boolean {
+   return signal?.aborted === true;
+ }
+ 
++export const DEFAULT_VISIBLE_TURN_WAIT_TIMEOUT_MS = 30_000;
++export const DEFAULT_VISIBLE_STREAMING_WAIT_TIMEOUT_MS = 120_000;
++
+ export async function admitReplyTurn(params: {
+   sessionKey: string;
+   sessionId: string;
+@@ -57,13 +60,33 @@ export async function admitReplyTurn(params: {
+       if (params.waitForActive === false) {
+         return { status: "skipped", reason: "active-run", activeOperation };
+       }
++      const isStreaming = replyRunRegistry.isStreaming(params.sessionKey);
++      const defaultVisibleTimeoutMs = isStreaming
++        ? DEFAULT_VISIBLE_STREAMING_WAIT_TIMEOUT_MS
++        : DEFAULT_VISIBLE_TURN_WAIT_TIMEOUT_MS;
+       const waitTimeoutMs =
+         params.waitTimeoutMs ??
+-        (params.kind === "queued_followup" ? REPLY_RUN_IDLE_SETTLE_TIMEOUT_MS : undefined);
++        (params.kind === "queued_followup"
++          ? REPLY_RUN_IDLE_SETTLE_TIMEOUT_MS
++          : params.kind === "visible"
++            ? defaultVisibleTimeoutMs
++            : undefined);
+       const ended = await replyRunRegistry.waitForIdle(params.sessionKey, waitTimeoutMs, {
+         signal: params.upstreamAbortSignal,
+       });
+       if (!ended) {
++        if (
++          !isAbortSignalAborted(params.upstreamAbortSignal) &&
++          params.kind === "visible" &&
++          activeOperation &&
++          !replyRunRegistry.isStreaming(params.sessionKey)
++        ) {
++          activeOperation.fail(
++            "run_failed",
++            new Error(`Previous reply operation timed out waiting for idle (${waitTimeoutMs}ms)`),
++          );
++          continue;
++        }
+         return {
+           status: "skipped",
+           reason: isAbortSignalAborted(params.upstreamAbortSignal) ? "aborted" : "active-run",

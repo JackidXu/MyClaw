@@ -3,7 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const WECOM_MENTION_PATCH_MARKER = 'wecom_mention_strip_patch';
+const WECOM_MENTION_PATCH_MARKER = 'wecom_mention_strip_patch_v3';
 
 function patchWecomMonitorMentionStrip(monitorPath, label, log) {
   if (!fs.existsSync(monitorPath)) {
@@ -16,17 +16,23 @@ function patchWecomMonitorMentionStrip(monitorPath, label, log) {
     return;
   }
 
-  // 匹配被官方注释掉的群聊移除提及标记逻辑
+  const replacement = `    // [HeyClaw Patch: ${WECOM_MENTION_PATCH_MARKER}] 群聊中移除开头的 @机器人 标记，纯 @ 机器人时强化提示意图唤醒
+    const hadMentionPrefix = body.chattype === "group" && typeof text === "string" && /^@\\S+/.test(text);
+    if (body.chattype === "group" && typeof text === "string") {
+      text = text.replace(/^@\\S+\\s*/, "").trim();
+    }
+    if (!text && hadMentionPrefix && !quoteContent && imageUrls.length === 0 && fileUrls.length === 0) {
+      text = "（用户在群聊中@呼叫了你，请向用户打招呼并询问有什么可以协助）";
+    }`;
+
+  // 匹配历史版本补丁以及被官方注释掉的群聊移除提及标记逻辑
   const brokenPatterns = [
+    `    // [HeyClaw Patch: wecom_mention_strip_patch_v2] 群聊中移除开头的 @机器人 标记，纯 @ 机器人时默认打招呼唤醒\n    const hadMentionPrefix = body.chattype === "group" && typeof text === "string" && /^@\\S+/.test(text);\n    if (body.chattype === "group" && typeof text === "string") {\n      text = text.replace(/^@\\S+\\s*/, "").trim();\n    }\n    if (!text && hadMentionPrefix && !quoteContent && imageUrls.length === 0 && fileUrls.length === 0) {\n      text = "你好";\n    }`,
+    `    // [HeyClaw Patch: wecom_mention_strip_patch] 群聊中移除开头的 @机器人 标记（支持任意机器人中文昵称）\n    if (body.chattype === "group" && typeof text === "string") {\n      text = text.replace(/^@\\S+\\s*/, "").trim();\n    }`,
     `    // // 群聊中移除 @机器人 的提及标记\n    // if (body.chattype === "group") {\n    //   text = text.replace(/@\\S+/g, "").trim();\n    // }`,
     `    // 群聊中移除 @机器人 的提及标记\n    // if (body.chattype === "group") {\n    //   text = text.replace(/@\\S+/g, "").trim();\n    // }`,
     `    // if (body.chattype === "group") {\n    //   text = text.replace(/@\\S+/g, "").trim();\n    // }`,
   ];
-
-  const replacement = `    // [HeyClaw Patch: ${WECOM_MENTION_PATCH_MARKER}] 群聊中移除开头的 @机器人 标记（支持任意机器人中文昵称）
-    if (body.chattype === "group" && typeof text === "string") {
-      text = text.replace(/^@\\S+\\s*/, "").trim();
-    }`;
 
   let replaced = false;
   for (const pattern of brokenPatterns) {
@@ -38,8 +44,8 @@ function patchWecomMonitorMentionStrip(monitorPath, label, log) {
   }
 
   if (!replaced) {
-    // 兜底正则匹配：匹配以注释形式存在的 body.chattype === "group" 和 replace
-    const regexPattern = /\/\/\s*(?:\/\/\s*)?群聊中移除[\s\S]*?text\.replace\(\/@\\S\+\/g[\s\S]*?\}/;
+    // 兜底正则匹配：匹配历史 patch 或官方注释
+    const regexPattern = /\/\/\s*\[HeyClaw Patch:[\s\S]*?text\s*=\s*"你好";\s*\}|\/\/\s*(?:\/\/\s*)?群聊中移除[\s\S]*?text\.replace\(\/@\\S\+\/g[\s\S]*?\}/;
     if (regexPattern.test(src)) {
       src = src.replace(regexPattern, replacement.trim());
       replaced = true;
