@@ -5,6 +5,13 @@
  *   - Authorization: Bearer <session> (取 localStorage.heyclaw_session)
  */
 
+import {
+  PrecheckDocumentItem,
+  PrecheckResult,
+  PrecheckUploadItem,
+  SECOND_BRAIN_MAX_BATCH_COUNT,
+  SECOND_BRAIN_SUPPORTED_EXTENSIONS,
+} from '../../shared/secondBrain/constants';
 import { httpClient } from './httpClient';
 
 /** 接口路径前缀 */
@@ -376,6 +383,19 @@ export async function fetchUploadPresignedUrl(md5?: string): Promise<PresignedUr
   throw new Error(body?.message || resp.error || '获取上传参数失败');
 }
 
+/** 第二大脑支持格式标准 MIME 类型映射 */
+export const SECOND_BRAIN_MIME_MAP: Record<string, string> = {
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.txt': 'text/plain',
+  '.md': 'text/markdown',
+};
+
+/** 根据文件名推导标准 MIME Content-Type */
+export function getDocumentMimeType(fileName: string): string {
+  const ext = '.' + fileName.split('.').pop()?.toLowerCase();
+  return SECOND_BRAIN_MIME_MAP[ext] || 'application/octet-stream';
+}
+
 /** 将文件直接 PUT 上传至 TOS 预签名地址（跨主进程请求绕过 CORS 限制） */
 export async function uploadFileToTos(
   uploadUrl: string,
@@ -383,7 +403,7 @@ export async function uploadFileToTos(
   mimeType?: string,
 ): Promise<void> {
   let arrayBuffer: ArrayBuffer;
-  let contentType = mimeType || 'application/octet-stream';
+  let contentType = mimeType;
 
   if (file instanceof ArrayBuffer) {
     arrayBuffer = file;
@@ -391,9 +411,13 @@ export async function uploadFileToTos(
     arrayBuffer = file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength) as ArrayBuffer;
   } else {
     arrayBuffer = await file.arrayBuffer();
-    if ('type' in file && file.type) {
+    if (!contentType && 'type' in file && file.type) {
       contentType = file.type;
     }
+  }
+
+  if (!contentType) {
+    contentType = 'application/octet-stream';
   }
 
   const resp = await (window.electron.api.fetch as (opts: {
@@ -424,27 +448,79 @@ export async function createDocument(params: {
   await post<unknown>('/fmp/document/create', params);
 }
 
+/** 批量预签名前端请求响应数据结构 */
+export interface UploadBatchResponseData {
+  list: Array<{
+    md5: string;
+    dedup_checked: boolean;
+    key: string;
+    upload_url: string;
+    tos_url: string;
+  }>;
+  duplicated: Array<{
+    md5: string;
+    document_id: number;
+    extract_status: number;
+  }>;
+}
+
 /**
- * 统一文档上传与创建记录核心方法（手动上传与自动上传 100% 共用此底层方法）
+ * 预检文档列表（云端单一真理来源查重 + 截断下发预签名）
+ * 对接 PHP 后端接口：POST /fmp/document/uploadBatch
+ */
+export async function precheckDocuments(
+  items: PrecheckDocumentItem[],
+  _maxUploads: number = SECOND_BRAIN_MAX_BATCH_COUNT,
+): Promise<PrecheckResult> {
+  const md5s = items.map((item) => item.fileHash).filter(Boolean);
+  if (md5s.length === 0) {
+    return { uploadItems: [], duplicateMd5s: [] };
+  }
+
+  const res = await post<UploadBatchResponseData>('/fmp/document/uploadBatch', { md5s });
+
+  const uploadItems: PrecheckUploadItem[] = (res?.list || []).map((listItem) => {
+    const matched = items.find((i) => i.fileHash === listItem.md5);
+    return {
+      name: matched?.name || listItem.md5,
+      fileHash: listItem.md5,
+      upload_url: listItem.upload_url,
+      tos_url: listItem.tos_url,
+      key: listItem.key,
+    };
+  });
+
+  const duplicateMd5s: string[] = (res?.duplicated || []).map((d) => d.md5);
+
+  return {
+    uploadItems,
+    duplicateMd5s,
+  };
+}
+
+/**
+ * 统一文档上传与创建记录核心方法（手动单选上传使用）
  */
 export async function uploadAndCreateDocument(params: {
   name: string;
   content: File | Blob | ArrayBuffer | Uint8Array;
   mimeType?: string;
   fileHash?: string;
-  silentDuplicate?: boolean;
-}): Promise<{ name: string; tosUrl?: string; tosKey?: string; alreadyExists?: boolean }> {
+  filePath?: string;
+  mtimeMs?: number;
+}): Promise<{ name: string; tosUrl?: string; tosKey?: string; isDuplicate: boolean }> {
   // 1. 若未显式传入 fileHash，通过主进程 Node 原生 crypto 计算 MD5 哈希
   let fileHash = params.fileHash;
   if (!fileHash && params.content) {
     try {
-      const localPath = (params.content as any).path;
+      const localPath = params.filePath || (params.content as any).path;
       if (typeof localPath === 'string' && localPath) {
         const hashRes = await window.electron.secondBrainAutoUpload?.computeFileHash?.({ filePath: localPath });
         if (hashRes?.success && hashRes.hash) {
           fileHash = hashRes.hash;
         }
-      } else {
+      }
+      if (!fileHash) {
         let uint8Array: Uint8Array | undefined;
         if (params.content instanceof Uint8Array) {
           uint8Array = params.content;
@@ -466,16 +542,11 @@ export async function uploadAndCreateDocument(params: {
     }
   }
 
-  // 2. 获取预签名参数（携带 md5 查重）
+  // 2. 向云端请求预签名并查重（云端为唯一真理来源，彻底移除本地 SQLite 判定）
   const presignRes = await fetchUploadPresignedUrl(fileHash);
 
   if (presignRes.alreadyExists) {
-    if (params.silentDuplicate) {
-      // 自动同步场景：静默返回命中状态，上层直接在本地记账且不弹窗
-      return { name: params.name, alreadyExists: true };
-    }
-    // 手动上传场景：抛出后端真实 message，以便界面精准弹出提示
-    throw new Error(presignRes.message || '该文件已上传过，无需重复上传');
+    return { name: params.name, isDuplicate: true };
   }
 
   if (!presignRes.data) {
@@ -484,17 +555,199 @@ export async function uploadAndCreateDocument(params: {
 
   const { upload_url, tos_url, key } = presignRes.data;
 
-  // 2. 直传 TOS
+  // 3. 直传 TOS
   await uploadFileToTos(upload_url, params.content, params.mimeType);
 
-  // 3. 录入第二大脑开始 AI 萃取
+  // 4. 录入第二大脑开始 AI 萃取
   await createDocument({
     name: params.name,
     tosUrl: tos_url,
     tosKey: key,
   });
 
-  return { name: params.name, tosUrl: tos_url, tosKey: key, alreadyExists: false };
+  return { name: params.name, tosUrl: tos_url, tosKey: key, isDuplicate: false };
+}
+
+/** 批量上传条目项 */
+export interface BatchUploadItem {
+  name: string;
+  content?: File | Blob | ArrayBuffer | Uint8Array;
+  filePath?: string;
+  mtimeMs?: number;
+  fileHash?: string;
+}
+
+/** 批量上传配置选项 */
+export interface BatchUploadOptions {
+  /** 单批次最大真实上传数量（默认 10） */
+  maxRealUploads?: number;
+  /** 单个文件处理回调 */
+  onItemProgress?: (item: BatchUploadItem, index: number, total: number) => void;
+}
+
+/** 批量上传返回结果 */
+export interface BatchUploadResult {
+  /** 真实消耗带宽与算力完成上传的文件数 */
+  realUploadedCount: number;
+  /** 云端查重已存在跳过的文件数 */
+  skippedCount: number;
+  /** 上传失败的文件列表 */
+  failedItems: Array<{ name: string; error: string }>;
+  /** 因单批次配额（默认 10 份）截断未在本批次处理的待上传有效新文件数 */
+  truncatedCount: number;
+}
+
+/**
+ * 统一批量上传调度器（手动多选上传与自动同步 100% 复用）
+ *
+ * 核心流程：
+ * 1. 确保所有待传项具备 fileHash；
+ * 2. 一次性调用预检接口 precheckDocuments，由云端返回重复项列表与最多 10 个待上传文件的 TOS 预签名凭据；
+ * 3. 针对下发了凭据的文件执行直传 TOS 与落库；
+ * 4. 统计结果结构化返回。
+ */
+export async function batchUploadDocuments(
+  items: BatchUploadItem[],
+  options: BatchUploadOptions = {},
+): Promise<BatchUploadResult> {
+  const maxRealUploads = options.maxRealUploads ?? SECOND_BRAIN_MAX_BATCH_COUNT;
+
+  let realUploadedCount = 0;
+  let skippedCount = 0;
+  const failedItems: Array<{ name: string; error: string }> = [];
+
+  if (items.length === 0) {
+    return { realUploadedCount: 0, skippedCount: 0, failedItems: [], truncatedCount: 0 };
+  }
+
+  // 1. 过滤非支持格式、隐藏文件与 Office 临时锁文件，并补齐 fileHash
+  const preparedItems: BatchUploadItem[] = [];
+  for (const item of items) {
+    // 忽略隐藏文件与 Office 临时锁文件（如 ~$xxx.docx）
+    if (item.name.startsWith('.') || item.name.startsWith('~$')) {
+      continue;
+    }
+
+    const ext = '.' + item.name.split('.').pop()?.toLowerCase();
+    if (!SECOND_BRAIN_SUPPORTED_EXTENSIONS.includes(ext as any)) {
+      // 忽略图片、音频、视频等非文本资料，绝不读取磁盘与计算 MD5
+      continue;
+    }
+
+    let hash = item.fileHash;
+    if (!hash && item.filePath) {
+      try {
+        const hashRes = await window.electron.secondBrainAutoUpload?.computeFileHash?.({ filePath: item.filePath });
+        if (hashRes?.success && hashRes.hash) {
+          hash = hashRes.hash;
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    if (!hash && item.content) {
+      try {
+        let uint8Array: Uint8Array | undefined;
+        if (item.content instanceof Uint8Array) {
+          uint8Array = item.content;
+        } else if (item.content instanceof ArrayBuffer) {
+          uint8Array = new Uint8Array(item.content);
+        } else if (item.content instanceof Blob) {
+          const ab = await item.content.arrayBuffer();
+          uint8Array = new Uint8Array(ab);
+        }
+        if (uint8Array) {
+          const hashRes = await window.electron.secondBrainAutoUpload?.computeFileHash?.({ buffer: uint8Array });
+          if (hashRes?.success && hashRes.hash) {
+            hash = hashRes.hash;
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    if (!hash) {
+      failedItems.push({ name: item.name, error: '无法计算文件校验码' });
+      continue;
+    }
+
+    preparedItems.push({
+      ...item,
+      fileHash: hash,
+    });
+  }
+
+  // 2. 批量调用云端预检与配额下发接口
+  const precheckItems: PrecheckDocumentItem[] = preparedItems
+    .filter((item): item is BatchUploadItem & { fileHash: string } => Boolean(item.fileHash))
+    .map((item) => ({
+      name: item.name,
+      fileHash: item.fileHash,
+      filePath: item.filePath,
+      mtimeMs: item.mtimeMs,
+    }));
+
+  const precheckRes = await precheckDocuments(precheckItems, maxRealUploads);
+  skippedCount = precheckRes.duplicateMd5s.length;
+
+  // 3. 对预检返回的待上传项依次执行直传 TOS 与创建文档
+  const totalToUpload = precheckRes.uploadItems.length;
+  for (let i = 0; i < totalToUpload; i++) {
+    const uploadItem = precheckRes.uploadItems[i];
+    const sourceItem =
+      preparedItems.find(
+        (item) => item.fileHash === uploadItem.fileHash && item.name === uploadItem.name,
+      ) || preparedItems.find((item) => item.fileHash === uploadItem.fileHash);
+
+    if (!sourceItem) {
+      continue;
+    }
+
+    options.onItemProgress?.(sourceItem, i, totalToUpload);
+
+    try {
+      let content = sourceItem.content;
+      if (!content && sourceItem.filePath) {
+        const readRes = await window.electron.secondBrainAutoUpload?.readLocalFile?.(sourceItem.filePath);
+        if (!readRes?.success || !readRes.data) {
+          throw new Error(readRes?.error || '无法读取本地文件内容');
+        }
+        content = readRes.data;
+      }
+
+      if (!content) {
+        throw new Error('未提供有效的文件内容');
+      }
+
+      // 直传 TOS（自动推导标准 MIME Content-Type，确保与自动同步 100% 一致）
+      const mimeType = getDocumentMimeType(uploadItem.name);
+      await uploadFileToTos(uploadItem.upload_url, content, mimeType);
+
+      // 录入第二大脑开始 AI 萃取
+      await createDocument({
+        name: uploadItem.name,
+        tosUrl: uploadItem.tos_url,
+        tosKey: uploadItem.key,
+      });
+
+      realUploadedCount++;
+    } catch (err: any) {
+      const errMsg = err instanceof Error ? err.message : String(err || '上传失败');
+      failedItems.push({ name: uploadItem.name, error: errMsg });
+    }
+  }
+
+  // 计算因单批配额截断未上传的有效新文件数
+  const truncatedCount = Math.max(0, precheckItems.length - skippedCount - precheckRes.uploadItems.length);
+
+  return {
+    realUploadedCount,
+    skippedCount,
+    failedItems,
+    truncatedCount,
+  };
 }
 
 /** 获取资料下载地址 */

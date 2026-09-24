@@ -1,8 +1,6 @@
 import { BrowserWindow, dialog, ipcMain } from 'electron';
 
 import {
-  MarkFileFailedParams,
-  MarkFileSyncedParams,
   SecondBrainAutoUploadConfig,
   SecondBrainAutoUploadIpc,
 } from '../../../shared/secondBrain/constants';
@@ -80,7 +78,7 @@ export function registerSecondBrainIpcHandlers(): void {
     }
   });
 
-  // 5. 扫描待同步的新增或修改文件
+  // 5. 扫描待同步的新增或修改候选文件
   ipcMain.handle(SecondBrainAutoUploadIpc.ScanPendingFiles, async () => {
     try {
       const items = await secondBrainAutoUploadService.scanPendingFiles();
@@ -115,41 +113,7 @@ export function registerSecondBrainIpcHandlers(): void {
     }
   });
 
-  // 7. 标记单个文件同步状态入 SQLite
-  ipcMain.handle(
-    SecondBrainAutoUploadIpc.MarkFileSynced,
-    async (_event, params: MarkFileSyncedParams) => {
-      try {
-        secondBrainAutoUploadService.markFileSynced(params);
-        return { success: true };
-      } catch (error) {
-        console.warn('[SecondBrainIpc] Failed to mark file synced:', error);
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : '记录文件同步状态失败',
-        };
-      }
-    },
-  );
-
-  // 8. 标记单个文件同步失败入 SQLite
-  ipcMain.handle(
-    SecondBrainAutoUploadIpc.MarkFileFailed,
-    async (_event, params: MarkFileFailedParams) => {
-      try {
-        secondBrainAutoUploadService.markFileFailed(params);
-        return { success: true };
-      } catch (error) {
-        console.warn('[SecondBrainIpc] Failed to mark file failed:', error);
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : '记录文件同步失败状态失败',
-        };
-      }
-    },
-  );
-
-  // 9. 计算文件或数据的 MD5 哈希（100% 复用 Node 原生 crypto）
+  // 7. 计算文件或数据的 MD5 哈希（100% 复用 Node 原生 crypto）
   ipcMain.handle(
     SecondBrainAutoUploadIpc.ComputeFileHash,
     async (_event, input: { filePath?: string; buffer?: Uint8Array }) => {

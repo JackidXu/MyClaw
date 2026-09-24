@@ -93,8 +93,6 @@ import {
   RecordingCardWifiIpc,
 } from '../shared/recordingCard/constants';
 import {
-  type MarkFileFailedParams,
-  type MarkFileSyncedParams,
   type SecondBrainAutoUploadConfig,
   SecondBrainAutoUploadIpc,
   type SecondBrainAutoUploadStatus,
@@ -152,10 +150,6 @@ contextBridge.exposeInMainWorld('electron', {
     scanPendingFiles: () => ipcRenderer.invoke(SecondBrainAutoUploadIpc.ScanPendingFiles),
     readLocalFile: (filePath: string) =>
       ipcRenderer.invoke(SecondBrainAutoUploadIpc.ReadLocalFile, filePath),
-    markFileSynced: (params: MarkFileSyncedParams) =>
-      ipcRenderer.invoke(SecondBrainAutoUploadIpc.MarkFileSynced, params),
-    markFileFailed: (params: MarkFileFailedParams) =>
-      ipcRenderer.invoke(SecondBrainAutoUploadIpc.MarkFileFailed, params),
     computeFileHash: (input: { filePath?: string; buffer?: Uint8Array }) =>
       ipcRenderer.invoke(SecondBrainAutoUploadIpc.ComputeFileHash, input),
     onStatusChanged: (callback: (status: SecondBrainAutoUploadStatus) => void) => {

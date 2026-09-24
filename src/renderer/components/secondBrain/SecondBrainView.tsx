@@ -1,12 +1,18 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
+import {
+  SECOND_BRAIN_MAX_BATCH_COUNT,
+  SECOND_BRAIN_MAX_FILE_SIZE,
+  SECOND_BRAIN_SUPPORTED_EXTENSIONS,
+} from '../../../shared/secondBrain/constants';
 import { copyTextToClipboard } from '../../services/clipboard';
 import { wrapRawOpusToOgg } from '../../services/oggOpusEncoder';
 import * as recordingCardBle from '../../services/recordingCardBle';
 import {
   adoptCognitionItem,
   type AudioListItem,
+  batchUploadDocuments,
   type CognitionItem,
   type CognitionStats,
   createAudio,
@@ -31,7 +37,6 @@ import {
   rejectCognitionItem,
   TrendWeekItem,
   updatePersona,
-  uploadAndCreateDocument,
   uploadFileToTos,
 } from '../../services/secondBrainApi';
 import { secondBrainAutoUploadService } from '../../services/secondBrainAutoUpload';
@@ -54,12 +59,6 @@ type MaterialTab = typeof MATERIAL_TABS[number];
 
 /** 录音卡功能暂未对客户开放（TODO: 硬件正式发布上线后改为 false 即可放开） */
 const SHOW_RECORDING_CARD_COMING_SOON = false;
-
-/** 单个上传文档最大限制：2MB */
-const MAX_DOCUMENT_FILE_SIZE = 2 * 1024 * 1024;
-
-/** 单次批量上传文档最大数量限制：10 个 */
-const MAX_DOCUMENT_BATCH_COUNT = 10;
 
 /** 录音卡与第二大脑持久化日志输出函数 */
 const logCard = (level: 'info' | 'warn' | 'error', message: string): void => {
@@ -669,20 +668,30 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
     if (files.length === 0) return;
     e.target.value = '';
 
-    if (files.length > MAX_DOCUMENT_BATCH_COUNT) {
-      showToast('error', `单次最多支持批量上传 ${MAX_DOCUMENT_BATCH_COUNT} 份文档，请分批选择上传`);
-      return;
-    }
-
+    const unsupportedFiles: string[] = [];
     const oversizedFiles: string[] = [];
     const validFiles: File[] = [];
 
     for (const file of files) {
-      if (file.size > MAX_DOCUMENT_FILE_SIZE) {
+      // 忽略隐藏文件与 Office 临时锁文件（如 ~$xxx.docx）
+      if (file.name.startsWith('.') || file.name.startsWith('~$')) {
+        continue;
+      }
+      const ext = '.' + file.name.split('.').pop()?.toLowerCase();
+      if (!SECOND_BRAIN_SUPPORTED_EXTENSIONS.includes(ext as any)) {
+        unsupportedFiles.push(file.name);
+      } else if (file.size > SECOND_BRAIN_MAX_FILE_SIZE) {
         oversizedFiles.push(file.name);
       } else {
         validFiles.push(file);
       }
+    }
+
+    if (unsupportedFiles.length > 0) {
+      showToast(
+        'error',
+        `文件 "${unsupportedFiles.join(', ')}" 格式不支持，仅支持 ${SECOND_BRAIN_SUPPORTED_EXTENSIONS.join('、')} 格式文档`,
+      );
     }
 
     if (oversizedFiles.length > 0) {
@@ -692,39 +701,60 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
     if (validFiles.length === 0) return;
 
     setUploading(true);
-    let successCount = 0;
-    const failedDetails: Array<{ name: string; message: string }> = [];
 
-    for (const file of validFiles) {
+    const uploadItems = validFiles.map((file) => {
+      let filePath: string | undefined;
       try {
-        await uploadAndCreateDocument({ name: file.name, content: file, silentDuplicate: false });
-        successCount++;
-      } catch (err: any) {
-        console.warn(`[SecondBrainView] 资料 "${file.name}" 上传失败:`, err);
-        const errMsg = err instanceof Error ? err.message : String(err || '上传失败');
-        failedDetails.push({ name: file.name, message: errMsg });
+        filePath = window.electron.dialog?.getPathForFile?.(file);
+      } catch {
+        // ignore
       }
-    }
+      if (!filePath && (file as any).path) {
+        filePath = (file as any).path;
+      }
+      return {
+        name: file.name,
+        content: file,
+        filePath,
+        mtimeMs: file.lastModified || Date.now(),
+      };
+    });
 
-    if (successCount > 0) {
+    const result = await batchUploadDocuments(uploadItems);
+
+    if (result.realUploadedCount > 0) {
       loadDocs(materialTab, 1);
       loadStats();
     }
 
-    if (failedDetails.length === 0) {
-      if (files.length === 1) {
-        showToast('success', `资料 "${files[0].name}" 上传成功，系统正自动萃取中`);
-      } else {
-        showToast('success', `成功上传 ${successCount} 份资料，系统正自动萃取中`);
+    if (result.failedItems.length === 0) {
+      if (result.truncatedCount > 0) {
+        showToast(
+          'info',
+          `已成功上传 ${result.realUploadedCount} 份新资料（达到单批 ${SECOND_BRAIN_MAX_BATCH_COUNT} 份上限），剩余 ${result.truncatedCount} 份请稍后分批上传`,
+        );
+      } else if (result.realUploadedCount > 0 && result.skippedCount > 0) {
+        showToast('success', `成功上传 ${result.realUploadedCount} 份资料，${result.skippedCount} 份已在库中已跳过`);
+      } else if (result.realUploadedCount > 0) {
+        showToast(
+          'success',
+          validFiles.length === 1
+            ? `资料 "${validFiles[0].name}" 上传成功，系统正自动萃取中`
+            : `成功上传 ${result.realUploadedCount} 份资料，系统正自动萃取中`,
+        );
+      } else if (result.skippedCount > 0) {
+        showToast(
+          'info',
+          validFiles.length === 1
+            ? `资料 "${validFiles[0].name}" 已在库中，无需重复上传`
+            : `所选 ${result.skippedCount} 份资料均已在库中，已跳过上传`,
+        );
       }
-    } else if (successCount > 0) {
-      const failSummary = failedDetails.map((f) => `${f.name} (${f.message})`).join('；');
-      showToast('error', `成功上传 ${successCount} 份资料，${failedDetails.length} 份失败：${failSummary}`);
     } else {
-      if (failedDetails.length === 1) {
-        showToast('error', `资料 "${failedDetails[0].name}" 上传失败：${failedDetails[0].message}`);
+      const failSummary = result.failedItems.map((f) => `${f.name} (${f.error})`).join('；');
+      if (result.realUploadedCount > 0) {
+        showToast('error', `成功上传 ${result.realUploadedCount} 份，${result.failedItems.length} 份失败：${failSummary}`);
       } else {
-        const failSummary = failedDetails.map((f) => `${f.name} (${f.message})`).join('；');
         showToast('error', `资料上传失败：${failSummary}`);
       }
     }
@@ -1658,7 +1688,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
         ref={fileInputRef}
         type="file"
         multiple
-        accept=".docx,.md,.txt"
+        accept={SECOND_BRAIN_SUPPORTED_EXTENSIONS.join(',')}
         onChange={handleFileChange}
         className="hidden"
       />
