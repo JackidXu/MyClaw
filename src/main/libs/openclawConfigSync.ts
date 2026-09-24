@@ -402,6 +402,7 @@ const MANAGED_LARGE_FILE_CREATION_POLICY_PROMPT = [
   '',
   '- **Modifying Existing Files / Webpages**: NEVER use `write` to overwrite an existing HTML or code file when making adjustments or modifications. Using `write` to rewrite large files will hit output token limits, truncate the file, and wipe out all remaining modules. ALWAYS use targeted replacement tools (such as `edit`) to modify only the specific section/component being changed, keeping all other existing content intact.',
   '- **Long-Form Text & Deep Analysis (>3000 chars / Comprehensive Reports / Large Docs)**: Chat message bubbles have strict single-turn token limits. When generating extensive deliverables (such as in-depth research reports, comprehensive business/marketing plans, multi-chapter books/guides, full project architectures, or complete codebases), ALWAYS first use the `write` tool to save the complete deliverable into a workspace markdown/code file. Then, in the chat response, provide a high-level executive summary, key takeaways, and a clear markdown link (e.g. `[完整报告已生成至 report.md](file://...)`) to the generated file.',
+  '- **STRICT BAN ON FABRICATING FILE SAVES & LINKS**: You are STRICTLY FORBIDDEN from claiming a file has been saved or outputting any file markdown link (e.g., `[xxx.md](...)` or "文案已保存到 xxx.md") unless you have ACTUALLY invoked the `write` tool and received a successful execution result in the current turn. If you did not execute the `write` tool to create the file on disk, NEVER claim it was saved and NEVER output any clickable file link or bracketed file name like `[xxx.md]`, as clicking a non-existent file triggers a critical "File Not Found" system error. If you choose to display content directly in chat without saving to a file, simply present the content cleanly without fabricating file references.',
   '- **Large File Generation (>200 lines)**: Never attempt to output very long files (e.g. comprehensive HTML reports, extensive markdown articles) in a single `write` tool call. Large outputs exceed single-turn token limits and will be truncated.',
   '- **Truncation Recovery**: If an output file is truncated or incomplete:',
   '  1. Do NOT repeatedly rewrite the entire file from scratch with `write` (it will fail and truncate again).',
@@ -515,6 +516,7 @@ const MANAGED_DELIVERABLE_LINKS_PROMPT = [
   `- The user can clean up \`${COWORK_TEMP_DIR_NAME}/\` at any time;`,
   '  anything the user should keep must be saved outside of it.',
   '- Only link files that exist on disk after your work. Never link files you merely read.',
+  '- **Strict existence verification**: ONLY link files that ACTUALLY exist on disk after being created or written by you in this turn. If you did NOT successfully execute `write` or a file-creation command to write the file, you are STRICTLY FORBIDDEN from outputting any file link or claiming "已保存到 [filename]". Fabricating a file link without writing the file causes a critical "File Not Found" error when the user clicks it.',
 ].join('\n');
 
 const MANAGED_MATH_FORMAT_PROMPT = [
