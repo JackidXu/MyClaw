@@ -125,9 +125,14 @@ HeyClaw 采用双后端支撑体系：
   - 渲染进程：`src/renderer/services/i18n.ts`（需同步维护 `zh` 与 `en`）。
   - 主进程（菜单/系统通知）：`src/main/i18n.ts`（需同步维护 `zh` 与 `en`）。
 
-### 2.9 常用开发与质量检查指令 (Daily Development Commands)
-- **日常热更新开发**：`npm run electron:dev`（前端 Vite 跑在 5175 端口 + Electron 启动）。
-- **主进程 TypeScript 类型校验**：`npm run compile:electron`。
+### 2.9 常用开发与质量检查指令与启动禁令 (Daily Development Commands & Launch Constraints)
+- **【核心行为禁令】严禁未经明确许可擅自启动应用与开发服务**：
+  在没有收到用户明确许可的情况下，**绝对禁止调用命令自行启动应用或长驻开发服务器进程**，包括但不限于：
+  - 桌面客户端开发与启动命令（如 `npm run electron:dev`、`npm run electron:dev:openclaw`、`npm run start:electron` 等）；
+  - 服务端/Node 端开发服务（如 `../admin-claw` 下的 `npm run dev:server`、`npm start` 等）。
+  凡涉及启动桌面端或后端服务的操作，在完成代码改动和离线类型检查后，只可文字告知用户，由用户自行在终端启动或经用户在当前对话中给出明确文字授权后方可执行。
+- **日常热更新开发**：`npm run electron:dev`（前端 Vite 跑在 5175 端口 + Electron 启动，仅限用户自行启动或明确授权后执行）。
+- **主进程 TypeScript 类型校验**：`npx tsc --project electron-tsconfig.json --noEmit`（优先使用 `tsc --noEmit` 进行离线校验，避免触发 `precompile:electron` 误装 x64 架构的 native 依赖）。
 - **精准 Lint 检查（规避老旧历史包袱）**：
   `npx eslint --ext ts,tsx --report-unused-disable-directives --max-warnings 0 <改动文件路径>`。
 
