@@ -1,0 +1,120 @@
+{
+  "template_name": "8.11-ming-香港人老得慢",
+  "canvas": {
+    "height": 1920,
+    "width": 1080
+  },
+  "duration_s": 94.233333,
+  "fps": 60.0,
+  "slots": {
+    "SLOT_MAIN_VIDEO": {
+      "track_index": 0,
+      "segments": 44,
+      "material_index": 0,
+      "fill": "script.json main_video_path + duration; material type photo→video"
+    },
+    "SLOT_SUBTITLES": {
+      "track_index": 5,
+      "segments": 52,
+      "fill": "script.json scenes[].subtitle + 时间戳; segments 清空重建"
+    },
+    "SLOT_BGM": {
+      "track_index": 12,
+      "material_index": 0,
+      "fill": "assets/bgm 文件; 音量锁死"
+    }
+  },
+  "style_tracks": {
+    "1": {
+      "class": "CLEAR_SEGS",
+      "segments": 3,
+      "reason": "机位素材/原声轨, 清空段保留轨 (套到数字人视频不显示别人的脸)"
+    },
+    "2": {
+      "class": "CLEAR_SEGS",
+      "segments": 31,
+      "reason": "机位素材/原声轨, 清空段保留轨 (套到数字人视频不显示别人的脸)"
+    },
+    "3": {
+      "class": "CLEAR_SEGS",
+      "segments": 26,
+      "reason": "机位素材/原声轨, 清空段保留轨 (套到数字人视频不显示别人的脸)"
+    },
+    "4": {
+      "class": "CLEAR_SEGS",
+      "segments": 6,
+      "reason": "机位素材/原声轨, 清空段保留轨 (套到数字人视频不显示别人的脸)"
+    },
+    "6": {
+      "class": "KEEP",
+      "segments": 4,
+      "reason": "装饰/特效轨, 无机位素材引用, 保留"
+    },
+    "7": {
+      "class": "KEEP",
+      "segments": 3,
+      "reason": "装饰/特效轨, 无机位素材引用, 保留"
+    },
+    "8": {
+      "class": "CLEAR_SEGS",
+      "segments": 3,
+      "reason": "机位素材/原声轨, 清空段保留轨 (套到数字人视频不显示别人的脸)"
+    },
+    "9": {
+      "class": "CLEAR_SEGS",
+      "segments": 2,
+      "reason": "机位素材/原声轨, 清空段保留轨 (套到数字人视频不显示别人的脸)"
+    },
+    "10": {
+      "class": "KEEP",
+      "segments": 4,
+      "reason": "装饰/特效轨, 无机位素材引用, 保留"
+    },
+    "11": {
+      "class": "CLEAR_SEGS",
+      "segments": 4,
+      "reason": "机位素材/原声轨, 清空段保留轨 (套到数字人视频不显示别人的脸)"
+    },
+    "13": {
+      "class": "CLEAR_SEGS",
+      "segments": 15,
+      "reason": "机位素材/原声轨, 清空段保留轨 (套到数字人视频不显示别人的脸)"
+    },
+    "14": {
+      "class": "CLEAR_SEGS",
+      "segments": 2,
+      "reason": "机位素材/原声轨, 清空段保留轨 (套到数字人视频不显示别人的脸)"
+    },
+    "15": {
+      "class": "CLEAR_SEGS",
+      "segments": 2,
+      "reason": "机位素材/原声轨, 清空段保留轨 (套到数字人视频不显示别人的脸)"
+    },
+    "16": {
+      "class": "CLEAR_SEGS",
+      "segments": 3,
+      "reason": "机位素材/原声轨, 清空段保留轨 (套到数字人视频不显示别人的脸)"
+    },
+    "17": {
+      "class": "CLEAR_SEGS",
+      "segments": 1,
+      "reason": "机位素材/原声轨, 清空段保留轨 (套到数字人视频不显示别人的脸)"
+    }
+  },
+  "locked": [
+    "effect_tracks",
+    "sticker_tracks",
+    "transitions",
+    "调色参数"
+  ],
+  "source_platform": {
+    "app_id": 3704,
+    "app_source": "lv",
+    "app_version": "11.1.0",
+    "device_id": "76890565056636215fddc1d9791f299e",
+    "hard_disk_id": "745aeb2f6318dd22dd20f26cb3a8a047",
+    "mac_address": "af8f91f0cd9ead55ba68f806184f1079",
+    "os": "windows",
+    "os_version": "10.0.22631"
+  }
+}

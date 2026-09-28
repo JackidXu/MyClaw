@@ -1,0 +1,74 @@
+{
+ "template_name": "default_v1",
+ "canvas": {
+  "height": 1920,
+  "width": 1080
+ },
+ "duration_s": 94.233333,
+ "fps": 60.0,
+ "version": 360000,
+ "source_platform": {
+  "app_id": 3704,
+  "app_source": "lv",
+  "app_version": "11.1.0",
+  "device_id": "76890565056636215fddc1d9791f299e",
+  "hard_disk_id": "745aeb2f6318dd22dd20f26cb3a8a047",
+  "mac_address": "af8f91f0cd9ead55ba68f806184f1079",
+  "os": "windows",
+  "os_version": "10.0.22631"
+ },
+ "slots": {
+  "SLOT_MAIN_VIDEO": {
+   "track_ref": "by _SLOT tag",
+   "instruction": "填数字人/口播视频"
+  },
+  "SLOT_SUBTITLES_NORMAL": {
+   "track_ref": "by _SLOT tag",
+   "instruction": "白色普通字幕, 按文案分句"
+  },
+  "SLOT_SUBTITLES_HIGHLIGHT": {
+   "track_ref": "by _SLOT tag",
+   "instruction": "黄色重点词花字, AI识别关键词"
+  },
+  "SLOT_SFX": {
+   "track_ref": "by _SLOT tag",
+   "instruction": "音效轨, 保留原素材, fill按分句重排时间点"
+  },
+  "SLOT_BGM": {
+   "track_ref": "by _SLOT tag",
+   "instruction": "填 assets/bgm.m4a 覆盖全程"
+  }
+ },
+ "style_tracks": {
+  "0": {
+   "class": "",
+   "slot": "SLOT_MAIN_VIDEO"
+  },
+  "1": {
+   "class": "",
+   "slot": "SLOT_SUBTITLES_NORMAL"
+  },
+  "2": {
+   "class": "",
+   "slot": "SLOT_SUBTITLES_HIGHLIGHT"
+  },
+  "3": {
+   "class": "",
+   "slot": "SLOT_SFX"
+  },
+  "4": {
+   "class": "",
+   "slot": "SLOT_BGM"
+  }
+ },
+ "style_templates": {
+  "subtitle_normal": "白色普通字幕(思源黑体Heavy, #FFFFFF, 阴影, 字号10)",
+  "subtitle_highlight": "黄色重点词花字(思源黑体Heavy, #FFF589, 阴影, 字号10)"
+ },
+ "locked": [
+  "effects(美颜/调色)",
+  "material_colors",
+  "material_animations",
+  "sfx_audios(音效素材)"
+ ]
+}
