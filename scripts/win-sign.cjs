@@ -199,7 +199,7 @@ function getOssClient() {
     accessKeySecret,
     bucket,
     secure: true, // 强制走 443 端口 HTTPS，避免海外到国内 OSS 明文 HTTP 80 丢包阻断
-    timeout: 120000, // 单请求超时 120 秒
+    timeout: 300000, // 单请求超时 300 秒
     retryMax: 3, // 开启 SDK 级单分片超时与网络抖动自动重试
   });
 }
@@ -214,11 +214,11 @@ async function signOnceViaOss(serviceConfig, filePath, ossClient) {
 
   console.log(`[WinSign] Uploading to OSS: ${ossKey} (${(originalSize / (1024 * 1024)).toFixed(1)} MB)...`);
 
-  // 分片断点续传机制：8MB 分片、2 并发，配备无进展假死看门狗与全局超时熔断
+  // 分片断点续传机制：2MB 轻量分片、1 并发（串行独占带宽，彻底消除多请求竞争与 callback twice 假死），5 分钟分片超时保护
   let checkpoint = null;
   const maxUploadAttempts = 3;
-  const INACTIVITY_TIMEOUT_MS = 90000; // 90 秒无任何分片推进则判定为 socket hang 假死
-  const ATTEMPT_TIMEOUT_MS = 600000; // 单次尝试全局最长 10 分钟
+  const INACTIVITY_TIMEOUT_MS = 180000; // 180 秒无任何 2MB 分片推进则判定为 socket hang 假死
+  const ATTEMPT_TIMEOUT_MS = 900000; // 单次尝试全局最长 15 分钟
 
   for (let uploadAttempt = 1; uploadAttempt <= maxUploadAttempts; uploadAttempt += 1) {
     const currentOssClient = getOssClient();
@@ -234,15 +234,15 @@ async function signOnceViaOss(serviceConfig, filePath, ossClient) {
 
     try {
       const uploadPromise = currentOssClient.multipartUpload(ossKey, filePath, {
-        parallel: 2,
-        partSize: 8 * 1024 * 1024,
-        timeout: 60000,
+        parallel: 1,
+        partSize: 2 * 1024 * 1024,
+        timeout: 300000,
         checkpoint,
         progress: (percentage, cpt) => {
           lastActivityTime = Date.now();
           checkpoint = cpt;
           const currentProgress = Math.floor(percentage * 100);
-          if (currentProgress >= lastLoggedProgress + 10 || currentProgress === 100) {
+          if (currentProgress >= lastLoggedProgress + 5 || currentProgress === 100) {
             lastLoggedProgress = currentProgress;
             const doneCount = cpt && cpt.doneParts ? cpt.doneParts.length : 0;
             console.log(`[WinSign] OSS upload progress: ${currentProgress}% (done parts: ${doneCount})`);
