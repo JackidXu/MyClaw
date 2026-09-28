@@ -89,8 +89,8 @@ if [ $RC -ne 0 ]; then
 fi
 
 # 验证输出是合法 JSON
-PYTHON_BIN="/Users/archerjim/.workbuddy/binaries/python/envs/default/bin/python3"
-if [ -x "$PYTHON_BIN" ]; then
+PYTHON_BIN="$(command -v python3 || command -v python || true)"
+if [ -n "$PYTHON_BIN" ] && [ -x "$PYTHON_BIN" ]; then
   if "$PYTHON_BIN" -c "import json,sys; json.load(open('$OUTPUT')); print('✓ 明文 JSON 校验通过')" 2>/dev/null; then
     :
   else
