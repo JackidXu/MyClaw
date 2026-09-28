@@ -1,0 +1,41 @@
+{
+  "template_name": "308-语录-月底再见",
+  "canvas": {
+    "height": 1280,
+    "ratio": "original",
+    "width": 720
+  },
+  "duration_s": 15.6,
+  "fps": 30.0,
+  "slots": {
+    "SLOT_MAIN_VIDEO": {
+      "track_index": 0,
+      "segments": 1,
+      "material_index": 0,
+      "fill": "script.json main_video_path + duration; material type photo→video"
+    },
+    "SLOT_SUBTITLES": {
+      "track_index": 1,
+      "segments": 9,
+      "fill": "script.json scenes[].subtitle + 时间戳; segments 清空重建"
+    },
+    "SLOT_BGM": {
+      "track_index": 2,
+      "material_index": 0,
+      "fill": "assets/bgm 文件; 音量锁死"
+    }
+  },
+  "style_tracks": {},
+  "locked": [
+    "effect_tracks",
+    "sticker_tracks",
+    "transitions",
+    "调色参数"
+  ],
+  "source_platform": {
+    "app_id": 1775,
+    "app_version": "9.1.0",
+    "os": "Android",
+    "os_version": "31"
+  }
+}

@@ -15,8 +15,8 @@ export const SecondBrainAutoUploadIpc = {
   ScanPendingFiles: 'secondBrain:scanPendingFiles',
   /** 读取本地待上传文件的二进制内容 */
   ReadLocalFile: 'secondBrain:readLocalFile',
-  /** 标记文件已同步 */
-  MarkFileSynced: 'secondBrain:markFileSynced',
+  /** 计算文件或数据的 MD5 哈希（复用主进程 Node crypto） */
+  ComputeFileHash: 'secondBrain:computeFileHash',
   /** 状态变更通知（主进程 -> 渲染进程） */
   StatusChanged: 'secondBrain:autoUploadStatusChanged',
   /** 主进程定时器触发同步请求（主进程 -> 渲染进程） */
@@ -58,10 +58,30 @@ export interface SecondBrainPendingItem {
   filePath: string;
   fileName: string;
   mtimeMs: number;
+  fileHash: string;
 }
 
-/** 标记文件已同步的参数 */
-export interface MarkFileSyncedParams {
-  filePath: string;
-  mtimeMs: number;
+/** 批量预检单项文档请求信息 */
+export interface PrecheckDocumentItem {
+  name: string;
+  fileHash: string;
+  filePath?: string;
+  mtimeMs?: number;
+}
+
+/** 批量预检可上传项（附带预签名凭据） */
+export interface PrecheckUploadItem {
+  name: string;
+  fileHash: string;
+  upload_url: string;
+  tos_url: string;
+  key: string;
+}
+
+/** 批量预检裁决结果 */
+export interface PrecheckResult {
+  /** 允许上传的项清单（服务端截断最多 10 个） */
+  uploadItems: PrecheckUploadItem[];
+  /** 云端查重已存在的 MD5 清单 */
+  duplicateMd5s: string[];
 }

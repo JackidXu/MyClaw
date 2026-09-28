@@ -1,9 +1,8 @@
 import {
-  SECOND_BRAIN_MAX_BATCH_COUNT,
   SecondBrainAutoUploadConfig,
   SecondBrainAutoUploadStatus,
 } from '../../shared/secondBrain/constants';
-import { uploadAndCreateDocument } from './secondBrainApi';
+import { batchUploadDocuments } from './secondBrainApi';
 
 /**
  * 第二大脑文档自动定时上传/同步服务
@@ -12,6 +11,7 @@ import { uploadAndCreateDocument } from './secondBrainApi';
 class SecondBrainAutoUploadService {
   private isSyncing = false;
   private initialized = false;
+  private inFlightFilePaths = new Set<string>();
 
   constructor() {
     this.initSyncListener();
@@ -50,7 +50,7 @@ class SecondBrainAutoUploadService {
     return null;
   }
 
-  /** 更新配置 */
+  /** 更新配置（由主进程 setConfig 单一事件源触发后续同步，此处不自调用以防并发穿透） */
   async setConfig(
     config: Partial<SecondBrainAutoUploadConfig>,
   ): Promise<{
@@ -59,10 +59,6 @@ class SecondBrainAutoUploadService {
   } | null> {
     const res = await window.electron.secondBrainAutoUpload?.setConfig?.(config);
     if (res?.success && res.config && res.status) {
-      // 若更新了有效目录，立即触发一次同步
-      if (res.config.watchDir) {
-        void this.runAutoUploadSync();
-      }
       return { config: res.config, status: res.status };
     }
     return null;
@@ -85,64 +81,48 @@ class SecondBrainAutoUploadService {
    * 执行自动同步：扫描本地目录，直接调用现成的手动上传方法，完成后刷新列表与统计
    */
   async runAutoUploadSync(): Promise<{ success: boolean; count: number }> {
+    // 1. 入口同步第一行立即原子上锁，彻底杜绝异步 IPC 挂起期间的毫秒级并发穿透
     if (this.isSyncing) {
       console.log('[SecondBrainAutoUpload] Sync already running, skipping');
       return { success: true, count: 0 };
     }
-
-    const configRes = await this.getConfigAndStatus();
-    if (!configRes?.config.watchDir) {
-      return { success: true, count: 0 };
-    }
-
     this.isSyncing = true;
+
     let successCount = 0;
 
     try {
-      // 1. 扫描目录待同步文件
+      const configRes = await this.getConfigAndStatus();
+      if (!configRes?.config.watchDir) {
+        return { success: true, count: 0 };
+      }
+
+      // 2. 扫描目录待同步候选文件（主进程已完成类型与大小初筛并通过 statCache 计算 MD5）
       const scanRes = await window.electron.secondBrainAutoUpload?.scanPendingFiles?.();
       if (!scanRes?.success || !scanRes.items) {
         console.warn('[SecondBrainAutoUpload] Failed to scan pending files:', scanRes?.error);
         return { success: false, count: 0 };
       }
 
-      const pendingItems = scanRes.items;
+      const pendingItems = scanRes.items.filter(
+        (item) => !this.inFlightFilePaths.has(item.filePath),
+      );
       if (pendingItems.length === 0) {
         return { success: true, count: 0 };
       }
 
-      // 2. 单批最多处理 10 份文档（与手动上传上限一致）
-      const batch = pendingItems.slice(0, SECOND_BRAIN_MAX_BATCH_COUNT);
+      // 3. 统一调用公共批量上传调度器（单批次最多 10 篇真实新文档，自动排队与静默秒传）
+      const uploadItems = pendingItems.map((item) => ({
+        name: item.fileName,
+        filePath: item.filePath,
+        mtimeMs: item.mtimeMs,
+        fileHash: item.fileHash,
+      }));
 
-      for (const item of batch) {
-        try {
-          // 3. 读取本地文件二进制内容
-          const readRes = await window.electron.secondBrainAutoUpload?.readLocalFile?.(item.filePath);
-          if (!readRes?.success || !readRes.data) {
-            throw new Error(readRes?.error || '无法读取文件内容');
-          }
+      const batchRes = await batchUploadDocuments(uploadItems);
 
-          // 4. 直接复用现成的同一个上传方法！获取预签名 -> TOS 直传 -> 录入第二大脑开始萃取
-          await uploadAndCreateDocument({
-            name: item.fileName,
-            content: readRes.data,
-          });
+      successCount = batchRes.realUploadedCount;
 
-          // 5. 标记防重成功入 SQLite
-          const markRes = await window.electron.secondBrainAutoUpload?.markFileSynced?.({
-            filePath: item.filePath,
-            mtimeMs: item.mtimeMs,
-          });
-          if (!markRes?.success) {
-            console.error(`[SecondBrainAutoUpload] 标记文件 "${item.fileName}" 已同步失败:`, markRes?.error);
-          }
-          successCount++;
-        } catch (err: any) {
-          console.warn(`[SecondBrainAutoUpload] 上传 "${item.fileName}" 失败:`, err);
-        }
-      }
-
-      // 6. 若有成功上传的文档，派发事件让第二大脑视图自动刷新列表与统计
+      // 7. 若有成功上传的文档，派发事件让第二大脑视图自动刷新列表与统计
       if (successCount > 0) {
         window.dispatchEvent(
           new CustomEvent('secondBrain:docUploaded', {

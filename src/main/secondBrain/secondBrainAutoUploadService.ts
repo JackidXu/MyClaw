@@ -1,9 +1,9 @@
+import crypto from 'crypto';
 import { BrowserWindow } from 'electron';
 import fs from 'fs';
 import path from 'path';
 
 import {
-  MarkFileSyncedParams,
   SECOND_BRAIN_MAX_FILE_SIZE,
   SECOND_BRAIN_SUPPORTED_EXTENSIONS,
   SECOND_BRAIN_SYNC_INTERVAL_MS,
@@ -25,15 +25,29 @@ const IGNORED_DIR_NAMES = new Set([
   'System Volume Information',
 ]);
 
+interface StatCacheEntry {
+  mtimeMs: number;
+  size: number;
+  hash: string;
+}
+
 export class SecondBrainAutoUploadService {
   private store: SqliteStore | null = null;
   private intervalTimer: NodeJS.Timeout | null = null;
   private isSyncing = false;
+  /** 内存 Stat Cache：仅用于加速 MD5 计算（当且仅当 mtimeMs 与 size 均未变时直接复用） */
+  private statCache = new Map<string, StatCacheEntry>();
 
-  /** 初始化服务并挂载数据库 */
+  /** 初始化服务并挂载配置存储 */
   public initialize(store: SqliteStore): void {
     this.store = store;
-    this.ensureDatabaseTable();
+
+    // 清理上个方案遗留的废弃本地影子表（数据已全面迁移至云端 SSOT）
+    try {
+      this.store.getDatabase().exec('DROP TABLE IF EXISTS second_brain_synced_files');
+    } catch (err) {
+      console.warn('[SecondBrainAutoUpload] Failed to drop legacy table second_brain_synced_files:', err);
+    }
 
     const config = this.getConfig();
     if (config.watchDir) {
@@ -46,42 +60,33 @@ export class SecondBrainAutoUploadService {
     }
   }
 
-  /** 清理定时器 */
+  /** 清理定时器与缓存 */
   public dispose(): void {
     this.stopTimer();
+    this.statCache.clear();
     this.store = null;
   }
 
-  /** 确保 SQLite 防重表存在 */
-  private ensureDatabaseTable(): void {
-    if (!this.store) return;
+  /** 计算文件或数据内容的 MD5 哈希值（100% 复用 Node 原生 crypto） */
+  public computeHash(input: { filePath?: string; buffer?: Uint8Array | Buffer }): string | null {
     try {
-      const db = this.store.getDatabase();
-      db.exec(`
-        CREATE TABLE IF NOT EXISTS second_brain_synced_files (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          file_path TEXT NOT NULL UNIQUE,
-          file_name TEXT NOT NULL,
-          file_hash TEXT NOT NULL DEFAULT '',
-          file_size INTEGER NOT NULL DEFAULT 0,
-          mtime_ms INTEGER NOT NULL,
-          status TEXT NOT NULL DEFAULT 'success',
-          error_msg TEXT,
-          uploaded_at INTEGER NOT NULL DEFAULT 0
-        );
-        CREATE INDEX IF NOT EXISTS idx_second_brain_synced_path ON second_brain_synced_files(file_path);
-      `);
-      // 动态平滑补充 status 字段（若老表缺少）
-      const tableInfo = db.prepare('PRAGMA table_info(second_brain_synced_files)').all() as Array<{ name: string }>;
-      const hasStatus = tableInfo.some((col) => col.name === 'status');
-      if (!hasStatus) {
-        db.exec("ALTER TABLE second_brain_synced_files ADD COLUMN status TEXT DEFAULT 'success';");
+      if (input.buffer) {
+        return crypto.createHash('md5').update(input.buffer).digest('hex');
       }
-      // 清理已废弃的 kv 键
-      this.store.delete('secondBrain.autoUpload.enabled');
+      if (input.filePath && fs.existsSync(input.filePath)) {
+        const content = fs.readFileSync(input.filePath);
+        return crypto.createHash('md5').update(content).digest('hex');
+      }
+      return null;
     } catch (error) {
-      console.error('[SecondBrainAutoUpload] Failed to ensure database table:', error);
+      console.warn('[SecondBrainAutoUpload] Failed to compute hash:', error);
+      return null;
     }
+  }
+
+  /** 计算本地文件内容的 MD5 哈希值 */
+  public computeFileHash(filePath: string): string | null {
+    return this.computeHash({ filePath });
   }
 
   /** 读取配置 */
@@ -166,20 +171,16 @@ export class SecondBrainAutoUploadService {
     });
   }
 
-  /** 递归扫描指定目录并筛选出未同步文件列表 */
+  /** 递归扫描指定目录并筛选出候选待处理文件列表（通过 statCache 极速获取 MD5，查重与截断 100% 归云端） */
   public async scanPendingFiles(): Promise<SecondBrainPendingItem[]> {
     const config = this.getConfig();
     const targetDir = config.watchDir.trim();
-    const pendingItems: SecondBrainPendingItem[] = [];
 
-    if (!targetDir || !fs.existsSync(targetDir) || !this.store) {
-      return pendingItems;
+    if (!targetDir || !fs.existsSync(targetDir)) {
+      return [];
     }
 
-    const db = this.store.getDatabase();
-    const selectStmt = db.prepare(
-      "SELECT mtime_ms FROM second_brain_synced_files WHERE file_path = ? AND status = 'success'",
-    );
+    const pendingItems: SecondBrainPendingItem[] = [];
 
     const scanRecursively = (dir: string) => {
       let entries: fs.Dirent[] = [];
@@ -224,10 +225,25 @@ export class SecondBrainAutoUploadService {
         }
 
         const currentMtime = Math.round(stat.mtimeMs);
-        const existing = selectStmt.get(fullPath) as { mtime_ms: number } | undefined;
+        const currentSize = stat.size;
 
-        // 4. 防重检查：如果该文件已经成功同步过且修改时间未变，则跳过
-        if (existing && existing.mtime_ms === currentMtime) {
+        // 4. 利用轻量 Stat Cache 极速获取 MD5（当且仅当 mtimeMs 与 size 均未变时直接复用）
+        const cached = this.statCache.get(fullPath);
+        let fileHash: string | null = null;
+        if (cached && cached.mtimeMs === currentMtime && cached.size === currentSize) {
+          fileHash = cached.hash;
+        } else {
+          fileHash = this.computeFileHash(fullPath);
+          if (fileHash) {
+            this.statCache.set(fullPath, {
+              mtimeMs: currentMtime,
+              size: currentSize,
+              hash: fileHash,
+            });
+          }
+        }
+
+        if (!fileHash) {
           continue;
         }
 
@@ -235,12 +251,14 @@ export class SecondBrainAutoUploadService {
           filePath: fullPath,
           fileName: entry.name,
           mtimeMs: currentMtime,
+          fileHash,
         });
       }
     };
 
     scanRecursively(targetDir);
-    console.log(`[SecondBrainAutoUpload] scanPendingFiles on "${targetDir}" found ${pendingItems.length} new item(s)`);
+
+    console.log(`[SecondBrainAutoUpload] scanPendingFiles on "${targetDir}" found ${pendingItems.length} candidate item(s)`);
     return pendingItems;
   }
 
@@ -254,40 +272,6 @@ export class SecondBrainAutoUploadService {
     } catch (error) {
       console.warn(`[SecondBrainAutoUpload] Failed to read local file "${filePath}":`, error);
       return null;
-    }
-  }
-
-  /** 记录文件同步完成入 SQLite */
-  public markFileSynced(params: MarkFileSyncedParams): void {
-    if (!this.store) return;
-    try {
-      const db = this.store.getDatabase();
-      const fileName = path.basename(params.filePath);
-      let fileSize = 0;
-      try {
-        if (fs.existsSync(params.filePath)) {
-          fileSize = fs.statSync(params.filePath).size;
-        }
-      } catch {
-        // ignore
-      }
-
-      db.prepare(`
-        INSERT INTO second_brain_synced_files (
-          file_path, file_name, file_hash, file_size, mtime_ms, status, uploaded_at
-        )
-        VALUES (?, ?, '', ?, ?, 'success', ?)
-        ON CONFLICT(file_path) DO UPDATE SET
-          file_name = excluded.file_name,
-          file_size = excluded.file_size,
-          mtime_ms = excluded.mtime_ms,
-          status = 'success',
-          uploaded_at = excluded.uploaded_at
-      `).run(params.filePath, fileName, fileSize, params.mtimeMs, Date.now());
-      console.log(`[SecondBrainAutoUpload] Successfully marked file synced: "${params.filePath}"`);
-    } catch (error) {
-      console.error(`[SecondBrainAutoUpload] Failed to mark file synced "${params.filePath}":`, error);
-      throw error;
     }
   }
 }

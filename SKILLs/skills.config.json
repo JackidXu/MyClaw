@@ -66,6 +66,22 @@
       "order": 16,
       "enabled": true
     },
+    "content-video-director": {
+      "order": 17,
+      "enabled": true
+    },
+    "content-script-adapter": {
+      "order": 18,
+      "enabled": true
+    },
+    "content-template-pack": {
+      "order": 19,
+      "enabled": true
+    },
+    "jianying-editor": {
+      "order": 20,
+      "enabled": true
+    },
     "short-form-video": {
       "order": 21,
       "enabled": true

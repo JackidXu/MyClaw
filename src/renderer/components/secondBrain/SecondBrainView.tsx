@@ -1,12 +1,18 @@
-import React, { useEffect, useMemo,useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
+import {
+  SECOND_BRAIN_MAX_BATCH_COUNT,
+  SECOND_BRAIN_MAX_FILE_SIZE,
+  SECOND_BRAIN_SUPPORTED_EXTENSIONS,
+} from '../../../shared/secondBrain/constants';
 import { copyTextToClipboard } from '../../services/clipboard';
 import { wrapRawOpusToOgg } from '../../services/oggOpusEncoder';
 import * as recordingCardBle from '../../services/recordingCardBle';
 import {
   adoptCognitionItem,
   type AudioListItem,
+  batchUploadDocuments,
   type CognitionItem,
   type CognitionStats,
   createAudio,
@@ -31,9 +37,9 @@ import {
   rejectCognitionItem,
   TrendWeekItem,
   updatePersona,
-  uploadAndCreateDocument,
   uploadFileToTos,
 } from '../../services/secondBrainApi';
+import { secondBrainAutoUploadService } from '../../services/secondBrainAutoUpload';
 import {
   MANAGEMENT_PAGE_TITLE_TEXT,
 } from '../common/managementTypography';
@@ -53,12 +59,6 @@ type MaterialTab = typeof MATERIAL_TABS[number];
 
 /** 录音卡功能暂未对客户开放（TODO: 硬件正式发布上线后改为 false 即可放开） */
 const SHOW_RECORDING_CARD_COMING_SOON = false;
-
-/** 单个上传文档最大限制：2MB */
-const MAX_DOCUMENT_FILE_SIZE = 2 * 1024 * 1024;
-
-/** 单次批量上传文档最大数量限制：10 个 */
-const MAX_DOCUMENT_BATCH_COUNT = 10;
 
 /** 录音卡与第二大脑持久化日志输出函数 */
 const logCard = (level: 'info' | 'warn' | 'error', message: string): void => {
@@ -183,6 +183,55 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
 
   /** 自动同步弹窗控制 */
   const [showAutoUploadModal, setShowAutoUploadModal] = useState(false);
+  const [autoUploadWatchDir, setAutoUploadWatchDir] = useState<string>('');
+  const [autoUploadSyncing, setAutoUploadSyncing] = useState<boolean>(false);
+
+  const refreshAutoUploadStatus = React.useCallback(() => {
+    void secondBrainAutoUploadService.getConfigAndStatus().then((res) => {
+      if (res) {
+        setAutoUploadWatchDir(res.config.watchDir || '');
+        setAutoUploadSyncing(res.status.isSyncing);
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    refreshAutoUploadStatus();
+    const cleanup = window.electron.secondBrainAutoUpload?.onStatusChanged?.((status) => {
+      setAutoUploadWatchDir(status.watchDir || '');
+      setAutoUploadSyncing(status.isSyncing);
+    });
+    return () => {
+      cleanup?.();
+    };
+  }, [refreshAutoUploadStatus]);
+
+  /** 触发立即同步操作 */
+  const handleTriggerAutoSync = async () => {
+    if (!autoUploadWatchDir) {
+      showToast('error', '未设置自动同步目录，请先在“设置”中选择目录');
+      return;
+    }
+    if (autoUploadSyncing) return;
+
+    setAutoUploadSyncing(true);
+    try {
+      const result = await secondBrainAutoUploadService.triggerSync();
+      if (result.success) {
+        if (result.count === 0) {
+          showToast('info', '已是最新，暂无可同步文档');
+        } else {
+          showToast('success', `已成功同步并提交萃取 ${result.count} 篇文档`);
+        }
+      } else {
+        showToast('error', '同步扫描失败，请检查目录是否有效');
+      }
+    } catch {
+      showToast('error', '同步执行异常');
+    } finally {
+      setAutoUploadSyncing(false);
+    }
+  };
 
   /** 点击外部关闭更多菜单 */
   useEffect(() => {
@@ -619,20 +668,30 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
     if (files.length === 0) return;
     e.target.value = '';
 
-    if (files.length > MAX_DOCUMENT_BATCH_COUNT) {
-      showToast('error', `单次最多支持批量上传 ${MAX_DOCUMENT_BATCH_COUNT} 份文档，请分批选择上传`);
-      return;
-    }
-
+    const unsupportedFiles: string[] = [];
     const oversizedFiles: string[] = [];
     const validFiles: File[] = [];
 
     for (const file of files) {
-      if (file.size > MAX_DOCUMENT_FILE_SIZE) {
+      // 忽略隐藏文件与 Office 临时锁文件（如 ~$xxx.docx）
+      if (file.name.startsWith('.') || file.name.startsWith('~$')) {
+        continue;
+      }
+      const ext = '.' + file.name.split('.').pop()?.toLowerCase();
+      if (!SECOND_BRAIN_SUPPORTED_EXTENSIONS.includes(ext as any)) {
+        unsupportedFiles.push(file.name);
+      } else if (file.size > SECOND_BRAIN_MAX_FILE_SIZE) {
         oversizedFiles.push(file.name);
       } else {
         validFiles.push(file);
       }
+    }
+
+    if (unsupportedFiles.length > 0) {
+      showToast(
+        'error',
+        `文件 "${unsupportedFiles.join(', ')}" 格式不支持，仅支持 ${SECOND_BRAIN_SUPPORTED_EXTENSIONS.join('、')} 格式文档`,
+      );
     }
 
     if (oversizedFiles.length > 0) {
@@ -642,34 +701,62 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
     if (validFiles.length === 0) return;
 
     setUploading(true);
-    let successCount = 0;
-    const failedNames: string[] = [];
 
-    for (const file of validFiles) {
+    const uploadItems = validFiles.map((file) => {
+      let filePath: string | undefined;
       try {
-        await uploadAndCreateDocument({ name: file.name, content: file });
-        successCount++;
-      } catch (err: any) {
-        console.warn(`[SecondBrainView] 资料 "${file.name}" 上传失败:`, err);
-        failedNames.push(file.name);
+        filePath = window.electron.dialog?.getPathForFile?.(file);
+      } catch {
+        // ignore
       }
-    }
+      if (!filePath && (file as any).path) {
+        filePath = (file as any).path;
+      }
+      return {
+        name: file.name,
+        content: file,
+        filePath,
+        mtimeMs: file.lastModified || Date.now(),
+      };
+    });
 
-    if (successCount > 0) {
+    const result = await batchUploadDocuments(uploadItems);
+
+    if (result.realUploadedCount > 0) {
       loadDocs(materialTab, 1);
       loadStats();
     }
 
-    if (failedNames.length === 0) {
-      if (files.length === 1) {
-        showToast('success', `资料 "${files[0].name}" 上传成功，系统正自动萃取中`);
-      } else {
-        showToast('success', `成功上传 ${successCount} 份资料，系统正自动萃取中`);
+    if (result.failedItems.length === 0) {
+      if (result.truncatedCount > 0) {
+        showToast(
+          'info',
+          `已成功上传 ${result.realUploadedCount} 份新资料（达到单批 ${SECOND_BRAIN_MAX_BATCH_COUNT} 份上限），剩余 ${result.truncatedCount} 份请稍后分批上传`,
+        );
+      } else if (result.realUploadedCount > 0 && result.skippedCount > 0) {
+        showToast('success', `成功上传 ${result.realUploadedCount} 份资料，${result.skippedCount} 份已在库中已跳过`);
+      } else if (result.realUploadedCount > 0) {
+        showToast(
+          'success',
+          validFiles.length === 1
+            ? `资料 "${validFiles[0].name}" 上传成功，系统正自动萃取中`
+            : `成功上传 ${result.realUploadedCount} 份资料，系统正自动萃取中`,
+        );
+      } else if (result.skippedCount > 0) {
+        showToast(
+          'info',
+          validFiles.length === 1
+            ? `资料 "${validFiles[0].name}" 已在库中，无需重复上传`
+            : `所选 ${result.skippedCount} 份资料均已在库中，已跳过上传`,
+        );
       }
-    } else if (successCount > 0) {
-      showToast('error', `成功上传 ${successCount} 份资料，${failedNames.length} 份上传失败 (${failedNames.join(', ')})`);
     } else {
-      showToast('error', `资料上传失败：${failedNames.join(', ')}`);
+      const failSummary = result.failedItems.map((f) => `${f.name} (${f.error})`).join('；');
+      if (result.realUploadedCount > 0) {
+        showToast('error', `成功上传 ${result.realUploadedCount} 份，${result.failedItems.length} 份失败：${failSummary}`);
+      } else {
+        showToast('error', `资料上传失败：${failSummary}`);
+      }
     }
 
     setUploading(false);
@@ -841,8 +928,8 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
       }
       logCard('info', `[自动连接] 系统已下发关联 Wi-Fi 指令 (${ssid})，开始探测 Socket 就绪状态...`);
 
-      // 阶段 2: Wi-Fi 关联后，给局域网 IP 与 TCP 服务留出 10 秒弹性轮询重试窗口（每 600ms 探测一次）
-      const socketDeadline = Date.now() + 10000;
+      // 阶段 2: Wi-Fi 关联后，给局域网 IP 与 TCP 服务留出 16 秒充裕轮询重试窗口（每 600ms 探测一次）
+      const socketDeadline = Date.now() + 16000;
       let socketConnected = false;
       let lastSocketErr = '';
 
@@ -992,8 +1079,8 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
     isWifiFlowRunningRef.current = true;
     logCard('info', '>>> 用户确认连入热点，正在建立 Wi-Fi TCP 同步通道...');
     try {
-      // 给局域网 IP 与 TCP 服务留出 8 秒弹性轮询重试窗口（每 600ms 探测一次），避免单次失败直接判死刑
-      const socketDeadline = Date.now() + 8000;
+      // 给局域网 IP 与 TCP 服务留出 12 秒充裕轮询重试窗口（每 600ms 探测一次），避免单次失败直接判死刑
+      const socketDeadline = Date.now() + 12000;
       let socketConnected = false;
       let lastSocketErr = '';
 
@@ -1601,7 +1688,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
         ref={fileInputRef}
         type="file"
         multiple
-        accept=".docx,.md,.txt"
+        accept={SECOND_BRAIN_SUPPORTED_EXTENSIONS.join(',')}
         onChange={handleFileChange}
         className="hidden"
       />
@@ -2055,15 +2142,50 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                 {/* 仅在文档 Tab 下展示上传与自动同步按钮 */}
                 {materialTab === '文档' && (
                   <div className="flex items-center gap-2 mb-1.5">
-                    {/* 自动同步设置入口 */}
-                    <button
-                      type="button"
-                      onClick={() => setShowAutoUploadModal(true)}
-                      className="text-xs px-2.5 py-1.5 rounded-lg border border-border bg-surface-raised/60 hover:bg-surface-raised text-secondary hover:text-foreground transition-colors flex items-center gap-1.5 cursor-pointer font-medium"
-                    >
-                      <span>📁</span>
-                      <span>自动同步</span>
-                    </button>
+                    {/* 自动同步悬停菜单入口 */}
+                    <div className="relative group">
+                      <button
+                        type="button"
+                        onClick={() => setShowAutoUploadModal(true)}
+                        className="text-xs px-2.5 py-1.5 rounded-lg border border-border bg-surface-raised/60 hover:bg-surface-raised text-secondary hover:text-foreground transition-colors flex items-center gap-1.5 cursor-pointer font-medium"
+                      >
+                        <span className={autoUploadSyncing ? 'animate-spin' : ''}>
+                          {autoUploadSyncing ? '🔄' : '📁'}
+                        </span>
+                        <span>自动同步</span>
+                        <span className="text-[10px] text-secondary/60 group-hover:text-foreground transition-transform duration-150 group-hover:rotate-180">
+                          ▾
+                        </span>
+                      </button>
+
+                      {/* 鼠标悬浮下拉菜单 */}
+                      <div className="invisible opacity-0 group-hover:visible group-hover:opacity-100 transition-all duration-150 absolute left-0 top-full pt-1 z-30">
+                        <div className="min-w-[124px] bg-surface border border-border rounded-xl shadow-modal p-1 space-y-0.5 text-xs backdrop-blur-md">
+                          <button
+                            type="button"
+                            onClick={() => setShowAutoUploadModal(true)}
+                            className="w-full px-2.5 py-1.5 text-left rounded-lg hover:bg-surface-raised text-foreground transition-colors flex items-center gap-2 cursor-pointer"
+                          >
+                            <span>⚙️</span>
+                            <span>设置</span>
+                          </button>
+                          <button
+                            type="button"
+                            disabled={!autoUploadWatchDir || autoUploadSyncing}
+                            onClick={handleTriggerAutoSync}
+                            title={!autoUploadWatchDir ? '未设置同步目录，请点击设置选择目录' : undefined}
+                            className={`w-full px-2.5 py-1.5 text-left rounded-lg transition-colors flex items-center gap-2 ${
+                              !autoUploadWatchDir || autoUploadSyncing
+                                ? 'opacity-40 cursor-not-allowed text-secondary'
+                                : 'hover:bg-surface-raised text-foreground cursor-pointer'
+                            }`}
+                          >
+                            <span className={autoUploadSyncing ? 'animate-spin' : ''}>🔄</span>
+                            <span>{autoUploadSyncing ? '正在同步…' : '立即同步'}</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
 
                     {/* 手动上传文档按钮 */}
                     <div className="relative group">
@@ -3116,7 +3238,10 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
       {/* 自动同步设置弹窗 */}
       <AutoUploadSettingsModal
         isOpen={showAutoUploadModal}
-        onClose={() => setShowAutoUploadModal(false)}
+        onClose={() => {
+          setShowAutoUploadModal(false);
+          refreshAutoUploadStatus();
+        }}
       />
 
       {/* 录音卡同步中页面级专属受控 Toast（受同步状态控制：同步进行中常驻显现，完成后自动平滑消失） */}

@@ -683,8 +683,9 @@ interface IElectronAPI {
       data?: Uint8Array;
       error?: string;
     }>;
-    markFileSynced: (params: import('../../shared/secondBrain/constants').MarkFileSyncedParams) => Promise<{
+    computeFileHash: (input: { filePath?: string; buffer?: Uint8Array }) => Promise<{
       success: boolean;
+      hash?: string | null;
       error?: string;
     }>;
     onStatusChanged: (

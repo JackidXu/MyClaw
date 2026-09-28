@@ -123,7 +123,9 @@ class WifiManager {
         const ifaces = os.networkInterfaces();
         const targetIface = ifaces[device];
         if (targetIface) {
-          const ipv4 = targetIface.find((i) => i.family === 'IPv4' && !i.internal);
+          const ipv4 = targetIface.find(
+            (i) => i.family === 'IPv4' && !i.internal && i.address.startsWith('192.168.1.')
+          );
           if (ipv4) localIp = ipv4.address;
         }
         if (!localIp) {
@@ -162,6 +164,10 @@ class WifiManager {
    */
   async isRecorderReachable(timeoutMs = 600): Promise<boolean> {
     const { targetIp, localIp } = await this.resolveRecorderEndpoints();
+    // 尚未拿到 192.168.1.x IP 时直接返回不可达，绝不走默认路由被 TUN 代理拦截
+    if (!localIp) {
+      return false;
+    }
 
     return new Promise((resolve) => {
       const socket = new net.Socket();
@@ -185,7 +191,7 @@ class WifiManager {
         const connectOptions: net.TcpSocketConnectOpts = {
           port: 32769,
           host: targetIp,
-          ...(localIp ? { localAddress: localIp } : {}),
+          localAddress: localIp,
         };
         socket.connect(connectOptions);
       } catch {

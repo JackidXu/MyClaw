@@ -12,15 +12,17 @@ export const AutoUploadSettingsModal: React.FC<AutoUploadSettingsModalProps> = (
   isOpen,
   onClose,
 }) => {
-  const [watchDir, setWatchDir] = useState('');
-  const [isSyncing, setIsSyncing] = useState(false);
+  const [savedWatchDir, setSavedWatchDir] = useState('');
+  const [draftWatchDir, setDraftWatchDir] = useState('');
   const [saveLoading, setSaveLoading] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
       void secondBrainAutoUploadService.getConfigAndStatus().then((res) => {
         if (res?.config) {
-          setWatchDir(res.config.watchDir || '');
+          const current = res.config.watchDir || '';
+          setSavedWatchDir(current);
+          setDraftWatchDir(current);
         }
       });
     }
@@ -28,56 +30,43 @@ export const AutoUploadSettingsModal: React.FC<AutoUploadSettingsModalProps> = (
 
   if (!isOpen) return null;
 
-  /** 选择或更改目录 */
+  /** 选择或更改目录（暂存至组件 state，点击完成正式生效） */
   const handleSelectDirectory = async () => {
     const selected = await secondBrainAutoUploadService.selectWatchDir();
     if (selected) {
-      setWatchDir(selected);
+      setDraftWatchDir(selected);
+    }
+  };
+
+  /** 清除已配置的目录（暂存） */
+  const handleClearDirectory = () => {
+    setDraftWatchDir('');
+  };
+
+  /** 点击完成：若有修改自动保存生效并关闭弹窗 */
+  const handleComplete = async () => {
+    if (draftWatchDir !== savedWatchDir) {
       setSaveLoading(true);
       try {
-        await secondBrainAutoUploadService.setConfig({
-          watchDir: selected,
+        const res = await secondBrainAutoUploadService.setConfig({
+          watchDir: draftWatchDir,
         });
+        if (res?.config) {
+          setSavedWatchDir(res.config.watchDir || '');
+          setDraftWatchDir(res.config.watchDir || '');
+          window.dispatchEvent(
+            new CustomEvent('app:showToast', {
+              detail: draftWatchDir ? '已保存同步目录设置' : '已清除同步目录',
+            }),
+          );
+        }
+      } catch {
+        window.dispatchEvent(new CustomEvent('app:showToast', { detail: '保存目录设置失败' }));
       } finally {
         setSaveLoading(false);
       }
     }
-  };
-
-  /** 清除已配置的目录 */
-  const handleClearDirectory = async () => {
-    setWatchDir('');
-    setSaveLoading(true);
-    try {
-      await secondBrainAutoUploadService.setConfig({
-        watchDir: '',
-      });
-    } finally {
-      setSaveLoading(false);
-    }
-  };
-
-  /** 手动立即触发同步 */
-  const handleTriggerManualSync = async () => {
-    if (!watchDir) {
-      await handleSelectDirectory();
-      return;
-    }
-    setIsSyncing(true);
-    try {
-      const result = await secondBrainAutoUploadService.triggerSync();
-      if (result.success) {
-        if (result.count === 0) {
-          window.dispatchEvent(new CustomEvent('app:showToast', { detail: '已是最新，暂无可同步文档' }));
-        } else {
-          window.dispatchEvent(new CustomEvent('app:showToast', { detail: `已成功同步并提交萃取 ${result.count} 篇文档` }));
-        }
-      } else {
-        window.dispatchEvent(new CustomEvent('app:showToast', { detail: '同步扫描失败，请检查目录是否有效' }));
-      }
-    } finally {
-      setIsSyncing(false);
-    }
+    onClose();
   };
 
   return (
@@ -115,14 +104,14 @@ export const AutoUploadSettingsModal: React.FC<AutoUploadSettingsModalProps> = (
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold text-foreground">本地目录</span>
-              {watchDir && (
+              {savedWatchDir && (
                 <span className="text-[10px] px-1.5 py-0.2 rounded bg-green-500/10 text-green-600 dark:text-green-400 font-medium">
                   每 5 分钟自动扫描
                 </span>
               )}
             </div>
             <div className="flex items-center gap-2">
-              {watchDir ? (
+              {draftWatchDir ? (
                 <>
                   <button
                     type="button"
@@ -157,12 +146,12 @@ export const AutoUploadSettingsModal: React.FC<AutoUploadSettingsModalProps> = (
 
           <div
             className={`p-2.5 rounded-lg border text-xs font-mono break-all select-all ${
-              watchDir
+              draftWatchDir
                 ? 'bg-surface border-border text-foreground'
                 : 'bg-surface/50 border-dashed border-border text-secondary/70 italic'
             }`}
           >
-            {watchDir || '尚未设置同步目录，请点击上方按钮选择电脑上的文件夹'}
+            {draftWatchDir || '尚未设置同步目录，请点击上方按钮选择电脑上的文件夹'}
           </div>
 
           <div className="text-[11px] text-secondary">
@@ -184,23 +173,14 @@ export const AutoUploadSettingsModal: React.FC<AutoUploadSettingsModalProps> = (
       </div>
 
       {/* 弹窗底部操作栏 */}
-      <div className="flex items-center justify-between px-6 py-3.5 border-t border-border/70 bg-surface-raised/20">
+      <div className="flex items-center justify-end px-6 py-3.5 border-t border-border/70 bg-surface-raised/20">
         <button
           type="button"
-          disabled={!watchDir || isSyncing}
-          onClick={handleTriggerManualSync}
-          className="px-3.5 py-1.5 text-xs font-semibold rounded-lg border border-border bg-surface hover:bg-surface-raised text-foreground transition-colors flex items-center gap-1.5 disabled:opacity-40 cursor-pointer"
+          disabled={saveLoading}
+          onClick={handleComplete}
+          className="px-5 py-1.5 text-xs font-bold rounded-lg bg-primary hover:bg-primary/90 text-white transition-colors cursor-pointer disabled:opacity-50"
         >
-          <span className={isSyncing ? 'animate-spin' : ''}>🔄</span>
-          <span>{isSyncing ? '正在同步…' : '立即同步'}</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={onClose}
-          className="px-5 py-1.5 text-xs font-bold rounded-lg bg-primary hover:bg-primary/90 text-white transition-colors cursor-pointer"
-        >
-          完成
+          {saveLoading ? '保存中…' : '完成'}
         </button>
       </div>
     </Modal>

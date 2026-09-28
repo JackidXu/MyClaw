@@ -1,0 +1,17 @@
+{
+  "canvas_config": {
+    "height": 1280,
+    "ratio": "original",
+    "width": 720
+  },
+  "fps": 30.0,
+  "duration": 15600000,
+  "version": 360000,
+  "platform": {
+    "app_id": 1775,
+    "app_version": "9.1.0",
+    "os": "Android",
+    "os_version": "31"
+  },
+  "draft_name": "308-语录-月底再见"
+}
