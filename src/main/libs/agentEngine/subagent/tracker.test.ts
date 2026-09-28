@@ -23,6 +23,7 @@ const setupDb = (): void => {
       status TEXT NOT NULL DEFAULT 'running',
       created_at INTEGER NOT NULL,
       ended_at INTEGER,
+      error TEXT,
       messages_persisted INTEGER NOT NULL DEFAULT 0
     );
   `);
