@@ -214,7 +214,7 @@ async function signOnceViaOss(serviceConfig, filePath, ossClient) {
 
   console.log(`[WinSign] Uploading to OSS: ${ossKey} (${(originalSize / (1024 * 1024)).toFixed(1)} MB)...`);
 
-  // 分片断点续传机制：2MB 轻量分片、1 并发（串行独占带宽，彻底消除多请求竞争与 callback twice 假死），5 分钟分片超时保护
+  // 分片断点续传机制：2MB 轻量分片、5 并发（多连接抢占带宽加速跨国传输），5 分钟分片超时保护
   let checkpoint = null;
   const maxUploadAttempts = 3;
   const INACTIVITY_TIMEOUT_MS = 180000; // 180 秒无任何 2MB 分片推进则判定为 socket hang 假死
@@ -234,7 +234,7 @@ async function signOnceViaOss(serviceConfig, filePath, ossClient) {
 
     try {
       const uploadPromise = currentOssClient.multipartUpload(ossKey, filePath, {
-        parallel: 1,
+        parallel: 5,
         partSize: 2 * 1024 * 1024,
         timeout: 300000,
         checkpoint,
