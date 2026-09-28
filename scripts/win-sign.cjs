@@ -214,27 +214,85 @@ async function signOnceViaOss(serviceConfig, filePath, ossClient) {
 
   console.log(`[WinSign] Uploading to OSS: ${ossKey} (${(originalSize / (1024 * 1024)).toFixed(1)} MB)...`);
 
-  // 分片断点续传机制：4MB 轻量分片、2 并发，降低跨国弱网重试代价
+  // 分片断点续传机制：8MB 分片、2 并发，配备无进展假死看门狗与全局超时熔断
   let checkpoint = null;
   const maxUploadAttempts = 3;
+  const INACTIVITY_TIMEOUT_MS = 90000; // 90 秒无任何分片推进则判定为 socket hang 假死
+  const ATTEMPT_TIMEOUT_MS = 600000; // 单次尝试全局最长 10 分钟
+
   for (let uploadAttempt = 1; uploadAttempt <= maxUploadAttempts; uploadAttempt += 1) {
+    const currentOssClient = getOssClient();
+    if (!currentOssClient) {
+      throw new Error('[WinSign] Failed to initialize OSS client');
+    }
+
+    let lastActivityTime = Date.now();
+    let lastLoggedProgress = -1;
+    let checkerInterval = null;
+    let globalTimeoutTimer = null;
+    let timedOutError = null;
+
     try {
-      await ossClient.multipartUpload(ossKey, filePath, {
+      const uploadPromise = currentOssClient.multipartUpload(ossKey, filePath, {
         parallel: 2,
-        partSize: 4 * 1024 * 1024,
-        timeout: 120000,
+        partSize: 8 * 1024 * 1024,
+        timeout: 60000,
         checkpoint,
-        progress: (p, cpt) => {
+        progress: (percentage, cpt) => {
+          lastActivityTime = Date.now();
           checkpoint = cpt;
+          const currentProgress = Math.floor(percentage * 100);
+          if (currentProgress >= lastLoggedProgress + 10 || currentProgress === 100) {
+            lastLoggedProgress = currentProgress;
+            const doneCount = cpt && cpt.doneParts ? cpt.doneParts.length : 0;
+            console.log(`[WinSign] OSS upload progress: ${currentProgress}% (done parts: ${doneCount})`);
+          }
         },
       });
+
+      const watchdogPromise = new Promise((_, reject) => {
+        checkerInterval = setInterval(() => {
+          const now = Date.now();
+          if (now - lastActivityTime > INACTIVITY_TIMEOUT_MS) {
+            timedOutError = new Error(`multipartUpload stalled: no progress for ${INACTIVITY_TIMEOUT_MS / 1000}s`);
+            try {
+              if (typeof currentOssClient.cancel === 'function') {
+                currentOssClient.cancel();
+              }
+            } catch {}
+            reject(timedOutError);
+          }
+        }, 5000);
+      });
+
+      const globalTimeoutPromise = new Promise((_, reject) => {
+        globalTimeoutTimer = setTimeout(() => {
+          timedOutError = new Error(`multipartUpload exceeded maximum attempt timeout of ${ATTEMPT_TIMEOUT_MS / 1000}s`);
+          try {
+            if (typeof currentOssClient.cancel === 'function') {
+              currentOssClient.cancel();
+            }
+          } catch {}
+          reject(timedOutError);
+        }, ATTEMPT_TIMEOUT_MS);
+      });
+
+      await Promise.race([uploadPromise, watchdogPromise, globalTimeoutPromise]);
       break;
     } catch (uploadError) {
-      console.warn(`[WinSign] OSS upload attempt ${uploadAttempt}/${maxUploadAttempts} failed for ${fileName}: ${uploadError.message}`);
+      const err = timedOutError || uploadError;
+      console.warn(`[WinSign] OSS upload attempt ${uploadAttempt}/${maxUploadAttempts} failed for ${fileName}: ${err.message}`);
       if (uploadAttempt === maxUploadAttempts) {
-        throw uploadError;
+        throw err;
       }
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+    } finally {
+      if (checkerInterval) {
+        clearInterval(checkerInterval);
+      }
+      if (globalTimeoutTimer) {
+        clearTimeout(globalTimeoutTimer);
+      }
     }
   }
 
@@ -264,7 +322,23 @@ async function signOnceViaOss(serviceConfig, filePath, ossClient) {
   }
 
   console.log(`[WinSign] Downloading signed file from OSS: ${signedOssKey}...`);
-  await ossClient.get(signedOssKey, tmpPath);
+  let downloadSuccess = false;
+  let lastDownloadError = null;
+  for (let downloadAttempt = 1; downloadAttempt <= 3; downloadAttempt += 1) {
+    try {
+      const downloadClient = getOssClient();
+      await downloadClient.get(signedOssKey, tmpPath, { timeout: 180000 });
+      downloadSuccess = true;
+      break;
+    } catch (err) {
+      lastDownloadError = err;
+      console.warn(`[WinSign] OSS download attempt ${downloadAttempt}/3 failed: ${err.message}`);
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+    }
+  }
+  if (!downloadSuccess) {
+    throw lastDownloadError;
+  }
 
   const signedSize = fs.statSync(tmpPath).size;
   if (signedSize < originalSize) {
