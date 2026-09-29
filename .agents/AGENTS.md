@@ -412,6 +412,57 @@ HeyClaw 采用双后端支撑体系：
 - **自检 2（层次正确）**：当前编写的代码，是属于轻量的**业务意图编排（Orchestration）**，还是越权去硬扛了**底层的重型网络、IO 或锁竞争机制**？是否存在层次倒错？
 - **自检 3（根基审视）**：当一个模块出现频繁超时、竞态死锁或偶发假死时，我是不是在**顺着错误的基石不断打无意义的参数微调和看门狗补丁**？地基是否已经腐烂？能否直接换用成熟底座彻底掀翻重来？
 
+---
+
+### 2.25 内置技能更新与新增全流程规范 (Built-in Skills Update & Packaging Specification)
+
+#### 1. 深度病因剖析与血泪教训（历史真实痛点）
+- **现象回顾**：
+  在 Windows 客户端在线更新时，大量用户频繁遭遇弹窗报错中止安装：
+  `The HeyClaw update stopped because legacy user skills could not be safely inspected or backed up (status=legacy-backup-copy-failed).`
+- **故障根因闭环**：
+  1. **上游保护机制**：NSIS 安装程序在更新覆盖前，为了避免丢失用户曾经直接放在安装目录下的自建技能，会读取旧安装目录的 `skills.config.json` 中的 `defaults` 字典作为官方内置技能白名单。如果旧目录中存在任何不在白名单内的文件夹，安装程序就会将其判定为“用户遗留自定义技能（Legacy User Skills）”，并强制启动 PowerShell 脚本（`backup-copy` 阶段）把这些目录完整复制到 `%PROGRAMDATA%\HeyClaw\skills-backup\`，计算所有文件 SHA256 哈希后再重命名移动。若所有目录都在白名单内，则会输出 `legacy-no-user-skills` 直接快速放行。
+  2. **配置遗漏导致的连锁灾难**：此前在陆续引入 `ffmpeg-tool`、小红书运营专属系列、视频制作链路技能等内置技能时，**仅将技能目录添加到了 `SKILLs/`，未同步在 `SKILLs/skills.config.json` 的 `defaults` 中登记**；
+  3. **存量机器误判与文件占用崩溃**：存量用户电脑上已安装的旧客户端中的 `skills.config.json` 依然残缺。当用户更新时，新安装程序读取旧配置，误将包含高达 79MB 可执行文件 `ffmpeg.exe` 的 `ffmpeg-tool` 等目录误判为用户自建技能，强行触发备份。复制大量文件与 `.exe` 时，触发 Windows Defender 实时扫描独占锁定，随后的 `Move-Item` 遭遇共享冲突直接抛出 `IOException`，导致整个在线更新失败回滚！
+
+---
+
+#### 2. 新增/更新内置技能三件套闭环配置清单（强制同次提交，缺一不可）
+
+凡是在 `SKILLs/<skill-name>` 新增或更新内置技能，**必须且必须在同一次提交中完整同步以下 3 处配置，严禁遗漏任何一项**：
+
+| 配置项 | 涉及文件路径 | 核心作用与严重后果说明 |
+|---|---|---|
+| **配置 1：官方白名单与同步凭证** | `SKILLs/skills.config.json` | **最核心配置**。必须在 `defaults` 中增加对应技能条目（包含 `order` 与 `enabled: true`）。<br>① NSIS 安装程序以此作为官方白名单判断，漏配会导致 Windows 在线更新强行触发大文件备份并崩溃；<br>② 主进程 `syncBundledSkillsToUserData()` 以此过滤，漏配会导致应用启动时无法将该内置技能同步至用户的 `userData/SKILLs`。 |
+| **配置 2：中英文展示名称字典** | `src/renderer/components/skills/bundledSkillNames.ts` | 必须在 `BUNDLED_SKILL_DISPLAY_NAMES` 中添加对应中英文对照 `{ zh: '...', en: '...' }`。<br>单元测试 `bundledSkillNames.test.ts` 会强制校验其与 `skills.config.json` 的双向完全对齐，漏配会导致自动化测试挂掉。 |
+| **配置 3：Windows 存量兼容白名单** | `scripts/nsis-installer.nsh` | 当新增官方内置技能时，必须将其技能 ID 补充至 NSIS 脚本 PowerShell 检查中的 `$$knownBundled` 数组中。<br>防止存量旧版本客户端升级时因读取本地旧残留配置而再次发生误判。 |
+
+---
+
+#### 3. 必须通过的提交前自检验证（Pre-commit Verification Checklist）
+
+每次完成内置技能的增删改后，必须在终端依次执行以下命令确保全链路闭环，严禁未经验证直接提交：
+
+```bash
+# 1. 验证内置技能目录与 skills.config.json 严格一一对应（无多余、无遗漏）
+node -e "const fs=require('fs');const path=require('path');const cfg=JSON.parse(fs.readFileSync('SKILLs/skills.config.json','utf8')).defaults;const dirs=fs.readdirSync('SKILLs').filter(f=>fs.statSync(path.join('SKILLs',f)).isDirectory());const diff=dirs.filter(d=>!cfg[d]);if(diff.length)throw new Error('存在未在skills.config.json中配置的目录: '+diff.join(','));console.log('✅ skills.config.json 与 SKILLs 目录 100% 对应（共 ' + dirs.length + ' 个技能）');"
+
+# 2. 验证前端展示名称与 skills.config.json 完全同步
+npx vitest run src/renderer/components/skills/bundledSkillNames.test.ts
+
+# 3. 验证 Windows 安装程序技能备份契约测试无回归
+npx vitest run tests/windowsInstallerContract.test.ts -t "Skills|manifest|degraded restore"
+```
+
+---
+
+#### 4. 核心红线警示
+
+> [!CAUTION]
+> **【内置技能配置红线】**
+> **严禁在 `SKILLs/` 下只丢文件夹而不修改配置！任何新增或更新内置技能，必须严格遵循上述三件套闭环配置清单。漏配任何一项，就是把定时炸弹埋入下一次 Windows 用户的在线更新中！**
+
+
 
 
 

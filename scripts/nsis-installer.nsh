@@ -1455,6 +1455,35 @@ FunctionEnd
             (Get-Content -LiteralPath $$config -Raw | ConvertFrom-Json).defaults.PSObject.Properties.Name\
           }\
         } catch { });\
+        $$knownBundled = @(\
+          \"aihot-skill\",\"article-illustrator\",\"article-writer\",\"black-xhs-cover\",\
+          \"campaign-analytics\",\"clip-editor\",\"cmo\",\"content-illustrator\",\
+          \"content-ip-manager\",\"content-ip-rampup\",\"content-marketing\",\
+          \"content-marketing-strategy-map\",\"content-material-library\",\
+          \"content-material-matcher\",\"content-moments-planner\",\
+          \"content-performance-review\",\"content-planner\",\"content-production-planner\",\
+          \"content-quality-guard\",\"content-script-adapter\",\"content-script-writer\",\
+          \"content-strategy\",\"content-template-pack\",\"content-topic-engine\",\
+          \"content-video-cutter\",\"content-video-director\",\"content-wechat-publisher\",\
+          \"cover-image\",\"diagram\",\"docx\",\"ffmpeg-tool\",\"ffmpeg-video-editor\",\
+          \"geo-content-optimizer\",\"geo-optimizer\",\"hook-and-headline-writing\",\
+          \"hot-topic-select\",\"huashu-data-pro\",\"huashu-proofreading\",\
+          \"huashu-topic-gen\",\"image-gen\",\"infographic\",\"ip-strategy-report-v7\",\
+          \"jianying-editor\",\"local-tools\",\"marketing-brand-playbook\",\
+          \"marketing-psychology\",\"moments-writer\",\"OPC-one\",\"OPC-one-de-ai\",\
+          \"OPC-one-hook\",\"OPC-one-illustration\",\"OPC-one-motion\",\"OPC-one-opc\",\
+          \"OPC-one-wiki\",\"OPC-one-xhs-check\",\"paid-traffic-operator\",\"pdf\",\
+          \"playwright\",\"pptx\",\"qu-ai-wei\",\"rag-skill\",\"remotion-video-toolkit\",\
+          \"seedance\",\"seedream\",\"selling-point-translator\",\"short-form-video\",\
+          \"short-video-hook\",\"shouzhang-pintie-card\",\"skill-creator\",\
+          \"skill-vetter\",\"social-content-calendar\",\"topic-generator\",\
+          \"topic-reviewer\",\"video-clip-assistant\",\"video-editor\",\
+          \"viral-image-replicator\",\"web-search\",\"whisper-tool\",\"xhs-account-audit\",\
+          \"xhs-branded\",\"xhs-console\",\"xhs-cover\",\"xhs-html\",\"xhs-image\",\
+          \"xhs-images\",\"xhs-note-analytics\",\"xhs-notes-writer\",\"xhs-positioning\",\
+          \"xhs-title\",\"xhs-topic\",\"xhs-writer\",\"xlsx\"\
+        );\
+        $$bundled = @($$bundled + $$knownBundled | Where-Object { -not [string]::IsNullOrWhiteSpace($$_) } | Select-Object -Unique);\
         $$userSkills = @(Get-ChildItem -LiteralPath $$src -Directory -ErrorAction Stop | Where-Object { $$bundled -notcontains $$_.Name });\
         if ($$userSkills.Count -eq 0) { Write-Output \"legacy-no-user-skills\"; exit ${LOBSTER_SKILL_BACKUP_EXIT_NO_USER_SKILLS} };\
         $$phase = \"backup-copy\";\
@@ -1493,7 +1522,17 @@ FunctionEnd
           validation = [ordered]@{ status = \"created\"; algorithm = \"SHA256\" }\
         };\
         $$payload | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $$manifest -Encoding UTF8 -ErrorAction Stop;\
-        Move-Item -LiteralPath $$staging -Destination $$backup -ErrorAction Stop;\
+        $$moved = $$false;\
+        for ($$i = 0; $$i -lt 5; $$i++) {\
+          try {\
+            Move-Item -LiteralPath $$staging -Destination $$backup -ErrorAction Stop;\
+            $$moved = $$true;\
+            break;\
+          } catch {\
+            Start-Sleep -Milliseconds 200;\
+          }\
+        };\
+        if (-not $$moved) { throw \"failed to move staging to backup\" };\
         $$phase = \"backup-verify\";\
         $$manifest = Join-Path $$backup \"backup-manifest.json\";\
         $$verified = Get-Content -LiteralPath $$manifest -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop;\
