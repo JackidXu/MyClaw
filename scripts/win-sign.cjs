@@ -204,6 +204,48 @@ function getOssClient() {
   });
 }
 
+function findOssutilExe() {
+  if (process.env.OSSUTIL_PATH && fs.existsSync(process.env.OSSUTIL_PATH)) {
+    return process.env.OSSUTIL_PATH;
+  }
+  for (const cmd of ['ossutil64', 'ossutil']) {
+    try {
+      execSync(`${cmd} --version`, { stdio: 'ignore' });
+      return cmd;
+    } catch {}
+  }
+  try {
+    const cwd = process.cwd();
+    const dirs = fs.readdirSync(cwd).filter((d) => d.startsWith('ossutil64'));
+    for (const d of dirs) {
+      const candidate = path.join(cwd, d, 'ossutil64.exe');
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
+    }
+  } catch {}
+  return null;
+}
+
+function uploadViaOssutil(ossutilExe, filePath, ossKey, bucket, endpoint, ak, sk) {
+  const sizeMb = (fs.statSync(filePath).size / (1024 * 1024)).toFixed(1);
+  console.log(`[WinSign] Uploading to OSS via official ossutil: ${ossKey} (${sizeMb} MB)...`);
+  const t0 = Date.now();
+  const cleanEndpoint = endpoint.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+  const cmd = `"${ossutilExe}" cp -f "${filePath}" "oss://${bucket}/${ossKey}" -e "${cleanEndpoint}" -i "${ak}" -k "${sk}" --parallel=5 --part-size=2097152`;
+  execSync(cmd, { stdio: 'inherit', timeout: 900000 });
+  console.log(`[WinSign] Upload complete via ossutil in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+}
+
+function downloadViaOssutil(ossutilExe, signedOssKey, tmpPath, bucket, endpoint, ak, sk) {
+  console.log(`[WinSign] Downloading signed file from OSS via official ossutil: ${signedOssKey}...`);
+  const t0 = Date.now();
+  const cleanEndpoint = endpoint.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+  const cmd = `"${ossutilExe}" cp -f "oss://${bucket}/${signedOssKey}" "${tmpPath}" -e "${cleanEndpoint}" -i "${ak}" -k "${sk}"`;
+  execSync(cmd, { stdio: 'inherit', timeout: 900000 });
+  console.log(`[WinSign] Download complete via ossutil in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+}
+
 async function signOnceViaOss(serviceConfig, filePath, ossClient) {
   const fileName = path.basename(filePath);
   const originalSize = fs.statSync(filePath).size;
@@ -212,86 +254,108 @@ async function signOnceViaOss(serviceConfig, filePath, ossClient) {
   const uniqueId = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
   const ossKey = `${ossPrefix}/${uniqueId}_${fileName}`;
 
-  console.log(`[WinSign] Uploading to OSS: ${ossKey} (${(originalSize / (1024 * 1024)).toFixed(1)} MB)...`);
+  const ossutilExe = findOssutilExe();
+  const bucket = (process.env.OSS_BUCKET || '').trim();
+  const endpoint = (process.env.OSS_ENDPOINT || '').trim();
+  const ak = (process.env.OSS_ACCESS_KEY_ID || '').trim();
+  const sk = (process.env.OSS_ACCESS_KEY_SECRET || '').trim();
 
-  // 分片断点续传机制：2MB 轻量分片、5 并发（多连接抢占带宽加速跨国传输），5 分钟分片超时保护
-  let checkpoint = null;
-  const maxUploadAttempts = 3;
-  const INACTIVITY_TIMEOUT_MS = 180000; // 180 秒无任何 2MB 分片推进则判定为 socket hang 假死
-  const ATTEMPT_TIMEOUT_MS = 900000; // 单次尝试全局最长 15 分钟
-
-  for (let uploadAttempt = 1; uploadAttempt <= maxUploadAttempts; uploadAttempt += 1) {
-    const currentOssClient = getOssClient();
-    if (!currentOssClient) {
-      throw new Error('[WinSign] Failed to initialize OSS client');
-    }
-
-    let lastActivityTime = Date.now();
+  if (ossutilExe && bucket && ak && sk) {
+    // 优先采用阿里云官方原生 Go 二进制 ossutil 传输（零假死、零乱序、原生并发与断点续传）
+    uploadViaOssutil(ossutilExe, filePath, ossKey, bucket, endpoint, ak, sk);
+  } else {
+    // 回退到 ali-oss Node.js SDK（加入已完成分片增量并集去重合并，防止乱序回调覆盖导致进度倒退）
+    console.log(`[WinSign] Uploading to OSS via ali-oss SDK: ${ossKey} (${(originalSize / (1024 * 1024)).toFixed(1)} MB)...`);
+    let checkpoint = null;
+    const maxUploadAttempts = 3;
+    const INACTIVITY_TIMEOUT_MS = 180000;
+    const ATTEMPT_TIMEOUT_MS = 900000;
+    const mergedDoneParts = new Map();
     let lastLoggedProgress = -1;
-    let checkerInterval = null;
-    let globalTimeoutTimer = null;
-    let timedOutError = null;
 
-    try {
-      const uploadPromise = currentOssClient.multipartUpload(ossKey, filePath, {
-        parallel: 5,
-        partSize: 2 * 1024 * 1024,
-        timeout: 300000,
-        checkpoint,
-        progress: (percentage, cpt) => {
-          lastActivityTime = Date.now();
-          checkpoint = cpt;
-          const currentProgress = Math.floor(percentage * 100);
-          if (currentProgress >= lastLoggedProgress + 5 || currentProgress === 100) {
-            lastLoggedProgress = currentProgress;
-            const doneCount = cpt && cpt.doneParts ? cpt.doneParts.length : 0;
-            console.log(`[WinSign] OSS upload progress: ${currentProgress}% (done parts: ${doneCount})`);
-          }
-        },
-      });
+    for (let uploadAttempt = 1; uploadAttempt <= maxUploadAttempts; uploadAttempt += 1) {
+      const currentOssClient = getOssClient();
+      if (!currentOssClient) {
+        throw new Error('[WinSign] Failed to initialize OSS client');
+      }
 
-      const watchdogPromise = new Promise((_, reject) => {
-        checkerInterval = setInterval(() => {
-          const now = Date.now();
-          if (now - lastActivityTime > INACTIVITY_TIMEOUT_MS) {
-            timedOutError = new Error(`multipartUpload stalled: no progress for ${INACTIVITY_TIMEOUT_MS / 1000}s`);
+      let lastActivityTime = Date.now();
+      let checkerInterval = null;
+      let globalTimeoutTimer = null;
+      let timedOutError = null;
+
+      try {
+        const uploadPromise = currentOssClient.multipartUpload(ossKey, filePath, {
+          parallel: 5,
+          partSize: 2 * 1024 * 1024,
+          timeout: 300000,
+          checkpoint,
+          progress: (percentage, cpt) => {
+            lastActivityTime = Date.now();
+            if (cpt && Array.isArray(cpt.doneParts)) {
+              for (const p of cpt.doneParts) {
+                if (p && p.number) {
+                  mergedDoneParts.set(p.number, p);
+                }
+              }
+              checkpoint = {
+                ...cpt,
+                doneParts: Array.from(mergedDoneParts.values()),
+              };
+            }
+            const doneCount = mergedDoneParts.size;
+            const totalParts = (cpt && cpt.numParts) || Math.ceil(originalSize / (2 * 1024 * 1024));
+            const currentProgress = Math.min(100, Math.floor((doneCount / totalParts) * 100));
+            if (currentProgress > lastLoggedProgress || currentProgress === 100) {
+              lastLoggedProgress = currentProgress;
+              console.log(`[WinSign] OSS upload: ${currentProgress}% (${doneCount}/${totalParts} parts completed)`);
+            }
+          },
+        });
+
+        const watchdogPromise = new Promise((_, reject) => {
+          checkerInterval = setInterval(() => {
+            const now = Date.now();
+            if (now - lastActivityTime > INACTIVITY_TIMEOUT_MS) {
+              timedOutError = new Error(`multipartUpload stalled: no progress for ${INACTIVITY_TIMEOUT_MS / 1000}s`);
+              try {
+                if (typeof currentOssClient.cancel === 'function') {
+                  currentOssClient.cancel();
+                }
+              } catch {}
+              reject(timedOutError);
+            }
+          }, 5000);
+        });
+
+        const globalTimeoutPromise = new Promise((_, reject) => {
+          globalTimeoutTimer = setTimeout(() => {
+            timedOutError = new Error(`multipartUpload exceeded maximum attempt timeout of ${ATTEMPT_TIMEOUT_MS / 1000}s`);
             try {
               if (typeof currentOssClient.cancel === 'function') {
                 currentOssClient.cancel();
               }
             } catch {}
             reject(timedOutError);
-          }
-        }, 5000);
-      });
+          }, ATTEMPT_TIMEOUT_MS);
+        });
 
-      const globalTimeoutPromise = new Promise((_, reject) => {
-        globalTimeoutTimer = setTimeout(() => {
-          timedOutError = new Error(`multipartUpload exceeded maximum attempt timeout of ${ATTEMPT_TIMEOUT_MS / 1000}s`);
-          try {
-            if (typeof currentOssClient.cancel === 'function') {
-              currentOssClient.cancel();
-            }
-          } catch {}
-          reject(timedOutError);
-        }, ATTEMPT_TIMEOUT_MS);
-      });
-
-      await Promise.race([uploadPromise, watchdogPromise, globalTimeoutPromise]);
-      break;
-    } catch (uploadError) {
-      const err = timedOutError || uploadError;
-      console.warn(`[WinSign] OSS upload attempt ${uploadAttempt}/${maxUploadAttempts} failed for ${fileName}: ${err.message}`);
-      if (uploadAttempt === maxUploadAttempts) {
-        throw err;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 3000));
-    } finally {
-      if (checkerInterval) {
-        clearInterval(checkerInterval);
-      }
-      if (globalTimeoutTimer) {
-        clearTimeout(globalTimeoutTimer);
+        await Promise.race([uploadPromise, watchdogPromise, globalTimeoutPromise]);
+        break;
+      } catch (uploadError) {
+        const err = timedOutError || uploadError;
+        console.warn(`[WinSign] OSS upload attempt ${uploadAttempt}/${maxUploadAttempts} failed for ${fileName}: ${err.message}`);
+        if (uploadAttempt === maxUploadAttempts) {
+          throw err;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+      } finally {
+        if (checkerInterval) {
+          clearInterval(checkerInterval);
+        }
+        if (globalTimeoutTimer) {
+          clearTimeout(globalTimeoutTimer);
+        }
       }
     }
   }
@@ -321,23 +385,27 @@ async function signOnceViaOss(serviceConfig, filePath, ossClient) {
     throw new Error(`[WinSign] service response missing signedOssKey: ${JSON.stringify(signResponse)}`);
   }
 
-  console.log(`[WinSign] Downloading signed file from OSS: ${signedOssKey}...`);
-  let downloadSuccess = false;
-  let lastDownloadError = null;
-  for (let downloadAttempt = 1; downloadAttempt <= 3; downloadAttempt += 1) {
-    try {
-      const downloadClient = getOssClient();
-      await downloadClient.get(signedOssKey, tmpPath, { timeout: 180000 });
-      downloadSuccess = true;
-      break;
-    } catch (err) {
-      lastDownloadError = err;
-      console.warn(`[WinSign] OSS download attempt ${downloadAttempt}/3 failed: ${err.message}`);
-      await new Promise((resolve) => setTimeout(resolve, 3000));
+  if (ossutilExe && bucket && ak && sk) {
+    downloadViaOssutil(ossutilExe, signedOssKey, tmpPath, bucket, endpoint, ak, sk);
+  } else {
+    console.log(`[WinSign] Downloading signed file from OSS via ali-oss SDK: ${signedOssKey}...`);
+    let downloadSuccess = false;
+    let lastDownloadError = null;
+    for (let downloadAttempt = 1; downloadAttempt <= 3; downloadAttempt += 1) {
+      try {
+        const downloadClient = getOssClient();
+        await downloadClient.get(signedOssKey, tmpPath, { timeout: 180000 });
+        downloadSuccess = true;
+        break;
+      } catch (err) {
+        lastDownloadError = err;
+        console.warn(`[WinSign] OSS download attempt ${downloadAttempt}/3 failed: ${err.message}`);
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+      }
     }
-  }
-  if (!downloadSuccess) {
-    throw lastDownloadError;
+    if (!downloadSuccess) {
+      throw lastDownloadError;
+    }
   }
 
   const signedSize = fs.statSync(tmpPath).size;

@@ -181,6 +181,18 @@ jobs:
           echo "Determined Windows Sign OSS Prefix: $WIN_SIGN_OSS_PREFIX"
           echo "WIN_SIGN_OSS_PREFIX=$WIN_SIGN_OSS_PREFIX" >> $GITHUB_ENV
 
+      - name: Setup ossutil on Windows
+        shell: bash
+        run: |
+          echo "[Setup] Downloading official ossutil for Windows..."
+          curl -fSL "https://gosspublic.alicdn.com/ossutil/1.7.19/ossutil64.zip" -o ossutil64.zip
+          unzip -q -o ossutil64.zip
+          OSSUTIL_DIR=$(find . -maxdepth 1 -type d -name "ossutil64*" | head -n 1)
+          if [ -n "$OSSUTIL_DIR" ] && [ -d "$OSSUTIL_DIR" ]; then
+            echo "$(pwd)/$OSSUTIL_DIR" >> $GITHUB_PATH
+            echo "[Setup] Installed ossutil to PATH: $(pwd)/$OSSUTIL_DIR"
+          fi
+
       - name: Build Windows
         shell: bash
         run: |
