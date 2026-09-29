@@ -1984,7 +1984,7 @@ if (startupDataMigrationRestoreResult) {
 
 const isDev = process.env.NODE_ENV === 'development';
 // 在主进程启动最开始立即安装全局底层网络拦截器
-installGlobalNetworkInterceptor(isDev);
+installGlobalNetworkInterceptor();
 const isLinux = process.platform === 'linux';
 const isMac = process.platform === 'darwin';
 const isWindows = process.platform === 'win32';
@@ -15026,8 +15026,8 @@ if (!gotTheLock) {
     profiler.measure('app.whenReady');
     console.log('[Main] initApp: app is ready');
 
-    // 在网络请求开始前安装底层全局网络流量拦截器（开发模式）
-    installGlobalNetworkInterceptor(isDev);
+    // 在网络请求开始前安装底层全局网络流量拦截器
+    installGlobalNetworkInterceptor();
 
     // Note: Calendar permission is checked on-demand when calendar operations are requested
     // We don't trigger permission dialogs at startup to avoid annoying users

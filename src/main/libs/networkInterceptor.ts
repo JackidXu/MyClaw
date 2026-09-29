@@ -95,10 +95,10 @@ export function recordApiTraffic(entry: ApiTrafficEntry): void {
 
 
 /**
- * 安装底层网络请求拦截器（仅在 Dev 模式运行）
+ * 安装底层网络请求拦截器（在开发与生产环境中均生效）
  */
-export function installGlobalNetworkInterceptor(isDev: boolean): void {
-  if (!isDev || isInterceptorInstalled) return;
+export function installGlobalNetworkInterceptor(_isDev?: boolean): void {
+  if (isInterceptorInstalled) return;
   isInterceptorInstalled = true;
 
   // 1. 拦截 Node.js 全局 fetch (globalThis.fetch)

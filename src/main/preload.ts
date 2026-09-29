@@ -1586,13 +1586,8 @@ contextBridge.exposeInMainWorld('electron', {
   },
 });
 
-// 全局网络流量 DevTools 统一透明打印监听器
-if (
-  typeof window !== 'undefined' &&
-  (window.location.port === '5175' ||
-    window.location.hostname === 'localhost' ||
-    window.location.hostname === '127.0.0.1')
-) {
+// 全局网络流量 DevTools 统一透明打印监听器（开发与生产环境均打印）
+if (typeof window !== 'undefined') {
   const logTrafficEntry = (entry: {
     id: string;
     type: 'request' | 'response' | 'error';
