@@ -185,12 +185,17 @@ jobs:
         shell: bash
         run: |
           echo "[Setup] Downloading official ossutil for Windows..."
-          curl -fSL "https://gosspublic.alicdn.com/ossutil/1.7.19/ossutil64.zip" -o ossutil64.zip
-          unzip -q -o ossutil64.zip
-          OSSUTIL_DIR=$(find . -maxdepth 1 -type d -name "ossutil64*" | head -n 1)
-          if [ -n "$OSSUTIL_DIR" ] && [ -d "$OSSUTIL_DIR" ]; then
-            echo "$(pwd)/$OSSUTIL_DIR" >> $GITHUB_PATH
-            echo "[Setup] Installed ossutil to PATH: $(pwd)/$OSSUTIL_DIR"
+          curl -fSL --retry 3 "https://gosspublic.alicdn.com/ossutil/1.7.18/ossutil64.zip" -o ossutil64.zip || true
+          if [ -f ossutil64.zip ]; then
+            unzip -q -o ossutil64.zip || true
+            OSSUTIL_DIR=$(find . -maxdepth 1 -type d -name "ossutil64*" | head -n 1)
+            if [ -n "$OSSUTIL_DIR" ] && [ -d "$OSSUTIL_DIR" ]; then
+              FULL_PATH="$(pwd)/$OSSUTIL_DIR"
+              echo "$FULL_PATH" >> $GITHUB_PATH
+              echo "OSSUTIL_PATH=$FULL_PATH/ossutil64.exe" >> $GITHUB_ENV
+              echo "[Setup] Installed ossutil to PATH: $FULL_PATH"
+              "$FULL_PATH/ossutil64.exe" --version || true
+            fi
           fi
 
       - name: Build Windows
