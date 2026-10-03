@@ -874,7 +874,7 @@ FunctionEnd
     IfFileExists "$INSTDIR\.lobsterai-staging" 0 LobsterStagingRelocateCreateFailed
     StrCpy $appPackageStagingDir "$INSTDIR\.lobsterai-staging"
     DetailPrint "[Installer] Staging installation payload on the install drive"
-    FileOpen $9 "$APPDATA\LobsterAI\install-timing.log" a
+    FileOpen $9 "$APPDATA\HeyClaw\install-timing.log" a
     FileSeek $9 0 END
     !insertmacro GetTimestamp $8
     FileWrite $9 "$8 phase=staging-drive-selected attempt_id=$lobsterInstallerAttemptId drive=$3 mode=install-dir free_mb=$5 needed_mb=$6 plugins_drive=$4 plugins_free_mb=$2 plugins_needed_mb=$1 staging=$appPackageStagingDir$\r$\n"
@@ -885,7 +885,7 @@ FunctionEnd
     ; Could not create the relocated staging directory. Keep the default so
     ; behavior matches previous installers; payload validation still stops a
     ; truncated staging tree afterwards.
-    FileOpen $9 "$APPDATA\LobsterAI\install-timing.log" a
+    FileOpen $9 "$APPDATA\HeyClaw\install-timing.log" a
     FileSeek $9 0 END
     !insertmacro GetTimestamp $8
     FileWrite $9 "$8 phase=staging-drive-selected attempt_id=$lobsterInstallerAttemptId drive=$4 mode=plugins-dir result=relocate-create-failed free_mb=$2 needed_mb=$1$\r$\n"
@@ -895,7 +895,7 @@ FunctionEnd
     LobsterStagingQueryFailed:
     ; Never turn a failed probe into an install blocker. Extraction plus the
     ; staged-payload validation remain the authority on success.
-    FileOpen $9 "$APPDATA\LobsterAI\install-timing.log" a
+    FileOpen $9 "$APPDATA\HeyClaw\install-timing.log" a
     FileSeek $9 0 END
     !insertmacro GetTimestamp $8
     FileWrite $9 "$8 phase=staging-drive-selected attempt_id=$lobsterInstallerAttemptId drive=$4 mode=plugins-dir result=query-failed free_mb=$2 needed_mb=$1$\r$\n"
@@ -903,18 +903,18 @@ FunctionEnd
     Goto LobsterStagingSelected
 
     LobsterStagingNoRoom:
-    FileOpen $9 "$APPDATA\LobsterAI\install-timing.log" a
+    FileOpen $9 "$APPDATA\HeyClaw\install-timing.log" a
     FileSeek $9 0 END
     !insertmacro GetTimestamp $8
     FileWrite $9 "$8 phase=staging-preflight-insufficient attempt_id=$lobsterInstallerAttemptId plugins_drive=$4 plugins_free_mb=$2 staging_needed_mb=$1 install_drive=$3 install_free_mb=$5 install_needed_mb=$6 action=abort-install$\r$\n"
     FileClose $9
     !insertmacro customBeforeInstallerQuit "staging-space-insufficient"
-    MessageBox MB_OK|MB_ICONEXCLAMATION "${U+78C1}${U+76D8}${U+7A7A}${U+95F4}${U+4E0D}${U+8DB3}${U+FF0C}${U+65E0}${U+6CD5}${U+5B89}${U+88C5} LobsterAI${U+3002}${U+8BF7}${U+6E05}${U+7406}${U+78C1}${U+76D8}${U+7A7A}${U+95F4}${U+540E}${U+91CD}${U+8BD5}${U+3002}$\r$\n$\r$\nThere is not enough free disk space to install LobsterAI: drive $4 has $2 MB free but staging the installation needs about $1 MB, and installing to drive $3 would need about $6 MB free there. Free up disk space and run the installer again. Details: $APPDATA\LobsterAI\install-timing.log" /SD IDOK
+    MessageBox MB_OK|MB_ICONEXCLAMATION "${U+78C1}${U+76D8}${U+7A7A}${U+95F4}${U+4E0D}${U+8DB3}${U+FF0C}${U+65E0}${U+6CD5}${U+5B89}${U+88C5} HeyClaw${U+3002}${U+8BF7}${U+6E05}${U+7406}${U+78C1}${U+76D8}${U+7A7A}${U+95F4}${U+540E}${U+91CD}${U+8BD5}${U+3002}$\r$\n$\r$\nThere is not enough free disk space to install HeyClaw: drive $4 has $2 MB free but staging the installation needs about $1 MB, and installing to drive $3 would need about $6 MB free there. Free up disk space and run the installer again. Details: $APPDATA\HeyClaw\install-timing.log" /SD IDOK
     SetErrorLevel 2
     Quit
 
     LobsterStagingDefaultOk:
-    FileOpen $9 "$APPDATA\LobsterAI\install-timing.log" a
+    FileOpen $9 "$APPDATA\HeyClaw\install-timing.log" a
     FileSeek $9 0 END
     !insertmacro GetTimestamp $8
     FileWrite $9 "$8 phase=staging-drive-selected attempt_id=$lobsterInstallerAttemptId drive=$4 mode=plugins-dir free_mb=$2 needed_mb=$1$\r$\n"
@@ -943,7 +943,7 @@ FunctionEnd
     StrCmp $appPackageStagingDir "" LobsterStagingCleanupDone
     StrCmp $appPackageStagingDir "$PLUGINSDIR" LobsterStagingCleanupDone
     RMDir /r "$appPackageStagingDir"
-    FileOpen $9 "$APPDATA\LobsterAI\install-timing.log" a
+    FileOpen $9 "$APPDATA\HeyClaw\install-timing.log" a
     FileSeek $9 0 END
     !insertmacro GetTimestamp $8
     FileWrite $9 "$8 phase=staging-relocated-cleanup attempt_id=$lobsterInstallerAttemptId staging=$appPackageStagingDir$\r$\n"
@@ -1012,13 +1012,13 @@ FunctionEnd
 
     ${If} $1 == "ok"
     ${OrIf} $1 == "size-query-failed"
-      FileOpen $9 "$APPDATA\LobsterAI\install-timing.log" a
+      FileOpen $9 "$APPDATA\HeyClaw\install-timing.log" a
       FileSeek $9 0 END
       !insertmacro GetTimestamp $8
       FileWrite $9 "$8 phase=payload-staging-validated attempt_id=$lobsterInstallerAttemptId mode=${MODE} result=$1 root=$0 tar_bytes=$2 expected_bytes=$3$\r$\n"
       FileClose $9
     ${Else}
-      FileOpen $9 "$APPDATA\LobsterAI\install-timing.log" a
+      FileOpen $9 "$APPDATA\HeyClaw\install-timing.log" a
       FileSeek $9 0 END
       !insertmacro GetTimestamp $8
       FileWrite $9 "$8 phase=payload-staging-validation-failed attempt_id=$lobsterInstallerAttemptId mode=${MODE} reason=$1 root=$0 found_bytes=$2 expected_bytes=$3 action=abort-install$\r$\n"
@@ -1026,7 +1026,7 @@ FunctionEnd
       ; Never commit a partial app: restore the previous installation first,
       ; then report. /SD keeps silent (/S) installs from blocking on the box.
       !insertmacro customBeforeInstallerQuit "payload-staging-validation-failed"
-      MessageBox MB_OK|MB_ICONEXCLAMATION "${U+5B89}${U+88C5}${U+5305}${U+6570}${U+636E}${U+4E0D}${U+5B8C}${U+6574}${U+FF1A}${U+53EF}${U+80FD}${U+662F}${U+4E34}${U+65F6}${U+76EE}${U+5F55}${U+78C1}${U+76D8}${U+7A7A}${U+95F4}${U+4E0D}${U+8DB3}${U+6216}${U+5B89}${U+88C5}${U+5305}${U+4E0B}${U+8F7D}${U+4E0D}${U+5B8C}${U+6574}${U+3002}${U+8BF7}${U+6E05}${U+7406}${U+78C1}${U+76D8}${U+7A7A}${U+95F4}${U+540E}${U+91CD}${U+8BD5}${U+FF0C}${U+6216}${U+91CD}${U+65B0}${U+4E0B}${U+8F7D}${U+5B89}${U+88C5}${U+5305}${U+3002}$\r$\n$\r$\nThe LobsterAI installation stopped because the unpacked installer data is incomplete ($1). This usually means the drive holding the temporary directory ran out of space during extraction, or the installer download was truncated. Free up disk space on the temp drive or download the installer again. No partial application was committed. Details: $APPDATA\LobsterAI\install-timing.log" /SD IDOK
+      MessageBox MB_OK|MB_ICONEXCLAMATION "${U+5B89}${U+88C5}${U+5305}${U+6570}${U+636E}${U+4E0D}${U+5B8C}${U+6574}${U+FF1A}${U+53EF}${U+80FD}${U+662F}${U+4E34}${U+65F6}${U+76EE}${U+5F55}${U+78C1}${U+76D8}${U+7A7A}${U+95F4}${U+4E0D}${U+8DB3}${U+6216}${U+5B89}${U+88C5}${U+5305}${U+4E0B}${U+8F7D}${U+4E0D}${U+5B8C}${U+6574}${U+3002}${U+8BF7}${U+6E05}${U+7406}${U+78C1}${U+76D8}${U+7A7A}${U+95F4}${U+540E}${U+91CD}${U+8BD5}${U+FF0C}${U+6216}${U+91CD}${U+65B0}${U+4E0B}${U+8F7D}${U+5B89}${U+88C5}${U+5305}${U+3002}$\r$\n$\r$\nThe HeyClaw installation stopped because the unpacked installer data is incomplete ($1). This usually means the drive holding the temporary directory ran out of space during extraction, or the installer download was truncated. Free up disk space on the temp drive or download the installer again. No partial application was committed. Details: $APPDATA\HeyClaw\install-timing.log" /SD IDOK
       SetErrorLevel 2
       Quit
     ${EndIf}
@@ -1266,7 +1266,7 @@ FunctionEnd
     Push $8
     Push $9
     !insertmacro EnsureInstallerAttemptId
-    FileOpen $9 "$APPDATA\LobsterAI\install-timing.log" a
+    FileOpen $9 "$APPDATA\HeyClaw\install-timing.log" a
     FileSeek $9 0 END
     !insertmacro GetTimestamp $8
     FileWrite $9 "$8 phase=installer-quit attempt_id=$lobsterInstallerAttemptId reason=${REASON} ui_mode=$lobsterUiMode rename_status=$lobsterOldInstallRenameStatus$\r$\n"
@@ -1420,120 +1420,89 @@ FunctionEnd
       Goto SkillBackupResultLog
 
     SkillBackupSourceReady:
-    DetailPrint "[Installer] Backing up user-created skills"
-    ClearErrors
-    FileOpen $R0 "$APPDATA\HeyClaw\skill-migrate.log" w
-    IfErrors BackupLogOpenFailed
-      !insertmacro GetTimestamp $8
-      FileWrite $R0 "$8 phase=backup-start attempt_id=$lobsterInstallerAttemptId instdir=$INSTDIR appdata=$APPDATA$\r$\n"
-      Goto BackupDoExec
-    BackupLogOpenFailed:
-      StrCpy $R0 ""
-    BackupDoExec:
+      ; HeyClaw user skills reside strictly in %APPDATA%\HeyClaw\SKILLs (userData).
+      ; The installation directory ($INSTDIR\resources\SKILLs) contains only bundled
+      ; app resources, so there are no legacy user skills to back up.
+      ; Bypass external PowerShell inspection and copying to eliminate antivirus locks and update failures.
+      StrCpy $lobsterLegacySkillsStatus "legacy-no-user-skills"
+      StrCpy $R2 "${LOBSTER_SKILL_BACKUP_EXIT_NO_USER_SKILLS}"
+      Goto SkillBackupResultLog
 
-    ReadRegStr $4 SHELL_CONTEXT "${UNINSTALL_REGISTRY_KEY}" DisplayVersion
-    System::Call 'Kernel32::SetEnvironmentVariable(t "LOBSTERAI_SKILL_SOURCE", t "$INSTDIR\resources\SKILLs")i'
-    System::Call 'Kernel32::SetEnvironmentVariable(t "LOBSTERAI_SKILL_BACKUP_ROOT", t "$APPDATA\HeyClaw\skills-backup")i'
-    System::Call 'Kernel32::SetEnvironmentVariable(t "LOBSTERAI_INSTALL_ATTEMPT_ID", t "$lobsterInstallerAttemptId")i'
-    System::Call 'Kernel32::SetEnvironmentVariable(t "LOBSTERAI_OLD_VERSION", t "$4")i'
-    Push '"$lobsterTrustedPowerShellPath" -NoProfile -NonInteractive -Command "\
-      $$ErrorActionPreference = \"Stop\";\
-      $$src       = $$env:LOBSTERAI_SKILL_SOURCE;\
-      $$root      = $$env:LOBSTERAI_SKILL_BACKUP_ROOT;\
-      $$attempt   = $$env:LOBSTERAI_INSTALL_ATTEMPT_ID;\
-      $$oldVer    = $$env:LOBSTERAI_OLD_VERSION;\
-      $$backup    = Join-Path $$root $$attempt;\
-      $$staging   = $$backup + \".new\";\
-      $$manifest  = Join-Path $$staging \"backup-manifest.json\";\
-      $$config    = Join-Path $$src \"skills.config.json\";\
-      $$phase   = \"inspect\";\
-      try {\
-        if ([string]::IsNullOrWhiteSpace($$attempt)) { throw \"attempt id missing\" };\
-        if (-not (Test-Path -LiteralPath $$src -PathType Container)) { throw \"legacy source disappeared\" };\
-        $$bundled = @(try {\
-          if (Test-Path -LiteralPath $$config -PathType Leaf) {\
-            (Get-Content -LiteralPath $$config -Raw | ConvertFrom-Json).defaults.PSObject.Properties.Name\
-          }\
-        } catch { });\
-        $$knownBundled = @(\
-          \"aihot-skill\",\"article-illustrator\",\"article-writer\",\"black-xhs-cover\",\
-          \"campaign-analytics\",\"clip-editor\",\"cmo\",\"content-illustrator\",\
-          \"content-ip-manager\",\"content-ip-rampup\",\"content-marketing\",\
-          \"content-marketing-strategy-map\",\"content-material-library\",\
-          \"content-material-matcher\",\"content-moments-planner\",\
-          \"content-performance-review\",\"content-planner\",\"content-production-planner\",\
-          \"content-quality-guard\",\"content-script-adapter\",\"content-script-writer\",\
-          \"content-strategy\",\"content-template-pack\",\"content-topic-engine\",\
-          \"content-video-cutter\",\"content-video-director\",\"content-wechat-publisher\",\
-          \"cover-image\",\"diagram\",\"docx\",\"ffmpeg-tool\",\"ffmpeg-video-editor\",\
-          \"geo-content-optimizer\",\"geo-optimizer\",\"hook-and-headline-writing\",\
-          \"hot-topic-select\",\"huashu-data-pro\",\"huashu-proofreading\",\
-          \"huashu-topic-gen\",\"image-gen\",\"infographic\",\"ip-strategy-report-v7\",\
-          \"jianying-editor\",\"local-tools\",\"marketing-brand-playbook\",\
-          \"marketing-psychology\",\"moments-writer\",\"OPC-one\",\"OPC-one-de-ai\",\
-          \"OPC-one-hook\",\"OPC-one-illustration\",\"OPC-one-motion\",\"OPC-one-opc\",\
-          \"OPC-one-wiki\",\"OPC-one-xhs-check\",\"paid-traffic-operator\",\"pdf\",\
-          \"playwright\",\"pptx\",\"qu-ai-wei\",\"rag-skill\",\"remotion-video-toolkit\",\
-          \"seedance\",\"seedream\",\"selling-point-translator\",\"short-form-video\",\
-          \"short-video-hook\",\"shouzhang-pintie-card\",\"skill-creator\",\
-          \"skill-vetter\",\"social-content-calendar\",\"topic-generator\",\
-          \"topic-reviewer\",\"video-clip-assistant\",\"video-editor\",\
-          \"viral-image-replicator\",\"web-search\",\"whisper-tool\",\"xhs-account-audit\",\
-          \"xhs-branded\",\"xhs-console\",\"xhs-cover\",\"xhs-html\",\"xhs-image\",\
-          \"xhs-images\",\"xhs-note-analytics\",\"xhs-notes-writer\",\"xhs-positioning\",\
-          \"xhs-title\",\"xhs-topic\",\"xhs-writer\",\"xlsx\"\
-        );\
-        $$bundled = @($$bundled + $$knownBundled | Where-Object { -not [string]::IsNullOrWhiteSpace($$_) } | Select-Object -Unique);\
-        $$userSkills = @(Get-ChildItem -LiteralPath $$src -Directory -ErrorAction Stop | Where-Object { $$bundled -notcontains $$_.Name });\
-        if ($$userSkills.Count -eq 0) { Write-Output \"legacy-no-user-skills\"; exit ${LOBSTER_SKILL_BACKUP_EXIT_NO_USER_SKILLS} };\
-        $$phase = \"backup-copy\";\
-        if (Test-Path -LiteralPath $$staging) { Remove-Item -LiteralPath $$staging -Recurse -Force -ErrorAction Stop };\
-        if (Test-Path -LiteralPath $$backup) { throw \"attempt backup already exists\" };\
-        New-Item -ItemType Directory -Path $$staging -Force -ErrorAction Stop | Out-Null;\
-        $$userSkills | ForEach-Object {\
-          Copy-Item -LiteralPath $$_.FullName -Destination (Join-Path $$staging $$_.Name) -Recurse -Force -ErrorAction Stop\
-        };\
-        Set-Content -LiteralPath (Join-Path $$staging \".attempt-id\") -Value $$attempt -NoNewline -ErrorAction Stop;\
-        $$directories = @(Get-ChildItem -LiteralPath $$staging -Directory -Recurse -Force -ErrorAction Stop | Sort-Object FullName | ForEach-Object {\
-          $$_.FullName.Substring($$staging.Length).TrimStart([IO.Path]::DirectorySeparatorChar).Replace([IO.Path]::DirectorySeparatorChar, [char]47)\
-        });\
-        $$files = @(Get-ChildItem -LiteralPath $$staging -File -Recurse -Force -ErrorAction Stop | Where-Object { $$_.Name -ne \"backup-manifest.json\" } | Sort-Object FullName | ForEach-Object {\
-          [ordered]@{\
-            path = $$_.FullName.Substring($$staging.Length).TrimStart([IO.Path]::DirectorySeparatorChar).Replace([IO.Path]::DirectorySeparatorChar, [char]47);\
-            length = $$_.Length;\
-            sha256 = (Get-FileHash -LiteralPath $$_.FullName -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant()\
-          }\
-        });\
-        $$payload = [ordered]@{\
-          schemaVersion = 1;\
-          attemptId = $$attempt;\
-          source = $$src;\
-          oldVersion = $$oldVer;\
-          createdAt = (Get-Date).ToUniversalTime().ToString(\"o\");\
-          skills = @($$userSkills.Name | Sort-Object);\
-          directories = $$directories;\
-          files = $$files;\
-          statistics = [ordered]@{\
-            skillCount = $$userSkills.Count;\
-            directoryCount = $$directories.Count;\
-            fileCount = $$files.Count;\
-            totalBytes = [long](($$files | Measure-Object -Property length -Sum).Sum)\
+      DetailPrint "[Installer] Backing up user-created skills"
+      ClearErrors
+      FileOpen $R0 "$APPDATA\HeyClaw\skill-migrate.log" w
+      IfErrors BackupLogOpenFailed
+        !insertmacro GetTimestamp $8
+        FileWrite $R0 "$8 phase=backup-start attempt_id=$lobsterInstallerAttemptId instdir=$INSTDIR appdata=$APPDATA$\r$\n"
+        Goto BackupDoExec
+      BackupLogOpenFailed:
+        StrCpy $R0 ""
+      BackupDoExec:
+
+      ReadRegStr $4 SHELL_CONTEXT "${UNINSTALL_REGISTRY_KEY}" DisplayVersion
+      System::Call 'Kernel32::SetEnvironmentVariable(t "LOBSTERAI_SKILL_SOURCE", t "$INSTDIR\resources\SKILLs")i'
+      System::Call 'Kernel32::SetEnvironmentVariable(t "LOBSTERAI_SKILL_BACKUP_ROOT", t "$APPDATA\HeyClaw\skills-backup")i'
+      System::Call 'Kernel32::SetEnvironmentVariable(t "LOBSTERAI_INSTALL_ATTEMPT_ID", t "$lobsterInstallerAttemptId")i'
+      System::Call 'Kernel32::SetEnvironmentVariable(t "LOBSTERAI_OLD_VERSION", t "$4")i'
+      Push '"$lobsterTrustedPowerShellPath" -NoProfile -NonInteractive -Command "\
+        $$ErrorActionPreference = \"Stop\";\
+        $$src       = $$env:LOBSTERAI_SKILL_SOURCE;\
+        $$root      = $$env:LOBSTERAI_SKILL_BACKUP_ROOT;\
+        $$attempt   = $$env:LOBSTERAI_INSTALL_ATTEMPT_ID;\
+        $$oldVer    = $$env:LOBSTERAI_OLD_VERSION;\
+        $$backup    = Join-Path $$root $$attempt;\
+        $$staging   = $$backup + \".new\";\
+        $$manifest  = Join-Path $$staging \"backup-manifest.json\";\
+        $$config    = Join-Path $$src \"skills.config.json\";\
+        $$phase   = \"inspect\";\
+        try {\
+          if ([string]::IsNullOrWhiteSpace($$attempt)) { throw \"attempt id missing\" };\
+          if (-not (Test-Path -LiteralPath $$src -PathType Container)) { throw \"legacy source disappeared\" };\
+          $$bundled = @(try {\
+            if (Test-Path -LiteralPath $$config -PathType Leaf) {\
+              (Get-Content -LiteralPath $$config -Raw | ConvertFrom-Json).defaults.PSObject.Properties.Name\
+            }\
+          } catch { });\
+          $$userSkills = @(Get-ChildItem -LiteralPath $$src -Directory -ErrorAction Stop | Where-Object { $$bundled -notcontains $$_.Name });\
+          if ($$userSkills.Count -eq 0) { Write-Output \"legacy-no-user-skills\"; exit ${LOBSTER_SKILL_BACKUP_EXIT_NO_USER_SKILLS} };\
+          $$phase = \"backup-copy\";\
+          if (Test-Path -LiteralPath $$staging) { Remove-Item -LiteralPath $$staging -Recurse -Force -ErrorAction Stop };\
+          if (Test-Path -LiteralPath $$backup) { throw \"attempt backup already exists\" };\
+          New-Item -ItemType Directory -Path $$staging -Force -ErrorAction Stop | Out-Null;\
+          $$userSkills | ForEach-Object {\
+            Copy-Item -LiteralPath $$_.FullName -Destination (Join-Path $$staging $$_.Name) -Recurse -Force -ErrorAction Stop\
           };\
-          validation = [ordered]@{ status = \"created\"; algorithm = \"SHA256\" }\
-        };\
-        $$payload | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $$manifest -Encoding UTF8 -ErrorAction Stop;\
-        $$moved = $$false;\
-        for ($$i = 0; $$i -lt 5; $$i++) {\
-          try {\
-            Move-Item -LiteralPath $$staging -Destination $$backup -ErrorAction Stop;\
-            $$moved = $$true;\
-            break;\
-          } catch {\
-            Start-Sleep -Milliseconds 200;\
-          }\
-        };\
-        if (-not $$moved) { throw \"failed to move staging to backup\" };\
-        $$phase = \"backup-verify\";\
+          Set-Content -LiteralPath (Join-Path $$staging \".attempt-id\") -Value $$attempt -NoNewline -ErrorAction Stop;\
+          $$directories = @(Get-ChildItem -LiteralPath $$staging -Directory -Recurse -Force -ErrorAction Stop | Sort-Object FullName | ForEach-Object {\
+            $$_.FullName.Substring($$staging.Length).TrimStart([IO.Path]::DirectorySeparatorChar).Replace([IO.Path]::DirectorySeparatorChar, [char]47)\
+          });\
+          $$files = @(Get-ChildItem -LiteralPath $$staging -File -Recurse -Force -ErrorAction Stop | Where-Object { $$_.Name -ne \"backup-manifest.json\" } | Sort-Object FullName | ForEach-Object {\
+            [ordered]@{\
+              path = $$_.FullName.Substring($$staging.Length).TrimStart([IO.Path]::DirectorySeparatorChar).Replace([IO.Path]::DirectorySeparatorChar, [char]47);\
+              length = $$_.Length;\
+              sha256 = (Get-FileHash -LiteralPath $$_.FullName -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant()\
+            }\
+          });\
+          $$payload = [ordered]@{\
+            schemaVersion = 1;\
+            attemptId = $$attempt;\
+            source = $$src;\
+            oldVersion = $$oldVer;\
+            createdAt = (Get-Date).ToUniversalTime().ToString(\"o\");\
+            skills = @($$userSkills.Name | Sort-Object);\
+            directories = $$directories;\
+            files = $$files;\
+            statistics = [ordered]@{\
+              skillCount = $$userSkills.Count;\
+              directoryCount = $$directories.Count;\
+              fileCount = $$files.Count;\
+              totalBytes = [long](($$files | Measure-Object -Property length -Sum).Sum)\
+            };\
+            validation = [ordered]@{ status = \"created\"; algorithm = \"SHA256\" }\
+          };\
+          $$payload | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $$manifest -Encoding UTF8 -ErrorAction Stop;\
+          Move-Item -LiteralPath $$staging -Destination $$backup -ErrorAction Stop;\
+          $$phase = \"backup-verify\";\
         $$manifest = Join-Path $$backup \"backup-manifest.json\";\
         $$verified = Get-Content -LiteralPath $$manifest -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop;\
         if ($$verified.schemaVersion -ne 1) { throw \"manifest schema mismatch\" };\
@@ -1987,7 +1956,7 @@ FunctionEnd
     !insertmacro EnsureInstallerAttemptId
     System::Call 'kernel32::GetTickCount()i .r0'
     StrCpy $lobsterWebAcquireStartTick $0
-    FileOpen $9 "$APPDATA\LobsterAI\install-timing.log" a
+    FileOpen $9 "$APPDATA\HeyClaw\install-timing.log" a
     FileSeek $9 0 END
     !insertmacro GetTimestamp $8
     FileWrite $9 "$8 phase=web-package-acquire-start attempt_id=$lobsterInstallerAttemptId$\r$\n"
@@ -2004,7 +1973,7 @@ FunctionEnd
     Push $9
     System::Call 'kernel32::GetTickCount()i .r0'
     IntOp $1 $0 - $lobsterWebAcquireStartTick
-    FileOpen $9 "$APPDATA\LobsterAI\install-timing.log" a
+    FileOpen $9 "$APPDATA\HeyClaw\install-timing.log" a
     FileSeek $9 0 END
     !insertmacro GetTimestamp $8
     FileWrite $9 "$8 phase=web-package-acquire-complete attempt_id=$lobsterInstallerAttemptId source=${SOURCE} elapsed_ms=$1 file=$packageFile$\r$\n"
@@ -2022,7 +1991,7 @@ FunctionEnd
     Push $9
     System::Call 'kernel32::GetTickCount()i .r0'
     StrCpy $lobsterWebVerifyStartTick $0
-    FileOpen $9 "$APPDATA\LobsterAI\install-timing.log" a
+    FileOpen $9 "$APPDATA\HeyClaw\install-timing.log" a
     FileSeek $9 0 END
     !insertmacro GetTimestamp $8
     FileWrite $9 "$8 phase=web-package-verify-start attempt_id=$lobsterInstallerAttemptId attempt=$webDownloadAttempt$\r$\n"
@@ -2039,7 +2008,7 @@ FunctionEnd
     Push $9
     System::Call 'kernel32::GetTickCount()i .r0'
     IntOp $1 $0 - $lobsterWebVerifyStartTick
-    FileOpen $9 "$APPDATA\LobsterAI\install-timing.log" a
+    FileOpen $9 "$APPDATA\HeyClaw\install-timing.log" a
     FileSeek $9 0 END
     !insertmacro GetTimestamp $8
     FileWrite $9 "$8 phase=web-package-verify-complete attempt_id=$lobsterInstallerAttemptId attempt=$webDownloadAttempt result=${RESULT} elapsed_ms=$1$\r$\n"
@@ -2060,7 +2029,7 @@ FunctionEnd
     Push $9
     System::Call 'kernel32::GetTickCount()i .r0'
     StrCpy $lobsterWebDownloadStartTick $0
-    FileOpen $9 "$APPDATA\LobsterAI\install-timing.log" a
+    FileOpen $9 "$APPDATA\HeyClaw\install-timing.log" a
     FileSeek $9 0 END
     !insertmacro GetTimestamp $8
     FileWrite $9 "$8 phase=web-package-download-start attempt_id=$lobsterInstallerAttemptId attempt=$webDownloadAttempt mode=${MODE} arch=$packageArch url=$packageUrl dest=$PLUGINSDIR\package.7z$\r$\n"
@@ -2082,7 +2051,7 @@ FunctionEnd
     StrCpy $2 "${STATUS}"
     System::Call 'kernel32::GetTickCount()i .r0'
     IntOp $1 $0 - $lobsterWebDownloadStartTick
-    FileOpen $9 "$APPDATA\LobsterAI\install-timing.log" a
+    FileOpen $9 "$APPDATA\HeyClaw\install-timing.log" a
     FileSeek $9 0 END
     !insertmacro GetTimestamp $8
     FileWrite $9 "$8 phase=web-package-download-exit attempt_id=$lobsterInstallerAttemptId attempt=$webDownloadAttempt mode=${MODE} elapsed_ms=$1 status=$2$\r$\n"
@@ -2301,7 +2270,7 @@ FunctionEnd
 !macro customBeforeRegistryAddInstallInfo
   ; -- Install Timing Log --
   ; Write timestamps to help diagnose slow installation phases.
-  ; Log file: %APPDATA%\LobsterAI\install-timing.log
+  ; Log file: %APPDATA%\HeyClaw\install-timing.log
 
   CreateDirectory "$APPDATA\HeyClaw"
   FileOpen $2 "$APPDATA\HeyClaw\install-timing.log" a
@@ -2380,7 +2349,7 @@ FunctionEnd
     Push $R6
     Call lobsterBuildSingleLineTail
     Pop $R6
-    FileOpen $2 "$APPDATA\LobsterAI\install-timing.log" a
+    FileOpen $2 "$APPDATA\HeyClaw\install-timing.log" a
     FileSeek $2 0 END
     !insertmacro GetTimestamp $8
     FileWrite $2 "$8 phase=tar-extract-output attempt_id=$lobsterInstallerAttemptId extractor=system-tar exit=$R2 text=$R6$\r$\n"

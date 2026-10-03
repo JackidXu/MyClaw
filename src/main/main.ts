@@ -4926,7 +4926,7 @@ if (!gotTheLock) {
             ? [
                 {
                   archiveName: 'install-timing.log',
-                  filePath: path.join(app.getPath('appData'), 'LobsterAI', 'install-timing.log'),
+                  filePath: path.join(app.getPath('appData'), 'HeyClaw', 'install-timing.log'),
                 },
               ]
             : []),
@@ -9138,7 +9138,7 @@ if (!gotTheLock) {
       console.error('[DataMigration] backup failed:', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to back up LobsterAI data',
+        error: error instanceof Error ? error.message : 'Failed to back up HeyClaw data',
       };
     }
   });
@@ -9197,11 +9197,11 @@ if (!gotTheLock) {
         success,
         scheduledRestart: rendererReleased,
         rollbackPath: restoreResult?.rollbackPath,
-        error: success ? undefined : restoreResult?.error || 'Failed to import LobsterAI data backup',
+        error: success ? undefined : restoreResult?.error || 'Failed to import HeyClaw data backup',
       };
     } catch (error) {
       isCleanupInProgress = false;
-      const message = error instanceof Error ? error.message : 'Failed to import LobsterAI data backup';
+      const message = error instanceof Error ? error.message : 'Failed to import HeyClaw data backup';
       console.error('[DataMigration] restore scheduling failed:', error);
       if (rendererReleased) {
         dialog.showErrorBox(t('dataMigrationRestoreDialogTitle'), message);
@@ -9291,7 +9291,7 @@ if (!gotTheLock) {
     try {
       return { success: true, state: await action() };
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'LobsterAI in-app browser action failed.';
+      const message = error instanceof Error ? error.message : 'HeyClaw in-app browser action failed.';
       return {
         success: false,
         state: {

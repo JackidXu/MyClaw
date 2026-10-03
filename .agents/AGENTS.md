@@ -427,15 +427,19 @@ HeyClaw 采用双后端支撑体系：
 
 ---
 
-#### 2. 新增/更新内置技能三件套闭环配置清单（强制同次提交，缺一不可）
+#### 2. 彻底解绑安装包历史包袱与新增/更新双配置闭环清单
 
-凡是在 `SKILLs/<skill-name>` 新增或更新内置技能，**必须且必须在同一次提交中完整同步以下 3 处配置，严禁遗漏任何一项**：
+- **安装程序底层解绑事实**：
+  HeyClaw 所有真实用户技能 100% 保存在 `%APPDATA%\HeyClaw\SKILLs`（`userData`）中，安装目录内 100% 均为随包发布的官方只读资源。NSIS 安装程序（`scripts/nsis-installer.nsh`）已彻底解除对安装目录遗留技能的历史扫描与备份包袱，**统一判定无用户技能并直接 0 毫秒放行**。
+  因此，开发者未来新增或更新内置技能，**绝对无需修改任何 NSIS 安装脚本代码**！
 
-| 配置项 | 涉及文件路径 | 核心作用与严重后果说明 |
+- **应用层双配置闭环清单（强制同次提交，缺一不可）**：
+  凡是在 `SKILLs/<skill-name>` 新增或更新内置技能，**必须且只需在同一次提交中完整同步以下 2 处应用层配置**：
+
+| 配置项 | 涉及文件路径 | 核心作用与说明 |
 |---|---|---|
-| **配置 1：官方白名单与同步凭证** | `SKILLs/skills.config.json` | **最核心配置**。必须在 `defaults` 中增加对应技能条目（包含 `order` 与 `enabled: true`）。<br>① NSIS 安装程序以此作为官方白名单判断，漏配会导致 Windows 在线更新强行触发大文件备份并崩溃；<br>② 主进程 `syncBundledSkillsToUserData()` 以此过滤，漏配会导致应用启动时无法将该内置技能同步至用户的 `userData/SKILLs`。 |
-| **配置 2：中英文展示名称字典** | `src/renderer/components/skills/bundledSkillNames.ts` | 必须在 `BUNDLED_SKILL_DISPLAY_NAMES` 中添加对应中英文对照 `{ zh: '...', en: '...' }`。<br>单元测试 `bundledSkillNames.test.ts` 会强制校验其与 `skills.config.json` 的双向完全对齐，漏配会导致自动化测试挂掉。 |
-| **配置 3：Windows 存量兼容白名单** | `scripts/nsis-installer.nsh` | 当新增官方内置技能时，必须将其技能 ID 补充至 NSIS 脚本 PowerShell 检查中的 `$$knownBundled` 数组中。<br>防止存量旧版本客户端升级时因读取本地旧残留配置而再次发生误判。 |
+| **配置 1：官方白名单与同步凭证** | `SKILLs/skills.config.json` | **核心配置**。必须在 `defaults` 中增加对应技能条目（包含 `order` 与 `enabled: true`）。<br>主进程 `syncBundledSkillsToUserData()` 严格以此作为放行凭证，决定启动时是否将内置技能同步至用户的 `userData/SKILLs`。 |
+| **配置 2：中英文展示名称字典** | `src/renderer/components/skills/bundledSkillNames.ts` | 必须在 `BUNDLED_SKILL_DISPLAY_NAMES` 中添加对应中英文对照 `{ zh: '...', en: '...' }`。<br>单元测试 `bundledSkillNames.test.ts` 会强制校验其与 `skills.config.json` 的双向完全对齐，确保前端展示不漏项。 |
 
 ---
 
@@ -450,7 +454,7 @@ node -e "const fs=require('fs');const path=require('path');const cfg=JSON.parse(
 # 2. 验证前端展示名称与 skills.config.json 完全同步
 npx vitest run src/renderer/components/skills/bundledSkillNames.test.ts
 
-# 3. 验证 Windows 安装程序技能备份契约测试无回归
+# 3. 验证 Windows 安装程序契约测试无回归
 npx vitest run tests/windowsInstallerContract.test.ts -t "Skills|manifest|degraded restore"
 ```
 
@@ -460,7 +464,7 @@ npx vitest run tests/windowsInstallerContract.test.ts -t "Skills|manifest|degrad
 
 > [!CAUTION]
 > **【内置技能配置红线】**
-> **严禁在 `SKILLs/` 下只丢文件夹而不修改配置！任何新增或更新内置技能，必须严格遵循上述三件套闭环配置清单。漏配任何一项，就是把定时炸弹埋入下一次 Windows 用户的在线更新中！**
+> **严禁在 `SKILLs/` 下只丢文件夹而不修改配置！任何新增或更新内置技能，必须严格遵循上述应用层双配置闭环清单（`skills.config.json` + `bundledSkillNames.ts`）。**
 
 
 
