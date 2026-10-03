@@ -2,9 +2,9 @@ name: Test macOS Code Sign & Notarize
 
 on:
   workflow_dispatch:
-  # push:
-  #   paths:
-  #     - '.github/workflows/test-mac-sign-notarize.yml'
+  push:
+    paths:
+      - '.github/workflows/test-mac-sign-notarize.yml'
 
 jobs:
   test-electron-builder-sign-notarize:
@@ -71,6 +71,22 @@ jobs:
           app.whenReady().then(() => app.quit());
           EOF
           npm install electron electron-builder --save-dev
+
+      # 临时诊断：直接调用 notarytool，打印 Apple 返回的真实原文（electron-notarize 会因 JSON.parse 吞掉原文）
+      - name: Diagnose notarytool
+        continue-on-error: true
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          xcrun notarytool --version || true
+          xcrun notarytool history \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --output-format json 2>&1 | head -c 3000
+          echo "notarytool exit=${PIPESTATUS[0]}"
 
       # 3. 真实测试 electron-builder 消费自建钥匙串进行签名与公证
       - name: Run electron-builder Sign & Notarize
