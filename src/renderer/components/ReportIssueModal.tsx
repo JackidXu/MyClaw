@@ -148,6 +148,33 @@ const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ onClose }) => {
       const userId = localStorage.getItem('heyclaw_user_id') || '';
       const nickname = localStorage.getItem('heyclaw_user_name') || '';
 
+      let cleanDiagnostics: Record<string, any> = {};
+      if (includeDiagnostics && diagnosticsData) {
+        cleanDiagnostics = {
+          appVersion: diagnosticsData.appVersion,
+          platform: diagnosticsData.platform,
+          arch: diagnosticsData.arch,
+          locale: diagnosticsData.locale,
+          nodeVersion: diagnosticsData.nodeVersion,
+          electronVersion: diagnosticsData.electronVersion,
+          timestamp: diagnosticsData.timestamp,
+        };
+
+        // 如果包含诊断日志切片，先直传云端 OSS 获取 log_url，避免 POST 请求体携带超大文本
+        if (diagnosticsData.recentLogSnippet) {
+          try {
+            const logBlob = new Blob([diagnosticsData.recentLogSnippet], { type: 'text/plain;charset=utf-8' });
+            const logFile = new File([logBlob], `diagnostic-log-${Date.now()}.log`, { type: 'text/plain' });
+            const logUrl = await uploadFile(logFile);
+            if (logUrl) {
+              cleanDiagnostics.log_url = logUrl;
+            }
+          } catch (uploadLogErr) {
+            console.warn('[ReportIssueModal] Upload log to OSS failed, will fallback to server auto-offload:', uploadLogErr);
+          }
+        }
+      }
+
       const payload = {
         userId,
         nickname,
@@ -155,7 +182,7 @@ const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ onClose }) => {
         content: content.trim(),
         contact: contact.trim(),
         attachments: attachments.map((a) => a.url),
-        diagnostics: includeDiagnostics ? diagnosticsData : {},
+        diagnostics: cleanDiagnostics,
       };
 
       const res = await httpClient.admin.post<{ success: boolean; id?: number; message?: string; error?: string }>(
