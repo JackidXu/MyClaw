@@ -755,7 +755,8 @@ type OpenClawModelCompat = {
   supportsUsageInStreaming?: boolean;
   requiresStringContent?: boolean;
   supportsReasoningEffort?: boolean;
-  supportedReasoningEfforts?: string[];
+  supportedReasoningEfforts?: string[] | readonly string[];
+  thinkingFormat?: string;
 };
 
 type OpenClawThinkingRuntimeConfig = {
@@ -1360,29 +1361,39 @@ export const buildProviderSelection = (options: {
           api,
           input: modelInput,
           ...(reasoning !== undefined ? { reasoning } : {}),
-          ...(runtimeProfileDefinition || thinkingRuntimeConfig
-            ? {
-                thinkingLevelMap: {
-                  ...(runtimeProfileDefinition?.thinkingLevelMap ?? {}),
-                  ...(thinkingRuntimeConfig?.thinkingLevelMap ?? {}),
-                },
-                compat: {
-                  ...(runtimeProfileDefinition?.compat ?? {}),
-                  ...(thinkingRuntimeConfig
-                    ? {
-                        supportsReasoningEffort: true,
-                        supportedReasoningEfforts: [
-                          ...thinkingRuntimeConfig.supportedReasoningEfforts,
-                        ],
-                      }
-                    : {
-                        supportedReasoningEfforts: [
-                          ...(runtimeProfileDefinition?.compat.supportedReasoningEfforts ?? []),
-                        ],
-                      }),
-                },
-              }
-            : {}),
+          ...(() => {
+            const isDeepSeek =
+              sessionModelId.toLowerCase().includes('deepseek') ||
+              options.modelId.toLowerCase().includes('deepseek');
+            const thinkingLevelMap = {
+              ...(runtimeProfileDefinition?.thinkingLevelMap ?? {}),
+              ...(thinkingRuntimeConfig?.thinkingLevelMap ?? {}),
+            };
+            const compat: OpenClawModelCompat = {
+              ...(runtimeProfileDefinition?.compat ?? {}),
+              ...(thinkingRuntimeConfig
+                ? {
+                    supportsReasoningEffort: true,
+                    supportedReasoningEfforts: [
+                      ...thinkingRuntimeConfig.supportedReasoningEfforts,
+                    ],
+                  }
+                : runtimeProfileDefinition?.compat.supportedReasoningEfforts
+                  ? {
+                      supportedReasoningEfforts: [
+                        ...runtimeProfileDefinition.compat.supportedReasoningEfforts,
+                      ],
+                    }
+                  : {}),
+              ...(isDeepSeek ? { thinkingFormat: 'deepseek' } : {}),
+            };
+            const hasThinkingLevelMap = Object.keys(thinkingLevelMap).length > 0;
+            const hasCompat = Object.keys(compat).length > 0;
+            return {
+              ...(hasThinkingLevelMap ? { thinkingLevelMap } : {}),
+              ...(hasCompat ? { compat } : {}),
+            };
+          })(),
           ...(descriptor.modelDefaults?.cost ? { cost: descriptor.modelDefaults.cost } : {}),
           ...(contextWindow !== undefined ? { contextWindow } : {}),
           ...(modelMaxTokens !== undefined

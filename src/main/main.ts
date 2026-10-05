@@ -5066,24 +5066,59 @@ if (!gotTheLock) {
       const nodeVersion = process.versions.node;
       const electronVersion = process.versions.electron;
 
-      let recentLogSnippet = '';
+      const sanitizeLogLines = (lines: string[]): string =>
+        lines
+          .map((line) =>
+            line
+              .replace(/(Bearer\s+)[A-Za-z0-9._-]+/gi, '$1[REDACTED]')
+              .replace(/(token['":\s]+)[A-Za-z0-9._-]+/gi, '$1[REDACTED]')
+              .replace(/(api[_-]?key['":\s]+)[A-Za-z0-9._-]+/gi, '$1[REDACTED]')
+              .replace(/(password['":\s]+)[A-Za-z0-9._-]+/gi, '$1[REDACTED]')
+              .replace(/(sk-[A-Za-z0-9_-]{6})[A-Za-z0-9_-]+/gi, '$1[REDACTED]'),
+          )
+          .join('\n');
+
+      let mainLogSnippet = '';
       try {
         const logPath = getLogFilePath();
         if (fs.existsSync(logPath)) {
           const content = fs.readFileSync(logPath, 'utf8');
           const lines = content.split('\n');
-          const tailLines = lines.slice(-8000);
-          recentLogSnippet = tailLines
-            .map((line) => line
-              .replace(/(Bearer\s+)[A-Za-z0-9._-]+/gi, '$1[REDACTED]')
-              .replace(/(token['":\s]+)[A-Za-z0-9._-]+/gi, '$1[REDACTED]')
-              .replace(/(api[_-]?key['":\s]+)[A-Za-z0-9._-]+/gi, '$1[REDACTED]')
-              .replace(/(password['":\s]+)[A-Za-z0-9._-]+/gi, '$1[REDACTED]'))
-            .join('\n');
+          mainLogSnippet = sanitizeLogLines(lines.slice(-6000));
         }
       } catch (logErr) {
-        console.warn('[DiagnosticInfo] failed to read recent log snippet:', logErr);
+        console.warn('[DiagnosticInfo] failed to read recent main log snippet:', logErr);
       }
+
+      let gatewayLogSnippet = '';
+      try {
+        const manager = getOpenClawEngineManager();
+        const gatewayEntries = manager.getRecentGatewayLogEntries();
+        const collectedLines: string[] = [];
+        for (let i = gatewayEntries.length - 1; i >= 0 && collectedLines.length < 6000; i--) {
+          const entry = gatewayEntries[i];
+          if (fs.existsSync(entry.filePath)) {
+            const content = fs.readFileSync(entry.filePath, 'utf8');
+            const fileLines = content.split('\n');
+            const needed = 6000 - collectedLines.length;
+            collectedLines.unshift(...fileLines.slice(-needed));
+          }
+        }
+        if (collectedLines.length > 0) {
+          gatewayLogSnippet = sanitizeLogLines(collectedLines);
+        }
+      } catch (gwLogErr) {
+        console.warn('[DiagnosticInfo] failed to read recent gateway log snippet:', gwLogErr);
+      }
+
+      const logSections: string[] = [];
+      if (mainLogSnippet) {
+        logSections.push(`==================== [HEYCLAW MAIN PROCESS LOG] ====================\n${mainLogSnippet}`);
+      }
+      if (gatewayLogSnippet) {
+        logSections.push(`==================== [OPENCLAW GATEWAY LOG] ====================\n${gatewayLogSnippet}`);
+      }
+      const recentLogSnippet = logSections.join('\n\n');
 
       return {
         success: true,

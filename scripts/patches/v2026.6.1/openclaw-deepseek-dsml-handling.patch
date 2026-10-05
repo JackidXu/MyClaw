@@ -1,0 +1,142 @@
+diff --git a/src/agents/deepseek-text-filter.test.ts b/src/agents/deepseek-text-filter.test.ts
+index c92e99bfcd..1cb160fcc7 100644
+--- a/src/agents/deepseek-text-filter.test.ts
++++ b/src/agents/deepseek-text-filter.test.ts
+@@ -42,6 +42,35 @@ describe("createDeepSeekTextFilter", () => {
+       ],
+       expected: "abc",
+     },
++    {
++      name: "base close token without kind",
++      chunks: [
++        "before <｜DSML｜tool_calls>body</｜DSML｜> after",
++      ],
++      expected: "before  after",
++    },
++    {
++      name: "ascii base close token without kind",
++      chunks: [
++        "before <|DSML|tool_calls>body</|DSML|> after",
++      ],
++      expected: "before  after",
++    },
++    {
++      name: "orphan close token at end of text",
++      chunks: [
++        "继续。我一次性完成更新。用多个精准 edit。\n\n</｜DSML｜>",
++      ],
++      expected: "继续。我一次性完成更新。用多个精准 edit。\n\n",
++    },
++    {
++      name: "split orphan close token across chunks",
++      chunks: [
++        "继续。用精准 edit。 </｜DSML",
++        "｜>",
++      ],
++      expected: "继续。用精准 edit。 ",
++    },
+   ])("drops DSML: $name", ({ chunks, expected }) => {
+     const text = filteredText(chunks);
+     expect(text).toBe(expected);
+diff --git a/src/agents/deepseek-text-filter.ts b/src/agents/deepseek-text-filter.ts
+index 9da8815fcd..888f75f738 100644
+--- a/src/agents/deepseek-text-filter.ts
++++ b/src/agents/deepseek-text-filter.ts
+@@ -4,11 +4,15 @@ const DSML_BARS = ["|", "｜"] as const;
+ const DSML_OPEN_TOKENS = DSML_BARS.flatMap((bar) =>
+   DSML_KINDS.map((kind) => `<${bar}DSML${bar}${kind}>`),
+ );
+-const DSML_CLOSE_TOKENS = DSML_BARS.flatMap((bar) =>
+-  DSML_KINDS.map((kind) => `</${bar}DSML${bar}${kind}>`),
+-);
++const DSML_CLOSE_TOKENS = [
++  ...DSML_BARS.map((bar) => `</${bar}DSML${bar}>`),
++  ...DSML_BARS.flatMap((bar) =>
++    DSML_KINDS.map((kind) => `</${bar}DSML${bar}${kind}>`),
++  ),
++];
+ const MAX_OPEN_TOKEN_LEN = Math.max(...DSML_OPEN_TOKENS.map((token) => token.length));
+ const MAX_CLOSE_TOKEN_LEN = Math.max(...DSML_CLOSE_TOKENS.map((token) => token.length));
++const MAX_DSML_TOKEN_LEN = Math.max(MAX_OPEN_TOKEN_LEN, MAX_CLOSE_TOKEN_LEN);
+ 
+ export interface DeepSeekTextFilter {
+   push(chunk: string): string[];
+@@ -43,7 +47,15 @@ export function createDeepSeekTextFilter(): DeepSeekTextFilter {
+         return output;
+       }
+ 
++      const orphanClose = findEarliestToken(buffer, DSML_CLOSE_TOKENS);
+       const open = findEarliestToken(buffer, DSML_OPEN_TOKENS);
++
++      if (orphanClose && (!open || orphanClose.index <= open.index)) {
++        emit(buffer.slice(0, orphanClose.index));
++        buffer = buffer.slice(orphanClose.index + orphanClose.token.length);
++        continue;
++      }
++
+       if (open) {
+         emit(buffer.slice(0, open.index));
+         buffer = buffer.slice(open.index + open.token.length);
+@@ -57,7 +69,7 @@ export function createDeepSeekTextFilter(): DeepSeekTextFilter {
+         return output;
+       }
+ 
+-      const keep = longestDsmlOpenPrefixSuffixLength(buffer);
++      const keep = longestDsmlPrefixSuffixLength(buffer);
+       const emitLength = buffer.length - keep;
+       if (emitLength <= 0) {
+         return output;
+@@ -91,11 +103,14 @@ function findEarliestToken(text: string, tokens: readonly string[]) {
+   return best;
+ }
+ 
+-function longestDsmlOpenPrefixSuffixLength(text: string) {
+-  const maxLength = Math.min(text.length, MAX_OPEN_TOKEN_LEN - 1);
++function longestDsmlPrefixSuffixLength(text: string) {
++  const maxLength = Math.min(text.length, MAX_DSML_TOKEN_LEN - 1);
+   for (let length = maxLength; length > 0; length--) {
+     const suffix = text.slice(text.length - length);
+-    if (DSML_OPEN_TOKENS.some((token) => token.startsWith(suffix))) {
++    if (
++      DSML_OPEN_TOKENS.some((token) => token.startsWith(suffix)) ||
++      DSML_CLOSE_TOKENS.some((token) => token.startsWith(suffix))
++    ) {
+       return length;
+     }
+   }
+diff --git a/src/agents/openai-transport-stream.ts b/src/agents/openai-transport-stream.ts
+index c6b965f..df12b4b 100644
+--- a/src/agents/openai-transport-stream.ts
++++ b/src/agents/openai-transport-stream.ts
+@@ -3222,9 +3222,12 @@ const DEEPSEEK_DSML_TOOL_KINDS = ["tool_calls", "tool_call", "function_calls"] as const;
+ const DEEPSEEK_DSML_TOOL_OPEN_TOKENS = DEEPSEEK_DSML_BARS.flatMap((bar) =>
+   DEEPSEEK_DSML_TOOL_KINDS.map((kind) => `<${bar}DSML${bar}${kind}>`),
+ );
+-const DEEPSEEK_DSML_TOOL_CLOSE_TOKENS = DEEPSEEK_DSML_BARS.flatMap((bar) =>
+-  DEEPSEEK_DSML_TOOL_KINDS.map((kind) => `</${bar}DSML${bar}${kind}>`),
+-);
++const DEEPSEEK_DSML_TOOL_CLOSE_TOKENS = [
++  ...DEEPSEEK_DSML_BARS.map((bar) => `</${bar}DSML${bar}>`),
++  ...DEEPSEEK_DSML_BARS.flatMap((bar) =>
++    DEEPSEEK_DSML_TOOL_KINDS.map((kind) => `</${bar}DSML${bar}${kind}>`),
++  ),
++];
+ const DEEPSEEK_DSML_TOOL_MAX_OPEN_TOKEN_LEN = Math.max(
+   ...DEEPSEEK_DSML_TOOL_OPEN_TOKENS.map((token) => token.length),
+ );
+diff --git a/src/llm/providers/openai-completions.ts b/src/llm/providers/openai-completions.ts
+index a2e77c2f2f..a39bf079d1 100644
+--- a/src/llm/providers/openai-completions.ts
++++ b/src/llm/providers/openai-completions.ts
+@@ -1285,7 +1285,10 @@ function detectCompat(model: Model<"openai-completions">): ResolvedOpenAIComplet
+     baseUrl.includes("chutes.ai") || isMoonshot || isCloudflareAiGateway || isTogether;
+ 
+   const isGrok = provider === "xai" || baseUrl.includes("api.x.ai");
+-  const isDeepSeek = provider === "deepseek" || baseUrl.includes("deepseek.com");
++  const isDeepSeek =
++    provider === "deepseek" ||
++    baseUrl.includes("deepseek.com") ||
++    model.id.toLowerCase().includes("deepseek");
+   const cacheControlFormat =
+     provider === "openrouter" && model.id.startsWith("anthropic/") ? "anthropic" : undefined;
+ 
