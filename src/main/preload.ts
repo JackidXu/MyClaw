@@ -1416,7 +1416,7 @@ contextBridge.exposeInMainWorld('electron', {
     syncUserSession: (session: string) =>
       ipcRenderer.invoke(AuthIpcChannel.SyncUserSession, { session }),
     getModels: () => ipcRenderer.invoke(AuthIpcChannel.GetModels),
-    getPricingCatalog: () => ipcRenderer.invoke(AuthIpcChannel.GetPricingCatalog),
+    getPricingCatalog: async () => ({ success: false, error: 'Pricing catalog offline' }),
     getProfileSummary: () => ipcRenderer.invoke(AuthIpcChannel.GetProfileSummary),
     claimCreditsFinalReward: (campaignCode: string) =>
       ipcRenderer.invoke(AuthIpcChannel.ClaimCreditsFinalReward, { campaignCode }),

@@ -874,7 +874,6 @@ class AuthService {
     applyEnterpriseAccountContext(null);
     store.dispatch(clearServerModels());
     store.dispatch(clearMediaAccountState());
-    await this.loadPublicPricingCatalogModels();
   }
 
   private clearEnterpriseQuotaBoundaryTimer(): void {
@@ -1043,31 +1042,6 @@ class AuthService {
     }
   }
 
-  /**
-   * Load public pricing catalog models for unauthenticated read-only display.
-   */
-  private async loadPublicPricingCatalogModels() {
-    const authStateAtStart = store.getState().auth;
-    if (authStateAtStart.isLoggedIn || authStateAtStart.ownerAccountKey) {
-      return;
-    }
-    try {
-      const catalogResult = await window.electron.auth.getPricingCatalog();
-      if (!isAuthAccountRequestCurrent(authStateAtStart, store.getState().auth)) {
-        writeAuthRendererLog('debug', 'discarded stale public pricing catalog after auth state changed');
-        return;
-      }
-      if (!catalogResult.success || !catalogResult.textModels) {
-        return;
-      }
-      const serverModels = mapPricingCatalogToPublicServerModels({
-        textModels: catalogResult.textModels,
-      });
-      store.dispatch(setServerModels(serverModels));
-    } catch {
-      // ignore — public catalog is optional
-    }
-  }
 }
 
 export const authService = new AuthService();

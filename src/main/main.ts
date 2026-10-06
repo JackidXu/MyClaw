@@ -7967,49 +7967,13 @@ if (!gotTheLock) {
   });
 
   ipcMain.handle(AuthIpcChannel.GetPricingCatalog, async () => {
-    try {
-      const serverBaseUrl = getServerApiBaseUrl();
-      const url = `${serverBaseUrl}/api/models/pricing-catalog`;
-      console.log(`[Auth:getPricingCatalog] requesting public pricing catalog at ${url}`);
-      const resp = await net.fetch(url, {
-        method: 'GET',
-        headers: { Accept: 'application/json' },
-      });
-      console.log(`[Auth:getPricingCatalog] server returned HTTP ${resp.status}.`);
-      if (!resp.ok) {
-        return { success: false, error: `HTTP ${resp.status}` };
-      }
-      const body = await resp.json() as {
-        code: number;
-        message?: string;
-        data?: {
-          textModels?: unknown[];
-          imageModels?: unknown[];
-          videoModels?: unknown[];
-        };
-      };
-      if (body.code !== 0) {
-        console.warn('[Auth:getPricingCatalog] server rejected pricing catalog request:', serializeForLog({
-          code: body.code,
-          message: body.message,
-        }));
-        return { success: false, error: body.message || 'Failed to load pricing catalog.' };
-      }
-      const textModels = Array.isArray(body.data?.textModels) ? body.data.textModels : [];
-      const imageModels = Array.isArray(body.data?.imageModels) ? body.data.imageModels : [];
-      const videoModels = Array.isArray(body.data?.videoModels) ? body.data.videoModels : [];
-      console.log(
-        '[Auth:getPricingCatalog] loaded public pricing catalog: '
-        + `${textModels.length} text, ${imageModels.length} image, ${videoModels.length} video models.`,
-      );
-      return { success: true, textModels, imageModels, videoModels };
-    } catch (error) {
-      console.error('[Auth:getPricingCatalog] pricing catalog request failed:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      };
-    }
+    return {
+      success: false,
+      error: 'Pricing catalog offline',
+      textModels: [],
+      imageModels: [],
+      videoModels: [],
+    };
   });
 
   ipcMain.handle(AuthIpcChannel.GetModels, async () => {
