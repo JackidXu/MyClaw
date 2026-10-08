@@ -3011,10 +3011,10 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     );
   }
 
-  private async sendEmptyToolFinalPromptReminder(sessionId: string, turn: ActiveTurn): Promise<void> {
+  private async sendEmptyToolFinalPromptReminder(sessionId: string, turn: ActiveTurn, customReminder?: string): Promise<void> {
     try {
       const client = this.requireGatewayClient();
-      const promptReminder = '请根据上述工具执行的结果，向用户输出完整的回答和总结。';
+      const promptReminder = customReminder || '请根据上述工具执行的结果，向用户输出完整的回答和总结。';
       await client.request<Record<string, unknown>>('chat.send', {
         sessionKey: turn.sessionKey,
         message: promptReminder,
@@ -9900,27 +9900,39 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     const sessionAfterReconcile = this.store.getSession(sessionId);
     if (sessionAfterReconcile) {
       const hadToolCall = this.hasTurnToolWork(sessionId, turn);
-      // 当发生过工具调用时，检查工具之后最新产生的回复/思考文本是否为空。
-      // 若工具调用前包含话术，turn.currentText 会保留前文，但 turn.currentAssistantSegmentText 代表工具之后最新一节文本。
-      const lastApiResponseHadNoText = !turn.currentAssistantSegmentText.trim() && !turn.thinking.currentText.trim();
+      const trimmedSegment = turn.currentAssistantSegmentText.trim();
+      const hasThinking = Boolean(turn.thinking.currentText.trim());
+      // 1. 完全无文本回复（仅思考或完全空白）
+      const lastApiResponseHadNoText = !trimmedSegment && !hasThinking;
+      // 2. 悬挂引导语：工具执行完后，模型仅留下一句未完结的预告短语（如以冒号结尾）且无正文产出
+      const isDanglingLeadIn = !hasThinking && trimmedSegment.length > 0 && trimmedSegment.length < 120 && (
+        trimmedSegment.endsWith('：') ||
+        trimmedSegment.endsWith(':') ||
+        /^(接下来|现在|先|继续).*(：|:)$/.test(trimmedSegment)
+      );
+      const needsToolFollowup = hadToolCall && (lastApiResponseHadNoText || isDanglingLeadIn);
       console.debug('[OpenClawRuntime] run end diagnostics, sessionId:', sessionId,
         'turn.currentText:', JSON.stringify(turn.currentText?.slice(0, 100)),
         'turn.currentAssistantSegmentText:', JSON.stringify(turn.currentAssistantSegmentText?.slice(0, 100)),
         'turn.committedAssistantText:', JSON.stringify(turn.committedAssistantText?.slice(0, 100)),
         'hadToolCall:', hadToolCall,
-        'lastApiResponseHadNoText:', lastApiResponseHadNoText);
-      if (hadToolCall && lastApiResponseHadNoText) {
+        'lastApiResponseHadNoText:', lastApiResponseHadNoText,
+        'isDanglingLeadIn:', isDanglingLeadIn);
+      if (needsToolFollowup) {
         if (!turn.emptyToolFinalPromptRetryAttempted) {
           turn.emptyToolFinalPromptRetryAttempted = true;
-          console.info(`[OpenClawRuntime] detected empty tool response after tool execution for session ${sessionId}, sending prompt reminder to complete turn.`);
-          void this.sendEmptyToolFinalPromptReminder(sessionId, turn);
+          const reminder = isDanglingLeadIn
+            ? '请继续执行，完成上述内容的编写或工具调用。'
+            : '请根据上述工具执行的结果，向用户输出完整的回答和总结。';
+          console.info(`[OpenClawRuntime] detected ${isDanglingLeadIn ? 'dangling lead-in' : 'empty tool response'} after tool execution for session ${sessionId}, sending prompt reminder to continue.`);
+          void this.sendEmptyToolFinalPromptReminder(sessionId, turn, reminder);
         }
         this.waitForRecoverableOpenClawRetry(sessionId, turn, payload.runId ?? turn.runId, {
-          reason: 'thinking-only tool final',
+          reason: isDanglingLeadIn ? 'dangling lead-in tool final' : 'thinking-only tool final',
           graceMs: OpenClawRuntimeAdapter.SILENT_MAINTENANCE_FOLLOWUP_GRACE_MS,
           pendingThinkingOnlyHint: true,
         });
-        console.debug(`[OpenClawRuntime] delayed empty tool final while waiting for a recoverable follow-up in session ${sessionId}.`);
+        console.debug(`[OpenClawRuntime] delayed tool final while waiting for a recoverable follow-up in session ${sessionId}.`);
         return;
       }
     }

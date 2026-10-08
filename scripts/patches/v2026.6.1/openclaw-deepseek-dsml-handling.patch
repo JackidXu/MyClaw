@@ -124,6 +124,15 @@ index c6b965f..df12b4b 100644
  const DEEPSEEK_DSML_TOOL_MAX_OPEN_TOKEN_LEN = Math.max(
    ...DEEPSEEK_DSML_TOOL_OPEN_TOKENS.map((token) => token.length),
  );
+@@ -3323,7 +3326,7 @@ async function processOpenAICompletionsStream(
+   if (output.stopReason === "toolUse" && !hasToolCalls) {
+     output.stopReason = "stop";
+   }
+-  if (sawStopFinishReason && output.stopReason === "stop" && hasToolCalls && !hasVisibleText) {
++  if ((sawStopFinishReason || output.stopReason === "stop") && hasToolCalls) {
+     output.stopReason = "toolUse";
+   }
+   if (hasToolCalls && output.stopReason !== "toolUse") {
 diff --git a/src/llm/providers/openai-completions.ts b/src/llm/providers/openai-completions.ts
 index a2e77c2f2f..a39bf079d1 100644
 --- a/src/llm/providers/openai-completions.ts
