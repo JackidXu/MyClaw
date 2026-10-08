@@ -18,7 +18,6 @@ import {
   AgentSidebarPreferenceKey,
 } from './constants';
 import {
-  hasLegacyScheduledTaskTitle,
   isScheduledTaskSession,
 } from './scheduledTaskSession';
 import type {
@@ -221,45 +220,17 @@ export const useAgentSidebarState = ({
   const completedUnreadSessionIds = useSelector(selectCompletedUnreadSessionIds);
   const pendingPermissionSessionIds = useSelector(selectPendingPermissionSessionIds);
 
-  const [expandedAgentIds, setExpandedAgentIds] = useState<string[]>([]);
-  const [expandedTaskListAgentIds, setExpandedTaskListAgentIds] = useState<string[]>([]);
+  const [localSessions, setLocalSessions] = useState<CoworkSessionSummary[]>([]);
+  const [hasMoreSessions, setHasMoreSessions] = useState<boolean>(false);
+  const [visibleTaskLimit, setVisibleTaskLimit] = useState<number>(AgentSidebarPageSize.Preview);
+  const [isTaskListExpanded, setIsTaskListExpanded] = useState<boolean>(false);
   const [expandedProjectIds, setExpandedProjectIds] = useState<string[]>([]);
-  const [visibleTaskLimitByAgentId, setVisibleTaskLimitByAgentId] = useState<Record<string, number>>({});
-  const [taskPreviewsByAgentId, setTaskPreviewsByAgentId] = useState<Record<string, CoworkSessionSummary[]>>({});
-  const [hasMoreTasksByAgentId, setHasMoreTasksByAgentId] = useState<Record<string, boolean>>({});
-  const [loadingAgentIds, setLoadingAgentIds] = useState<string[]>([]);
-  const [failedAgentIds, setFailedAgentIds] = useState<string[]>([]);
+  const [isLoadingTasks, setIsLoadingTasks] = useState<boolean>(false);
+  const [hasLoadError, setHasLoadError] = useState<boolean>(false);
   const [preferenceLoaded, setPreferenceLoaded] = useState(false);
 
-  const loadedAgentIdsRef = useRef(new Set<string>());
-  const loadingKeysRef = useRef(new Set<string>());
-  const activeAgentIdsRef = useRef(new Set<string>());
-  const loggedScheduledMarkerSignatureByAgentIdRef = useRef(new Map<string, string>());
-  const initializedDefaultExpansionRef = useRef(false);
-
-  useEffect(() => {
-    return () => {
-      activeAgentIdsRef.current.clear();
-    };
-  }, []);
-
-  const enabledAgents = useMemo(() => {
-    return agents
-      .filter((agent) => agent.enabled)
-      .map((agent) => ({
-        id: agent.id,
-        name: agent.name,
-        avatar: agent.avatar,
-        enabled: agent.enabled,
-        pinned: agent.pinned ?? false,
-        pinOrder: agent.pinOrder ?? null,
-        sortOrder: agent.sortOrder ?? null,
-      }));
-  }, [agents]);
-
-  const sortedEnabledAgents = useMemo(() => {
-    return sortAgentSidebarAgents(enabledAgents);
-  }, [enabledAgents]);
+  const initialLoadedRef = useRef(false);
+  const isLoadingRef = useRef(false);
 
   const completedUnreadSessionIdSet = useMemo(
     () => new Set(completedUnreadSessionIds),
@@ -269,22 +240,14 @@ export const useAgentSidebarState = ({
     () => new Set(pendingPermissionSessionIds),
     [pendingPermissionSessionIds],
   );
-  const expandedAgentIdSet = useMemo(() => new Set(expandedAgentIds), [expandedAgentIds]);
-  const expandedTaskListAgentIdSet = useMemo(
-    () => new Set(expandedTaskListAgentIds),
-    [expandedTaskListAgentIds],
-  );
   const expandedProjectIdSet = useMemo(() => new Set(expandedProjectIds), [expandedProjectIds]);
-  const loadingAgentIdSet = useMemo(() => new Set(loadingAgentIds), [loadingAgentIds]);
-  const failedAgentIdSet = useMemo(() => new Set(failedAgentIds), [failedAgentIds]);
 
+  // 从本地存储还原偏好状态
   useEffect(() => {
     let cancelled = false;
     void localStore.getItem<AgentSidebarPreferenceState>(AgentSidebarPreferenceKey.State)
       .then((preference) => {
         if (cancelled) return;
-        setExpandedAgentIds(preference?.expandedAgentIds ?? []);
-        setExpandedTaskListAgentIds(preference?.expandedTaskListAgentIds ?? []);
         setExpandedProjectIds(preference?.expandedProjectIds ?? []);
       })
       .finally(() => {
@@ -297,217 +260,75 @@ export const useAgentSidebarState = ({
     };
   }, []);
 
+  // 保存偏好状态
   useEffect(() => {
     if (!preferenceLoaded) return;
     const preference: AgentSidebarPreferenceState = {
-      expandedAgentIds,
-      expandedTaskListAgentIds,
+      expandedAgentIds: [],
+      expandedTaskListAgentIds: [],
       expandedProjectIds,
       selectedAgentId: currentAgentId,
       selectedTaskId: currentSessionId ?? undefined,
     };
     void localStore.setItem(AgentSidebarPreferenceKey.State, preference);
-  }, [
-    currentAgentId,
-    currentSessionId,
-    expandedAgentIds,
-    expandedTaskListAgentIds,
-    expandedProjectIds,
-    preferenceLoaded,
-  ]);
+  }, [currentAgentId, currentSessionId, expandedProjectIds, preferenceLoaded]);
 
-  useEffect(() => {
-    if (!preferenceLoaded || initializedDefaultExpansionRef.current) return;
-    if (sortedEnabledAgents.length === 0) return;
-    initializedDefaultExpansionRef.current = true;
-    setExpandedAgentIds((previous) => {
-      if (previous.length > 0) return previous;
-      const currentAgentExists = sortedEnabledAgents.some((agent) => agent.id === currentAgentId);
-      return [currentAgentExists ? currentAgentId : sortedEnabledAgents[0].id];
-    });
-  }, [currentAgentId, preferenceLoaded, sortedEnabledAgents]);
-
-  const setAgentLoading = useCallback((agentId: string, isLoading: boolean) => {
-    setLoadingAgentIds((previous) => {
-      const exists = previous.includes(agentId);
-      if (isLoading && !exists) return [...previous, agentId];
-      if (!isLoading && exists) return previous.filter((id) => id !== agentId);
-      return previous;
-    });
-  }, []);
-
-  const setAgentFailed = useCallback((agentId: string, failed: boolean) => {
-    setFailedAgentIds((previous) => {
-      const exists = previous.includes(agentId);
-      if (failed && !exists) return [...previous, agentId];
-      if (!failed && exists) return previous.filter((id) => id !== agentId);
-      return previous;
-    });
-  }, []);
-
-  const loadAgentTasks = useCallback(async (
-    agentId: string,
-    options: { offset?: number; limit?: number; replace?: boolean } = {},
-  ) => {
-    const offset = options.offset ?? 0;
-    const limit = options.limit ?? AgentSidebarPageSize.Preview;
-    const replace = options.replace ?? offset === 0;
-    const loadingKey = `${agentId}:${offset}:${limit}`;
-    if (loadingKeysRef.current.has(loadingKey)) return;
-
-    loadingKeysRef.current.add(loadingKey);
-    setAgentLoading(agentId, true);
-    setAgentFailed(agentId, false);
+  // 初始加载所有会话预览
+  const loadInitialSessions = useCallback(async () => {
+    if (isLoadingRef.current) return;
+    isLoadingRef.current = true;
+    setIsLoadingTasks(true);
+    setHasLoadError(false);
 
     try {
-      const result = await coworkService.listSessionsForAgentPreview(agentId, limit, offset);
-      if (!activeAgentIdsRef.current.has(agentId)) return;
+      const result = await coworkService.listSessionsForAgentPreview(
+        undefined,
+        AgentSidebarPageSize.Preview,
+        0,
+      );
       if (!result.success) {
         logAgentSidebarLoadIssue(
           'warn',
-          `failed to load task preview for agent ${agentId}: ${result.error ?? 'unknown error'}.`,
+          `failed to load initial chat sessions: ${result.error ?? 'unknown error'}.`,
         );
-        setAgentFailed(agentId, true);
+        setHasLoadError(true);
         return;
       }
-      if (offset === 0) {
-        const loadedSessions = result.sessions ?? [];
-        const explicitMarkerCount = loadedSessions.filter(
-          (session) => !session.parentSessionId && Boolean(session.scheduledTaskId?.trim()),
-        ).length;
-        const legacyMarkerCount = loadedSessions.filter(
-          (session) => !session.parentSessionId
-            && !session.scheduledTaskId?.trim()
-            && hasLegacyScheduledTaskTitle(session.title),
-        ).length;
-        const markerSignature = `${explicitMarkerCount}:${legacyMarkerCount}`;
-        if (
-          loggedScheduledMarkerSignatureByAgentIdRef.current.get(agentId) !== markerSignature
-        ) {
-          const message = `scheduled-task markers resolved; agent=${agentId}; explicit=${explicitMarkerCount}; legacy=${legacyMarkerCount}; pageSize=${loadedSessions.length}.`;
-          logAgentSidebarDebug(message);
-          loggedScheduledMarkerSignatureByAgentIdRef.current.set(agentId, markerSignature);
-        }
-      }
-      loadedAgentIdsRef.current.add(agentId);
-      setTaskPreviewsByAgentId((previous) => {
-        const current = replace ? [] : previous[agentId] ?? [];
-        return {
-          ...previous,
-          [agentId]: mergeSessions(current, result.sessions ?? []),
-        };
-      });
-      setHasMoreTasksByAgentId((previous) => ({
-        ...previous,
-        [agentId]: result.hasMore ?? false,
-      }));
+      setLocalSessions(result.sessions ?? []);
+      setHasMoreSessions(result.hasMore ?? false);
+      initialLoadedRef.current = true;
     } catch (error) {
-      logAgentSidebarLoadIssue(
-        'error',
-        `task preview request rejected for agent ${agentId}.`,
-        error,
-      );
-      if (activeAgentIdsRef.current.has(agentId)) {
-        setAgentFailed(agentId, true);
-      }
+      logAgentSidebarLoadIssue('error', 'initial chat session request rejected', error);
+      setHasLoadError(true);
     } finally {
-      loadingKeysRef.current.delete(loadingKey);
-      if (activeAgentIdsRef.current.has(agentId)) {
-        setAgentLoading(agentId, false);
-      }
+      isLoadingRef.current = false;
+      setIsLoadingTasks(false);
     }
-  }, [setAgentFailed, setAgentLoading]);
+  }, []);
 
   useEffect(() => {
-    sortedEnabledAgents.forEach((agent) => {
-      if (loadedAgentIdsRef.current.has(agent.id)) return;
-      void loadAgentTasks(agent.id, { replace: true });
-    });
-  }, [loadAgentTasks, sortedEnabledAgents]);
+    void loadInitialSessions();
+  }, [loadInitialSessions]);
 
-  useEffect(() => {
-    const activeAgentIds = new Set(enabledAgents.map((agent) => agent.id));
-    activeAgentIdsRef.current = activeAgentIds;
-    for (const agentId of Array.from(loadedAgentIdsRef.current)) {
-      if (!activeAgentIds.has(agentId)) {
-        loadedAgentIdsRef.current.delete(agentId);
-        loggedScheduledMarkerSignatureByAgentIdRef.current.delete(agentId);
-      }
-    }
-    for (const key of Array.from(loadingKeysRef.current)) {
-      const separatorIndex = key.indexOf(':');
-      const agentId = separatorIndex >= 0 ? key.slice(0, separatorIndex) : key;
-      if (!activeAgentIds.has(agentId)) {
-        loadingKeysRef.current.delete(key);
-      }
-    }
-
-    setTaskPreviewsByAgentId((previous) => {
-      let changed = false;
-      const next: Record<string, CoworkSessionSummary[]> = {};
-      Object.entries(previous).forEach(([agentId, tasks]) => {
-        if (activeAgentIds.has(agentId)) {
-          next[agentId] = tasks;
-          return;
-        }
-        changed = true;
-      });
-      return changed ? next : previous;
-    });
-    setHasMoreTasksByAgentId((previous) => {
-      let changed = false;
-      const next: Record<string, boolean> = {};
-      Object.entries(previous).forEach(([agentId, hasMore]) => {
-        if (activeAgentIds.has(agentId)) {
-          next[agentId] = hasMore;
-          return;
-        }
-        changed = true;
-      });
-      return changed ? next : previous;
-    });
-    setLoadingAgentIds((previous) => previous.filter((id) => activeAgentIds.has(id)));
-    setFailedAgentIds((previous) => previous.filter((id) => activeAgentIds.has(id)));
-    setExpandedAgentIds((previous) => previous.filter((id) => activeAgentIds.has(id)));
-    setExpandedTaskListAgentIds((previous) => previous.filter((id) => activeAgentIds.has(id)));
-    setVisibleTaskLimitByAgentId((previous) => {
-      let changed = false;
-      const next: Record<string, number> = {};
-      Object.entries(previous).forEach(([agentId, limit]) => {
-        if (activeAgentIds.has(agentId)) {
-          next[agentId] = limit;
-          return;
-        }
-        changed = true;
-      });
-      return changed ? next : previous;
-    });
-  }, [enabledAgents]);
-
+  // 当 Redux 中的 sessions 发生变化时，实时同步更新本地会话列表
   useEffect(() => {
     if (sessions.length === 0) return;
-    setTaskPreviewsByAgentId((previous) => {
+    setLocalSessions((previous) => {
       let changed = false;
-      const next = { ...previous };
+      const next = [...previous];
 
       sessions.forEach((session) => {
-        const agentId = normalizeAgentId(session.agentId);
-        const existingTasks = next[agentId];
-        if (!existingTasks) return;
-
-        const index = existingTasks.findIndex((item) => item.id === session.id);
+        const index = next.findIndex((item) => item.id === session.id);
         if (index === -1) {
-          if (loadedAgentIdsRef.current.has(agentId)) {
-            next[agentId] = [session, ...existingTasks];
+          if (initialLoadedRef.current) {
+            next.unshift(session);
             changed = true;
           }
           return;
         }
 
-        if (hasSessionChanged(existingTasks[index], session)) {
-          const updatedTasks = [...existingTasks];
-          updatedTasks[index] = session;
-          next[agentId] = updatedTasks;
+        if (hasSessionChanged(next[index], session)) {
+          next[index] = session;
           changed = true;
         }
       });
@@ -516,13 +337,55 @@ export const useAgentSidebarState = ({
     });
   }, [sessions]);
 
-  const toggleAgentExpanded = useCallback((agentId: string) => {
-    setExpandedAgentIds((previous) => {
-      return previous.includes(agentId)
-        ? previous.filter((id) => id !== agentId)
-        : [...previous, agentId];
-    });
+  // 展开更多对话（加载下一批）
+  const loadMoreTasks = useCallback(async () => {
+    const nextLimit = visibleTaskLimit + AgentSidebarPageSize.ExpandBatch;
+    setIsTaskListExpanded(true);
+    setVisibleTaskLimit(nextLimit);
+
+    // 计算当前非项目的会话数量
+    const currentChatSessions = localSessions.filter((s) => !s.projectId);
+    if (currentChatSessions.length >= nextLimit || !hasMoreSessions) {
+      return;
+    }
+
+    if (isLoadingRef.current) return;
+    isLoadingRef.current = true;
+    setIsLoadingTasks(true);
+    setHasLoadError(false);
+
+    try {
+      const offset = localSessions.length;
+      const limit = Math.max(AgentSidebarPageSize.ExpandBatch, nextLimit - currentChatSessions.length);
+      const result = await coworkService.listSessionsForAgentPreview(undefined, limit, offset);
+      if (!result.success) {
+        logAgentSidebarLoadIssue(
+          'warn',
+          `failed to load more chat sessions: ${result.error ?? 'unknown error'}.`,
+        );
+        setHasLoadError(true);
+        return;
+      }
+      setLocalSessions((previous) => mergeSessions(previous, result.sessions ?? []));
+      setHasMoreSessions(result.hasMore ?? false);
+    } catch (error) {
+      logAgentSidebarLoadIssue('error', 'load-more chat sessions request rejected', error);
+      setHasLoadError(true);
+    } finally {
+      isLoadingRef.current = false;
+      setIsLoadingTasks(false);
+    }
+  }, [hasMoreSessions, localSessions, visibleTaskLimit]);
+
+  // 折叠收起对话
+  const collapseTasks = useCallback(() => {
+    setIsTaskListExpanded(false);
+    setVisibleTaskLimit(AgentSidebarPageSize.Preview);
   }, []);
+
+  const retryLoadTasks = useCallback(() => {
+    return loadInitialSessions();
+  }, [loadInitialSessions]);
 
   const toggleProjectExpanded = useCallback((projectId: string) => {
     setExpandedProjectIds((previous) => {
@@ -538,273 +401,91 @@ export const useAgentSidebarState = ({
     });
   }, []);
 
-  const loadMoreTasks = useCallback((agentId: string) => {
-    const loadedTasks = taskPreviewsByAgentId[agentId] ?? [];
-    const currentVisibleLimit =
-      visibleTaskLimitByAgentId[agentId]
-      ?? (expandedTaskListAgentIdSet.has(agentId)
-        ? AgentSidebarPageSize.Preview + AgentSidebarPageSize.ExpandBatch
-        : AgentSidebarPageSize.Preview);
-    const nextVisibleLimit = currentVisibleLimit + AgentSidebarPageSize.ExpandBatch;
-    setExpandedTaskListAgentIds((previous) => {
-      return previous.includes(agentId) ? previous : [...previous, agentId];
-    });
-    setVisibleTaskLimitByAgentId((previous) => ({
-      ...previous,
-      [agentId]: nextVisibleLimit,
-    }));
-
-    if (loadedTasks.length >= nextVisibleLimit || !(hasMoreTasksByAgentId[agentId] ?? false)) {
-      return Promise.resolve();
-    }
-
-    const offset = loadedTasks.length;
-    const limit = Math.max(
-      AgentSidebarPageSize.ExpandBatch,
-      nextVisibleLimit - loadedTasks.length,
-    );
-    const loadingKey = `${agentId}:${offset}:${limit}`;
-    if (loadingKeysRef.current.has(loadingKey)) return Promise.resolve();
-
-    loadingKeysRef.current.add(loadingKey);
-    setAgentLoading(agentId, true);
-    setAgentFailed(agentId, false);
-
-    const loadNextPage = async () => {
-      try {
-        const result = await coworkService.listSessionsForAgentPreview(agentId, limit, offset);
-        if (!activeAgentIdsRef.current.has(agentId)) return;
-        if (!result.success) {
-          logAgentSidebarLoadIssue(
-            'warn',
-            `failed to load more tasks for agent ${agentId}: ${result.error ?? 'unknown error'}.`,
-          );
-          setAgentFailed(agentId, true);
-          return;
-        }
-        loadedAgentIdsRef.current.add(agentId);
-        setTaskPreviewsByAgentId((previous) => ({
-          ...previous,
-          [agentId]: mergeSessions(previous[agentId] ?? [], result.sessions ?? []),
-        }));
-        setHasMoreTasksByAgentId((previous) => ({
-          ...previous,
-          [agentId]: result.hasMore ?? false,
-        }));
-      } catch (error) {
-        logAgentSidebarLoadIssue(
-          'error',
-          `load-more request rejected for agent ${agentId}.`,
-          error,
-        );
-        if (activeAgentIdsRef.current.has(agentId)) {
-          setAgentFailed(agentId, true);
-        }
-      }
-    };
-
-    return loadNextPage().finally(() => {
-      loadingKeysRef.current.delete(loadingKey);
-      if (activeAgentIdsRef.current.has(agentId)) {
-        setAgentLoading(agentId, false);
-      }
-    });
-  }, [
-    expandedTaskListAgentIdSet,
-    hasMoreTasksByAgentId,
-    setAgentFailed,
-    setAgentLoading,
-    taskPreviewsByAgentId,
-    visibleTaskLimitByAgentId,
-  ]);
-
-  const expandAgent = useCallback((agentId: string) => {
-    setExpandedAgentIds((previous) => {
-      return previous.includes(agentId) ? previous : [...previous, agentId];
-    });
-  }, []);
-
-  const collapseAgent = useCallback((agentId: string) => {
-    setExpandedAgentIds((previous) => {
-      return previous.includes(agentId) ? previous.filter((id) => id !== agentId) : previous;
-    });
-  }, []);
-
-  const expandTasks = useCallback((agentId: string) => {
-    expandAgent(agentId);
-    return loadMoreTasks(agentId);
-  }, [expandAgent, loadMoreTasks]);
-
-  const collapseTasks = useCallback((agentId: string) => {
-    setExpandedTaskListAgentIds((previous) => {
-      return collapseAgentSidebarTaskList(previous, agentId);
-    });
-    setVisibleTaskLimitByAgentId((previous) => {
-      if (!Object.prototype.hasOwnProperty.call(previous, agentId)) return previous;
-      const next = { ...previous };
-      delete next[agentId];
-      return next;
-    });
-  }, []);
-
-  const retryLoadTasks = useCallback((agentId: string) => {
-    loadedAgentIdsRef.current.delete(agentId);
-    return loadAgentTasks(agentId, { replace: true });
-  }, [loadAgentTasks]);
-
+  // 局部修改会话信息（标题、置顶等）
   const patchTaskPreview = useCallback((
     sessionId: string,
     updates: Partial<Pick<CoworkSessionSummary, 'title' | 'pinned' | 'pinOrder' | 'status'>>,
     options: { preserveUpdatedAt?: boolean } = {},
   ) => {
-    setTaskPreviewsByAgentId((previous) => {
-      let changed = false;
-      const next = { ...previous };
-      Object.entries(previous).forEach(([agentId, tasks]) => {
-        const index = tasks.findIndex((task) => task.id === sessionId);
-        if (index === -1) return;
-        const updatedTasks = [...tasks];
-        updatedTasks[index] = {
-          ...updatedTasks[index],
-          ...updates,
-          updatedAt: options.preserveUpdatedAt ? updatedTasks[index].updatedAt : Date.now(),
-        };
-        next[agentId] = updatedTasks;
-        changed = true;
-      });
-      return changed ? next : previous;
+    setLocalSessions((previous) => {
+      const index = previous.findIndex((s) => s.id === sessionId);
+      if (index === -1) return previous;
+      const next = [...previous];
+      next[index] = {
+        ...next[index],
+        ...updates,
+        updatedAt: options.preserveUpdatedAt ? next[index].updatedAt : Date.now(),
+      };
+      return next;
     });
   }, []);
 
+  // 移除单个会话
   const removeTaskPreview = useCallback((sessionId: string) => {
-    setTaskPreviewsByAgentId((previous) => {
-      return removeAgentSidebarTaskPreviews(previous, [sessionId]);
-    });
+    setLocalSessions((previous) => previous.filter((s) => s.id !== sessionId));
   }, []);
 
+  // 批量移除会话
   const removeTaskPreviews = useCallback((sessionIds: string[]) => {
-    setTaskPreviewsByAgentId((previous) => {
-      return removeAgentSidebarTaskPreviews(previous, sessionIds);
-    });
+    const idSet = new Set(sessionIds);
+    setLocalSessions((previous) => previous.filter((s) => !idSet.has(s.id)));
   }, []);
 
   const removeAgentTaskPreviews = useCallback((agentId: string) => {
-    loadedAgentIdsRef.current.delete(agentId);
-    for (const key of Array.from(loadingKeysRef.current)) {
-      if (key.startsWith(`${agentId}:`)) {
-        loadingKeysRef.current.delete(key);
-      }
-    }
-
-    setTaskPreviewsByAgentId((previous) => {
-      return removeAgentSidebarAgentTaskPreviews(previous, agentId);
-    });
-    setHasMoreTasksByAgentId((previous) => {
-      if (!Object.prototype.hasOwnProperty.call(previous, agentId)) return previous;
-      const next = { ...previous };
-      delete next[agentId];
-      return next;
-    });
-    setLoadingAgentIds((previous) => previous.filter((id) => id !== agentId));
-    setFailedAgentIds((previous) => previous.filter((id) => id !== agentId));
-    setExpandedAgentIds((previous) => previous.filter((id) => id !== agentId));
-    setExpandedTaskListAgentIds((previous) => previous.filter((id) => id !== agentId));
-    setVisibleTaskLimitByAgentId((previous) => {
-      if (!Object.prototype.hasOwnProperty.call(previous, agentId)) return previous;
-      const next = { ...previous };
-      delete next[agentId];
-      return next;
-    });
+    setLocalSessions((previous) => previous.filter((s) => normalizeAgentId(s.agentId) !== normalizeAgentId(agentId)));
   }, []);
 
+  // 合并 localSessions 与 Redux 中的 sessions
+  const allSessions = useMemo(() => {
+    const map = new Map<string, CoworkSessionSummary>();
+    localSessions.forEach((s) => map.set(s.id, s));
+    sessions.forEach((s) => {
+      if (!map.has(s.id)) {
+        map.set(s.id, s);
+      }
+    });
+    return Array.from(map.values());
+  }, [localSessions, sessions]);
+
+  // 区分项目会话与常规对话
   const {
-    agentNodes,
+    chatTasks,
+    allChatTasks,
     projectNodes,
-    activityAgentNodes,
     hasUnreadCompletedTasks,
-  } = useMemo<{
-    agentNodes: AgentSidebarAgentNode[];
-    projectNodes: AgentSidebarProjectNode[];
-    activityAgentNodes: AgentSidebarAgentNode[];
-    hasUnreadCompletedTasks: boolean;
-  }>(() => {
-    const visibleNodes: AgentSidebarAgentNode[] = [];
-    const activityNodes: AgentSidebarAgentNode[] = [];
-    let hasUnreadCompletedTasks = false;
+    canExpandTasks,
+    canCollapseTasks,
+  } = useMemo(() => {
+    const nonProjectSessions = allSessions.filter((s) => !s.projectId);
+    const sortedChatSessions = sortAgentSidebarTasks(nonProjectSessions);
 
-    sortedEnabledAgents.forEach((agent) => {
-      const allTaskPreviews = taskPreviewsByAgentId[agent.id] ?? [];
-      // 关键：属于项目的任务不在此处作为专家的常规任务展示
-      const taskPreviews = allTaskPreviews.filter((t) => !t.projectId);
-      const sortedTaskPreviews = sortAgentSidebarTasks(taskPreviews);
-      const isTaskListExpanded = expandedTaskListAgentIdSet.has(agent.id);
-      const visibleTaskLimit =
-        visibleTaskLimitByAgentId[agent.id]
-        ?? (isTaskListExpanded
-          ? AgentSidebarPageSize.Preview + AgentSidebarPageSize.ExpandBatch
-          : AgentSidebarPageSize.Preview);
-      const hasMoreLoadedTasks = sortedTaskPreviews.length > visibleTaskLimit;
-      const canExpandTasks =
-        (hasMoreTasksByAgentId[agent.id] ?? false) || hasMoreLoadedTasks;
-      const canCollapseTasks = isTaskListExpanded;
-      if (
-        !hasUnreadCompletedTasks
-        && sortedTaskPreviews.some((session) => completedUnreadSessionIdSet.has(session.id))
-      ) {
-        hasUnreadCompletedTasks = true;
-      }
-      const visibleTaskPreviews = sortedTaskPreviews.slice(0, visibleTaskLimit);
-      const taskPreviewsToMap = includeActivityTasks
-        ? sortedTaskPreviews
-        : visibleTaskPreviews;
-      const tasks = taskPreviewsToMap.map((session) => {
-        return toAgentSidebarTaskNode(
-          session,
-          currentSessionId,
-          completedUnreadSessionIdSet,
-          pendingPermissionSessionIdSet,
-        );
-      });
-      const node = {
-        ...agent,
-        isExpanded: expandedAgentIdSet.has(agent.id),
-        isTaskListExpanded,
-        canExpandTasks,
-        canCollapseTasks,
-        isLoadingTasks: loadingAgentIdSet.has(agent.id),
-        hasLoadError: failedAgentIdSet.has(agent.id),
-        tasks,
-      };
-      if (includeActivityTasks) {
-        activityNodes.push(node);
-      }
-      visibleNodes.push({
-        ...node,
-        tasks: includeActivityTasks ? tasks.slice(0, visibleTaskLimit) : tasks,
-      });
-    });
+    const hasUnread = sortedChatSessions.some((s) => completedUnreadSessionIdSet.has(s.id));
+    const canExpand = hasMoreSessions || sortedChatSessions.length > visibleTaskLimit;
+    const canCollapse = visibleTaskLimit > AgentSidebarPageSize.Preview || isTaskListExpanded;
 
-    const allTaskSessions: CoworkSessionSummary[] = [];
-    const seenSessionIds = new Set<string>();
-    Object.values(taskPreviewsByAgentId).forEach((tasks) => {
-      tasks.forEach((task) => {
-        if (!seenSessionIds.has(task.id)) {
-          seenSessionIds.add(task.id);
-          allTaskSessions.push(task);
-        }
-      });
-    });
-    // 补充当前 sessions 中的会话
-    sessions.forEach((session) => {
-      if (!seenSessionIds.has(session.id)) {
-        seenSessionIds.add(session.id);
-        allTaskSessions.push(session);
-      }
-    });
+    const visibleSessions = sortedChatSessions.slice(0, visibleTaskLimit);
+    const mappedChatTasks: AgentSidebarTaskNode[] = visibleSessions.map((session) =>
+      toAgentSidebarTaskNode(
+        session,
+        currentSessionId,
+        completedUnreadSessionIdSet,
+        pendingPermissionSessionIdSet,
+      ),
+    );
 
-    const projectNodes: AgentSidebarProjectNode[] = [...projects]
+    const allMappedChatTasks: AgentSidebarTaskNode[] = sortedChatSessions.map((session) =>
+      toAgentSidebarTaskNode(
+        session,
+        currentSessionId,
+        completedUnreadSessionIdSet,
+        pendingPermissionSessionIdSet,
+      ),
+    );
+
+    // 组装项目节点
+    const projectsList: AgentSidebarProjectNode[] = [...projects]
       .map((proj) => {
-        const projTasks = allTaskSessions.filter((s) => s.projectId === proj.id);
+        const projTasks = allSessions.filter((s) => s.projectId === proj.id);
         const sortedProjTasks = sortAgentSidebarTasks(projTasks);
         const tasks = sortedProjTasks.map((s) =>
           toAgentSidebarTaskNode(
@@ -840,46 +521,81 @@ export const useAgentSidebarState = ({
       .map(({ latestActivity: _latestActivity, ...node }) => node);
 
     return {
-      agentNodes: visibleNodes,
-      projectNodes,
-      activityAgentNodes: activityNodes,
-      hasUnreadCompletedTasks,
+      chatTasks: mappedChatTasks,
+      allChatTasks: allMappedChatTasks,
+      projectNodes: projectsList,
+      hasUnreadCompletedTasks: hasUnread,
+      canExpandTasks: canExpand,
+      canCollapseTasks: canCollapse,
     };
   }, [
+    allSessions,
     completedUnreadSessionIdSet,
     currentSessionId,
-    expandedAgentIdSet,
     expandedProjectIdSet,
-    expandedTaskListAgentIdSet,
-    failedAgentIdSet,
-    hasMoreTasksByAgentId,
-    includeActivityTasks,
-    loadingAgentIdSet,
+    hasMoreSessions,
+    isTaskListExpanded,
     pendingPermissionSessionIdSet,
     projects,
-    sessions,
-    sortedEnabledAgents,
-    taskPreviewsByAgentId,
-    visibleTaskLimitByAgentId,
+    visibleTaskLimit,
   ]);
 
+  // 用于活动任务过滤器的兼容数据（如果顶部筛选器开启）
+  const activityAgentNodes = useMemo<AgentSidebarAgentNode[]>(() => {
+    if (!includeActivityTasks) return [];
+    const agentMap = new Map<string, AgentSidebarAgentNode>();
+    agents.forEach((a) => {
+      agentMap.set(a.id, {
+        id: a.id,
+        name: a.name,
+        avatar: a.avatar,
+        enabled: a.enabled,
+        pinned: a.pinned ?? false,
+        pinOrder: a.pinOrder ?? null,
+        sortOrder: a.sortOrder ?? null,
+        isExpanded: true,
+        isTaskListExpanded: false,
+        canExpandTasks: false,
+        canCollapseTasks: false,
+        isLoadingTasks: false,
+        hasLoadError: false,
+        tasks: [],
+      });
+    });
+
+    chatTasks.forEach((task) => {
+      const node = agentMap.get(task.agentId);
+      if (node) {
+        node.tasks.push(task);
+      }
+    });
+
+    return Array.from(agentMap.values()).filter((n) => n.tasks.length > 0);
+  }, [agents, chatTasks, includeActivityTasks]);
+
   return {
-    agentNodes,
+    chatTasks,
+    allChatTasks,
+    agentNodes: [] as AgentSidebarAgentNode[],
     projectNodes,
     activityAgentNodes,
     hasUnreadCompletedTasks,
-    expandedTaskListAgentIdSet,
+    expandedTaskListAgentIds: [] as string[],
+    canExpandTasks,
+    canCollapseTasks,
+    isLoadingTasks,
+    hasLoadError,
     patchTaskPreview,
     removeTaskPreview,
     removeTaskPreviews,
     removeAgentTaskPreviews,
     retryLoadTasks,
     loadMoreTasks,
-    expandAgent,
-    collapseAgent,
-    expandTasks,
     collapseTasks,
-    toggleAgentExpanded,
+    expandAgent: () => undefined,
+    collapseAgent: () => undefined,
+    expandTasks: loadMoreTasks,
+    toggleAgentExpanded: () => undefined,
     expandedProjectIdSet,
     toggleProjectExpanded,
     expandProject,

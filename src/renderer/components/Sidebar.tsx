@@ -19,7 +19,6 @@ import {
 } from '../store/selectors/coworkSelectors';
 import { setUserBalance } from '../store/slices/authSlice';
 import type { CoworkSessionSummary } from '../types/cowork';
-import { getAgentDisplayNameById } from '../utils/agentDisplay';
 import {
   type AgentSidebarBatchItem,
   AgentSidebarBatchItemKind,
@@ -93,9 +92,9 @@ const SidebarNewFeatureBadge = {
 } as const;
 
 const sidebarNavItemClassName =
-  'w-full inline-flex h-[34px] items-center gap-2.5 rounded-lg px-2.5 text-left text-[13px] font-normal text-foreground/85 transition-all duration-150 hover:bg-foreground/[0.04] hover:text-foreground dark:hover:bg-white/[0.05]';
+  '-ml-[6px] w-[calc(100%+12px)] inline-flex h-[34px] items-center gap-2 rounded-lg pl-3 pr-2.5 text-left text-[13px] font-normal text-foreground/85 transition-all duration-150 hover:bg-foreground/[0.04] hover:text-foreground dark:hover:bg-white/[0.05]';
 const activeSidebarNavItemClassName =
-  'w-full inline-flex h-[34px] items-center gap-2.5 rounded-lg px-2.5 text-left text-[13px] font-medium text-foreground bg-foreground/[0.07] shadow-[inset_0_0_0_1px_rgba(0,0,0,0.04)] dark:bg-white/[0.08] dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)] transition-all duration-150';
+  '-ml-[6px] w-[calc(100%+12px)] inline-flex h-[34px] items-center gap-2 rounded-lg pl-3 pr-2.5 text-left text-[13px] font-medium text-foreground bg-foreground/[0.07] shadow-[inset_0_0_0_1px_rgba(0,0,0,0.04)] dark:bg-white/[0.08] dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)] transition-all duration-150';
 const sidebarCreateIconClassName = 'h-4 w-4 shrink-0 text-foreground/80';
 
 type SidebarAnalyticsSource = 'home_sidebar' | 'home_agent_sidebar';
@@ -211,7 +210,6 @@ const Sidebar: React.FC<SidebarProps> = ({
   void onShowKits;
   void onShowSkills;
   const currentAgentId = useSelector((state: RootState) => state.agent.currentAgentId);
-  const agents = useSelector((state: RootState) => state.agent.agents);
   const isLoggedIn = useSelector((state: RootState) => state.auth.isLoggedIn);
   const isAuthLoading = useSelector((state: RootState) => state.auth.isLoading);
   const sessions = useSelector(selectCoworkSessions);
@@ -520,7 +518,6 @@ const Sidebar: React.FC<SidebarProps> = ({
   }, [batchSelectableItems, selectedKeys]);
   const isBatchSelectAllChecked =
     batchSelectableItems.length > 0 && selectedBatchSelectableCount === batchSelectableItems.length;
-  const batchAgentName = batchAgentId ? getAgentDisplayNameById(batchAgentId, agents) : null;
   const getBatchSelectionSummary = useCallback(() => {
     const selectedItems = Array.from(selectedKeys)
       .filter((key) => batchSelectableKeySet.size === 0 || batchSelectableKeySet.has(key))
@@ -685,12 +682,12 @@ const Sidebar: React.FC<SidebarProps> = ({
   const handleBatchSelectableItemsChange = useCallback((items: AgentSidebarBatchItem[]) => {
     setBatchSelectableItems(items);
     setSelectedKeys((previous) => {
-      if (!batchAgentId || items.length === 0) return previous;
+      if (items.length === 0) return previous;
       const itemKeySet = new Set(items.map((item) => item.key));
       const next = new Set(Array.from(previous).filter((key) => itemKeySet.has(key)));
       return next.size === previous.size ? previous : next;
     });
-  }, [batchAgentId]);
+  }, []);
 
   const updateAgentScrollEdges = useCallback((element: HTMLDivElement | null) => {
     if (!element) {
@@ -719,7 +716,6 @@ const Sidebar: React.FC<SidebarProps> = ({
   }, [updateAgentScrollEdges]);
 
   const handleToggleSelection = useCallback((selectionKey: string, agentId: string) => {
-    if (batchAgentId && normalizeAgentId(agentId) !== batchAgentId) return;
     setSelectedKeys(prev => {
       const next = new Set(prev);
       const targetSelected = !next.has(selectionKey);
@@ -737,7 +733,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       });
       return next;
     });
-  }, [batchAgentId, batchSelectableItems.length]);
+  }, [batchSelectableItems.length]);
 
   const handleSelectAll = useCallback(() => {
     if (batchSelectableItems.length === 0) return;
@@ -952,7 +948,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           </div>
         )}
         {showHeaderRow && (
-          <div className="px-3 pt-2 pb-1 flex items-center select-none text-[11px] font-medium tracking-wide text-secondary/60">
+          <div className="px-4 pt-2 pb-1 flex items-center select-none text-[11px] font-medium tracking-wide text-secondary/60">
             HeyClaw 增长助手
           </div>
         )}
@@ -1139,7 +1135,6 @@ const Sidebar: React.FC<SidebarProps> = ({
             <span className="min-w-0 truncate text-xs text-secondary">
               {i18nService
                 .t('batchSelectionScope')
-                .replace('{agent}', batchAgentName ?? '')
                 .replace('{count}', String(selectedKeys.size))}
             </span>
             <button

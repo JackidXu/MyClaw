@@ -141,9 +141,15 @@ export const ProjectTreeNode: React.FC<ProjectTreeNodeProps> = ({
       <div
         role="treeitem"
         tabIndex={0}
-        aria-expanded={project.isExpanded}
-        onClick={() => onToggleExpanded(project.id)}
-        className="group relative -ml-[6px] flex h-8 w-[calc(100%+12px)] cursor-pointer items-center rounded-md pl-3 pr-2 transition-colors hover:bg-surface-raised"
+        aria-expanded={hasVisibleTasks ? project.isExpanded : false}
+        onClick={() => {
+          if (hasVisibleTasks) {
+            onToggleExpanded(project.id);
+          }
+        }}
+        className={`group relative -ml-[6px] flex h-8 w-[calc(100%+12px)] items-center rounded-md pl-3 pr-2 transition-colors hover:bg-surface-raised ${
+          hasVisibleTasks ? 'cursor-pointer' : 'cursor-default'
+        }`}
       >
         <div className="mr-2 flex h-4 w-4 shrink-0 items-center justify-center text-primary">
           <FolderIcon className="h-4 w-4" />
@@ -238,33 +244,27 @@ export const ProjectTreeNode: React.FC<ProjectTreeNodeProps> = ({
         )}
       </div>
 
-      {project.isExpanded && (
+      {project.isExpanded && hasVisibleTasks && (
         <div className="min-w-0 max-w-full space-y-0.5 mt-0.5">
-          {!hasVisibleTasks ? (
-            <div className="-ml-[6px] flex h-7 w-[calc(100%+12px)] items-center pl-[38px] pr-2.5 text-xs text-secondary/60">
-              {i18nService.t('projectEmptyTasks')}
-            </div>
-          ) : (
-            project.tasks.map((task) => (
-              <AgentTaskRow
-                key={task.id}
-                task={task}
-                isBatchMode={isBatchMode}
-                isSelected={selectedKeys.has(createSessionBatchKey(task.id))}
-                isSelectionDisabled={isBatchMode && batchAgentId !== null && batchAgentId !== task.agentId}
-                showBatchOption={false}
-                onSelect={() => onSelectTask(task)}
-                onDelete={() => onDeleteTask(task)}
-                onShare={() => onShareTask(task)}
-                onTogglePin={(pinned) => onToggleTaskPin(task, pinned)}
-                onRename={(title) => onRenameTask(task, title)}
-                onToggleSelection={() => onToggleSelection(createSessionBatchKey(task.id), task.agentId)}
-                onEnterBatchMode={() => onEnterBatchMode(task)}
-                onSidebarAction={onSidebarAction}
-                analyticsParams={getTaskActionParams?.(task)}
-              />
-            ))
-          )}
+          {project.tasks.map((task) => (
+            <AgentTaskRow
+              key={task.id}
+              task={task}
+              isBatchMode={isBatchMode}
+              isSelected={selectedKeys.has(createSessionBatchKey(task.id))}
+              isSelectionDisabled={isBatchMode && batchAgentId !== null && batchAgentId !== task.agentId}
+              showBatchOption={false}
+              onSelect={() => onSelectTask(task)}
+              onDelete={() => onDeleteTask(task)}
+              onShare={() => onShareTask(task)}
+              onTogglePin={(pinned) => onToggleTaskPin(task, pinned)}
+              onRename={(title) => onRenameTask(task, title)}
+              onToggleSelection={() => onToggleSelection(createSessionBatchKey(task.id), task.agentId)}
+              onEnterBatchMode={() => onEnterBatchMode(task)}
+              onSidebarAction={onSidebarAction}
+              analyticsParams={getTaskActionParams?.(task)}
+            />
+          ))}
         </div>
       )}
 

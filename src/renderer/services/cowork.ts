@@ -975,17 +975,20 @@ class CoworkService {
   }
 
   async listSessionsForAgentPreview(
-    agentId: string,
-    limit: number,
-    offset: number,
+    agentId?: string,
+    limit?: number,
+    offset?: number,
   ): Promise<CoworkSessionListResult> {
     try {
-      const result = await window.electron?.cowork?.listSessions({ limit, offset, agentId });
+      const pageLimit = limit ?? COWORK_SESSION_PAGE_SIZE;
+      const pageOffset = offset ?? 0;
+      const targetAgentId = agentId?.trim() || undefined;
+      const result = await window.electron?.cowork?.listSessions({ limit: pageLimit, offset: pageOffset, agentId: targetAgentId });
       const resolved = result ?? { success: false, error: 'Cowork IPC is unavailable' };
       if (!resolved.success) {
         this.logDiagnostic(
           'warn',
-          `agent sidebar session page request failed; agent=${agentId}; offset=${offset}; limit=${limit}; error=${resolved.error ?? 'unknown'}.`,
+          `sidebar session page request failed; agent=${targetAgentId ?? 'all'}; offset=${pageOffset}; limit=${pageLimit}; error=${resolved.error ?? 'unknown'}.`,
         );
       }
       return resolved;

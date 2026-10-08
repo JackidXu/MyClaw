@@ -16,7 +16,7 @@ import {
 } from '@dnd-kit/sortable';
 import { PlusIcon } from '@heroicons/react/24/outline';
 import { AgentId } from '@shared/agent';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 
 import { agentService } from '../../services/agent';
@@ -27,25 +27,20 @@ import { selectCurrentSessionId } from '../../store/selectors/coworkSelectors';
 import { setDraftCollaborationMode, setDraftProjectId } from '../../store/slices/coworkSlice';
 import { clearSelection } from '../../store/slices/quickActionSlice';
 import { CoworkCollaborationMode } from '../../types/cowork';
-import { getAgentDisplayName, isDefaultAgentId } from '../../utils/agentDisplay';
-import AgentSettingsPanel from '../agent/AgentSettingsPanel';
+import { isDefaultAgentId } from '../../utils/agentDisplay';
 import {
-  type CoworkOpenAgentTaskSlotEventDetail,
   type CoworkOpenShareOptionsEventDetail,
-  CoworkShortcutDirection,
-  type CoworkSwitchAgentEventDetail,
   CoworkUiEvent,
 } from '../cowork/constants';
-import UserGroupIcon from '../icons/UserGroupIcon';
 import Tooltip, { TooltipAlign, TooltipPosition } from '../ui/Tooltip';
 import AgentSidebarActivityView from './AgentSidebarActivityView';
 import AgentTaskRow from './AgentTaskRow';
-import AgentTreeNode from './AgentTreeNode';
 import {
   type AgentSidebarBatchItem,
   createSessionBatchItem,
   createSessionBatchKey,
 } from './batchSelection';
+import ExpandAgentTasksRow from './ExpandAgentTasksRow';
 import MyAgentSidebarHeader from './MyAgentSidebarHeader';
 import { ProjectTreeNode } from './ProjectTreeNode';
 import type {
@@ -53,7 +48,7 @@ import type {
   AgentSidebarActivityView as AgentSidebarActivityViewModel,
 } from './taskFilter';
 import { buildAgentSidebarActivityView } from './taskFilter';
-import type { AgentSidebarAgentNode, AgentSidebarProjectNode, AgentSidebarTaskNode } from './types';
+import type { AgentSidebarProjectNode, AgentSidebarTaskNode } from './types';
 import { useAgentSidebarState } from './useAgentSidebarState';
 
 interface MyAgentSidebarTreeProps {
@@ -113,39 +108,6 @@ const logTaskNavigationIssue = (
   }
 };
 
-const SortableAgentNode: React.FC<{
-  agent: AgentSidebarAgentNode;
-  disabled: boolean;
-  children: React.ReactNode;
-}> = ({ agent, disabled, children }) => {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: agent.id, disabled });
-  const verticalTransform = transform
-    ? `translate3d(0, ${Math.round(transform.y)}px, 0)`
-    : undefined;
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={{
-        transform: verticalTransform,
-        transition,
-      }}
-      className={`${disabled ? '' : 'cursor-grab active:cursor-grabbing'} ${isDragging ? 'relative z-50 opacity-80' : ''}`}
-      {...attributes}
-      {...listeners}
-    >
-      {children}
-    </div>
-  );
-};
-
 const SortableProjectNode: React.FC<{
   project: AgentSidebarProjectNode;
   disabled: boolean;
@@ -186,7 +148,7 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
   selectedKeys,
   isTaskFilterActive,
   onShowCowork,
-  onShowExperts,
+  onShowExperts: _onShowExperts,
   onTaskFilterSummaryChange,
   onTaskSelected,
   onSidebarAction,
@@ -197,7 +159,7 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
   const currentAgentId = useSelector((state: RootState) => state.agent.currentAgentId);
   const dispatch = useDispatch();
   const currentSessionId = useSelector(selectCurrentSessionId);
-  const [settingsAgentId, setSettingsAgentId] = useState<string | null>(null);
+
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 6 },
@@ -206,25 +168,27 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
       coordinateGetter: sortableKeyboardCoordinates,
     }),
   );
+
   const {
-    agentNodes,
+    chatTasks,
+    allChatTasks,
     projectNodes,
     activityAgentNodes,
     hasUnreadCompletedTasks,
+    canExpandTasks,
+    canCollapseTasks,
+    isLoadingTasks,
+    hasLoadError,
     patchTaskPreview,
     removeTaskPreview,
     removeTaskPreviews,
-    removeAgentTaskPreviews,
     retryLoadTasks,
     loadMoreTasks,
-    expandAgent,
-    collapseAgent,
-    expandTasks,
     collapseTasks,
-    toggleAgentExpanded,
     toggleProjectExpanded,
     expandProject,
   } = useAgentSidebarState({ includeActivityTasks: isTaskFilterActive });
+
   const activityView = useMemo(
     () => (
       isTaskFilterActive
@@ -294,89 +258,6 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
     }
   }, [currentAgentId, currentSessionId, onShowCowork, onTaskSelected]);
 
-  useEffect(() => {
-    const handleSwitchAgent = (event: Event) => {
-      const detail = (event as CustomEvent<CoworkSwitchAgentEventDetail>).detail;
-      const direction = detail?.direction;
-      if (!direction || agentNodes.length === 0) return;
-
-      const currentIndex = agentNodes.findIndex((agent) => agent.id === currentAgentId);
-      const fallbackIndex = direction === CoworkShortcutDirection.Next ? 0 : agentNodes.length - 1;
-      const nextIndex = currentIndex < 0
-        ? fallbackIndex
-        : direction === CoworkShortcutDirection.Next
-          ? (currentIndex + 1) % agentNodes.length
-          : (currentIndex - 1 + agentNodes.length) % agentNodes.length;
-      const targetAgent = agentNodes[nextIndex];
-      if (!targetAgent) return;
-
-      void (async () => {
-        if (targetAgent.id !== currentAgentId) {
-          agentService.switchAgent(targetAgent.id);
-          await coworkService.loadSessions(targetAgent.id);
-        }
-        expandAgent(targetAgent.id);
-        onShowCowork();
-        window.dispatchEvent(new CustomEvent(CoworkUiEvent.SelectSubagent, { detail: null }));
-      })();
-    };
-
-    const handleShowCurrentAgentTasks = () => {
-      // Equivalent to clicking the agent title while collapsed: reveal the preview task list only.
-      expandAgent(currentAgentId);
-      onShowCowork();
-    };
-
-    const handleCollapseCurrentAgentTasks = () => {
-      // Fold every expansion under the agent: the "show more" state and the agent node itself.
-      collapseTasks(currentAgentId);
-      collapseAgent(currentAgentId);
-      onShowCowork();
-    };
-
-    const handleOpenAgentTaskSlot = (event: Event) => {
-      const slot = (event as CustomEvent<CoworkOpenAgentTaskSlotEventDetail>).detail?.slot;
-      if (!Number.isInteger(slot) || slot < 1) return;
-
-      void (async () => {
-        expandAgent(currentAgentId);
-        void expandTasks(currentAgentId);
-        const result = await coworkService.listSessionsForAgentPreview(currentAgentId, slot, 0);
-        const session = result.sessions?.[slot - 1];
-        if (!result.success || !session) {
-          window.dispatchEvent(new CustomEvent('app:showToast', {
-            detail: i18nService.t('shortcutAgentTaskSlotUnavailable').replace('{slot}', String(slot)),
-          }));
-          return;
-        }
-
-        const agentId = session.agentId?.trim() || AgentId.Main;
-        try {
-          if (agentId !== currentAgentId) {
-            agentService.switchAgent(agentId, { targetSessionId: session.id });
-            await coworkService.loadSessions(agentId);
-          }
-          onShowCowork();
-          window.dispatchEvent(new CustomEvent(CoworkUiEvent.SelectSubagent, { detail: null }));
-          await coworkService.loadSession(session.id);
-        } finally {
-          coworkService.finishSessionNavigation(session.id);
-        }
-      })();
-    };
-
-    window.addEventListener(CoworkUiEvent.ShortcutSwitchAgent, handleSwitchAgent);
-    window.addEventListener(CoworkUiEvent.ShortcutShowCurrentAgentTasks, handleShowCurrentAgentTasks);
-    window.addEventListener(CoworkUiEvent.ShortcutCollapseCurrentAgentTasks, handleCollapseCurrentAgentTasks);
-    window.addEventListener(CoworkUiEvent.ShortcutOpenAgentTaskSlot, handleOpenAgentTaskSlot);
-    return () => {
-      window.removeEventListener(CoworkUiEvent.ShortcutSwitchAgent, handleSwitchAgent);
-      window.removeEventListener(CoworkUiEvent.ShortcutShowCurrentAgentTasks, handleShowCurrentAgentTasks);
-      window.removeEventListener(CoworkUiEvent.ShortcutCollapseCurrentAgentTasks, handleCollapseCurrentAgentTasks);
-      window.removeEventListener(CoworkUiEvent.ShortcutOpenAgentTaskSlot, handleOpenAgentTaskSlot);
-    };
-  }, [agentNodes, collapseAgent, collapseTasks, currentAgentId, expandAgent, expandTasks, onShowCowork]);
-
   const handleDeleteTask = async (task: AgentSidebarTaskNode) => {
     const deleted = await coworkService.deleteSession(task.id);
     onSidebarAction?.(deleted ? 'task_delete_success' : 'task_delete_failed', {
@@ -425,10 +306,6 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
   };
 
   const handleEnterBatchMode = (task: AgentSidebarTaskNode) => {
-    if (task.agentId !== currentAgentId) {
-      agentService.switchAgent(task.agentId);
-      void coworkService.loadSessions(task.agentId);
-    }
     onEnterBatchMode(task.id, task.agentId);
   };
 
@@ -469,163 +346,54 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
     }
   }, []);
 
-  const handleCreateTask = async (agent: AgentSidebarAgentNode) => {
-    onSidebarAction?.('agent_create_task', {
-      agentType: getAgentType(agent.id),
-      isExpanded: agent.isExpanded,
-      isPinned: agent.pinned,
-    });
-    if (agent.id !== currentAgentId) {
-      agentService.switchAgent(agent.id);
-      await coworkService.loadSessions(agent.id);
+  // 新建对话（默认以主专家新建）
+  const handleCreateChat = useCallback(() => {
+    if (currentAgentId !== AgentId.Main) {
+      agentService.switchAgent(AgentId.Main);
+      void coworkService.loadSessions(AgentId.Main);
     }
     coworkService.clearSession({ restoreAgentSkills: true });
+    dispatch(clearSelection());
     dispatch(setDraftCollaborationMode({
       draftKey: '__home__',
       mode: CoworkCollaborationMode.Default,
     }));
+    dispatch(setDraftProjectId(null));
     onShowCowork();
     window.setTimeout(() => {
       window.dispatchEvent(new CustomEvent(CoworkUiEvent.FocusInput, {
         detail: { clear: false, resetCollaborationMode: true },
       }));
     }, 0);
-  };
+  }, [currentAgentId, dispatch, onShowCowork]);
 
-  const handleDeleteAgent = async (agent: AgentSidebarAgentNode) => {
-    if (isDefaultAgentId(agent.id)) return;
-    // 召回专家：设为不启用，不物理删除，任务记录保留
-    const updated = await agentService.updateAgent(agent.id, { enabled: false });
-    onSidebarAction?.(updated ? 'agent_delete_success' : 'agent_delete_failed', {
-      agentType: getAgentType(agent.id),
-      isPinned: agent.pinned,
-      result: updated ? 'success' : 'failed',
-    });
-    if (updated) {
-      removeAgentTaskPreviews(agent.id);
+  useEffect(() => {
+    if (deletedSessionIds.length === 0) return;
+    removeTaskPreviews(deletedSessionIds);
+  }, [deletedSessionIds, removeTaskPreviews]);
+
+  // 同步批量操作可选会话列表
+  useEffect(() => {
+    if (!isBatchMode) {
+      onBatchSelectableItemsChange([]);
+      return;
     }
-    if (updated && settingsAgentId === agent.id) {
-      setSettingsAgentId(null);
-    }
-    if (!updated) {
-      window.dispatchEvent(new CustomEvent('app:showToast', { detail: i18nService.t('agentDeleteFailed') }));
-    }
-  };
 
-  const handleToggleAgentPin = async (agent: AgentSidebarAgentNode, pinned: boolean) => {
-    const updated = await agentService.updateAgent(agent.id, { pinned });
-    onSidebarAction?.('agent_pin_toggle', {
-      agentType: getAgentType(agent.id),
-      isPinned: agent.pinned,
-      result: updated ? 'success' : 'failed',
-      targetPinned: pinned,
-    });
-    if (!updated) {
-      window.dispatchEvent(new CustomEvent('app:showToast', { detail: i18nService.t('agentPinFailed') }));
-    }
-  };
-
-  const pinnedAgentNodes = agentNodes.filter((agent) => agent.pinned);
-  const projectAgentNodes = agentNodes.filter((agent) => !agent.pinned);
-  const hasPinnedAgents = pinnedAgentNodes.length > 0;
-
-  const handleReorderAgents = useCallback(async (
-    activeId: string,
-    overId: string,
-    groupAgents: AgentSidebarAgentNode[],
-  ) => {
-    const oldIndex = groupAgents.findIndex((agent) => agent.id === activeId);
-    const newIndex = groupAgents.findIndex((agent) => agent.id === overId);
-    if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) return;
-
-    const reorderedGroupIds = arrayMove(groupAgents.map((agent) => agent.id), oldIndex, newIndex);
-    const pinnedIds = groupAgents[0]?.pinned
-      ? reorderedGroupIds
-      : pinnedAgentNodes.map((agent) => agent.id);
-    const projectIds = groupAgents[0]?.pinned
-      ? projectAgentNodes.map((agent) => agent.id)
-      : reorderedGroupIds;
-    const updated = await agentService.reorderAgents([...pinnedIds, ...projectIds]);
-    if (!updated) {
-      window.dispatchEvent(new CustomEvent('app:showToast', { detail: i18nService.t('agentReorderFailed') }));
-    }
-  }, [pinnedAgentNodes, projectAgentNodes]);
-
-  const renderAgentNode = (agent: AgentSidebarAgentNode) => (
-    <SortableAgentNode
-      key={agent.id}
-      agent={agent}
-      disabled={agent.isExpanded || isBatchMode}
-    >
-      <AgentTreeNode
-        agent={agent}
-        isBatchMode={isBatchMode}
-        batchAgentId={batchAgentId}
-        selectedKeys={selectedKeys}
-        showBatchOption
-        onToggleExpanded={toggleAgentExpanded}
-        onEditAgent={(agent) => {
-          onSidebarAction?.('agent_edit', {
-            agentType: getAgentType(agent.id),
-            isExpanded: agent.isExpanded,
-            isPinned: agent.pinned,
-          });
-          setSettingsAgentId(agent.id);
-        }}
-        onCreateTask={(agent) => void handleCreateTask(agent)}
-        onDeleteAgent={handleDeleteAgent}
-        onToggleAgentPin={handleToggleAgentPin}
-        onRetryLoadTasks={(agentId) => {
-          const targetAgent = agentNodes.find((item) => item.id === agentId);
-          onSidebarAction?.('task_list_retry_load', {
-            agentType: getAgentType(agentId),
-            visibleTaskCount: targetAgent?.tasks.length,
-          });
-          void retryLoadTasks(agentId);
-        }}
-        onLoadMoreTasks={(agentId) => {
-          const targetAgent = agentNodes.find((item) => item.id === agentId);
-          onSidebarAction?.('task_list_expand_more', {
-            agentType: getAgentType(agentId),
-            visibleTaskCount: targetAgent?.tasks.length,
-          });
-          void loadMoreTasks(agentId);
-        }}
-        onCollapseTasks={(agentId) => {
-          const targetAgent = agentNodes.find((item) => item.id === agentId);
-          onSidebarAction?.('task_list_collapse', {
-            agentType: getAgentType(agentId),
-            visibleTaskCount: targetAgent?.tasks.length,
-          });
-          collapseTasks(agentId);
-        }}
-        onSelectTask={(task) => void handleSelectTask(task)}
-        onDeleteTask={handleDeleteTask}
-        onShareTask={handleShareTask}
-        onToggleTaskPin={handleToggleTaskPin}
-        onRenameTask={handleRenameTask}
-        onToggleSelection={onToggleSelection}
-        onEnterBatchMode={handleEnterBatchMode}
-        onSidebarAction={onSidebarAction}
-        getTaskActionParams={getTaskActionParams}
-      />
-    </SortableAgentNode>
-  );
+    const items = allChatTasks.map((task): AgentSidebarBatchItem => createSessionBatchItem(task.id));
+    onBatchSelectableItemsChange(items);
+  }, [allChatTasks, isBatchMode, onBatchSelectableItemsChange]);
 
   const renderActivityTask = (item: AgentSidebarActivityItem) => {
-    const { agent, task } = item;
-    const isBatchAgent = isBatchMode && batchAgentId === agent.id;
-    const isOutsideBatchAgent = isBatchMode && batchAgentId !== null && batchAgentId !== agent.id;
-
+    const { task } = item;
     return (
       <AgentTaskRow
         key={task.id}
         task={task}
-        isBatchMode={isBatchAgent}
+        isBatchMode={isBatchMode}
         isSelected={selectedKeys.has(createSessionBatchKey(task.id))}
-        contextLabel={getAgentDisplayName(agent)}
-        contextIcon={<UserGroupIcon className="h-3 w-3" />}
-        isSelectionDisabled={isOutsideBatchAgent}
+        contextLabel={undefined}
+        contextIcon={undefined}
+        isSelectionDisabled={false}
         showBatchOption={!isBatchMode}
         onSelect={() => void handleSelectTask(task)}
         onDelete={() => handleDeleteTask(task)}
@@ -640,163 +408,153 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
     );
   };
 
-  const renderSortableAgentGroup = (agents: AgentSidebarAgentNode[]) => (
-    <DndContext
-      sensors={sensors}
-      collisionDetection={closestCenter}
-      onDragEnd={(event: DragEndEvent) => {
-        const activeId = String(event.active.id);
-        const overId = event.over?.id ? String(event.over.id) : '';
-        if (!overId) return;
-        void handleReorderAgents(activeId, overId, agents);
-      }}
-    >
-      <SortableContext
-        items={agents.map((agent) => agent.id)}
-        strategy={verticalListSortingStrategy}
-      >
-        {agents.map(renderAgentNode)}
-      </SortableContext>
-    </DndContext>
-  );
-
-  useEffect(() => {
-    if (deletedSessionIds.length === 0) return;
-    removeTaskPreviews(deletedSessionIds);
-  }, [deletedSessionIds, removeTaskPreviews]);
-
-  useEffect(() => {
-    if (!batchAgentId) {
-      onBatchSelectableItemsChange([]);
-      return;
-    }
-
-    const batchAgent = agentNodes.find((agent) => agent.id === batchAgentId);
-    if (!batchAgent) {
-      onBatchSelectableItemsChange([]);
-      return;
-    }
-
-    const items = batchAgent.tasks.map((task): AgentSidebarBatchItem => createSessionBatchItem(task.id));
-    onBatchSelectableItemsChange(items);
-  }, [agentNodes, batchAgentId, onBatchSelectableItemsChange]);
-
   return (
     <div className="pb-3">
       {isTaskFilterActive ? (
         <AgentSidebarActivityView activity={activityView} renderTask={renderActivityTask} />
       ) : (
-        <div role="tree" aria-label={i18nService.t('myAgents')}>
-          {hasPinnedAgents && (
-            <div className="space-y-0.5">
-              <div className="sticky top-0 z-30 -ml-[6px] flex h-9 w-[calc(100%+12px)] items-center bg-surface-raised pl-3 pr-1">
-                <h2 className="min-w-0 truncate text-[12px] font-medium text-secondary/75 tracking-wide">
-                  {i18nService.t('myAgentSidebarPinned')}
-                </h2>
-              </div>
-              {renderSortableAgentGroup(pinnedAgentNodes)}
-            </div>
-          )}
-
+        <div role="tree" aria-label={i18nService.t('myChats')}>
+          {/* 我的项目 */}
           <div className="space-y-0.5">
-              <div className="group sticky top-0 z-30 -ml-[6px] flex h-9 w-[calc(100%+12px)] items-center justify-between bg-surface-raised pl-3 pr-1">
-                <h2 className="min-w-0 truncate text-[12px] font-medium text-secondary/75 tracking-wide">
-                  {i18nService.t('myProjects')}
-                </h2>
-                <Tooltip
-                  content={i18nService.t('createProject')}
-                  position={TooltipPosition.Bottom}
-                  align={TooltipAlign.End}
-                  delay={300}
-                  className="opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
+            <div className="group sticky top-0 z-30 -ml-[6px] flex h-9 w-[calc(100%+12px)] items-center justify-between bg-surface-raised pl-3 pr-1">
+              <h2 className="min-w-0 truncate text-[12px] font-medium text-secondary/75 tracking-wide">
+                {i18nService.t('myProjects')}
+              </h2>
+              <Tooltip
+                content={i18nService.t('createProject')}
+                position={TooltipPosition.Bottom}
+                align={TooltipAlign.End}
+                delay={300}
+                className="opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
+              >
+                <button
+                  type="button"
+                  onClick={() => void handleCreateProject()}
+                  className="inline-flex h-6 w-6 items-center justify-center rounded-md text-secondary/60 transition-colors hover:bg-foreground/[0.04] hover:text-foreground"
+                  aria-label={i18nService.t('createProject')}
                 >
-                  <button
-                    type="button"
-                    onClick={() => void handleCreateProject()}
-                    className="inline-flex h-6 w-6 items-center justify-center rounded-md text-secondary/60 transition-colors hover:bg-foreground/[0.04] hover:text-foreground"
-                    aria-label={i18nService.t('createProject')}
-                  >
-                    <PlusIcon className="h-3.5 w-3.5" />
-                  </button>
-                </Tooltip>
-              </div>
-              {projectNodes.length === 0 ? (
-                <div className="-ml-[6px] flex h-7 w-[calc(100%+12px)] items-center pl-3 pr-2.5 text-xs text-secondary/50">
-                  {i18nService.t('noProjectsYet')}
-                </div>
-              ) : (
-                <DndContext
-                  sensors={sensors}
-                  collisionDetection={closestCenter}
-                  onDragEnd={(event: DragEndEvent) => {
-                    const activeId = String(event.active.id);
-                    const overId = event.over?.id ? String(event.over.id) : '';
-                    if (!overId) return;
-                    void handleReorderProjects(activeId, overId, projectNodes);
-                  }}
-                >
-                  <SortableContext
-                    items={projectNodes.map((p) => p.id)}
-                    strategy={verticalListSortingStrategy}
-                  >
-                    {projectNodes.map((project) => (
-                      <SortableProjectNode
-                        key={project.id}
-                        project={project}
-                        disabled={project.isExpanded || isBatchMode}
-                      >
-                        <ProjectTreeNode
-                          project={project}
-                          isBatchMode={isBatchMode}
-                          batchAgentId={batchAgentId}
-                          selectedKeys={selectedKeys}
-                          onToggleExpanded={toggleProjectExpanded}
-                          onCreateTask={handleCreateProjectTask}
-                          onSelectTask={(task) => void handleSelectTask(task)}
-                          onDeleteTask={handleDeleteTask}
-                          onShareTask={handleShareTask}
-                          onToggleTaskPin={handleToggleTaskPin}
-                          onRenameTask={handleRenameTask}
-                          onToggleSelection={onToggleSelection}
-                          onEnterBatchMode={handleEnterBatchMode}
-                          onSidebarAction={onSidebarAction}
-                          getTaskActionParams={getTaskActionParams}
-                        />
-                      </SortableProjectNode>
-                    ))}
-                  </SortableContext>
-                </DndContext>
-              )}
+                  <PlusIcon className="h-3.5 w-3.5" />
+                </button>
+              </Tooltip>
             </div>
+            {projectNodes.length === 0 ? (
+              <div className="-ml-[6px] flex h-7 w-[calc(100%+12px)] items-center pl-3 pr-2.5 text-xs text-secondary/50">
+                {i18nService.t('noProjectsYet')}
+              </div>
+            ) : (
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={(event: DragEndEvent) => {
+                  const activeId = String(event.active.id);
+                  const overId = event.over?.id ? String(event.over.id) : '';
+                  if (!overId) return;
+                  void handleReorderProjects(activeId, overId, projectNodes);
+                }}
+              >
+                <SortableContext
+                  items={projectNodes.map((p) => p.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  {projectNodes.map((project) => (
+                    <SortableProjectNode
+                      key={project.id}
+                      project={project}
+                      disabled={project.isExpanded || isBatchMode}
+                    >
+                      <ProjectTreeNode
+                        project={project}
+                        isBatchMode={isBatchMode}
+                        batchAgentId={batchAgentId}
+                        selectedKeys={selectedKeys}
+                        onToggleExpanded={toggleProjectExpanded}
+                        onCreateTask={handleCreateProjectTask}
+                        onSelectTask={(task) => void handleSelectTask(task)}
+                        onDeleteTask={handleDeleteTask}
+                        onShareTask={handleShareTask}
+                        onToggleTaskPin={handleToggleTaskPin}
+                        onRenameTask={handleRenameTask}
+                        onToggleSelection={onToggleSelection}
+                        onEnterBatchMode={handleEnterBatchMode}
+                        onSidebarAction={onSidebarAction}
+                        getTaskActionParams={getTaskActionParams}
+                      />
+                    </SortableProjectNode>
+                  ))}
+                </SortableContext>
+              </DndContext>
+            )}
+          </div>
 
+          {/* 我的对话头部 */}
           <MyAgentSidebarHeader
-            onCreateAgent={() => onShowExperts?.()}
+            onCreateChat={handleCreateChat}
           />
 
-          {agentNodes.length === 0 ? (
-            <div className="px-3 py-6 text-center">
-              <p className="text-xs font-medium text-secondary">
-                {i18nService.t('myAgentSidebarNoAgents')}
-              </p>
-              <button
-                type="button"
-                onClick={() => onShowExperts?.()}
-                className="mt-3 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-primary-hover"
-              >
-                {i18nService.t('createNewAgent')}
-              </button>
+          {/* 我的对话列表（极简单行渲染） */}
+          {chatTasks.length === 0 ? (
+            <div className="-ml-[6px] flex h-7 w-[calc(100%+12px)] items-center pl-3 pr-2.5 text-xs text-secondary/50">
+              {i18nService.t('noChatsYet')}
             </div>
-          ) : projectAgentNodes.length > 0 ? (
-            <div className="space-y-0.5 px-0">
-              {renderSortableAgentGroup(projectAgentNodes)}
+          ) : (
+            <div className="space-y-0.5">
+              {chatTasks.map((task) => (
+                <AgentTaskRow
+                  key={task.id}
+                  task={task}
+                  isBatchMode={isBatchMode}
+                  isSelected={selectedKeys.has(createSessionBatchKey(task.id))}
+                  contextLabel={undefined}
+                  contextIcon={undefined}
+                  isSelectionDisabled={false}
+                  showBatchOption={!isBatchMode}
+                  onSelect={() => void handleSelectTask(task)}
+                  onDelete={() => handleDeleteTask(task)}
+                  onShare={() => handleShareTask(task)}
+                  onTogglePin={(pinned) => handleToggleTaskPin(task, pinned)}
+                  onRename={(title) => handleRenameTask(task, title)}
+                  onToggleSelection={() => onToggleSelection(createSessionBatchKey(task.id), task.agentId)}
+                  onEnterBatchMode={() => handleEnterBatchMode(task)}
+                  onSidebarAction={onSidebarAction}
+                  analyticsParams={getTaskActionParams(task)}
+                />
+              ))}
+
+              {hasLoadError && (
+                <button
+                  type="button"
+                  onClick={() => void retryLoadTasks()}
+                  className="-ml-[6px] flex h-7 w-[calc(100%+12px)] items-center rounded-md pl-[38px] pr-2.5 text-left text-[13px] text-red-500 transition-colors hover:bg-red-500/10"
+                >
+                  {i18nService.t('myAgentSidebarLoadFailed')}
+                </button>
+              )}
+
+              {(canExpandTasks || canCollapseTasks) && (
+                <ExpandAgentTasksRow
+                  isLoading={isLoadingTasks}
+                  label={canExpandTasks
+                    ? i18nService.t('myAgentSidebarExpandMore')
+                    : i18nService.t('myAgentSidebarCollapse')}
+                  onClick={() => {
+                    if (canExpandTasks) {
+                      void loadMoreTasks();
+                    } else {
+                      collapseTasks();
+                    }
+                  }}
+                  secondaryLabel={canExpandTasks && canCollapseTasks
+                    ? i18nService.t('myAgentSidebarCollapse')
+                    : undefined}
+                  onSecondaryClick={canExpandTasks && canCollapseTasks
+                    ? () => collapseTasks()
+                    : undefined}
+                />
+              )}
             </div>
-          ) : null}
+          )}
         </div>
       )}
-      <AgentSettingsPanel
-        agentId={settingsAgentId}
-        onClose={() => setSettingsAgentId(null)}
-      />
     </div>
   );
 };

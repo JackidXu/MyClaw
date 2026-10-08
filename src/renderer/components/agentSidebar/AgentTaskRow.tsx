@@ -101,7 +101,6 @@ const AgentTaskRow: React.FC<AgentTaskRowProps> = ({
   const [showConfirmDelete, setShowConfirmDelete] = useState(false);
   const [showMoveToProject, setShowMoveToProject] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
-  const [suppressPinHover, setSuppressPinHover] = useState(false);
   const [renameValue, setRenameValue] = useState(editableTitle);
   const menuRef = useRef<HTMLDivElement>(null);
   const actionButtonRef = useRef<HTMLButtonElement>(null);
@@ -271,7 +270,7 @@ const AgentTaskRow: React.FC<AgentTaskRowProps> = ({
       className={`group relative -ml-[6px] flex w-[calc(100%+12px)] items-center gap-2 rounded-lg ${
         isActivityRow ? 'min-h-[48px] py-1.5' : 'h-[32px]'
       } ${
-        isBatchMode ? 'pl-4' : isActivityRow ? 'pl-3.5' : 'pl-[36px]'
+        isBatchMode ? 'pl-3' : isActivityRow ? 'pl-3.5' : 'pl-3'
       } pr-2.5 text-[13px] font-normal transition-all duration-150 ${
         isSelectionDisabled
           ? 'cursor-default text-foreground/30'
@@ -281,38 +280,12 @@ const AgentTaskRow: React.FC<AgentTaskRowProps> = ({
       }`}
       onClick={handleRowClick}
       onKeyDown={handleRowKeyDown}
-      onMouseMove={() => setSuppressPinHover(false)}
-      onMouseLeave={() => setSuppressPinHover(false)}
       role="treeitem"
       tabIndex={isSelectionDisabled ? -1 : 0}
       aria-level={isActivityRow ? 1 : 2}
       aria-selected={task.isSelected}
       aria-disabled={isSelectionDisabled || undefined}
     >
-      {!isActivityRow && !isBatchMode && !isRenaming && !isSelectionDisabled && (
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            const nextPinned = !task.pinned;
-            setSuppressPinHover(true);
-            event.currentTarget.blur();
-            void onTogglePin(nextPinned);
-          }}
-          className={`absolute left-[11px] top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-foreground transition-opacity hover:opacity-[0.5] focus:outline-none ${
-            suppressPinHover
-              ? 'pointer-events-none opacity-0'
-              : task.pinned
-                ? 'opacity-[0.45]'
-                : 'pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-[0.3] focus-visible:pointer-events-auto focus-visible:opacity-[0.45]'
-          }`}
-          aria-label={pinLabel}
-          title={pinLabel}
-        >
-          <PushPinIcon className="h-3.5 w-3.5" />
-        </button>
-      )}
-
       {isBatchMode && (
         <input
           type="checkbox"
@@ -417,6 +390,15 @@ const AgentTaskRow: React.FC<AgentTaskRowProps> = ({
               title={indicatorLabel}
               aria-label={indicatorLabel}
             />
+          )}
+          {task.pinned && (
+            <span
+              className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center text-secondary/40 transition-opacity group-hover:opacity-0"
+              title={pinLabel}
+              aria-label={pinLabel}
+            >
+              <PushPinIcon className="h-3 w-3" />
+            </span>
           )}
           {showRelativeTime && (
             <span

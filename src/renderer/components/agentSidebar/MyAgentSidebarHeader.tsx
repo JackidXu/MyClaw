@@ -5,18 +5,21 @@ import { i18nService } from '../../services/i18n';
 import Tooltip, { TooltipAlign, TooltipPosition } from '../ui/Tooltip';
 
 interface MyAgentSidebarHeaderProps {
-  onCreateAgent: () => void;
+  onCreateChat?: () => void;
+  onCreateAgent?: () => void;
   onSearchTasks?: () => void;
 }
 
 const MyAgentSidebarHeader: React.FC<MyAgentSidebarHeaderProps> = ({
+  onCreateChat,
   onCreateAgent,
   onSearchTasks,
 }) => {
+  const handleCreate = onCreateChat || onCreateAgent;
   return (
     <div className="group sticky top-0 z-30 -ml-[6px] flex h-9 w-[calc(100%+12px)] items-center justify-between bg-surface-raised pl-3 pr-1">
       <h2 className="min-w-0 truncate text-[12px] font-medium text-secondary/75 tracking-wide">
-        {i18nService.t('myAgents')}
+        {i18nService.t('myChats')}
       </h2>
       <div className="flex items-center gap-0.5">
         {onSearchTasks && (
@@ -29,22 +32,24 @@ const MyAgentSidebarHeader: React.FC<MyAgentSidebarHeaderProps> = ({
             <MagnifyingGlassIcon className="h-3.5 w-3.5" />
           </button>
         )}
-        <Tooltip
-          content={i18nService.t('createNewAgent')}
-          position={TooltipPosition.Bottom}
-          align={TooltipAlign.End}
-          delay={300}
-          className="opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
-        >
-          <button
-            type="button"
-            onClick={onCreateAgent}
-            className="inline-flex h-6 w-6 items-center justify-center rounded-md text-secondary/60 transition-colors hover:bg-foreground/[0.04] hover:text-foreground"
-            aria-label={i18nService.t('createNewAgent')}
+        {handleCreate && (
+          <Tooltip
+            content={i18nService.t('newChat')}
+            position={TooltipPosition.Bottom}
+            align={TooltipAlign.End}
+            delay={300}
+            className="opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
           >
-            <PlusIcon className="h-3.5 w-3.5" />
-          </button>
-        </Tooltip>
+            <button
+              type="button"
+              onClick={handleCreate}
+              className="inline-flex h-6 w-6 items-center justify-center rounded-md text-secondary/60 transition-colors hover:bg-foreground/[0.04] hover:text-foreground"
+              aria-label={i18nService.t('newChat')}
+            >
+              <PlusIcon className="h-3.5 w-3.5" />
+            </button>
+          </Tooltip>
+        )}
       </div>
     </div>
   );
