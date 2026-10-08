@@ -168,6 +168,69 @@ const normalizeDisplayMath = (content: string): string => {
   });
 };
 
+const HTML_TAG_HINT_REGEX = /<\/?(?:hr|h[1-6]|p|strong|b|em|i|del|s|strike|br|ul|ol|li)\b/i;
+
+const convertSegmentHtmlTags = (segment: string): string => {
+  let text = segment;
+
+  // 1. 分割线
+  text = text.replace(/<hr\s*\/?>/gi, '\n\n---\n\n');
+
+  // 2. 标题 <h1> ~ <h6>
+  for (let i = 1; i <= 6; i += 1) {
+    const hashes = '#'.repeat(i);
+    const pairedRegex = new RegExp(`<h${i}[^>]*>([\\s\\S]*?)<\\/h${i}>`, 'gi');
+    text = text.replace(pairedRegex, `\n\n${hashes} $1\n\n`);
+    const openRegex = new RegExp(`<h${i}[^>]*>`, 'gi');
+    text = text.replace(openRegex, `\n\n${hashes} `);
+    const closeRegex = new RegExp(`<\\/h${i}>`, 'gi');
+    text = text.replace(closeRegex, '\n\n');
+  }
+
+  // 3. 粗体 <strong> / <b>
+  text = text.replace(/<(?:strong|b)[^>]*>([\s\S]*?)<\/(?:strong|b)>/gi, '**$1**');
+  text = text.replace(/<(?:strong|b)[^>]*>/gi, '**');
+  text = text.replace(/<\/(?:strong|b)>/gi, '**');
+
+  // 4. 斜体 <em> / <i>
+  text = text.replace(/<(?:em|i)[^>]*>([\s\S]*?)<\/(?:em|i)>/gi, '*$1*');
+  text = text.replace(/<(?:em|i)[^>]*>/gi, '*');
+  text = text.replace(/<\/(?:em|i)>/gi, '*');
+
+  // 5. 删除线 <del> / <s> / <strike>
+  text = text.replace(/<(?:del|s|strike)[^>]*>([\s\S]*?)<\/(?:del|s|strike)>/gi, '~~$1~~');
+  text = text.replace(/<(?:del|s|strike)[^>]*>/gi, '~~');
+  text = text.replace(/<\/(?:del|s|strike)>/gi, '~~');
+
+  // 6. 换行 <br>
+  text = text.replace(/<br\s*\/?>/gi, '\n');
+
+  // 7. 段落 <p>
+  text = text.replace(/<p[^>]*>([\s\S]*?)<\/p>/gi, '\n\n$1\n\n');
+  text = text.replace(/<p[^>]*>/gi, '\n\n');
+  text = text.replace(/<\/p>/gi, '\n\n');
+
+  // 8. 列表项 <li> 与列表容器 <ul>/<ol>
+  text = text.replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, '\n- $1\n');
+  text = text.replace(/<li[^>]*>/gi, '\n- ');
+  text = text.replace(/<\/li>/gi, '\n');
+  text = text.replace(/<\/?(?:ul|ol)[^>]*>/gi, '\n');
+
+  // 9. 收敛过多换行
+  return text.replace(/\n{3,}/g, '\n\n');
+};
+
+/**
+ * 将大模型回复中散落的排版用 HTML 标签标准化转换为 Markdown 语法。
+ * 代码块及行内代码受保护不受影响，同时单边标签转换对流式渲染天然友好。
+ */
+export const convertHtmlTagsToMarkdown = (content: string): string => {
+  if (!HTML_TAG_HINT_REGEX.test(content)) {
+    return content;
+  }
+  return transformMarkdownTextSegments(content, convertSegmentHtmlTags);
+};
+
 export const safeUrlTransform = (url: string): string => {
   const trimmed = url.trim();
   if (!trimmed) return trimmed;
@@ -700,7 +763,7 @@ const MarkdownContent: React.FC<MarkdownContentProps> = ({
     if (useLargePreview) {
       return '';
     }
-    return normalizeDisplayMath(convertLatexMathDelimiters(encodeFileUrlsInMarkdown(content)));
+    return normalizeDisplayMath(convertLatexMathDelimiters(encodeFileUrlsInMarkdown(convertHtmlTagsToMarkdown(content))));
   }, [content, useLargePreview]);
 
   if (useLargePreview) {

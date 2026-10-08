@@ -6073,6 +6073,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       '[HeyClaw system instructions]',
       'Apply the instructions below as the highest-priority guidance for this session.',
       'If earlier HeyClaw system instructions exist, replace them with this version.',
+      'Format output in clean, standard GitHub-flavored Markdown. Do not emit raw HTML markup tags for styling; use native Markdown syntax instead.',
       systemPrompt,
     ].join('\n');
   }
