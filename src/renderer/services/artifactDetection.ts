@@ -80,6 +80,11 @@ export function collectSessionArtifacts(
         pushLinkedFileArtifact(fl, seenFilePaths);
       }
 
+      const mediaArtifacts = parseMediaTokensFromText(msg.content, msg.id, sessionId);
+      for (const ma of mediaArtifacts) {
+        pushMediaFileArtifact(ma, seenFilePaths);
+      }
+
       const contentWithoutFileLinks = stripFileLinksFromText(msg.content);
       const pathArtifacts = parseFilePathsFromText(contentWithoutFileLinks, msg.id, sessionId);
       for (const pa of pathArtifacts) {
@@ -144,6 +149,11 @@ export function collectSessionArtifacts(
       }
 
       if (!msg.content) continue;
+
+      const mediaArtifacts = parseMediaTokensFromText(msg.content, msg.id, sessionId);
+      for (const ma of mediaArtifacts) {
+        pushMediaFileArtifact(ma, seenFilePaths);
+      }
 
       const fileLinks = parseFileLinksFromMessage(msg.content, msg.id, sessionId);
       for (const fl of fileLinks) {

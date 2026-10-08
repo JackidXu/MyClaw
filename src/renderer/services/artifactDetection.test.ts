@@ -148,4 +148,25 @@ describe('collectSessionArtifacts', () => {
 
     expect(collectSessionArtifacts(messages, 'sess1', CWD)).toHaveLength(0);
   });
+
+  test('MEDIA tokens in assistant message yield media artifacts without cwd restriction', () => {
+    const messages = [
+      assistantMessage(
+        'a1',
+        [
+          '7张设计参考图已生成。你在 HeyClaw 里应该能直接看到这些图片。',
+          'MEDIA:file:///Users/admin/Desktop/design_01_字体对比.png',
+          'MEDIA:/Users/admin/Desktop/design_02_版本A.jpg',
+        ].join('\n'),
+      ),
+    ];
+
+    const detected = collectSessionArtifacts(messages, 'sess1', CWD);
+    expect(detected).toHaveLength(2);
+    expect(detected[0].type).toBe('image');
+    expect(detected[0].filePath).toBe('/Users/admin/Desktop/design_01_字体对比.png');
+    expect(detected[1].type).toBe('image');
+    expect(detected[1].filePath).toBe('/Users/admin/Desktop/design_02_版本A.jpg');
+  });
 });
+

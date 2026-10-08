@@ -3909,10 +3909,10 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
       const toLoad: Artifact[] = [];
 
       for (const msg of messages) {
-        if (msg.type !== 'tool_result' || !msg.content || !msg.metadata?.isFinal) continue;
+        if ((msg.type !== 'tool_result' && msg.type !== 'assistant') || !msg.content || !msg.metadata?.isFinal) continue;
         if (loadedFileIdsRef.current.has(msg.id)) continue;
 
-        // Only detect explicit MEDIA: tokens in tool results — do NOT parse bare file paths
+        // Only detect explicit MEDIA: tokens in tool results and assistant messages — do NOT parse bare file paths
         // here, because tool output (e.g. `ls`) may contain many irrelevant file paths.
         const seenFilePaths = new Set<string>();
         const mediaArtifacts = parseMediaTokensFromText(msg.content, msg.id, sessionId);
