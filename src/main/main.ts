@@ -182,7 +182,6 @@ import {
   OpenClawProviderId,
   parseModelThinkingLevel,
   ProviderName,
-  ProviderRegistry,
 } from '../shared/providers';
 import {
   ShareDeploymentCandidateSource,
@@ -412,6 +411,7 @@ import {
 } from './libs/lobsterBrowserMcpServer';
 import { exportLogsZip } from './libs/logExport';
 import {
+  mainHttpClient,
   resolveTargetUrl,
   setMainHttpClientStoreGetter,
   setUnauthorizedBroadcastHandler,
@@ -6190,7 +6190,7 @@ if (!gotTheLock) {
         let imageModels: any[] = [];
         let videoModels: any[] = [];
 
-        const res = await fetchModelsFromOneAPI();
+        const res = await fetchMediaModelsFromAdmin();
         if (res.success && res.models) {
           imageModels = res.models.image;
           videoModels = res.models.video;
@@ -8417,115 +8417,126 @@ if (!gotTheLock) {
     }
   });
 
-  async function fetchModelsFromOneAPI(): Promise<{ success: boolean; models?: { chat: any[]; image: any[]; video: any[] }; error?: string }> {
-    const sqliteStore = getStore();
-    const appConfig = sqliteStore?.get<any>('app_config');
-    const oneapiConfig = appConfig?.providers?.['oneapi'];
-    const oneapiKey = oneapiConfig?.apiKey?.trim();
-    let oneapiBaseUrl = oneapiConfig?.baseUrl?.trim() || 'https://api.openai.com/v1';
-    if (oneapiBaseUrl && !/^https?:\/\//i.test(oneapiBaseUrl)) {
-      oneapiBaseUrl = `http://${oneapiBaseUrl}`;
+  const CACHED_MEDIA_MODELS_STORE_KEY = 'cached_media_models';
+  let cachedMediaModelsPayload: { image: any[]; video: any[] } | null = null;
+  let cachedMediaModelsTimestamp = 0;
+  let inflightMediaModelsPromise: Promise<{
+    success: boolean;
+    models?: { image: any[]; video: any[] };
+    error?: string;
+  }> | null = null;
+  const MEDIA_MODELS_CACHE_TTL_MS = 60_000;
+
+  async function fetchMediaModelsFromAdmin(): Promise<{
+    success: boolean;
+    models?: { image: any[]; video: any[] };
+    error?: string;
+  }> {
+    const now = Date.now();
+    if (cachedMediaModelsPayload && (now - cachedMediaModelsTimestamp < MEDIA_MODELS_CACHE_TTL_MS)) {
+      return { success: true, models: cachedMediaModelsPayload };
     }
 
-    if (!oneapiKey) {
-      return { success: false, error: 'No API key' };
+    if (inflightMediaModelsPromise) {
+      return inflightMediaModelsPromise;
     }
 
-    try {
-      const cleanBaseUrl = oneapiBaseUrl.replace(/\/+$/, '');
-      const url = `${cleanBaseUrl}/models`;
-      const resp = await net.fetch(url, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${oneapiKey}`,
-        },
-      });
+    inflightMediaModelsPromise = (async () => {
+      const sqliteStore = getStore();
 
-      if (!resp.ok) {
-        return { success: false, error: `HTTP ${resp.status}` };
-      }
+      // 本地 SQLite 缓存降级获取工具函数
+      const getLocalSqliteFallback = (): { image: any[]; video: any[] } | null => {
+        try {
+          const dbCached = sqliteStore?.get<{ image?: any[]; video?: any[] }>(CACHED_MEDIA_MODELS_STORE_KEY);
+          if (dbCached && (Array.isArray(dbCached.image) || Array.isArray(dbCached.video))) {
+            return {
+              image: Array.isArray(dbCached.image) ? dbCached.image : [],
+              video: Array.isArray(dbCached.video) ? dbCached.video : [],
+            };
+          }
+        } catch (dbErr) {
+          console.warn('[Media] 读取 SQLite 本地兜底模型缓存异常:', dbErr);
+        }
+        return null;
+      };
 
-      const data = await resp.json() as { data: Array<{ id: string; owned_by?: string }> };
-      if (!data || !Array.isArray(data.data)) {
-        return { success: false, error: 'Invalid response format' };
-      }
+      try {
+        const appConfig = sqliteStore?.get<any>('app_config');
+        const oneapiConfig = appConfig?.providers?.['oneapi'];
+        const oneapiKey = oneapiConfig?.apiKey?.trim();
 
-      const chatModels: any[] = [];
-      const imageModels: any[] = [];
-      const videoModels: any[] = [];
-
-      for (const m of data.data) {
-        if (!m || typeof m.id !== 'string') {
-          continue;
+        const headers: Record<string, string> = {};
+        if (oneapiKey) {
+          headers['x-api-key'] = oneapiKey.startsWith('sk-') ? oneapiKey : `sk-${oneapiKey}`;
         }
 
-        // 过滤自定义模型（owned_by === 'custom'）
-        if (m.owned_by === 'custom') {
-          continue;
-        }
+        const resp = await mainHttpClient.admin.get<{
+          code?: number;
+          success?: boolean;
+          data?: { image?: any[]; video?: any[] };
+          image?: any[];
+          video?: any[];
+        }>('/api/client/models?type=media', { headers });
 
-        const modelId = m.id;
+        if (resp.ok && resp.data) {
+          const body = resp.data;
+          const imageModels = Array.isArray(body.data?.image)
+            ? body.data.image
+            : (Array.isArray(body.image) ? body.image : []);
+          const videoModels = Array.isArray(body.data?.video)
+            ? body.data.video
+            : (Array.isArray(body.video) ? body.video : []);
 
-        // 判断是否是生图模型
-        const isImage = /dall-e|stable-diffusion|\bsdxl\b|midjourney|\bmj-v\d+|controlnet|\bflux\b|seedream/i.test(modelId);
+          const payload = {
+            image: imageModels,
+            video: videoModels,
+          };
+          cachedMediaModelsPayload = payload;
+          cachedMediaModelsTimestamp = Date.now();
 
-        // 判断是否是视频模型
-        const hasVideoKeyword = /cogvideo|seedance|sora|kling|\bluma\b|runway|video-gen/i.test(modelId);
-        const isVideoUnderstanding = /chat|understand|vision|vl|multimodal/i.test(modelId);
-        const isVideo = hasVideoKeyword && !isVideoUnderstanding;
-
-        if (isImage) {
-          imageModels.push({
-            modelId: modelId,
-            displayName: modelId,
-            provider: 'oneapi',
-            mediaType: 'image',
-            generationTimeout: 60,
-            pricing: {},
-            description: `OneAPI ${modelId} 图像生成模型`,
-          });
-        } else if (isVideo) {
-          videoModels.push({
-            modelId: modelId,
-            displayName: modelId,
-            provider: 'oneapi',
-            mediaType: 'video',
-            generationTimeout: 300,
-            pricing: {},
-            description: `OneAPI ${modelId} 视频生成模型`,
-          });
-        } else {
-          // 智能推断自建 OneAPI 渠道的普通对话大模型是否支持识图
-          const isKnownNonVision = /deepseek/i.test(modelId);
-          const isKnownVision = /vision|vl|omni|gpt-4o|claude-3|gemini|doubao/i.test(modelId);
-          let supportsImage = false;
-          if (!isKnownNonVision) {
-            if (isKnownVision) {
-              supportsImage = true;
-            } else {
-              supportsImage = ProviderRegistry.resolveModelSupportsImage('oneapi', modelId, false);
-            }
+          // 成功获取后，异步持久化写入 SQLite 本地数据库供离线兜底
+          try {
+            sqliteStore?.set(CACHED_MEDIA_MODELS_STORE_KEY, payload);
+          } catch (dbErr) {
+            console.warn('[Media] 持久化媒体模型至 SQLite 异常:', dbErr);
           }
 
-          chatModels.push({
-            id: modelId,
-            name: modelId,
-            supportsImage,
-          });
+          return {
+            success: true,
+            models: payload,
+          };
         }
-      }
 
-      return {
-        success: true,
-        models: {
-          chat: chatModels,
-          image: imageModels,
-          video: videoModels,
+        // 网络响应异常时：优先返回内存缓存，其次降级读取本地 SQLite 数据库兜底
+        if (cachedMediaModelsPayload) {
+          return { success: true, models: cachedMediaModelsPayload };
         }
-      };
-    } catch (e) {
-      return { success: false, error: e instanceof Error ? e.message : String(e) };
-    }
+        const sqliteFallback = getLocalSqliteFallback();
+        if (sqliteFallback) {
+          cachedMediaModelsPayload = sqliteFallback;
+          return { success: true, models: sqliteFallback };
+        }
+
+        return {
+          success: false,
+          error: resp.error || `HTTP ${resp.status}`,
+        };
+      } catch (e) {
+        if (cachedMediaModelsPayload) {
+          return { success: true, models: cachedMediaModelsPayload };
+        }
+        const sqliteFallback = getLocalSqliteFallback();
+        if (sqliteFallback) {
+          cachedMediaModelsPayload = sqliteFallback;
+          return { success: true, models: sqliteFallback };
+        }
+        return { success: false, error: e instanceof Error ? e.message : String(e) };
+      }
+    })().finally(() => {
+      inflightMediaModelsPromise = null;
+    });
+
+    return inflightMediaModelsPromise;
   }
 
   ipcMain.handle(HtmlShareIpc.DeletePermanently, async (_event, shareId: unknown) => {
@@ -8827,19 +8838,31 @@ if (!gotTheLock) {
   });
 
   // Media generation IPC handlers
-  ipcMain.handle(CoworkIpcChannel.GetMediaModels, async (_event, type: 'image' | 'video') => {
+  ipcMain.handle(CoworkIpcChannel.GetMediaModels, async (_event, type?: 'image' | 'video' | 'media') => {
     try {
-      let imageModels: any[] = [];
-      let videoModels: any[] = [];
+      const res = await fetchMediaModelsFromAdmin();
+      const imageModels = res.models?.image || [];
+      const videoModels = res.models?.video || [];
 
-      const res = await fetchModelsFromOneAPI();
-      if (res.success && res.models) {
-        imageModels = res.models.image;
-        videoModels = res.models.video;
+      if (!res.success && imageModels.length === 0 && videoModels.length === 0) {
+        return { success: false, error: res.error || 'Failed to fetch media models' };
       }
 
-      const models = type === 'image' ? imageModels : videoModels;
-      return { success: true, models };
+      if (type === 'image') {
+        return { success: true, models: imageModels };
+      }
+      if (type === 'video') {
+        return { success: true, models: videoModels };
+      }
+
+      // 未传类型或传入 'media' 时，统一返回完整聚合对象
+      return {
+        success: true,
+        models: {
+          image: imageModels,
+          video: videoModels,
+        },
+      };
     } catch (e) {
       console.error('[Media:getModels] Error:', e);
       return { success: false, error: e instanceof Error ? e.message : 'Unknown error' };

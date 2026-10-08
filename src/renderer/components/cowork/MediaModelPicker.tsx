@@ -673,22 +673,24 @@ const MediaModelPicker: React.FC<MediaModelPickerProps> = ({ draftKey, disabled 
       setIsLoading(true);
     }
     try {
-      const [imageResult, videoResult] = await Promise.all([
-        window.electron.media.getModels('image'),
-        window.electron.media.getModels('video'),
-      ]);
+      const result = await window.electron.media.getModels();
       if (
         fetchRequestIdRef.current !== requestId
         || !isAccountScopeCurrent(requestOwnerAccountKey, requestGeneration)
       ) return;
-      if (!imageResult.success) {
-        logMediaModelPickerDiagnostic('warn', 'image models fetch failed', imageResult.error);
+      if (!result.success) {
+        logMediaModelPickerDiagnostic('warn', 'media models fetch failed', result.error);
       }
-      if (!videoResult.success) {
-        logMediaModelPickerDiagnostic('warn', 'video models fetch failed', videoResult.error);
-      }
-      const imageModels = ((imageResult.models || []) as MediaModel[]).map(normalizeMediaModel);
-      const videoModels = ((videoResult.models || []) as MediaModel[]).map(normalizeMediaModel);
+      const rawData = (result.models || {}) as any;
+      const rawImages: MediaModel[] = Array.isArray(rawData)
+        ? rawData.filter((m: any) => m.mediaType === 'image')
+        : (Array.isArray(rawData.image) ? rawData.image : []);
+      const rawVideos: MediaModel[] = Array.isArray(rawData)
+        ? rawData.filter((m: any) => m.mediaType === 'video')
+        : (Array.isArray(rawData.video) ? rawData.video : []);
+
+      const imageModels = rawImages.map(normalizeMediaModel);
+      const videoModels = rawVideos.map(normalizeMediaModel);
       dispatch(setMediaModels({
         image: imageModels,
         video: videoModels,
@@ -759,7 +761,12 @@ const MediaModelPicker: React.FC<MediaModelPickerProps> = ({ draftKey, disabled 
 
   useEffect(() => {
     if (isOpen && canUseMediaGeneration) {
-      fetchModels();
+      const currentMediaModels = mediaModelsRef.current;
+      const hasCachedModels = (currentMediaModels.image && currentMediaModels.image.length > 0)
+        || (currentMediaModels.video && currentMediaModels.video.length > 0);
+      if (!hasCachedModels) {
+        fetchModels();
+      }
     }
   }, [isOpen, canUseMediaGeneration, fetchModels]);
 

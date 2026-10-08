@@ -1446,8 +1446,8 @@ contextBridge.exposeInMainWorld('electron', {
     },
   },
   media: {
-    getModels: (type: 'image' | 'video') =>
-      ipcRenderer.invoke(CoworkIpcChannel.GetMediaModels, type) as Promise<{ success: boolean; models?: unknown[]; error?: string }>,
+    getModels: (type?: 'image' | 'video' | 'media') =>
+      ipcRenderer.invoke(CoworkIpcChannel.GetMediaModels, type) as Promise<{ success: boolean; models?: any; error?: string }>,
     getTaskStatus: (taskId: number, type: 'image' | 'video') =>
       ipcRenderer.invoke('media:getTaskStatus', taskId, type) as Promise<{ success: boolean; task?: unknown; error?: string }>,
   },
