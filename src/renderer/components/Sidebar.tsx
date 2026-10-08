@@ -968,6 +968,26 @@ const Sidebar: React.FC<SidebarProps> = ({
               ⌘N
             </span>
           </button>
+          {hasSecondBrain && (
+            <button
+              type="button"
+              onClick={() => {
+                setIsSearchOpen(false);
+                onShowSecondBrain();
+              }}
+              className={activeView === 'secondBrain' ? activeSidebarNavItemClassName : sidebarNavItemClassName}
+              aria-current={activeView === 'secondBrain' ? 'page' : undefined}
+            >
+              <BrainIcon className="h-4 w-4 shrink-0" />
+              <span className="min-w-0 truncate">第二大脑</span>
+              {pendingCognitionCount > 0 && (
+                <span className="ml-auto flex items-center gap-1.5 shrink-0 text-[11px] font-medium text-amber-500 dark:text-amber-400">
+                  <span className="h-2 w-2 rounded-full bg-amber-500 shrink-0" />
+                  <span>新增 {pendingCognitionCount} 条</span>
+                </span>
+              )}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => {
@@ -1014,26 +1034,6 @@ const Sidebar: React.FC<SidebarProps> = ({
             <SidebarKitsIcon className="h-4 w-4 shrink-0" />
             <span className="min-w-0 truncate">AI 团队</span>
           </button>
-          {hasSecondBrain && (
-            <button
-              type="button"
-              onClick={() => {
-                setIsSearchOpen(false);
-                onShowSecondBrain();
-              }}
-              className={activeView === 'secondBrain' ? activeSidebarNavItemClassName : sidebarNavItemClassName}
-              aria-current={activeView === 'secondBrain' ? 'page' : undefined}
-            >
-              <BrainIcon className="h-4 w-4 shrink-0" />
-              <span className="min-w-0 truncate">第二大脑</span>
-              {pendingCognitionCount > 0 && (
-                <span className="ml-auto flex items-center gap-1.5 shrink-0 text-[11px] font-medium text-amber-500 dark:text-amber-400">
-                  <span className="h-2 w-2 rounded-full bg-amber-500 shrink-0" />
-                  <span>新增 {pendingCognitionCount} 条</span>
-                </span>
-              )}
-            </button>
-          )}
           {!hideSites && (
             <button
               type="button"
