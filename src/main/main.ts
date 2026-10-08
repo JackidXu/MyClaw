@@ -4846,10 +4846,6 @@ if (!gotTheLock) {
         }
       }
 
-      // 异步同步 OneAPI 模型列表
-      syncOneApiModelsAndSave().catch(e => {
-        console.log('[OpenClaw] Failed to sync models from OneAPI after app_config update:', e);
-      });
     }
   });
 
@@ -8529,73 +8525,6 @@ if (!gotTheLock) {
       };
     } catch (e) {
       return { success: false, error: e instanceof Error ? e.message : String(e) };
-    }
-  }
-
-  async function syncOneApiModelsAndSave() {
-    const sqliteStore = getStore();
-    const appConfig = sqliteStore?.get<any>('app_config');
-    if (!appConfig) return;
-
-    const res = await fetchModelsFromOneAPI();
-    if (res.success && res.models) {
-      const { chat } = res.models;
-      if (chat.length > 0) {
-        if (!appConfig.providers) {
-          appConfig.providers = {};
-        }
-        if (!appConfig.providers.oneapi) {
-          appConfig.providers.oneapi = {};
-        }
-        appConfig.providers.oneapi.models = chat;
-        
-        // 收集所有已启用的非 oneapi 自定义提供商模型，避免被全量覆盖丢失
-        const customModels: any[] = [];
-        if (appConfig.providers) {
-          Object.entries(appConfig.providers).forEach(([providerName, providerConfig]: [string, any]) => {
-            if (providerName !== 'oneapi' && providerConfig?.enabled && Array.isArray(providerConfig.models)) {
-              providerConfig.models.forEach((model: any) => {
-                customModels.push({
-                  id: model.id,
-                  name: model.name,
-                  provider: providerName,
-                  providerKey: providerName,
-                  supportsImage: model.supportsImage ?? false,
-                });
-              });
-            }
-          });
-        }
-        
-        const isOneApiEnabled = appConfig.providers?.oneapi?.enabled !== false;
-        const newOneApiModels = isOneApiEnabled
-          ? chat.map((m: any) => ({
-            ...m,
-            provider: 'oneapi',
-            providerKey: 'oneapi',
-          }))
-          : [];
-
-        const mergedAvailableModels = [...customModels, ...newOneApiModels];
-
-        if (!appConfig.model) {
-          appConfig.model = {};
-        }
-        appConfig.model.availableModels = mergedAvailableModels;
-
-        appConfig.model.defaultModel = 'system/auto';
-
-        sqliteStore.set('app_config', appConfig);
-        console.log('[MediaGeneration] Successfully fetched and synced models from OneAPI. Count:', chat.length);
-
-        // 主动广播更新通知渲染进程同步更新内存及 Redux 模型状态（默认固定为 system/auto）
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('config:sync-models', {
-            availableModels: mergedAvailableModels,
-            defaultModel: 'system/auto',
-          });
-        }
-      }
     }
   }
 
@@ -15467,11 +15396,6 @@ if (!gotTheLock) {
     createWindow();
     profiler.measure('createWindow');
     console.log('[Main] initApp: window created');
-
-    // 启动时异步从 OneAPI 同步可用模型列表并存入 sqlite
-    syncOneApiModelsAndSave().catch(e => {
-      console.log('[OpenClaw] Failed to sync models from OneAPI on startup:', e);
-    });
 
     // ── Step 2-4: Skill bootstrap (non-blocking) ────────────────────
     console.log('[Main] initApp: starting skill bootstrap');

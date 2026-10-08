@@ -1016,7 +1016,8 @@ const resolveModelMaxTokensForOpenClaw = (options: {
     options.modelId,
     options.sessionModelId,
   );
-  const rawMaxTokens = catalogMaxTokens
+  const rawMaxTokens = (isPositiveModelLimit(options.maxTokens) ? options.maxTokens : undefined)
+    ?? catalogMaxTokens
     ?? options.descriptor.modelDefaults?.maxTokens
     ?? OPENCLAW_DEFAULT_MODEL_MAX_TOKENS;
   return clampModelMaxTokens(rawMaxTokens, options.contextWindow);

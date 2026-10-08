@@ -125,7 +125,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
           defaultModel: defaultChatModel || currentConfig.model?.defaultModel || '',
           defaultModelProvider: 'oneapi',
           availableModels: chatModels.length > 0 
-            ? chatModels.map(m => ({ ...m, provider: 'oneapi', providerKey: 'oneapi' }))
+            ? chatModels.map(m => ({ ...m, provider: m.provider || 'oneapi', providerKey: 'oneapi' }))
             : currentConfig.model?.availableModels,
         }
       });

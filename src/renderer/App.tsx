@@ -825,38 +825,7 @@ const App: React.FC = () => {
     return removeListener;
   }, []);
 
-  // 监听主进程静默同步 OneAPI 模型的事件，以实现无感热更新
-  useEffect(() => {
-    if (!window.electron?.ipcRenderer) return;
-    const unsubscribe = window.electron.ipcRenderer.on('config:sync-models', (data: any) => {
-      if (data && Array.isArray(data.availableModels)) {
-        console.log('[App] Received dynamically synced models from main process:', data);
-        
-        // 1. 同步内存中的 configService
-        const config = configService.getConfig();
-        if (config.model) {
-          config.model.availableModels = data.availableModels;
-          if (data.defaultModel) {
-            config.model.defaultModel = data.defaultModel;
-          }
-        }
-        
-        // 2. 同步前端 Redux Store 状态，重新渲染可用模型和默认选中的模型
-        dispatch(setAvailableModels(data.availableModels));
-        if (data.defaultModel) {
-          const allModels = data.availableModels;
-          const preferredModel = allModels.find(
-            (model: any) => model.id === data.defaultModel
-              && (!config.model?.defaultModelProvider || model.providerKey === config.model.defaultModelProvider)
-          ) ?? allModels[0];
-          if (preferredModel) {
-            dispatch(setDefaultSelectedModel(preferredModel));
-          }
-        }
-      }
-    });
-    return unsubscribe;
-  }, [dispatch]);
+
 
   // Network status monitoring
   useEffect(() => {
