@@ -377,6 +377,9 @@ describe('OpenClawConfigSync runtime config output', () => {
       truncateAfterCompaction: true,
       maxActiveTranscriptBytes: '32mb',
       reserveTokensFloor: 96000,
+      memoryFlush: {
+        enabled: false,
+      },
     });
   });
 
