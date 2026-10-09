@@ -1,0 +1,26 @@
+diff --git a/src/agents/embedded-agent-helpers/failover-matches.ts b/src/agents/embedded-agent-helpers/failover-matches.ts
+index 49952e3e1b..0c26cd8c4a 100644
+--- a/src/agents/embedded-agent-helpers/failover-matches.ts
++++ b/src/agents/embedded-agent-helpers/failover-matches.ts
+@@ -85,10 +85,6 @@ const ERROR_PATTERNS = {
+     "请求过于频繁",
+     "调用频率",
+     "频率限制",
+-    "配额不足",
+-    "配额已用尽",
+-    "额度不足",
+-    "额度已用尽",
+   ],
+   overloaded: [
+     /overloaded_error|"type"\s*:\s*"overloaded_error"/i,
+@@ -204,6 +200,10 @@ const ERROR_PATTERNS = {
+     "账户余额不足",
+     "欠费",
+     "账户已欠费",
++    "配额不足",
++    "配额已用尽",
++    "额度不足",
++    "额度已用尽",
+     // Z.ai: error 1311 = model not included in current subscription plan (#48988)
+     ZAI_BILLING_CODE_1311_RE,
+     /\bcurrent\s+subscription\s+plan\b.*\b(?:does\s+not|doesn't|not)\b.*\binclude\s+access\b/i,

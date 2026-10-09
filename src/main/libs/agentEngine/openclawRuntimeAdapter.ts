@@ -1757,11 +1757,30 @@ export function resolveOpenClawRuntimeError(
     );
   }
 
-  // OpenClaw's friendly wrapper may already say "rate limit" even when its
-  // preserved raw metadata identifies a provider-capacity failure.
-  if (metadataClassifiedKey === CoworkErrorI18nKey.ModelOverloaded) {
+  // OpenClaw's friendly wrapper may already say "rate limit" or a generic failure
+  // even when its preserved raw metadata identifies an explicit business error
+  // (such as InsufficientBalance, ModelOverloaded, or QuotaExhausted).
+  if (
+    metadataClassifiedKey === CoworkErrorI18nKey.InsufficientBalance
+    || metadataClassifiedKey === CoworkErrorI18nKey.ModelOverloaded
+    || metadataClassifiedKey === CoworkErrorI18nKey.RateLimitTpm
+  ) {
     consumeRecentOpenClawTokenProxyQuotaError();
     return buildResolvedRuntimeError(t(metadataClassifiedKey));
+  }
+  if (metadataClassifiedKey === CoworkErrorI18nKey.QuotaExhausted) {
+    const recentQuotaError = consumeRecentOpenClawTokenProxyQuotaError();
+    const enterpriseQuotaError = resolveEnterpriseQuotaError(
+      metadata?.errorCode ?? metadata?.code ?? recentQuotaError?.code,
+      `${normalized} ${recentQuotaError?.message ?? ''}`,
+    );
+    if (enterpriseQuotaError) {
+      return buildResolvedRuntimeError(
+        getEnterpriseQuotaErrorMessage(enterpriseQuotaError),
+        enterpriseQuotaError,
+      );
+    }
+    return buildResolvedRuntimeError(t(CoworkErrorI18nKey.QuotaExhausted));
   }
   const classifiedKey = classifyErrorKey(normalized);
 

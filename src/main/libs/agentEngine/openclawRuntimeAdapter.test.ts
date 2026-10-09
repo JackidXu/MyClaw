@@ -674,6 +674,14 @@ test('resolveOpenClawRuntimeErrorMessage classifies NewAPI 403 预扣费额度�
   })).toContain('当前账号算力余额不足');
 });
 
+test('resolveOpenClawRuntimeErrorMessage classifies NewAPI 403 用户额度不足 over OpenClaw rate limit wrapper', () => {
+  expect(resolveOpenClawRuntimeErrorMessage('⚠️ API rate limit reached. Please try again later.', {
+    failoverReason: 'auth',
+    httpCode: '403',
+    rawErrorPreview: '403 用户额度不足, 剩余额度: ¥-0.071676 (request id: sha256:3a2c22077964)',
+  })).toContain('当前账号算力余额不足');
+});
+
 test('resolveOpenClawRuntimeError keeps structured enterprise quota reason', () => {
   expect(resolveOpenClawRuntimeError('LLM request failed.', {
     errorCode: '41606',
