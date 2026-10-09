@@ -622,8 +622,10 @@ export class OpenClawEngineManager extends EventEmitter {
         console.warn(`${gwDiagTs()} startGateway: existing process alive but port unknown, stopping it (${elapsed()})`);
       }
 
-      await this.stopGatewayProcess(this.gatewayProcess);
-      this.gatewayProcess = null;
+      if (this.gatewayProcess) {
+        await this.stopGatewayProcess(this.gatewayProcess);
+        this.gatewayProcess = null;
+      }
     }
 
     const runtime = this.resolveRuntimeMetadata();
@@ -1667,7 +1669,10 @@ export class OpenClawEngineManager extends EventEmitter {
     });
   }
 
-  private stopGatewayProcess(child: GatewayProcess): Promise<void> {
+  private stopGatewayProcess(child: GatewayProcess | null | undefined): Promise<void> {
+    if (!child) {
+      return Promise.resolve();
+    }
     const pid = 'pid' in child ? child.pid : undefined;
     console.log(`${gwDiagTs()} stopGatewayProcess: sending graceful kill to pid=${pid}`);
     this.expectedGatewayExits.add(child);
