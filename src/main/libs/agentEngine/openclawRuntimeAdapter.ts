@@ -91,7 +91,10 @@ import { t } from '../../i18n';
 import { MediaGenerationTool } from '../../mediaGenerationPolicy';
 import type { SubagentMessageStore } from '../../subagentMessageStore';
 import type { SubagentRunStore } from '../../subagentRunStore';
-import { resolveAllEnabledProviderConfigs } from '../claudeSettings';
+import {
+  getAvailableModelCandidates,
+  selectPhysicalModelForAutoRouting,
+} from '../autoModelRouting';
 import { setCoworkProxySessionId } from '../coworkOpenAICompatProxy';
 import { isAutoModelRef } from '../modelResolver';
 import { extractOpenClawAssistantStreamParts,extractOpenClawAssistantStreamText } from '../openclawAssistantText';
@@ -105,7 +108,6 @@ import {
   parseManagedSessionKey,
 } from '../openclawChannelSessionSync';
 import {
-  buildProviderSelection,
   OPENCLAW_AGENT_TIMEOUT_SECONDS,
   type OpenClawProviderModelSource,
   resolveModelSourceForOpenClawProvider,
@@ -3785,158 +3787,16 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     return this.options.normalizeModelRef?.(normalized) ?? normalized;
   }
 
-  /**
-   * 评估 Prompt 的任务复杂度（本地启发式，零网络延迟）。
-   * 返回 'complex' 表示需要高性能模型，'simple' 表示轻量模型即可。
-   */
-  private evaluatePromptComplexity(
-    prompt: string,
-    imageAttachments?: Array<unknown>,
-    mediaReferences?: Array<unknown>,
-  ): 'complex' | 'simple' {
-    // 有图片或媒体附件，通常是多模态任务，使用高性能模型
-    const hasImageIndication =
-      (imageAttachments && imageAttachments.length > 0) ||
-      (mediaReferences && mediaReferences.length > 0) ||
-      (prompt.includes('[附件信息]') && prompt.includes('类型: image')) ||
-      /!\[.*?\]\((?:file:\/\/\/|\/|~|[A-Za-z]:).*?\.(?:png|jpe?g|webp|gif|bmp)\)/i.test(prompt);
-    if (hasImageIndication) {
-      return 'complex';
-    }
-    // Prompt 较长，往往是复杂任务
-    if (prompt.length > 400) {
-      return 'complex';
-    }
-    // 包含复杂任务关键词（编程、推理、分析、调试等）
-    const COMPLEX_KEYWORDS = [
-      // 编程与代码
-      '代码', '函数', '实现', '写一个', '写出', '编程', '编写', '程序', '脚本', '算法',
-      '报错', '错误', '异常', '调试', '修复', 'bug', 'error', 'fix', 'debug',
-      'code', 'function', 'implement', 'class', 'typescript', 'javascript', 'python',
-      // 复杂推理
-      '推导', '证明', '分析', '设计', '架构', '方案', '优化', '重构',
-      '计划', '规划', '总结', '归纳', '对比', '比较',
-      'analyze', 'design', 'architecture', 'optimize', 'refactor',
-      'plan', 'summarize', 'compare', 'explain',
-      // 长文本处理
-      '翻译', '总结以下', '整理以下', 'translate',
-    ];
-    const lowerPrompt = prompt.toLowerCase();
-    if (COMPLEX_KEYWORDS.some(kw => lowerPrompt.includes(kw.toLowerCase()))) {
-      return 'complex';
-    }
-    return 'simple';
-  }
-
-  /**
-   * 根据 Prompt 复杂度从已启用的物理模型中选择最合适的模型 ref（`provider/modelId` 格式）。
-   *
-   * 强模型判断策略（优先级从高到低）：
-   *   1. 用户配置了 supportsThinking = true 的模型 → 高性能
-   *   2. 模型 id 包含已知高性能关键词（pro/sonnet/opus/r1 等） → 高性能
-   *   3. 其余模型视为轻量模型
-   *
-   * 复杂任务 → 高性能模型 → 轻量模型（兜底）
-   * 简单任务 → 轻量模型 → 高性能模型（兜底）
-   * 任意情况均保底：全量列表第一个
-   */
   private selectPhysicalModelForAutoRouting(
     prompt: string,
     imageAttachments?: Array<unknown>,
     mediaReferences?: Array<unknown>,
   ): string | null {
-    const complexity = this.evaluatePromptComplexity(prompt, imageAttachments, mediaReferences);
-
-    type ModelCandidate = {
-      /** OpenClaw primaryModel ref（providerName/modelId） */
-      ref: string;
-      modelId: string;
-      supportsThinking: boolean;
-      supportsImage: boolean;
-    };
-    const candidates: ModelCandidate[] = [];
-
-    try {
-      const enabledProviders = resolveAllEnabledProviderConfigs();
-      for (const provider of enabledProviders) {
-        for (const model of provider.models) {
-          const mid = model.id?.trim();
-          if (!mid) continue;
-          // 使用与 openclawConfigSync 完全相同的 buildProviderSelection，
-          // 确保 primaryModel 的 providerId 和 sessionModelId 与 OpenClaw 配置完全一致。
-          const sel = buildProviderSelection({
-            apiKey: provider.apiKey,
-            baseURL: provider.baseURL,
-            modelId: mid,
-            apiType: provider.apiType,
-            providerName: provider.providerName,
-            authType: provider.authType,
-            codingPlanEnabled: provider.codingPlanEnabled,
-            supportsImage: model.supportsImage,
-            supportsThinking: model.supportsThinking,
-            modelName: model.name,
-            contextWindow: model.contextWindow,
-          });
-          candidates.push({
-            ref: sel.primaryModel,
-            modelId: sel.sessionModelId.toLowerCase(),
-            supportsThinking: model.supportsThinking === true,
-            supportsImage: model.supportsImage === true,
-          });
-        }
-      }
-    } catch (err) {
-      console.warn('[OpenClawRuntime] Auto routing: failed to load enabled providers:', err);
-      return null;
-    }
-
-    if (candidates.length === 0) return null;
-
-    // 高性能模型关键词（仅作为 supportsThinking 未设置时的补充判断）
-    const STRONG_KEYWORDS = [
-      'pro', 'plus', 'opus', 'sonnet', 'reasoner', 'r1', 'thinking',
-      'k2', 'turbo', 'ultra', 'max', 'large', 'heavy',
-    ];
-    // 轻量模型关键词
-    const LITE_KEYWORDS = [
-      'flash', 'mini', 'lite', 'haiku', 'fast', 'micro', 'nano', 'light',
-      'small', 'slim', 'quick',
-    ];
-
-    const isStrongModel = (c: ModelCandidate): boolean =>
-      c.supportsThinking || STRONG_KEYWORDS.some(kw => c.modelId.includes(kw));
-
-    const isLiteModel = (c: ModelCandidate): boolean =>
-      !c.supportsThinking && LITE_KEYWORDS.some(kw => c.modelId.includes(kw));
-
-    // 多模态识图任务处理：如果检测到图片附件，仅在支持识图的模型中选择（若有的话）
-    const isMultimodalTask =
-      (imageAttachments && imageAttachments.length > 0) ||
-      (mediaReferences && mediaReferences.length > 0) ||
-      (prompt.includes('[附件信息]') && prompt.includes('类型: image')) ||
-      /!\[.*?\]\((?:file:\/\/\/|\/|~|[A-Za-z]:).*?\.(?:png|jpe?g|webp|gif|bmp)\)/i.test(prompt);
-
-    let filteredCandidates = candidates;
-    if (isMultimodalTask) {
-      const validMultimodal = candidates.filter(c => c.supportsImage);
-      if (validMultimodal.length > 0) {
-        filteredCandidates = validMultimodal;
-      }
-    }
-
-    const strongModels = filteredCandidates.filter(isStrongModel);
-    const liteModels = filteredCandidates.filter(isLiteModel);
-
-    let selected: ModelCandidate | undefined;
-    if (complexity === 'complex') {
-      // 复杂任务：强模型 > 全量第一个
-      selected = strongModels[0] ?? filteredCandidates[0];
-    } else {
-      // 简单任务：轻量模型 > 全量第一个（无轻量模型时也可使用强模型）
-      selected = liteModels[0] ?? filteredCandidates[0];
-    }
-
-    return selected?.ref ?? null;
+    return selectPhysicalModelForAutoRouting({
+      prompt,
+      imageAttachments,
+      mediaReferences,
+    });
   }
 
   private notifySessionsChanged(sessionIds: string | readonly string[]): void {
@@ -5612,22 +5472,41 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
 
     const agent = this.store.getAgent(agentId);
     const rawCurrentModel = session.modelOverride || agent?.model || '';
+
+    // 检测 session.modelOverride 是否属于已被下线的废弃模型；若废弃则自愈升级为智能适配
+    let isDeprecatedOverride = false;
+    if (session.modelOverride && !isAutoModelRef(session.modelOverride)) {
+      const availableCandidates = getAvailableModelCandidates();
+      const trimmedOverride = session.modelOverride.trim().toLowerCase();
+      const isKnown = availableCandidates.some(c => (
+        c.ref.toLowerCase() === trimmedOverride ||
+        c.modelId === trimmedOverride ||
+        c.ref.toLowerCase().endsWith('/' + trimmedOverride)
+      ));
+      if (!isKnown) {
+        isDeprecatedOverride = true;
+        console.warn(`[OpenClawRuntime] Deprecated modelOverride "${session.modelOverride}" detected for session ${sessionId}, self-healing to auto.`);
+        this.store.updateSession(sessionId, { modelOverride: '' });
+        this.notifySessionsChanged(sessionId);
+      }
+    }
+
     // Normalize only agent-level model refs (may need provider migration).
-    // Session modelOverride is user-selected and must not be rewritten.
-    let currentModel = session.modelOverride
+    // Session modelOverride is user-selected and must not be rewritten unless deprecated.
+    let currentModel = (session.modelOverride && !isDeprecatedOverride)
       ? rawCurrentModel
-      : (rawCurrentModel ? this.normalizeModelRef(rawCurrentModel) : '');
-    if (!session.modelOverride && currentModel && currentModel !== rawCurrentModel && agent?.id) {
+      : (rawCurrentModel && !isDeprecatedOverride ? this.normalizeModelRef(rawCurrentModel) : '');
+    if (!session.modelOverride && !isDeprecatedOverride && currentModel && currentModel !== rawCurrentModel && agent?.id) {
       this.store.updateAgent(agent.id, { model: currentModel });
     }
 
     // 智能适配：当用户选择了 Auto 虚拟模型时，在本地评估 Prompt 复杂度并静默路由到合适的物理模型。
     if (isAutoModelRef(currentModel)) {
-      const routedModel = this.selectPhysicalModelForAutoRouting(
+      const routedModel = selectPhysicalModelForAutoRouting({
         prompt,
-        options.imageAttachments,
-        options.mediaReferences,
-      );
+        imageAttachments: options.imageAttachments,
+        mediaReferences: options.mediaReferences,
+      });
       if (routedModel) {
         console.log(
           '[OpenClawRuntime] Auto routing: selected physical model for turn.',
@@ -5636,7 +5515,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
         );
         currentModel = routedModel;
       } else {
-        console.warn('[OpenClawRuntime] Auto routing: no physical model available, continuing with empty model.');
+        throw new Error('当前未检测到可用的大模型服务，请检查网络连接或在设置中配置模型提供商');
       }
     }
     try {

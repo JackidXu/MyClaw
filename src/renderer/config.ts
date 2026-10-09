@@ -108,6 +108,7 @@ export interface AppConfig {
       supportsThinking?: boolean;
       contextWindow?: number;
       maxTokens?: number;
+      isRecommended?: boolean;
     }>;
     defaultModel: string;
     defaultModelProvider?: string;
@@ -170,6 +171,9 @@ const buildDefaultProviders = (): AppConfig['providers'] => {
   return providers;
 };
 
+/** 智能适配虚拟模型 ID (与主进程及 modelSlice 统一) */
+export const AUTO_MODEL_ID = 'auto';
+
 // 默认配置
 export const defaultConfig: AppConfig = {
   api: {
@@ -177,11 +181,9 @@ export const defaultConfig: AppConfig = {
     baseUrl: 'https://token.chaohui.ai/v1',
   },
   model: {
-    availableModels: [
-      { id: 'HeyClaw', name: 'HeyClaw', supportsImage: true },
-    ],
-    defaultModel: 'HeyClaw',
-    defaultModelProvider: 'oneapi',
+    availableModels: [],
+    defaultModel: AUTO_MODEL_ID,
+    defaultModelProvider: 'system',
   },
   providers: buildDefaultProviders(),
   theme: 'system',

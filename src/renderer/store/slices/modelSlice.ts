@@ -4,8 +4,10 @@ import type { LobsterAIRequestCapability } from '@shared/providers/lobsterAIRequ
 import type { ModelRuntimeProfile } from '@shared/providers/modelRuntimeProfiles';
 import type { ModelThinkingConfig } from '@shared/providers/modelThinking';
 
-import { defaultConfig, getProviderDisplayName } from '../../config';
+import { AUTO_MODEL_ID, defaultConfig, getProviderDisplayName } from '../../config';
 import { resolveOpenClawModelRef } from '../../utils/openclawModelRef';
+
+export { AUTO_MODEL_ID };
 
 export interface Model {
   id: string;
@@ -31,11 +33,9 @@ export interface Model {
   moreModel?: boolean; // 是否收起到“更多模型”分组
   accessible?: boolean; // false = 模型可见但用户无权使用（置灰）
   restrictionHint?: string; // 限制提示（如 "订阅套餐/购买加油包可用"）
+  isRecommended?: boolean; // 是否为服务端推荐模型
   isAutoModel?: boolean; // true = 智能适配虚拟模型，由主进程根据复杂度路由到实际物理模型
 }
-
-/** 智能适配虚拟模型 ID。选择此模型后，主进程会根据 Prompt 复杂度动态路由到合适的物理模型。 */
-export const AUTO_MODEL_ID = 'auto';
 
 /** 智能适配虚拟模型定义（始终显示在模型列表首位）。 */
 export const AUTO_MODEL: Model = {
@@ -183,7 +183,7 @@ const initialState: ModelState = {
       model => model.id === defaultConfig.model.defaultModel
         && (!defaultModelProvider || model.providerKey === defaultModelProvider)
     )
-    || availableModels[0],
+    || AUTO_MODEL,
   selectedModelByAgent: {},
   availableModels: availableModels,
 };

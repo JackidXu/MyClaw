@@ -7,6 +7,7 @@ import {
   type AuthTokenRefreshResult,
 } from '../../shared/auth/constants';
 import { ProviderName } from '../../shared/providers';
+import { selectPhysicalModelForAutoRouting } from './autoModelRouting';
 import {
   anthropicToOpenAI,
   buildOpenAIChatCompletionsURL,
@@ -2390,7 +2391,40 @@ function detectMultimodalImages(body: unknown): boolean {
 function resolveAutoUpstreamConfig(
   hasImages: boolean,
   fallbackConfig: OpenAICompatUpstreamConfig,
+  prompt?: string,
 ): OpenAICompatUpstreamConfig {
+  try {
+    const routedModelRef = selectPhysicalModelForAutoRouting({
+      prompt: prompt || '',
+      hasImages,
+    });
+
+    if (routedModelRef) {
+      const slashIndex = routedModelRef.indexOf('/');
+      const routedProvider = slashIndex > 0 ? routedModelRef.slice(0, slashIndex) : fallbackConfig.provider;
+      const routedModelId = slashIndex > 0 ? routedModelRef.slice(slashIndex + 1) : routedModelRef;
+
+      const enabledProviders = (proxyProviderConfigsGetter ? proxyProviderConfigsGetter() : []) as ProxyProviderConfig[];
+      const matchedProvider = enabledProviders.find(p => p.providerName === routedProvider);
+
+      if (matchedProvider) {
+        return {
+          baseURL: matchedProvider.baseURL || fallbackConfig.baseURL,
+          apiKey: matchedProvider.apiKey || fallbackConfig.apiKey,
+          model: routedModelId,
+          provider: matchedProvider.providerName,
+        };
+      }
+
+      return {
+        ...fallbackConfig,
+        model: routedModelId,
+      };
+    }
+  } catch (err) {
+    console.warn('[CoworkProxy] Failed to dynamically resolve auto upstream config:', err);
+  }
+
   if (!hasImages) {
     return fallbackConfig;
   }
@@ -2609,7 +2643,8 @@ async function handleRequest(
       const parsed = JSON.parse(body);
       if (isAutoModelRef(parsed.model)) {
         const hasImages = detectMultimodalImages(parsed);
-        effectiveUpstream = resolveAutoUpstreamConfig(hasImages, upstreamConfig);
+        const promptText = extractLastUserMessageText(parsed) || '';
+        effectiveUpstream = resolveAutoUpstreamConfig(hasImages, upstreamConfig, promptText);
         parsed.model = effectiveUpstream.model;
         body = JSON.stringify(parsed);
         console.info(`[CoworkProxy] Remapped passthrough model: system/auto -> ${effectiveUpstream.model} (hasImages: ${hasImages}, provider: ${effectiveUpstream.provider})`);
@@ -2755,7 +2790,8 @@ async function handleRequest(
 
   if (isAutoModelRef(requestModel)) {
     const hasImages = detectMultimodalImages(openAIRequest);
-    effectiveUpstream = resolveAutoUpstreamConfig(hasImages, upstreamConfig);
+    const promptText = extractLastUserMessageText(openAIRequest) || '';
+    effectiveUpstream = resolveAutoUpstreamConfig(hasImages, upstreamConfig, promptText);
     openAIRequest.model = effectiveUpstream.model;
     console.info(`[CoworkProxy] Remapping auto model: ${requestModel} -> ${effectiveUpstream.model} (hasImages: ${hasImages}, provider: ${effectiveUpstream.provider})`);
   } else if (upstreamConfig.provider && upstreamConfig.provider !== 'anthropic' && upstreamConfig.provider !== 'openai') {

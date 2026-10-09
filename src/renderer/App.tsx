@@ -328,12 +328,12 @@ const App: React.FC = () => {
 
   const syncModelsToRedux = useCallback(() => {
     const config = configService.getConfig();
-    const providerModels: { id: string; name: string; provider?: string; providerKey?: string; openClawProviderId?: string; supportsImage?: boolean }[] = [];
+    const providerModels: { id: string; name: string; provider?: string; providerKey?: string; openClawProviderId?: string; supportsImage?: boolean; isRecommended?: boolean }[] = [];
     if (config.providers) {
       Object.entries(config.providers).forEach(([providerName, providerConfig]) => {
         if (providerConfig.enabled && providerConfig.models) {
           const openClawProviderId = ProviderRegistry.getOpenClawProviderIdForConfig(providerName, providerConfig);
-          providerConfig.models.forEach((model: { id: string; name: string; supportsImage?: boolean }) => {
+          providerConfig.models.forEach((model: { id: string; name: string; supportsImage?: boolean; isRecommended?: boolean }) => {
             providerModels.push({
               id: model.id,
               name: model.name,
@@ -341,6 +341,7 @@ const App: React.FC = () => {
               providerKey: providerName,
               openClawProviderId,
               supportsImage: model.supportsImage ?? false,
+              isRecommended: Boolean((model as any).isRecommended),
             });
           });
         }
@@ -351,8 +352,10 @@ const App: React.FC = () => {
       const preferredModel = providerModels.find(
         model => model.id === config.model.defaultModel
           && (!config.model.defaultModelProvider || model.providerKey === config.model.defaultModelProvider)
-      ) ?? providerModels[0];
-      dispatch(setDefaultSelectedModel(preferredModel));
+      ) ?? providerModels.find(model => model.isRecommended);
+      if (preferredModel) {
+        dispatch(setDefaultSelectedModel(preferredModel));
+      }
     }
     return providerModels;
   }, [dispatch]);
@@ -418,7 +421,7 @@ const App: React.FC = () => {
     };
     apiService.setConfig(apiConfig);
 
-    const providerModels: { id: string; name: string; provider?: string; providerKey?: string; openClawProviderId?: string; supportsImage?: boolean }[] = [];
+    const providerModels: { id: string; name: string; provider?: string; providerKey?: string; openClawProviderId?: string; supportsImage?: boolean; isRecommended?: boolean }[] = [];
     if (config.providers) {
       Object.entries(config.providers).forEach(([providerName, providerConfig]) => {
         if (providerConfig.enabled && providerConfig.models) {
@@ -426,7 +429,7 @@ const App: React.FC = () => {
           if (providerName === ProviderName.Minimax && providerConfig.authType === ProviderAuthType.OAuth) {
             log?.('MiniMax OAuth provider resolved to OpenClaw minimax-portal');
           }
-          providerConfig.models.forEach((model: { id: string; name: string; supportsImage?: boolean }) => {
+          providerConfig.models.forEach((model: { id: string; name: string; supportsImage?: boolean; isRecommended?: boolean }) => {
             providerModels.push({
               id: model.id,
               name: model.name,
@@ -434,6 +437,7 @@ const App: React.FC = () => {
               providerKey: providerName,
               openClawProviderId,
               supportsImage: model.supportsImage ?? false,
+              isRecommended: Boolean((model as any).isRecommended),
             });
           });
         }
@@ -445,8 +449,10 @@ const App: React.FC = () => {
       const preferredModel = allModels.find(
         model => model.id === config.model.defaultModel
           && (!config.model.defaultModelProvider || model.providerKey === config.model.defaultModelProvider)
-      ) ?? allModels[0];
-      dispatch(setDefaultSelectedModel(preferredModel));
+      ) ?? allModels.find(model => model.isRecommended);
+      if (preferredModel) {
+        dispatch(setDefaultSelectedModel(preferredModel));
+      }
     }
     return providerModels;
   }, [dispatch]);

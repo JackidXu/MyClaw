@@ -550,7 +550,10 @@ function resolveMatchedProvider(appConfig: AppConfig): { matched: MatchedProvide
       if (!providerConfig?.enabled || !providerConfig.models || providerConfig.models.length === 0) {
         continue;
       }
-      const fallbackModel = providerConfig.models.find((model) => model.id?.trim());
+      const recommendedModel = providerConfig.models.find(
+        (model) => (model as any).isRecommended === true && model.id?.trim(),
+      );
+      const fallbackModel = recommendedModel || providerConfig.models.find((model) => model.id?.trim());
       if (!fallbackModel) {
         continue;
       }

@@ -97,7 +97,7 @@ export function getCachedModelsFromConfig(): {
   const availableModels = (config.model?.availableModels || []) as OneApiChatModel[];
   const providerModels = (config.providers?.['oneapi']?.models || []) as OneApiChatModel[];
   const chatModels = availableModels.length > 0 ? availableModels : providerModels;
-  const defaultChatModel = config.model?.defaultModel || chatModels[0]?.id || '';
+  const defaultChatModel = config.model?.defaultModel || chatModels.find(m => m.isRecommended)?.id || '';
   return { chatModels, defaultChatModel };
 }
 
@@ -154,7 +154,7 @@ export async function fetchAndFilterOneApiChatModels(
           };
         });
 
-        const defaultChatModel = resBody.defaultModel || chatModels[0]?.id || '';
+        const defaultChatModel = resBody.defaultModel || chatModels.find(m => m.isRecommended)?.id || '';
         return {
           success: true,
           chatModels,

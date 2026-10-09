@@ -732,6 +732,30 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
       ? currentSession.thinkingLevel
       : currentAgent?.thinkingLevel,
   );
+  // 当会话选中的模型已从后端移除废弃时，自动自愈升级为默认智能适配，消除报错提示并恢复可用性
+  useEffect(() => {
+    if (
+      sessionId
+      && currentSession?.id === sessionId
+      && currentSession.modelOverride
+      && availableModels.length > 0
+      && agentModelIsInvalid
+    ) {
+      logPromptModelSelection('warn', `auto-healing deprecated session model ${currentSession.modelOverride} -> auto for session ${sessionId}`);
+      dispatch(updateCurrentSessionModelOverride({
+        sessionId,
+        modelOverride: '',
+        thinkingLevel: '',
+      }));
+      void coworkService.patchSession(sessionId, {
+        model: '',
+        thinkingLevel: null,
+      }).catch(err => {
+        console.warn('[CoworkPromptInput] auto-healing patchSession failed:', err);
+      });
+    }
+  }, [sessionId, currentSession?.id, currentSession?.modelOverride, availableModels.length, agentModelIsInvalid, dispatch]);
+
   const modelSupportsImage = !!effectiveSelectedModel?.supportsImage;
   const hasAccessibleUserModel = useMemo(
     () => availableModels.some(model => !model.isServerModel && model.accessible !== false),
