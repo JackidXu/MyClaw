@@ -36,6 +36,17 @@ import subprocess
 import sys
 import uuid
 
+# 动态载入 content-template-pack 静态资源按需下载器
+try:
+    _ensure_assets_pkg = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "..", "content-template-pack", "scripts")
+    )
+    if _ensure_assets_pkg not in sys.path:
+        sys.path.insert(0, _ensure_assets_pkg)
+    from ensure_assets import ensure_template_assets
+except Exception:
+    ensure_template_assets = None
+
 
 # ============================================================
 # 工具函数
@@ -1490,7 +1501,7 @@ def main():
     parser.add_argument("--voice", default=None, help="口播音频 m4a 路径（不传则自动从视频抽取）")
     parser.add_argument("--cover", default=None, help="封面图路径（不传则保留模板原封面）")
     parser.add_argument("--bgm-volume", type=float, default=0.3, help="BGM 音量（0.0-1.0），默认 0.3（旁白视频需 BGM 作背景不盖人声）")
-    parser.add_argument("--narration-volume", type=float, default=2.0, help="旁白音轨增益（默认 2.0=200%，压过 BGM；剪映里仍可手动微调）")
+    parser.add_argument("--narration-volume", type=float, default=2.0, help="旁白音轨增益（默认 2.0=200%%，压过 BGM；剪映里仍可手动微调）")
     parser.add_argument("--no-voice-track", action="store_true", help="跳过口播独立音轨（主轨音频未剥离时用）")
     parser.add_argument("--bgm", default=None, help="BGM 音频文件路径；不传则自动用模板根 assets/bgm.m4a（模板自带的），找不到才保留模板原 BGM material path")
     parser.add_argument("--assets", default=None, help="assets.json 路径（素材匹配结果）")
@@ -1510,6 +1521,13 @@ def main():
             err(f"{label}不存在：{path}")
     if not os.path.isdir(args.template):
         err(f"模板目录不是目录：{args.template}")
+
+    # 0.1 云端化模板资产自动按需补齐 (BGM / 骨架 JSON)
+    if ensure_template_assets:
+        try:
+            ensure_template_assets(args.template)
+        except Exception as e:
+            log(f"提示: 模板云端资产检查异常: {e}")
     if args.mode == "A":
         if not args.video or not os.path.isfile(args.video):
             err(f"模式A需要数字人视频：{args.video}")

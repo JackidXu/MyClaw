@@ -532,16 +532,22 @@ function installSkillDependencies() {
       continue; // No package.json, skip
     }
 
+    const isWin = process.platform === 'win32';
     if (existsSync(nodeModulesPath)) {
-      console.log(`[electron-builder-hooks]   ${entry}: node_modules exists, skipping`);
+      console.log(`[electron-builder-hooks]   ${entry}: node_modules exists, pruning dev dependencies...`);
+      spawnSync('npm', ['prune', '--omit=dev'], {
+        cwd: skillPath,
+        encoding: 'utf-8',
+        stdio: 'pipe',
+        timeout: 2 * 60 * 1000,
+        shell: isWin,
+      });
       skippedCount++;
       continue;
     }
 
-    console.log(`[electron-builder-hooks]   ${entry}: installing dependencies...`);
-    // On Windows, use shell: true so cmd.exe resolves npm.cmd correctly
-    const isWin = process.platform === 'win32';
-    const result = spawnSync('npm', ['install'], {
+    console.log(`[electron-builder-hooks]   ${entry}: installing production dependencies...`);
+    const result = spawnSync('npm', ['install', '--omit=dev'], {
       cwd: skillPath,
       encoding: 'utf-8',
       stdio: 'pipe',

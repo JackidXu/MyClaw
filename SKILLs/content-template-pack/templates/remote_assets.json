@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "assets": {
+    "default_v1/assets/bgm.m4a": "https://scrm0.cdn.banchengyun.com/heyclaw/assets/content-template-pack/default_v1/bgm.m4a",
+    "quote_9_16_v1/assets/bgm.mp3": "https://scrm0.cdn.banchengyun.com/heyclaw/assets/content-template-pack/quote_9_16_v1/bgm.mp3",
+    "hk_slow_aging_v1/assets/bgm.mp3": "https://scrm0.cdn.banchengyun.com/heyclaw/assets/content-template-pack/hk_slow_aging_v1/bgm.mp3",
+    "hk_slow_aging_v1/template.draft/draft_content.json": "https://scrm0.cdn.banchengyun.com/heyclaw/assets/content-template-pack/hk_slow_aging_v1/draft_content.json"
+  }
+}

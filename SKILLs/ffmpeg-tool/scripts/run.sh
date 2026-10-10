@@ -29,12 +29,13 @@ if [ "$OS" = "Darwin" ] && command -v xattr >/dev/null 2>&1; then
 fi
 
 download_file() {
-  local url="$1" out="$2"
+  local cdn_url="$1" fallback_url="$2" out="$3"
   mkdir -p "$(dirname "$out")"
   echo ">>> [ffmpeg-tool] 正在下载 ffmpeg 二进制组件..."
-  local proxy_url="https://gh-proxy.com/$url"
-  if curl -sL --retry 3 --retry-delay 2 --max-time 180 -C - -o "$out.tmp" "$proxy_url" || \
-     curl -sL --retry 3 --retry-delay 2 --max-time 180 -C - -o "$out.tmp" "$url"; then
+  local proxy_url="https://gh-proxy.com/$fallback_url"
+  if curl -sL --retry 3 --retry-delay 2 --max-time 180 -C - -o "$out.tmp" "$cdn_url" || \
+     curl -sL --retry 3 --retry-delay 2 --max-time 180 -C - -o "$out.tmp" "$proxy_url" || \
+     curl -sL --retry 3 --retry-delay 2 --max-time 180 -C - -o "$out.tmp" "$fallback_url"; then
     mv "$out.tmp" "$out"
     echo ">>> [ffmpeg-tool] 下载完成！"
     return 0
@@ -44,14 +45,15 @@ download_file() {
 }
 
 TAG="b6.1.1"
+CDN_BASE="https://scrm0.cdn.banchengyun.com/heyclaw/assets/ffmpeg-tool"
 if [ ! -f "$BIN" ]; then
   if [ "$OS" = "Darwin" ]; then
     if [ "$ARCH" = "arm64" ]; then
-      download_file "https://github.com/eugeneware/ffmpeg-static/releases/download/$TAG/ffmpeg-darwin-arm64" "$BIN" || {
+      download_file "$CDN_BASE/ffmpeg-darwin-arm64" "https://github.com/eugeneware/ffmpeg-static/releases/download/$TAG/ffmpeg-darwin-arm64" "$BIN" || {
         echo "ffmpeg 二进制下载失败，请检查网络后重试。" >&2; exit 2;
       }
     else
-      download_file "https://github.com/eugeneware/ffmpeg-static/releases/download/$TAG/ffmpeg-darwin-x64" "$BIN" || {
+      download_file "$CDN_BASE/ffmpeg-darwin-x64" "https://github.com/eugeneware/ffmpeg-static/releases/download/$TAG/ffmpeg-darwin-x64" "$BIN" || {
         echo "ffmpeg 二进制下载失败，请检查网络后重试。" >&2; exit 2;
       }
     fi

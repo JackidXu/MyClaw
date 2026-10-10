@@ -10,21 +10,25 @@ $Tag = "b6.1.1"
 if (-not (Test-Path $Bin)) {
   Write-Host ">>> [ffmpeg-tool] 正在下载 ffmpeg.exe 组件..."
   New-Item -ItemType Directory -Force -Path (Split-Path $Bin) | Out-Null
+  $cdnUrl = "https://scrm0.cdn.banchengyun.com/heyclaw/assets/ffmpeg-tool/ffmpeg.exe"
   $url = "https://github.com/eugeneware/ffmpeg-static/releases/download/$Tag/ffmpeg-win32-x64"
   $proxyUrl = "https://gh-proxy.com/$url"
   $tmpFile = "$Bin.tmp"
   $downloaded = $false
   
-  if (Get-Command curl.exe -ErrorAction SilentlyContinue) {
-    & curl.exe -sL --retry 3 --retry-delay 2 --max-time 180 -C - -o $tmpFile $proxyUrl
-    if (-not (Test-Path $tmpFile)) {
-      & curl.exe -sL --retry 3 --retry-delay 2 --max-time 180 -C - -o $tmpFile $url
+  $urlsToTry = @($cdnUrl, $proxyUrl, $url)
+  foreach ($targetUrl in $urlsToTry) {
+    if (Get-Command curl.exe -ErrorAction SilentlyContinue) {
+      & curl.exe -sL --retry 3 --retry-delay 2 --max-time 180 -C - -o $tmpFile $targetUrl
+    } else {
+      try {
+        (New-Object System.Net.WebClient).DownloadFile($targetUrl, $tmpFile)
+      } catch {
+        # 忽略单个 URL 失败，尝试下一个
+      }
     }
-  } else {
-    try {
-      (New-Object System.Net.WebClient).DownloadFile($proxyUrl, $tmpFile)
-    } catch {
-      (New-Object System.Net.WebClient).DownloadFile($url, $tmpFile)
+    if ((Test-Path $tmpFile) -and ((Get-Item $tmpFile).Length -gt 1000)) {
+      break
     }
   }
 
