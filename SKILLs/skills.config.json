@@ -293,6 +293,10 @@
     "yixiaoer": {
       "order": 10150,
       "enabled": true
+    },
+    "motion-video": {
+      "order": 10160,
+      "enabled": true
     }
   }
 }

@@ -85,4 +85,6 @@ export const BUNDLED_SKILL_DISPLAY_NAMES: Record<string, LocalizedText> = {
   'skill-creator': { zh: '技能创建', en: 'Skill Creator' },
   'ffmpeg-tool': { zh: 'FFmpeg 多媒体处理', en: 'FFmpeg Tool' },
   'whisper-tool': { zh: 'Whisper 语音识别', en: 'Whisper Tool' },
+  'yixiaoer': { zh: '蚁小二多平台分发', en: 'YiXiaoEr Distribution' },
+  'motion-video': { zh: '动效视频制作', en: 'Motion Video' },
 };
