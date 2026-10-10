@@ -783,6 +783,8 @@ type ActiveTurn = {
   lastHistoryToolResultCharCount?: number;
   /** True when a delayed empty-output fallback should be shown if no follow-up arrives. */
   pendingThinkingOnlyHint?: boolean;
+  /** True while chat.final is actively being processed by handleChatFinal. */
+  chatFinalProcessing?: boolean;
   /**
    * Delayed completion after chat.final. OpenClaw can emit chat.final before
    * an overflow auto-compaction/retry path continues the same run.
@@ -8997,6 +8999,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     }
 
     if (state === 'final') {
+      turn.chatFinalProcessing = true;
       this.cancelLifecycleEndFallback(sessionId, turn, 'chat final arrived');
       // Detect announce chat final — mark subagent done as backup
       if (runId) {
@@ -9404,6 +9407,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
   }
 
   private async handleChatFinal(sessionId: string, turn: ActiveTurn, payload: ChatEventPayload): Promise<void> {
+    turn.chatFinalProcessing = true;
     const previousText = turn.currentText;
     const previousSegmentText = turn.currentAssistantSegmentText;
     const wasWaitingForRecoverableFinal = this.isWaitingForRecoverableFollowup(turn);
@@ -9703,6 +9707,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     }
 
     if (stoppedByToolUse) {
+      turn.chatFinalProcessing = false;
       turn.lastToolUseChatFinalAtMs = Date.now();
       this.cancelChatFinalCompletion(sessionId, turn, 'chat final requested tool work');
       this.store.updateSession(sessionId, { status: 'running' });
@@ -10422,7 +10427,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     turn: ActiveTurn,
     payload: ChatEventPayload,
   ): boolean {
-    if (!turn.finalCompletionTimer) return false;
+    if (!turn.finalCompletionTimer && !turn.chatFinalProcessing) return false;
     // Silent maintenance/retry waits intentionally outlive their run; a
     // follow-up error there is a real outcome, not a stale flush.
     if (turn.finalCompletionFlushOnLifecycleEnd === false) return false;
@@ -10448,11 +10453,13 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       `Run ${errorRunId || turn.finalCompletionRunId || turn.runId}.`,
       `Error ${staleErrorText.slice(0, 200) || 'unknown'}.`,
     );
-    void this.completeDeferredChatFinalNow(
-      sessionId,
-      turn,
-      turn.finalCompletionRunId ?? turn.runId,
-    );
+    if (turn.finalCompletionTimer) {
+      void this.completeDeferredChatFinalNow(
+        sessionId,
+        turn,
+        turn.finalCompletionRunId ?? turn.runId,
+      );
+    }
     return true;
   }
 
@@ -10497,9 +10504,10 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     const errorDetail = this.buildTurnErrorDetail(sessionId, turn, resolved.detailRawErrorMessage, errorMessage, errorMetadata);
 
     const erroredSessionKey = turn.sessionKey;
-    if (erroredSessionKey) {
-      this.subagentTracker.tryMarkTerminalFromSessionKey(erroredSessionKey, 'error', errorMessage);
-      this.subagentSessionMaterializer.finalizePassive(erroredSessionKey, 'error');
+    if (erroredSessionKey && isSubagentSessionKey(erroredSessionKey)) {
+      if (this.subagentTracker.tryMarkTerminalFromSessionKey(erroredSessionKey, 'error', errorMessage)) {
+        this.subagentSessionMaterializer.finalizePassive(erroredSessionKey, 'error');
+      }
     }
     this.clearContextMaintenanceState(sessionId, turn, 'chat error');
     this.store.updateSession(sessionId, { status: 'error' });
@@ -11729,6 +11737,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
         turn.finalCompletionFlushOnLifecycleEnd = undefined;
         turn.finalCompletionAllowLateContinuation = undefined;
       }
+      turn.chatFinalProcessing = false;
       if (turn.hasContextMaintenanceTool || turn.hasContextCompactionEvent || turn.pendingRecoverableFollowup || turn.pendingOpenClawRetry) {
         this.emitContextMaintenance(sessionId, false);
       }

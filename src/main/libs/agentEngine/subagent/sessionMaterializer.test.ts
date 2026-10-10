@@ -93,4 +93,16 @@ describe('SubagentSessionMaterializer', () => {
     expect(deps.emitComplete).toHaveBeenCalledWith('child-1', 'agent:product-analyst:subagent:child-1');
     expect(deps.notifySessionsChanged).toHaveBeenCalledWith('child-1');
   });
+
+  test('skips passive finalization for non-subagent main session keys', () => {
+    const { deps, store, materializer } = createMaterializer({
+      resolveSessionIdBySessionKey: vi.fn(() => 'main-session-id'),
+    });
+
+    materializer.finalizePassive('agent:main:lobsterai:main-session-id', 'error');
+
+    expect(store.updateSession).not.toHaveBeenCalled();
+    expect(deps.emitSessionStatus).not.toHaveBeenCalled();
+    expect(deps.emitError).not.toHaveBeenCalled();
+  });
 });

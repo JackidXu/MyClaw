@@ -5293,6 +5293,68 @@ test('stale chat error after a successful deferred final completes the turn inst
   }
 });
 
+test('stale chat error arriving while handleChatFinal is still processing is ignored', async () => {
+  vi.useFakeTimers();
+  try {
+    const { session, store } = createReconcileStore([
+      { id: 'msg-1', type: 'user', content: 'update skill', timestamp: 1, metadata: {} },
+    ]);
+    session.status = 'running';
+    const adapter = new OpenClawRuntimeAdapter(store, {});
+    const errorSpy = vi.fn();
+    adapter.on('error', errorSpy);
+    const sessionKey = `agent:main:lobsterai:${session.id}`;
+    const turn = createActiveTurn(session.id, sessionKey, 'run-processing-final');
+    adapter.activeTurns.set(session.id, turn);
+    adapter.latestTurnTokenBySession.set(session.id, turn.turnToken);
+
+    turn.chatFinalProcessing = true;
+    expect(turn.finalCompletionTimer).toBeUndefined();
+
+    adapter.handleChatEvent({
+      state: 'error',
+      runId: 'run-processing-final',
+      sessionKey,
+      errorMessage: '⚠️ 📝 Edit: `in /path/to/SKILL.md` failed',
+      message: { role: 'assistant', content: [{ type: 'text', text: '⚠️ 📝 Edit: `in /path/to/SKILL.md` failed' }] },
+    }, 2);
+
+    expect(errorSpy).not.toHaveBeenCalled();
+    expect(session.status).toBe('running');
+    expect(adapter.activeTurns.has(session.id)).toBe(true);
+  } finally {
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  }
+});
+
+test('main session chat error does not trigger subagent passive finalization or emit Subagent session failed', () => {
+  const { session, store } = createReconcileStore([
+    { id: 'msg-1', type: 'user', content: 'hello', timestamp: 1, metadata: {} },
+  ]);
+  session.status = 'running';
+  const adapter = new OpenClawRuntimeAdapter(store, {});
+  const errorSpy = vi.fn();
+  adapter.on('error', errorSpy);
+  const sessionKey = `agent:main:lobsterai:${session.id}`;
+  const turn = createActiveTurn(session.id, sessionKey, 'run-main-err');
+  adapter.activeTurns.set(session.id, turn);
+  adapter.latestTurnTokenBySession.set(session.id, turn.turnToken);
+
+  const subagentFinalizeSpy = vi.spyOn(adapter['subagentSessionMaterializer'], 'finalizePassive');
+
+  adapter.handleChatEvent({
+    state: 'error',
+    runId: 'run-main-err',
+    sessionKey,
+    errorMessage: 'Network timeout',
+    message: { role: 'assistant', content: [{ type: 'text', text: 'Network timeout' }] },
+  }, 1);
+
+  expect(subagentFinalizeSpy).not.toHaveBeenCalled();
+  expect(errorSpy).toHaveBeenCalledWith(session.id, expect.not.stringContaining('Subagent'));
+});
+
 test('model idle timeout chat error still surfaces after a deferred final (text-only payload)', async () => {
   vi.useFakeTimers();
   try {

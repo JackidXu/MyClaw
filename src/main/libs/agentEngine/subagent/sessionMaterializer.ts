@@ -2,7 +2,7 @@ import type {
   CoworkSessionStatus,
   CoworkStore,
 } from '../../../coworkStore';
-import { parseAgentIdFromSubagentSessionKey } from './sessionKeys';
+import { isSubagentSessionKey, parseAgentIdFromSubagentSessionKey } from './sessionKeys';
 import type {
   SubagentChildSessionCandidateParams,
   SubagentChildSessionMaterializeParams,
@@ -75,6 +75,15 @@ export class SubagentSessionMaterializer {
   }
 
   finalizePassive(sessionKey: string, status: 'done' | 'error'): void {
+    if (!isSubagentSessionKey(sessionKey)) {
+      console.log(
+        '[OpenClawRuntime] passive subagent finalize skipped: not a subagent session key',
+        `sessionKey=${sessionKey}`,
+        `status=${status}`,
+      );
+      return;
+    }
+
     const sessionId = this.deps.resolveSessionIdBySessionKey(sessionKey);
     if (!sessionId) {
       console.log(
