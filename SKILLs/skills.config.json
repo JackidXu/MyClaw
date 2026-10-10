@@ -289,6 +289,10 @@
     "whisper-tool": {
       "order": 10140,
       "enabled": true
+    },
+    "yixiaoer": {
+      "order": 10150,
+      "enabled": true
     }
   }
 }

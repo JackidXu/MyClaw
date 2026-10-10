@@ -1535,6 +1535,11 @@ export class SkillManager {
           else if (!this.isSkillRuntimeHealthy(targetDir, dir)) {
             shouldRepair = true;
           }
+          // yixiaoer check: if bundled has schemas but target doesn't, repair it
+          else if (id === 'yixiaoer' && fs.existsSync(path.join(dir, 'schemas')) && !fs.existsSync(path.join(targetDir, 'schemas'))) {
+            shouldRepair = true;
+            needsCleanCopy = true;
+          }
         }
 
         if (targetExists && !shouldRepair) return;

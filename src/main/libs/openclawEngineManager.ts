@@ -13,7 +13,7 @@ import {
   OpenClawGatewayFailureKind,
   type OpenClawGatewayFailureSnapshot,
 } from '../../shared/openclawEngine/constants';
-import { ensureElectronNodeShim, getElectronNodeRuntimePath, getSkillsRoot } from './coworkUtil';
+import { ensureElectronNodeShim, getElectronNodeRuntimePath, getSkillsRoot, getYixiaoerProjectDir } from './coworkUtil';
 import {
   formatGatewayLogDateKey,
   type GatewayLogEntry,
@@ -735,6 +735,24 @@ export class OpenClawEngineManager extends EventEmitter {
       // not "PATH". We must read the actual key to avoid creating a PATH with only cliShimDir.
       const currentPath = env.PATH || env.Path || '';
       env.PATH = [cliShimDir, currentPath].filter(Boolean).join(path.delimiter);
+    }
+
+    // Prepend user-managed bin directory (e.g. yxer CLI) to PATH so gateway exec commands find it
+    const managedBinDir = path.join(app.getPath('userData'), 'bin');
+    if (!fs.existsSync(managedBinDir)) {
+      try {
+        fs.mkdirSync(managedBinDir, { recursive: true });
+      } catch {
+        // ignore
+      }
+    }
+    const currentPath = env.PATH || env.Path || '';
+    env.PATH = [managedBinDir, currentPath].filter(Boolean).join(path.delimiter);
+
+    // Inject YIXIAOER_PROJECT_DIR for yxer CLI schemas and workflows
+    const yixiaoerProjectDir = getYixiaoerProjectDir();
+    if (yixiaoerProjectDir) {
+      env.YIXIAOER_PROJECT_DIR = yixiaoerProjectDir;
     }
 
     // Prepend bundled/user Python runtime paths so gateway exec commands

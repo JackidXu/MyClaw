@@ -209,6 +209,7 @@ import { type AutoLaunchStatus, getAutoLaunchStatus, isAutoLaunched, setAutoLaun
 import { BrowserCredentialApprovalService } from './browserCredentials/browserCredentialApprovalService';
 import { BrowserCredentialService } from './browserCredentials/browserCredentialService';
 import { getRecentComputerUseLogEntries } from './computerUse/computerUseLogs';
+import { ContentDistributionService } from './contentDistribution/contentDistributionService';
 import { type CoworkForkContextMessage, type CoworkMessage, CoworkStore } from './coworkStore';
 import {
   buildEnterpriseAccountRequestHeaders,
@@ -251,6 +252,7 @@ import type {
 import { registerAgentHandlers } from './ipcHandlers/agents';
 import { registerAsrIpcHandlers } from './ipcHandlers/asr';
 import { registerBrowserCredentialHandlers } from './ipcHandlers/browserCredentials/handlers';
+import { registerContentDistributionHandlers } from './ipcHandlers/contentDistribution/handlers';
 import { registerCoworkSubagentHandlers } from './ipcHandlers/coworkSubagent';
 import { ensureDshEngineReady, registerDshHandlers } from './ipcHandlers/dsh/handlers';
 import { registerEnterpriseAccountHandlers } from './ipcHandlers/enterpriseAccount';
@@ -2116,6 +2118,7 @@ let openClawRuntimeAdapter: OpenClawRuntimeAdapter | null = null;
 let coworkEngineRouter: CoworkEngineRouter | null = null;
 let agentBrowserHost: AgentBrowserHost | null = null;
 let browserCredentialService: BrowserCredentialService | null = null;
+let contentDistributionService: ContentDistributionService | null = null;
 let browserCredentialApprovalService: BrowserCredentialApprovalService | null = null;
 let skillManager: SkillManager | null = null;
 let mcpRuntime: McpRuntime | null = null;
@@ -2190,6 +2193,13 @@ const getBrowserCredentialService = (): BrowserCredentialService => {
     );
   }
   return browserCredentialService;
+};
+
+const getContentDistributionService = (): ContentDistributionService => {
+  if (!contentDistributionService) {
+    contentDistributionService = new ContentDistributionService(() => getStore());
+  }
+  return contentDistributionService;
 };
 
 const getBrowserCredentialApprovalService = (): BrowserCredentialApprovalService => {
@@ -9234,6 +9244,11 @@ if (!gotTheLock) {
   registerBrowserCredentialHandlers({
     ipcMain,
     getService: getBrowserCredentialService,
+  });
+
+  registerContentDistributionHandlers({
+    ipcMain,
+    getService: getContentDistributionService,
   });
 
   const runBrowserHostAction = async (

@@ -966,6 +966,21 @@ function applyPackagedEnvOverrides(env: Record<string, string | undefined>): voi
     env.LOBSTERAI_ELECTRON_PATH = electronNodeRuntimePath;
   }
 
+  // Prepend user-managed bin directory (e.g. yxer CLI) to PATH
+  const managedBinDir = join(app.getPath('userData'), 'bin');
+  if (!existsSync(managedBinDir)) {
+    try {
+      mkdirSync(managedBinDir, { recursive: true });
+    } catch {
+      // ignore
+    }
+  }
+  env.PATH = appendEnvPath(env.PATH, [managedBinDir]);
+  const yixiaoerProjectDir = getYixiaoerProjectDir();
+  if (yixiaoerProjectDir) {
+    env.YIXIAOER_PROJECT_DIR = yixiaoerProjectDir;
+  }
+
   // On Windows, resolve git-bash and ensure Git toolchain directories are available in PATH.
   if (process.platform === 'win32') {
     env.LOBSTERAI_ELECTRON_PATH = electronNodeRuntimePath;
@@ -1325,6 +1340,38 @@ export function getSkillsRoot(): string {
 
   // Final fallback for first-run dev environments where SKILLs may not exist yet.
   return join(app.getAppPath(), 'SKILLs');
+}
+
+/**
+ * Get Yixiaoer skill project directory path (contains schemas and workflows)
+ */
+export function getYixiaoerProjectDir(): string {
+  // 1. Check userData SKILLs if schemas exist
+  const userDataSkillDir = join(app.getPath('userData'), 'SKILLs', 'yixiaoer');
+  if (existsSync(join(userDataSkillDir, 'schemas'))) {
+    return userDataSkillDir;
+  }
+
+  // 2. Check bundled/dev SKILLs root
+  const skillsRoot = getSkillsRoot();
+  const bundledSkillDir = join(skillsRoot, 'yixiaoer');
+  if (existsSync(join(bundledSkillDir, 'schemas'))) {
+    return bundledSkillDir;
+  }
+
+  // 3. Fallback candidates for dev environments
+  const devCandidates = [
+    join(app.getAppPath(), 'SKILLs', 'yixiaoer'),
+    join(process.cwd(), 'SKILLs', 'yixiaoer'),
+    join(__dirname, '..', '..', 'SKILLs', 'yixiaoer'),
+  ];
+  for (const candidate of devCandidates) {
+    if (existsSync(join(candidate, 'schemas'))) {
+      return candidate;
+    }
+  }
+
+  return userDataSkillDir;
 }
 
 function finalizeNodeToolEnv(env: Record<string, string | undefined>): void {

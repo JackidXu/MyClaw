@@ -2721,6 +2721,27 @@ const translations: Record<LanguageType, Record<string, string>> = {
     mcpDesc_qichacha:
       '通过企查查账号授权，自动配置企业工商、风险、知识产权、经营、人员和历史存档 MCP 服务',
 
+    // 内容分发 (蚁小二)
+    contentDistributionTab: '内容分发',
+    contentDistTitle: '多平台内容分发 (蚁小二)',
+    contentDistDesc: '配置您自己的蚁小二凭证后，AI 智能体即可将生成的高质量推文、图文或脚本一键同步到小红书、微信公众号、今日头条等平台草稿箱。凭证仅保存在您本地设备，安全零泄露。',
+    contentDistUsageTitle: '使用方法与推荐指令',
+    contentDistUsageTip1: '配置保存后，您无需繁琐复制粘贴。在任意对话中，直接对 AI 说出您的意图即可，例如：',
+    contentDistUsageExample1: '“把上面写好的文案和图片保存到小红书草稿箱”',
+    contentDistUsageExample2: '“帮我把养生茶图文同步到微信公众号草稿箱”',
+    contentDistUsageTip2: 'AI 将全自动理解上下文，为您自动提炼吸睛标题、排版正文并关联生成好的配图，直接存入蚁小二客户端草稿箱，供您最终预览与发布。',
+    contentDistEnvTitle: '分发运行环境 (yxer CLI)',
+    contentDistEnvReady: '已就绪',
+    contentDistEnvNotReady: '未安装运行环境',
+    contentDistEnvInstalling: '正在下载并准备分发环境...',
+    contentDistEnvDescReady: '已自动识别并配置本地原生运行时环境，大模型可随时调用进行内容草稿分发。',
+    contentDistEnvDescNotReady: 'AI 进行多平台图文分发需依赖本地 yxer 运行时，点击右侧即可一键自动下载并配置。',
+    contentDistEnvInstallBtn: '一键准备环境',
+    contentDistEnvRecheckBtn: '重新检测',
+    contentDistEnvPathLabel: '运行路径',
+    contentDistEnvInstallSuccess: '分发运行环境已成功就绪！',
+    contentDistEnvInstallFailed: '分发运行环境准备失败',
+
     // 邮箱技能配置
     emailTab: '邮箱',
     emailConfig: '邮箱配置',
@@ -6726,6 +6747,27 @@ const translations: Record<LanguageType, Record<string, string>> = {
     mcpCategoryDataApi: 'Data & API',
     mcpDesc_qichacha:
       'Authorize with a Qichacha account to configure company, risk, IP, operation, executive and history MCP servers automatically',
+
+    // Content Distribution (Yixiaoer)
+    contentDistributionTab: 'Distribution',
+    contentDistTitle: 'Multi-platform Distribution (Yixiaoer)',
+    contentDistDesc: 'Configure your Yixiaoer credentials to enable one-click distribution of AI-generated content to draft boxes across Xiaohongshu, WeChat Official Accounts, Toutiao, and more. Credentials remain safely stored on your local device.',
+    contentDistUsageTitle: 'How to Use & Example Prompts',
+    contentDistUsageTip1: 'Once configured, no manual copy-pasting is needed. Just speak your intent naturally in any chat, for example:',
+    contentDistUsageExample1: '"Save the above copy and generated images to Xiaohongshu drafts"',
+    contentDistUsageExample2: '"Sync the wellness tea article and images to WeChat Official Account drafts"',
+    contentDistUsageTip2: 'The AI agent will intelligently understand context, format titles and content, attach generated images, and save directly to your Yixiaoer desktop drafts for final review and publishing.',
+    contentDistEnvTitle: 'CLI Runtime Environment (yxer)',
+    contentDistEnvReady: 'Ready',
+    contentDistEnvNotReady: 'Runtime Not Installed',
+    contentDistEnvInstalling: 'Downloading & Setting Up Runtime...',
+    contentDistEnvDescReady: 'Local native CLI runtime is ready. AI agents can distribute content to draft boxes seamlessly.',
+    contentDistEnvDescNotReady: 'AI multi-platform distribution requires the local yxer CLI runtime. Click to install automatically.',
+    contentDistEnvInstallBtn: 'Install Runtime',
+    contentDistEnvRecheckBtn: 'Recheck',
+    contentDistEnvPathLabel: 'Binary Path',
+    contentDistEnvInstallSuccess: 'Distribution runtime installed successfully!',
+    contentDistEnvInstallFailed: 'Failed to prepare distribution runtime',
 
     // Email Skill Config
     emailTab: 'Email',

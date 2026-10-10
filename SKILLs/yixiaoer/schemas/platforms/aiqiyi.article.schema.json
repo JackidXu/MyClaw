@@ -1,0 +1,29 @@
+{
+  "title": "爱奇艺文章发布表单 (AiQiYi Article)",
+  "type": "object",
+  "required": [
+    "formType",
+    "title",
+    "pubType"
+  ],
+  "properties": {
+    "formType": {
+      "type": "string",
+      "const": "task"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 50
+    },
+    "pubType": {
+      "type": "number",
+      "enum": [
+        0,
+        1
+      ],
+      "default": 1
+    }
+  },
+  "additionalProperties": false
+}

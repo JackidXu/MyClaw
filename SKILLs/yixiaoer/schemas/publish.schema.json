@@ -1,0 +1,26 @@
+{
+  "title": "YiXiaoEr Publish Schema Root",
+  "type": "object",
+  "required": [
+    "formType"
+  ],
+  "properties": {
+    "formType": {
+      "type": "string",
+      "const": "task"
+    },
+    "title": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "desc": {
+      "type": "string"
+    },
+    "content": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": true
+}

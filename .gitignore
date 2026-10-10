@@ -39,6 +39,7 @@ SKILLs/**/package-lock.json
 SKILLs/whisper-tool/assets/models/ggml-base.bin
 SKILLs/ffmpeg-tool/assets/windows-x64/ffmpeg.exe
 SKILLs/**/jydec
+SKILLs/yixiaoer/bin/
 
 nul
 .work.env

@@ -1,0 +1,168 @@
+{
+  "title": "百家号文章发布表单 (BaijiaHao Article)",
+  "type": "object",
+  "required": [
+    "formType",
+    "title",
+    "content",
+    "covers",
+    "pubType"
+  ],
+  "properties": {
+    "formType": {
+      "type": "string",
+      "const": "task"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "content": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 50000
+    },
+    "covers": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "required": [
+          "key",
+          "size",
+          "width",
+          "height"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "width": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    },
+    "coverType": {
+      "type": "string",
+      "enum": [
+        "single",
+        "triple"
+      ],
+      "default": "single"
+    },
+    "coverKey": {
+      "type": "string"
+    },
+    "thumbMediaId": {
+      "type": "string"
+    },
+    "category": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {
+        "type": "object",
+        "required": [
+          "yixiaoerId",
+          "yixiaoerName"
+        ],
+        "properties": {
+          "yixiaoerId": {
+            "type": "string"
+          },
+          "yixiaoerName": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "original": {
+      "type": "boolean",
+      "default": false
+    },
+    "originalType": {
+      "type": "number",
+      "enum": [
+        0,
+        1,
+        2
+      ]
+    },
+    "originalUrl": {
+      "type": "string",
+      "format": "uri"
+    },
+    "reprintType": {
+      "type": "number",
+      "enum": [
+        0,
+        1
+      ]
+    },
+    "declaration": {
+      "type": "number",
+      "enum": [
+        0,
+        1
+      ],
+      "default": 0
+    },
+    "activity": {
+      "type": "object",
+      "required": [
+        "yixiaoerId",
+        "yixiaoerName",
+        "raw"
+      ],
+      "properties": {
+        "yixiaoerId": {
+          "type": "string"
+        },
+        "yixiaoerName": {
+          "type": "string"
+        },
+        "raw": {
+          "type": "object"
+        }
+      }
+    },
+    "pubType": {
+      "type": "number",
+      "enum": [
+        0,
+        1
+      ],
+      "default": 1
+    },
+    "scheduledTime": {
+      "type": "number",
+      "minimum": 0
+    },
+    "publishTime": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "statement": {
+      "type": "number",
+      "enum": [
+        1,
+        2,
+        3
+      ]
+    }
+  },
+  "additionalProperties": false
+}

@@ -658,6 +658,15 @@ interface IElectronAPI {
     set: (key: string, value: any) => Promise<void>;
     remove: (key: string) => Promise<void>;
   };
+  contentDistribution: {
+    getConfig: () => Promise<import('../../shared/contentDistribution/constants').YixiaoerConfig>;
+    saveConfig: (config: Partial<import('../../shared/contentDistribution/constants').YixiaoerConfig>) => Promise<{
+      success: boolean;
+      error?: string;
+    }>;
+    checkCli: () => Promise<import('../../shared/contentDistribution/constants').YxerCliStatus>;
+    installCli: (force?: boolean) => Promise<import('../../shared/contentDistribution/constants').YxerCliInstallResult>;
+  };
   secondBrainAutoUpload: {
     selectWatchDir: () => Promise<{ success: boolean; path?: string; canceled?: boolean; error?: string }>;
     getConfig: () => Promise<{

@@ -35,6 +35,12 @@ import {
   type BrowserRuntimeProfile,
 } from '../shared/browserWebAccess/constants';
 import { ClipboardIpc } from '../shared/clipboard/constants';
+import {
+  ContentDistributionIpc,
+  type YixiaoerConfig,
+  type YxerCliInstallResult,
+  type YxerCliStatus,
+} from '../shared/contentDistribution/constants';
 import type { CoworkBrowserAnnotationMessageBatch } from '../shared/cowork/browserAnnotations';
 import type {
   CoworkBtwAbortRequest,
@@ -140,6 +146,16 @@ contextBridge.exposeInMainWorld('electron', {
     get: (key: string) => ipcRenderer.invoke('store:get', key),
     set: (key: string, value: any) => ipcRenderer.invoke('store:set', key, value),
     remove: (key: string) => ipcRenderer.invoke('store:remove', key),
+  },
+  contentDistribution: {
+    getConfig: (): Promise<YixiaoerConfig> =>
+      ipcRenderer.invoke(ContentDistributionIpc.GetConfig),
+    saveConfig: (config: Partial<YixiaoerConfig>): Promise<{ success: boolean; error?: string }> =>
+      ipcRenderer.invoke(ContentDistributionIpc.SaveConfig, config),
+    checkCli: (): Promise<YxerCliStatus> =>
+      ipcRenderer.invoke(ContentDistributionIpc.CheckCli),
+    installCli: (force?: boolean): Promise<YxerCliInstallResult> =>
+      ipcRenderer.invoke(ContentDistributionIpc.InstallCli, force),
   },
   secondBrainAutoUpload: {
     selectWatchDir: () => ipcRenderer.invoke(SecondBrainAutoUploadIpc.SelectWatchDir),

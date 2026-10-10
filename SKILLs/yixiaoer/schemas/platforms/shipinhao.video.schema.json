@@ -1,0 +1,283 @@
+{
+  "title": "微信视频号视频发布表单 (Shipinhao Video)",
+  "type": "object",
+  "required": [
+    "formType",
+    "createType",
+    "pubType"
+  ],
+  "properties": {
+    "formType": {
+      "type": "string",
+      "const": "task"
+    },
+    "title": {
+      "type": "string",
+      "maxLength": 80
+    },
+    "short_title": {
+      "type": "string",
+      "maxLength": 80
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 1000
+    },
+    "video": {
+      "type": "object",
+      "required": [
+        "key",
+        "size",
+        "width",
+        "height"
+      ],
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "duration": {
+          "type": "number",
+          "minimum": 1
+        },
+        "format": {
+          "type": "string",
+          "enum": [
+            "mp4",
+            "mov",
+            "flv",
+            "avi"
+          ]
+        }
+      }
+    },
+    "cover": {
+      "type": "object",
+      "required": [
+        "key",
+        "size",
+        "width",
+        "height"
+      ],
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "format": {
+          "type": "string",
+          "enum": [
+            "jpg",
+            "jpeg",
+            "png",
+            "webp"
+          ]
+        }
+      }
+    },
+    "coverKey": {
+      "type": "string"
+    },
+    "horizontalCover": {
+      "type": "object",
+      "required": [
+        "key",
+        "size",
+        "width",
+        "height"
+      ],
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "format": {
+          "type": "string",
+          "enum": [
+            "jpg",
+            "jpeg",
+            "png",
+            "webp"
+          ]
+        }
+      }
+    },
+    "createType": {
+      "type": "number",
+      "enum": [
+        1,
+        2
+      ],
+      "default": 2,
+      "description": "原创声明类型：1-声明原创，2-非原创或转载；默认不声明原创。"
+    },
+    "declaration": {
+      "type": "number",
+      "enum": [
+        0,
+        1,
+        2,
+        3,
+        7,
+        8
+      ],
+      "default": 0
+    },
+    "pubType": {
+      "type": "number",
+      "enum": [
+        0,
+        1
+      ],
+      "default": 1
+    },
+    "location": {
+      "type": "object",
+      "required": [
+        "id",
+        "text",
+        "raw"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "raw": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": true
+    },
+    "shopping_cart": {
+      "description": "单个视频号关联商品，直接使用 goods 查询返回的 GoodListItemResponse，不包装成数组。",
+      "type": "object",
+      "required": [
+        "yixiaoerId",
+        "yixiaoerName"
+      ],
+      "properties": {
+        "yixiaoerId": {
+          "type": "string"
+        },
+        "yixiaoerName": {
+          "type": "string"
+        },
+        "price": {
+          "type": "number"
+        },
+        "earnPrice": {
+          "type": "number"
+        },
+        "count": {
+          "type": "number"
+        },
+        "yixiaoerDesc": {
+          "type": "string"
+        },
+        "yixiaoerImageUrl": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "collection": {
+      "type": "object",
+      "required": [
+        "yixiaoerId",
+        "yixiaoerName",
+        "raw"
+      ],
+      "properties": {
+        "yixiaoerId": {
+          "type": "string"
+        },
+        "yixiaoerName": {
+          "type": "string"
+        },
+        "raw": {
+          "type": "object"
+        }
+      }
+    },
+    "drama": {
+      "type": "object",
+      "required": [
+        "yixiaoerId",
+        "yixiaoerImageUrl",
+        "yixiaoerName"
+      ],
+      "properties": {
+        "yixiaoerId": {
+          "type": "string"
+        },
+        "yixiaoerImageUrl": {
+          "type": "string"
+        },
+        "yixiaoerName": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "activity": {
+      "type": "object",
+      "required": [
+        "yixiaoerId",
+        "yixiaoerName",
+        "raw"
+      ],
+      "properties": {
+        "yixiaoerId": {
+          "type": "string"
+        },
+        "yixiaoerName": {
+          "type": "string"
+        },
+        "raw": {
+          "type": "object"
+        }
+      }
+    },
+    "scheduledTime": {
+      "type": "number",
+      "minimum": 0
+    }
+  },
+  "additionalProperties": false
+}

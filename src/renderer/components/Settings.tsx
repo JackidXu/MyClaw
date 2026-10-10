@@ -1,4 +1,4 @@
-import { ArchiveBoxIcon, ArrowPathIcon, ArrowPathRoundedSquareIcon, ChatBubbleLeftIcon, CheckCircleIcon, CpuChipIcon, CubeIcon, EnvelopeIcon, ExclamationTriangleIcon, GlobeAltIcon, InformationCircleIcon, MagnifyingGlassIcon, SignalIcon, SunIcon, TrashIcon, WrenchScrewdriverIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { ArchiveBoxIcon, ArrowPathIcon, ArrowPathRoundedSquareIcon, ChatBubbleLeftIcon, CheckCircleIcon, CpuChipIcon, CubeIcon, EnvelopeIcon, ExclamationTriangleIcon, GlobeAltIcon, InformationCircleIcon, MagnifyingGlassIcon, ShareIcon, SignalIcon, SunIcon, TrashIcon, WrenchScrewdriverIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import React, { useCallback,useEffect, useMemo, useRef, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 
@@ -9,6 +9,10 @@ import {
   defaultBrowserWebAccessConfig,
   normalizeBrowserWebAccessConfig,
 } from '../../shared/browserWebAccess/constants';
+import {
+  defaultYixiaoerConfig,
+  type YixiaoerConfig,
+} from '../../shared/contentDistribution/constants';
 import { DataMigrationRestoreStatus } from '../../shared/dataMigration/constants';
 import {
   normalizeNotificationSettings,
@@ -31,6 +35,7 @@ import { APP_ID, EXPORT_FORMAT_TYPE, EXPORT_PASSWORD } from '../constants/app';
 import { useSkin } from '../providers/SkinProvider';
 import { apiService } from '../services/api';
 import { configService } from '../services/config';
+import { contentDistributionService } from '../services/contentDistribution';
 import { coworkService } from '../services/cowork';
 import { decryptSecret, decryptWithPassword, EncryptedPayload, encryptWithPassword, PasswordEncryptedPayload } from '../services/encryption';
 import { i18nService, LanguageType } from '../services/i18n';
@@ -71,6 +76,7 @@ import PlusCircleIcon from './icons/PlusCircleIcon';
 import IMSettings from './im/IMSettings';
 import PluginsSettings, { type PluginPendingChanges, type PluginsSettingsHandle } from './plugins/PluginsSettings';
 import BrowserWebAccessSettings from './settings/BrowserWebAccessSettings';
+import ContentDistributionSettings from './settings/ContentDistributionSettings';
 import {
   buildOpenAICompatibleChatCompletionsUrl,
   buildOpenAIConnectionTestRequestBody,
@@ -101,7 +107,7 @@ import EmailSkillConfig from './skills/EmailSkillConfig';
 import SkinPresentationScope from './skin/SkinPresentationScope';
 import ThemedSelect from './ui/ThemedSelect';
 
-type TabType = 'general' | 'appearance' | 'coworkAgentEngine' | 'model' | 'browserWebAccess' | 'coworkMemory' | 'coworkDreaming' | 'shortcuts' | 'im' | 'email' | 'plugins' | 'experimental' | 'about';
+type TabType = 'general' | 'appearance' | 'coworkAgentEngine' | 'model' | 'browserWebAccess' | 'coworkMemory' | 'coworkDreaming' | 'shortcuts' | 'im' | 'contentDistribution' | 'email' | 'plugins' | 'experimental' | 'about';
 
 const waitForNextPaint = (): Promise<void> => new Promise(resolve => {
   window.requestAnimationFrame(() => {
@@ -1411,6 +1417,10 @@ const Settings: React.FC<SettingsProps> = ({
     ...defaultBrowserWebAccessConfig,
     webFetch: { ...defaultBrowserWebAccessConfig.webFetch },
   }));
+  const [contentDistributionConfig, setContentDistributionConfig] =
+    useState<YixiaoerConfig>(defaultYixiaoerConfig);
+  const [initialContentDistributionConfig, setInitialContentDistributionConfig] =
+    useState<YixiaoerConfig>(defaultYixiaoerConfig);
   const [isUpdatingAutoLaunch, setIsUpdatingAutoLaunch] = useState(false);
   const [preventSleep, setPreventSleepState] = useState(false);
   const [isUpdatingPreventSleep, setIsUpdatingPreventSleep] = useState(false);
@@ -2011,6 +2021,14 @@ const Settings: React.FC<SettingsProps> = ({
         setQuestionNotificationsEnabled(notificationSettings.questionNotificationsEnabled);
       }
       setBrowserWebAccess(normalizeBrowserWebAccessConfig(config.browserWebAccess));
+      window.electron.contentDistribution?.getConfig().then((distConfig) => {
+        if (distConfig) {
+          setContentDistributionConfig(distConfig);
+          setInitialContentDistributionConfig(distConfig);
+        }
+      }).catch(err => {
+        console.error('Failed to load content distribution config:', err);
+      });
       const savedTestMode = config.app?.testMode ?? false;
       setTestMode(savedTestMode);
       if (savedTestMode) setTestModeUnlocked(true);
@@ -3590,6 +3608,39 @@ const Settings: React.FC<SettingsProps> = ({
         }
       }
 
+      // Save content distribution config
+      const isContentDistTab = activeTab === 'contentDistribution';
+      const hasContentDistChanged =
+        contentDistributionConfig.apiKey !== initialContentDistributionConfig.apiKey ||
+        contentDistributionConfig.clientId !== initialContentDistributionConfig.clientId;
+
+      if (isContentDistTab || hasContentDistChanged) {
+        // 若填写了 API Key，且分发运行环境未就绪，则自动先设置安装环境后再保存
+        if (contentDistributionConfig.apiKey?.trim()) {
+          const cliCheck = await window.electron.contentDistribution?.checkCli();
+          if (cliCheck && !cliCheck.installed) {
+            const installRes = await window.electron.contentDistribution?.installCli(false);
+            if (installRes && !installRes.success) {
+              throw new Error(
+                installRes.error
+                  ? `${i18nService.t('contentDistEnvInstallFailed')}: ${installRes.error}`
+                  : i18nService.t('contentDistEnvInstallFailed'),
+              );
+            }
+            contentDistributionService.notifyCliChanged();
+          }
+        }
+
+        if (hasContentDistChanged) {
+          const distRes = await window.electron.contentDistribution?.saveConfig(contentDistributionConfig);
+          if (distRes && !distRes.success) {
+            throw new Error(distRes.error || '保存内容分发配置失败');
+          }
+          setInitialContentDistributionConfig(contentDistributionConfig);
+          contentDistributionService.notifyConfigChanged();
+        }
+      }
+
       if (usageAnalyticsEnabled) {
         if (previousConfig.language !== language) {
           reportGeneralSettingChanged('language', language, previousConfig.language);
@@ -4564,6 +4615,7 @@ const Settings: React.FC<SettingsProps> = ({
       { key: 'model' as TabType,          label: i18nService.t('settingsCustomModel'), icon: <CubeIcon className="h-5 w-5" /> },
       { key: 'im' as TabType,             label: i18nService.t('imBot'),          icon: <ChatBubbleLeftIcon className="h-5 w-5" /> },
       { key: 'browserWebAccess' as TabType, label: i18nService.t('browserWebAccessTab'), icon: <GlobeAltIcon className="h-5 w-5" /> },
+      { key: 'contentDistribution' as TabType, label: i18nService.t('contentDistributionTab'), icon: <ShareIcon className="h-5 w-5" /> },
       { key: 'email' as TabType,          label: i18nService.t('emailTab'),       icon: <EnvelopeIcon className="h-5 w-5" /> },
       { key: 'coworkMemory' as TabType,   label: i18nService.t('coworkMemoryTitle'), icon: <BrainIcon className="h-5 w-5" /> },
       { key: 'coworkDreaming' as TabType, label: i18nService.t('coworkMemoryTabDreaming'), icon: <DreamingTabIcon className="h-5 w-5" /> },
@@ -4833,6 +4885,13 @@ const Settings: React.FC<SettingsProps> = ({
 
   const renderTabContent = () => {
     switch(activeTab) {
+      case 'contentDistribution':
+        return (
+          <ContentDistributionSettings
+            value={contentDistributionConfig}
+            onChange={setContentDistributionConfig}
+          />
+        );
       case 'experimental':
         return <DshExperimentalSettings />;
       case 'general':
