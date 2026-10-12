@@ -572,6 +572,8 @@ const AssistantTurnBlock: React.FC<{
     const isInsufficientBalance = classifiedKey === CoworkErrorI18nKey.InsufficientBalance
       || classifiedKey === CoworkErrorI18nKey.QuotaExhausted
       || classifiedKey === CoworkErrorI18nKey.FreeQuotaExhausted;
+    const canRechargeInApp = isInsufficientBalance
+      && (errorDetail?.provider === 'oneapi' || errorDetail?.providerDisplayName === 'HeyClaw');
 
     return (
       <div className="rounded-lg border border-border bg-background px-3 py-2">
@@ -591,7 +593,7 @@ const AssistantTurnBlock: React.FC<{
           <div className="mt-1 pl-6 text-xs text-muted">{errorModelLine}</div>
         )}
         {errorDetail && <SystemErrorTechnicalDetail detail={errorDetail} />}
-        {isInsufficientBalance && (
+        {canRechargeInApp && (
           <div className="mt-2.5 pl-6 flex flex-wrap items-center gap-2">
             <button
               type="button"
