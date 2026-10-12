@@ -57,7 +57,7 @@ interface ModelSelectorProps {
 }
 
 const DROPDOWN_MAX_HEIGHT = 380; // list max-h-72 plus the tab area and current-model footer
-const DROPDOWN_WIDTH = 300;
+const DROPDOWN_WIDTH = 350;
 const MODEL_ITEM_HEIGHT = 36; // px-3 py-2 row with a 20px line
 const LIST_VERTICAL_PADDING = 8; // scroll container py-1
 const LIST_MAX_HEIGHT = 288; // default cap for the scrollable model list (18rem)
@@ -892,6 +892,11 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
           </span>
         )}
         <span className="flex-1" />
+        {model.isRecommended && (
+          <span className="shrink-0 rounded-md bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-amber-600 dark:text-amber-400">
+            {i18nService.t('modelRecommendedBadge')}
+          </span>
+        )}
         {model.supportsImage && (
           <span className="shrink-0 rounded-md bg-surface-raised px-1.5 py-0.5 text-[10px] font-medium leading-none text-secondary">
             {i18nService.t('modelSupportsImageInputBadge')}
@@ -965,7 +970,14 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
         onBlur={handleModelHoverEnd}
         className="w-[220px] rounded-xl border border-border bg-surface p-3 shadow-popover pointer-events-auto"
       >
-        <div className="text-[13px] font-semibold text-foreground leading-5">{hoveredModel.name}</div>
+        <div className="flex items-center justify-between gap-1.5">
+          <div className="min-w-0 truncate text-[13px] font-semibold text-foreground leading-5">{hoveredModel.name}</div>
+          {hoveredModel.isRecommended && (
+            <span className="shrink-0 rounded-md bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-amber-600 dark:text-amber-400">
+              {i18nService.t('modelRecommendedBadge')}
+            </span>
+          )}
+        </div>
         {hoveredModel.description && (
           <div className="mt-1 text-[11px] text-secondary leading-4">{hoveredModel.description}</div>
         )}
@@ -1120,7 +1132,7 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
     <div
       ref={dropdownRef}
       style={portal ? portalStyle : undefined}
-      className={`${portal ? '' : `absolute ${dropdownPositionClass} ${dropdownAlignmentClass}`} w-[300px] bg-surface rounded-xl popover-enter shadow-popover z-50 border-border border overflow-hidden`}
+      className={`${portal ? '' : `absolute ${dropdownPositionClass} ${dropdownAlignmentClass}`} w-[350px] bg-surface rounded-xl popover-enter shadow-popover z-50 border-border border overflow-hidden`}
     >
       {shouldShowGroupTabs && renderGroupTabs()}
       <div

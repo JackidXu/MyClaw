@@ -3533,11 +3533,11 @@ const Settings: React.FC<SettingsProps> = ({
       });
 
       // 更新 Redux store 中的可用模型列表
-      const allModels: { id: string; name: string; provider?: string; providerKey?: string; openClawProviderId?: string; supportsImage?: boolean }[] = [];
+      const allModels: Model[] = [];
       Object.entries(normalizedProviders).forEach(([providerName, config]) => {
         if (config.enabled && config.models) {
           const openClawProviderId = getOpenClawProviderIdForConfig(providerName, config);
-          config.models.forEach(model => {
+          config.models.forEach((model: any) => {
             allModels.push({
               id: model.id,
               name: model.name,
@@ -3545,6 +3545,13 @@ const Settings: React.FC<SettingsProps> = ({
               providerKey: providerName,
               openClawProviderId,
               supportsImage: resolveModelSupportsImageForProvider(providerName, model),
+              supportsVideo: Boolean(model.supportsVideo),
+              supportsThinking: Boolean(model.supportsThinking),
+              thinkingConfig: model.thinkingConfig,
+              description: model.description || undefined,
+              contextWindow: model.contextWindow,
+              maxTokens: model.maxTokens,
+              isRecommended: Boolean(model.isRecommended),
             });
           });
         }

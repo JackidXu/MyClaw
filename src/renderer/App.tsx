@@ -104,7 +104,7 @@ import {
   setDraftSkillIds,
 } from './store/slices/coworkSlice';
 import { setActiveKitIds } from './store/slices/kitSlice';
-import { setAvailableModels, setDefaultSelectedModel } from './store/slices/modelSlice';
+import { Model, setAvailableModels, setDefaultSelectedModel } from './store/slices/modelSlice';
 import { clearSelection } from './store/slices/quickActionSlice';
 import { setActiveSkillIds } from './store/slices/skillSlice';
 import { CoworkCollaborationMode, type CoworkPermissionResult } from './types/cowork';
@@ -328,12 +328,12 @@ const App: React.FC = () => {
 
   const syncModelsToRedux = useCallback(() => {
     const config = configService.getConfig();
-    const providerModels: { id: string; name: string; provider?: string; providerKey?: string; openClawProviderId?: string; supportsImage?: boolean; isRecommended?: boolean }[] = [];
+    const providerModels: Model[] = [];
     if (config.providers) {
       Object.entries(config.providers).forEach(([providerName, providerConfig]) => {
         if (providerConfig.enabled && providerConfig.models) {
           const openClawProviderId = ProviderRegistry.getOpenClawProviderIdForConfig(providerName, providerConfig);
-          providerConfig.models.forEach((model: { id: string; name: string; supportsImage?: boolean; isRecommended?: boolean }) => {
+          providerConfig.models.forEach((model: any) => {
             providerModels.push({
               id: model.id,
               name: model.name,
@@ -341,7 +341,13 @@ const App: React.FC = () => {
               providerKey: providerName,
               openClawProviderId,
               supportsImage: model.supportsImage ?? false,
-              isRecommended: Boolean((model as any).isRecommended),
+              supportsVideo: Boolean(model.supportsVideo),
+              supportsThinking: Boolean(model.supportsThinking),
+              thinkingConfig: model.thinkingConfig,
+              description: model.description || undefined,
+              contextWindow: model.contextWindow,
+              maxTokens: model.maxTokens,
+              isRecommended: Boolean(model.isRecommended),
             });
           });
         }
@@ -421,7 +427,7 @@ const App: React.FC = () => {
     };
     apiService.setConfig(apiConfig);
 
-    const providerModels: { id: string; name: string; provider?: string; providerKey?: string; openClawProviderId?: string; supportsImage?: boolean; isRecommended?: boolean }[] = [];
+    const providerModels: Model[] = [];
     if (config.providers) {
       Object.entries(config.providers).forEach(([providerName, providerConfig]) => {
         if (providerConfig.enabled && providerConfig.models) {
@@ -429,7 +435,7 @@ const App: React.FC = () => {
           if (providerName === ProviderName.Minimax && providerConfig.authType === ProviderAuthType.OAuth) {
             log?.('MiniMax OAuth provider resolved to OpenClaw minimax-portal');
           }
-          providerConfig.models.forEach((model: { id: string; name: string; supportsImage?: boolean; isRecommended?: boolean }) => {
+          providerConfig.models.forEach((model: any) => {
             providerModels.push({
               id: model.id,
               name: model.name,
@@ -437,7 +443,13 @@ const App: React.FC = () => {
               providerKey: providerName,
               openClawProviderId,
               supportsImage: model.supportsImage ?? false,
-              isRecommended: Boolean((model as any).isRecommended),
+              supportsVideo: Boolean(model.supportsVideo),
+              supportsThinking: Boolean(model.supportsThinking),
+              thinkingConfig: model.thinkingConfig,
+              description: model.description || undefined,
+              contextWindow: model.contextWindow,
+              maxTokens: model.maxTokens,
+              isRecommended: Boolean(model.isRecommended),
             });
           });
         }
@@ -1664,11 +1676,11 @@ const App: React.FC = () => {
     });
 
     if (config.providers) {
-      const allModels: { id: string; name: string; provider?: string; providerKey?: string; openClawProviderId?: string; supportsImage?: boolean }[] = [];
+      const allModels: Model[] = [];
       Object.entries(config.providers).forEach(([providerName, providerConfig]) => {
         if (providerConfig.enabled && providerConfig.models) {
           const openClawProviderId = ProviderRegistry.getOpenClawProviderIdForConfig(providerName, providerConfig);
-          providerConfig.models.forEach((model: { id: string; name: string; supportsImage?: boolean }) => {
+          providerConfig.models.forEach((model: any) => {
             allModels.push({
               id: model.id,
               name: model.name,
@@ -1676,6 +1688,13 @@ const App: React.FC = () => {
               providerKey: providerName,
               openClawProviderId,
               supportsImage: model.supportsImage ?? false,
+              supportsVideo: Boolean(model.supportsVideo),
+              supportsThinking: Boolean(model.supportsThinking),
+              thinkingConfig: model.thinkingConfig,
+              description: model.description || undefined,
+              contextWindow: model.contextWindow,
+              maxTokens: model.maxTokens,
+              isRecommended: Boolean(model.isRecommended),
             });
           });
         }
