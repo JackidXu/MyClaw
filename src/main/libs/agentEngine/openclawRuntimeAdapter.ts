@@ -1141,6 +1141,14 @@ const truncateBtwResultText = (value: string): string => {
 const MODEL_SNAPSHOT_CUSTOM_TYPE = 'model-snapshot';
 const SESSION_STATUS_TOOL_NAME = 'session_status';
 
+/** OpenClaw 网关在历史 transcript 中仅用于辅助投递/镜像的内部虚拟模型集合 */
+const OPENCLAW_INTERNAL_SYNTHETIC_MODELS = new Set(['gateway-injected', 'delivery-mirror']);
+
+const isOpenClawInternalModel = (model: unknown): boolean => {
+  if (typeof model !== 'string') return false;
+  return OPENCLAW_INTERNAL_SYNTHETIC_MODELS.has(model.trim().toLowerCase());
+};
+
 const hasOwn = (record: Record<string, unknown>, key: string): boolean =>
   Object.prototype.hasOwnProperty.call(record, key);
 
@@ -9850,8 +9858,9 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
         // (chat.history may not yet have usage for the just-completed message).
         const finalUsageRecord = messageRecord && isRecord(messageRecord.usage)
           ? messageRecord.usage as Record<string, unknown> : null;
-        const finalModel = messageRecord && typeof messageRecord.model === 'string'
+        const rawFinalModel = messageRecord && typeof messageRecord.model === 'string'
           ? messageRecord.model : undefined;
+        const finalModel = isOpenClawInternalModel(rawFinalModel) ? undefined : rawFinalModel;
         const finalInputTokens = finalUsageRecord
           ? (typeof finalUsageRecord.input === 'number' ? finalUsageRecord.input
             : typeof finalUsageRecord.inputTokens === 'number' ? finalUsageRecord.inputTokens
@@ -10269,6 +10278,10 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       for (let i = history.messages.length - 1; i >= 0; i--) {
         const msg = history.messages[i];
         if (isRecord(msg) && msg.role === 'assistant') {
+          // 跳过 OpenClaw 内部辅助帧（如媒体追加帧 gateway-injected 或传输镜像帧 delivery-mirror）
+          if (isOpenClawInternalModel(msg.model)) {
+            continue;
+          }
           const text = extractGatewayMessageText(msg).trim();
           if (!text || shouldSuppressHeartbeatText('assistant', text)) {
             return;
@@ -10289,7 +10302,8 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       const cacheReadTokens = (typeof usage.cacheRead === 'number' ? usage.cacheRead : undefined)
         ?? (typeof usage.cacheReadTokens === 'number' ? usage.cacheReadTokens : undefined)
         ?? (typeof (usage as any).cache_read_input_tokens === 'number' ? (usage as any).cache_read_input_tokens : undefined);
-      const model = typeof usageMsg.model === 'string' ? usageMsg.model : undefined;
+      const rawModel = typeof usageMsg.model === 'string' ? usageMsg.model : undefined;
+      const model = isOpenClawInternalModel(rawModel) ? undefined : rawModel;
 
       // Compute contextPercent: input / contextTokens (matches OpenClaw web UI)
       // Primary source: sessions.list contextTokens (authoritative, matches gateway resolution)
@@ -10356,10 +10370,11 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     assistantMessageId: string,
     inputTokens: number | undefined,
     outputTokens: number | undefined,
-    model: string | undefined,
+    rawModel: string | undefined,
     totalTokens?: number | undefined,
     cacheReadTokens?: number | undefined,
   ): Promise<void> {
+    const model = isOpenClawInternalModel(rawModel) ? undefined : rawModel;
     let contextPercent: number | undefined;
     if (typeof inputTokens === 'number' && inputTokens > 0) {
       let contextTokens = this.sessionContextTokensCache.get(sessionKey);
