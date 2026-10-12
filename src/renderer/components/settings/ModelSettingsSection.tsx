@@ -743,20 +743,27 @@ const ModelSettingsSection: React.FC<ModelSettingsSectionProps> = ({
               <div className="flex-1 space-y-1.5 overflow-y-auto pb-1">
               {filteredProviderEntries.map(({ providerKey, config, isCustom, displayLabel }) => {
                 const provider = providerKey as string;
+                const isOneapi = providerKey === ProviderName.Oneapi;
                 const hasValidAuth = hasProviderAuthConfigured(providerKey, config);
-                const effectiveEnabled = config.enabled && hasValidAuth;
-                const canToggleProvider = effectiveEnabled || hasValidAuth;
-                const attentionNonce = authAttention && authAttention.provider === providerKey && !canToggleProvider
+                const effectiveEnabled = isOneapi ? true : (config.enabled && hasValidAuth);
+                const canToggleProvider = !isOneapi && (effectiveEnabled || hasValidAuth);
+                const attentionNonce = !isOneapi && authAttention && authAttention.provider === providerKey && !canToggleProvider
                   ? authAttention.nonce
                   : null;
                 return (
                   <div
                     key={provider}
-                    onClick={() => handleProviderChange(providerKey)}
-                    className={`group flex items-center p-2 rounded-xl cursor-pointer transition-colors ${
-                      activeProvider === provider
-                        ? 'bg-primary-muted border border-primary shadow-subtle'
-                        : 'bg-surface hover:bg-surface-raised border border-transparent'
+                    onClick={() => {
+                      if (!isOneapi) {
+                        handleProviderChange(providerKey);
+                      }
+                    }}
+                    className={`group flex items-center p-2 rounded-xl transition-colors ${
+                      isOneapi
+                        ? 'bg-surface/50 border border-transparent cursor-default opacity-80'
+                        : activeProvider === provider
+                          ? 'bg-primary-muted border border-primary shadow-subtle cursor-pointer'
+                          : 'bg-surface hover:bg-surface-raised border border-transparent cursor-pointer'
                     }`}
                   >
                     <div className="flex flex-1 items-center min-w-0">
@@ -796,14 +803,15 @@ const ModelSettingsSection: React.FC<ModelSettingsSectionProps> = ({
                       )}
                       <div
                         key={attentionNonce === null ? undefined : `provider-toggle-attention-${attentionNonce}`}
-                        title={!canToggleProvider ? getProviderAuthRequirementHint(providerKey, config) : undefined}
+                        title={isOneapi ? undefined : (!canToggleProvider ? getProviderAuthRequirementHint(providerKey, config) : undefined)}
                         className={`w-7 h-4 rounded-full flex items-center transition-colors ${
                           effectiveEnabled ? 'bg-primary' : 'bg-gray-400 dark:bg-gray-600'
                         } ${
-                          canToggleProvider ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'
+                          isOneapi ? 'cursor-not-allowed opacity-60' : (canToggleProvider ? 'cursor-pointer' : 'cursor-not-allowed opacity-50')
                         } ${attentionNonce === null ? '' : 'animate-shake'}`}
                         onClick={(e) => {
                           e.stopPropagation();
+                          if (isOneapi) return;
                           if (!canToggleProvider) {
                             requestProviderAuthAttention(providerKey);
                             return;

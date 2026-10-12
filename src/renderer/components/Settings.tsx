@@ -2355,8 +2355,8 @@ const Settings: React.FC<SettingsProps> = ({
 
   // Ensure activeProvider is always in visibleProviders when language changes
   useEffect(() => {
-    const visibleKeys = Object.keys(visibleProviders) as ProviderType[];
-    if (visibleKeys.length > 0 && !visibleKeys.includes(activeProvider)) {
+    const visibleKeys = (Object.keys(visibleProviders) as ProviderType[]).filter(k => k !== ProviderName.Oneapi);
+    if (visibleKeys.length > 0 && (!visibleKeys.includes(activeProvider) || activeProvider === ProviderName.Oneapi)) {
       // If current activeProvider is not visible, switch to first visible provider
       const firstEnabledVisible = visibleKeys.find(key => visibleProviders[key]?.enabled);
       setActiveProvider(firstEnabledVisible ?? visibleKeys[0]);
@@ -2440,6 +2440,7 @@ const Settings: React.FC<SettingsProps> = ({
 
   // Handle provider change
   const handleProviderChange = (provider: ProviderType) => {
+    if (provider === ProviderName.Oneapi) return;
     setIsAddingModel(false);
     setIsEditingModel(false);
     setEditingModelId(null);

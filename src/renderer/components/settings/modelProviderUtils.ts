@@ -205,8 +205,10 @@ export const getDefaultProviders = (): ProvidersConfig => {
 
 export const getDefaultActiveProvider = (): ProviderType => {
   const providers = (defaultConfig.providers ?? {}) as ProvidersConfig;
-  const firstEnabledProvider = providerKeys.find(providerKey => providers[providerKey]?.enabled);
-  return firstEnabledProvider ?? providerKeys[0];
+  const firstEnabledProvider = providerKeys.find(
+    providerKey => providerKey !== ProviderName.Oneapi && providers[providerKey]?.enabled,
+  );
+  return firstEnabledProvider ?? providerKeys.find(key => key !== ProviderName.Oneapi) ?? providerKeys[0];
 };
 
 export const buildOpenAICompatibleChatCompletionsUrl = (baseUrl: string, provider: string): string => {
