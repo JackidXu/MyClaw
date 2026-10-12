@@ -9,6 +9,7 @@ export interface AutoRoutingCandidate {
   supportsThinking: boolean;
   supportsImage: boolean;
   isRecommended?: boolean;
+  contextWindow?: number;
 }
 
 // 复杂任务关键词
@@ -105,6 +106,9 @@ export function getAvailableModelCandidates(): AutoRoutingCandidate[] {
           supportsThinking: model.supportsThinking === true,
           supportsImage: model.supportsImage === true,
           isRecommended: (model as any).isRecommended === true,
+          contextWindow: typeof model.contextWindow === 'number' && model.contextWindow > 0
+            ? model.contextWindow
+            : undefined,
         });
       }
     }
@@ -113,6 +117,21 @@ export function getAvailableModelCandidates(): AutoRoutingCandidate[] {
   }
 
   return candidates;
+}
+
+/**
+ * 动态计算当前可用候选模型池中的最大上下文容量。
+ * 若没有候选物理模型或异常情况，安全保底为 200,000。
+ */
+export function resolveMaxCandidateContextWindow(): number {
+  const candidates = getAvailableModelCandidates();
+  let maxTokens = 200_000;
+  for (const c of candidates) {
+    if (typeof c.contextWindow === 'number' && c.contextWindow > maxTokens) {
+      maxTokens = c.contextWindow;
+    }
+  }
+  return maxTokens;
 }
 
 /**

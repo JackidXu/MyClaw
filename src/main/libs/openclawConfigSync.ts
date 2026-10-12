@@ -49,6 +49,7 @@ import type { DingTalkInstanceConfig, EmailMultiInstanceConfig, FeishuInstanceCo
 import { OpenClawSessionKeepAlive } from '../openclawSessionPolicy/constants';
 import { buildOpenClawSessionConfig } from '../openclawSessionPolicy/store';
 import { getSecondBrainToolDefinitions } from '../secondBrain/secondBrainBridge';
+import { resolveMaxCandidateContextWindow } from './autoModelRouting';
 import {
   getAllServerModelMetadata,
   listProviderSourceEntries,
@@ -2432,6 +2433,7 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
     const proxyToken = getCoworkOpenAICompatProxyToken();
 
     if (proxyBaseURL && proxyToken) {
+      const autoContextWindow = resolveMaxCandidateContextWindow();
       allProvidersMap['system'] = {
         baseUrl: `${proxyBaseURL}/v1`,
         api: 'openai-completions',
@@ -2443,6 +2445,7 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
             name: 'Auto Routing Model',
             api: 'openai-completions',
             input: ['text', 'image'],
+            contextWindow: autoContextWindow,
           }
         ]
       };
