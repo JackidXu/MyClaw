@@ -893,7 +893,14 @@ export class CoworkStore {
   private parseGoalJson(value: string | null | undefined): CoworkGoal | null {
     if (!value) return null;
     try {
-      return normalizeCoworkGoal(JSON.parse(value));
+      const goal = normalizeCoworkGoal(JSON.parse(value));
+      if (goal && goal.status === 'active') {
+        const lastUpdated = goal.updatedAt || goal.createdAt || 0;
+        if (lastUpdated > 0 && Date.now() - lastUpdated > 24 * 60 * 60 * 1000) {
+          goal.status = 'complete';
+        }
+      }
+      return goal;
     } catch (error) {
       console.warn('[CoworkStore] Failed to parse goal_json:', error);
       return null;
