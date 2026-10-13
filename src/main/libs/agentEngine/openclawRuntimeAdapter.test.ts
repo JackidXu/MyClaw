@@ -9107,11 +9107,12 @@ test('child lifecycle end marks matching subagent done before local session reso
     insertSubagentRun: vi.fn((run: Record<string, unknown>) => {
       runs.set(run.id as string, { ...run });
     }),
-    updateSubagentRunStatus: vi.fn((id: string, status: string, endedAt?: number) => {
+    updateSubagentRunStatus: vi.fn((id: string, status: string, endedAt?: number, error?: string | null) => {
       const run = runs.get(id);
       if (run) {
         run.status = status;
         run.endedAt = endedAt;
+        run.error = error;
       }
     }),
     listSubagentRuns: () => [],
@@ -9150,6 +9151,7 @@ test('child lifecycle end marks matching subagent done before local session reso
     'call-fibonacci',
     'done',
     expect.any(Number),
+    null,
   );
   expect(runs.get('call-fibonacci')?.status).toBe('done');
 });
@@ -9160,11 +9162,12 @@ test('child chat final marks matching subagent done before local session resolut
     insertSubagentRun: vi.fn((run: Record<string, unknown>) => {
       runs.set(run.id as string, { ...run });
     }),
-    updateSubagentRunStatus: vi.fn((id: string, status: string, endedAt?: number) => {
+    updateSubagentRunStatus: vi.fn((id: string, status: string, endedAt?: number, error?: string | null) => {
       const run = runs.get(id);
       if (run) {
         run.status = status;
         run.endedAt = endedAt;
+        run.error = error;
       }
     }),
     listSubagentRuns: () => [],
@@ -9203,6 +9206,7 @@ test('child chat final marks matching subagent done before local session resolut
     'call-fibonacci',
     'done',
     expect.any(Number),
+    null,
   );
   expect(runs.get('call-fibonacci')?.status).toBe('done');
 });
