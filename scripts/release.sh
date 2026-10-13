@@ -8,6 +8,11 @@ CURRENT_BRANCH=$(git symbolic-ref --short -q HEAD)
 
 echo "当前分支为: $CURRENT_BRANCH"
 
+# 在输入版本号和发布前，先执行 TypeScript 类型检查，确保编译无报错
+echo "正在进行 TypeScript 类型检查 (tsc --noEmit)..."
+npx tsc --noEmit
+echo "✓ TypeScript 类型检查通过！"
+
 # 获取输入参数或提示输入
 VERSION=$1
 if [ -z "$VERSION" ]; then

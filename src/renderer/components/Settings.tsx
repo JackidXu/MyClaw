@@ -52,7 +52,7 @@ import {
 import { applyTypographyPreferences } from '../services/typography';
 import type { RootState } from '../store';
 import { selectCoworkConfig } from '../store/selectors/coworkSelectors';
-import { clearServerModels, setAvailableModels } from '../store/slices/modelSlice';
+import { clearServerModels, type Model as GlobalModel, setAvailableModels } from '../store/slices/modelSlice';
 import type {
   CoworkAgentEngine,
   CoworkMemoryStats,
@@ -2356,7 +2356,7 @@ const Settings: React.FC<SettingsProps> = ({
   // Ensure activeProvider is always in visibleProviders when language changes
   useEffect(() => {
     const visibleKeys = (Object.keys(visibleProviders) as ProviderType[]).filter(k => k !== ProviderName.Oneapi);
-    if (visibleKeys.length > 0 && (!visibleKeys.includes(activeProvider) || activeProvider === ProviderName.Oneapi)) {
+    if (visibleKeys.length > 0 && (!(visibleKeys as readonly ProviderType[]).includes(activeProvider) || activeProvider === ProviderName.Oneapi)) {
       // If current activeProvider is not visible, switch to first visible provider
       const firstEnabledVisible = visibleKeys.find(key => visibleProviders[key]?.enabled);
       setActiveProvider(firstEnabledVisible ?? visibleKeys[0]);
@@ -3534,7 +3534,7 @@ const Settings: React.FC<SettingsProps> = ({
       });
 
       // 更新 Redux store 中的可用模型列表
-      const allModels: Model[] = [];
+      const allModels: GlobalModel[] = [];
       Object.entries(normalizedProviders).forEach(([providerName, config]) => {
         if (config.enabled && config.models) {
           const openClawProviderId = getOpenClawProviderIdForConfig(providerName, config);
