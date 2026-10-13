@@ -1,8 +1,9 @@
 name: Security Scan
 
 on:
-  tags:
-    - 'v*'
+  push:
+    tags:
+      - 'v*'
   pull_request:
   schedule:
     - cron: '0 0 * * 1'  # 每周一
