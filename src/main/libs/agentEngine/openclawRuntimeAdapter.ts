@@ -2506,7 +2506,6 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
   private readonly bridgedSessions = new Set<string>();
   private readonly continuityFullBridgeCompactedAtBySession = new Map<string, number>();
   private readonly workspaceRehydrationBridgeCompactedAtBySession = new Map<string, number>();
-  private readonly lastSystemPromptBySession = new Map<string, string>();
   private readonly sessionModelPatchStateBySession = new Map<string, SessionModelPatchState>();
   private readonly sessionModelPatchQueue = new Map<string, Promise<void>>();
   private readonly gatewayHistoryCountBySession = new Map<string, number>();
@@ -5843,30 +5842,13 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     browserAnnotations?: CoworkBrowserAnnotationMessageBatch[],
     firstResponseTiming?: FirstResponseTiming,
   ): Promise<string> {
-    const normalizedSystemPrompt = (systemPrompt ?? '').trim();
-    const planMode = isPlanModeSystemPrompt(normalizedSystemPrompt);
-    const previousSystemPrompt = this.lastSystemPromptBySession.get(sessionId) ?? '';
-    const shouldInjectSystemPrompt = Boolean(
-      normalizedSystemPrompt
-      && normalizedSystemPrompt !== previousSystemPrompt,
-    );
-
-    if (normalizedSystemPrompt) {
-      this.lastSystemPromptBySession.set(sessionId, normalizedSystemPrompt);
-    } else {
-      this.lastSystemPromptBySession.delete(sessionId);
-    }
-
+    const planMode = isPlanModeSystemPrompt((systemPrompt ?? '').trim());
     const session = this.store.getSession(sessionId);
     const agent = agentId ? this.store.getAgent(agentId) : null;
     const rawCurrentModel = session?.modelOverride || agent?.model || '';
     const currentModel = rawCurrentModel ? this.normalizeModelRef(rawCurrentModel) : '';
 
     const sections: string[] = [];
-    if (shouldInjectSystemPrompt) {
-      sections.push(this.buildSystemPromptPrefix(normalizedSystemPrompt));
-    }
-    sections.push(buildOpenClawLocalTimeContextPrompt());
     if (currentModel) {
       sections.push(`[Session info]\nCurrent model: ${currentModel}`);
     }
@@ -5906,6 +5888,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       if (prompt.trim()) {
         sections.push(`[Current user request]\n${prompt}`);
       }
+      sections.push(buildOpenClawLocalTimeContextPrompt());
       if (planMode) {
         sections.push(buildPlanModeOutboundReminder());
       }
@@ -5970,20 +5953,11 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     if (prompt.trim()) {
       sections.push(`[Current user request]\n${prompt}`);
     }
+    sections.push(buildOpenClawLocalTimeContextPrompt());
     if (planMode) {
       sections.push(buildPlanModeOutboundReminder());
     }
     return sections.join('\n\n');
-  }
-
-  private buildSystemPromptPrefix(systemPrompt: string): string {
-    return [
-      '[HeyClaw system instructions]',
-      'Apply the instructions below as the highest-priority guidance for this session.',
-      'If earlier HeyClaw system instructions exist, replace them with this version.',
-      'Format output in clean, standard GitHub-flavored Markdown. Do not emit raw HTML markup tags for styling; use native Markdown syntax instead.',
-      systemPrompt,
-    ].join('\n');
   }
 
   private buildBridgePrefix(messages: CoworkMessage[], currentPrompt: string): string {
@@ -11805,10 +11779,6 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     } else {
       this.pendingGoalContinuations.delete(sessionId);
     }
-    // NOTE: Do NOT clear lastSystemPromptBySession here — it must persist
-    // across turns so that the system prompt is only injected on the first
-    // turn of a session (or when it actually changes).  Cleanup happens in
-    // onSessionDeleted() when the session is removed entirely.
     this.reCreatedChannelSessionIds.delete(sessionId);
   }
 
