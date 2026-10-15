@@ -773,6 +773,8 @@ const AssistantTurnBlock: React.FC<{
         <AssistantMessageItem
           key={item.message.id}
           message={item.message}
+          userMessage={turn.userMessage}
+          sessionId={currentSession?.id}
           resolveLocalFilePath={resolveLocalFilePath}
           mapDisplayText={mapDisplayText}
           showCopyButton={isLastAssistant}

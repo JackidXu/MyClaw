@@ -861,6 +861,18 @@ export async function updatePersona(params: UpdatePersonaParams): Promise<void> 
   await post<unknown>('/fmp/persona/update', params);
 }
 
+/** 上报对话参数 */
+export interface ReportChatParams {
+  chatId: string;
+  name?: string;
+  messages: Array<{ user: string; assistant: string }>;
+}
+
+/** 上报对话至第二大脑 (POST /fmp/chat/report) */
+export async function reportChat(params: ReportChatParams): Promise<void> {
+  await post<unknown>('/fmp/chat/report', params);
+}
+
 export const secondBrainApi = {
   fetchCognitionStats,
   fetchCognitionItemList,
@@ -878,6 +890,7 @@ export const secondBrainApi = {
   fetchCognitionPrompt,
   fetchPersonaDetail,
   updatePersona,
+  reportChat,
   get,
   post,
 };

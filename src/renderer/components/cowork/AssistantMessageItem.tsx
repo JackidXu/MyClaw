@@ -2,7 +2,7 @@ import {
   ArrowPathIcon,
   PlusIcon,
 } from '@heroicons/react/24/outline';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
   isContextOverflowNotice,
@@ -14,8 +14,11 @@ import {
   formatCoworkGoalCompletionDuration,
 } from '../../../shared/cowork/goal';
 import { i18nService } from '../../services/i18n';
+import { secondBrainApi } from '../../services/secondBrainApi';
+import { vipService } from '../../services/vipService';
 import type { CoworkMessage, CoworkMessageMetadata } from '../../types/cowork';
 import { formatMessageDateTime } from '../../utils/tokenFormat';
+import BrainIcon from '../icons/BrainIcon';
 import ExclamationTriangleIcon from '../icons/ExclamationTriangleIcon';
 import GoalIcon from '../icons/GoalIcon';
 import MessageForkIcon from '../icons/MessageForkIcon';
@@ -60,10 +63,122 @@ const ForkButton: React.FC<{
   </button>
 );
 
+const ReportSecondBrainButton: React.FC<{
+  assistantContent: string;
+  userMessage?: CoworkMessage | null;
+  sessionId?: string;
+  visible: boolean;
+}> = ({ assistantContent, userMessage, sessionId, visible }) => {
+  const [hasSecondBrain, setHasSecondBrain] = useState<boolean>(() =>
+    vipService.hasSecondBrainPermission(),
+  );
+  const [reporting, setReporting] = useState(false);
+  const [reported, setReported] = useState(false);
+  const timerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return vipService.subscribe(() => {
+      setHasSecondBrain(vipService.hasSecondBrainPermission());
+    });
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current !== null) {
+        window.clearTimeout(timerRef.current);
+      }
+    };
+  }, []);
+
+  if (!hasSecondBrain) {
+    return null;
+  }
+
+  const handleReport = async (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    if (reporting || reported) return;
+
+    const userText = userMessage?.content?.trim() || '';
+    const assistantText = assistantContent?.trim() || '';
+    if (!assistantText) return;
+
+    const effectiveSessionId = sessionId || '';
+    const chatId = effectiveSessionId ? `chat_${effectiveSessionId}` : 'chat_default';
+    const name = Array.from(userText.replace(/\s+/g, ' ').trim()).slice(0, 50).join('').trim() || '对话';
+
+    setReporting(true);
+    try {
+      await secondBrainApi.reportChat({
+        chatId,
+        name,
+        messages: [{
+          user: userText,
+          assistant: assistantText,
+        }],
+      });
+      setReported(true);
+      window.dispatchEvent(
+        new CustomEvent('app:showToast', {
+          detail: i18nService.t('reportToSecondBrainSuccess'),
+        }),
+      );
+      if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+      timerRef.current = window.setTimeout(() => setReported(false), 2000);
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      window.dispatchEvent(
+        new CustomEvent('app:showToast', {
+          detail: `${i18nService.t('reportToSecondBrainFailed')}: ${errMsg}`,
+        }),
+      );
+    } finally {
+      setReporting(false);
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleReport}
+      disabled={reporting}
+      className={`p-1.5 rounded-md hover:bg-surface-raised transition-all duration-200 ${
+        visible ? 'opacity-100' : 'opacity-0 pointer-events-none'
+      } ${reporting ? 'opacity-70 cursor-wait' : ''}`}
+      tabIndex={visible ? 0 : -1}
+      title={i18nService.t('reportToSecondBrain')}
+      aria-label={i18nService.t('reportToSecondBrain')}
+    >
+      {reported ? (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="24"
+          height="24"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="h-4 w-4 text-success"
+          aria-hidden="true"
+        >
+          <polyline points="20 6 9 17 4 12" />
+        </svg>
+      ) : reporting ? (
+        <ArrowPathIcon className="h-4 w-4 text-secondary animate-spin" />
+      ) : (
+        <BrainIcon className="h-4 w-4 text-secondary" />
+      )}
+    </button>
+  );
+};
+
 // ── AssistantMessageItem ─────────────────────────────────────────────────────
 
 const AssistantMessageItem: React.FC<{
   message: CoworkMessage;
+  userMessage?: CoworkMessage | null;
+  sessionId?: string;
   resolveLocalFilePath?: (href: string, text: string) => string | null;
   mapDisplayText?: (value: string) => string;
   showCopyButton?: boolean;
@@ -76,6 +191,8 @@ const AssistantMessageItem: React.FC<{
   forceSearchExpanded?: boolean;
 }> = ({
   message,
+  userMessage,
+  sessionId,
   resolveLocalFilePath,
   mapDisplayText,
   showCopyButton = false,
@@ -233,6 +350,12 @@ const AssistantMessageItem: React.FC<{
                     onFork={() => onFork(message.id)}
                   />
                 )}
+                <ReportSecondBrainButton
+                  assistantContent={copyContent}
+                  userMessage={userMessage}
+                  sessionId={sessionId}
+                  visible={isHovered}
+                />
                 <MessageCopyButton
                   content={copyContent}
                   onCopy={(result) => reportConversationMessageAction({

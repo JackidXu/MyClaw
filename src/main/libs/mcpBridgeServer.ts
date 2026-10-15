@@ -11,8 +11,6 @@ import net from 'net';
 import {
   executeSecondBrainTool,
   fetchSecondBrainPrompt,
-  reportSecondBrainChat,
-  type SecondBrainChatReportMessage,
 } from '../secondBrain/secondBrainBridge';
 import { executeWebSearch } from '../webSearch/webSearchBridge';
 import { serializeForLog } from './sanitizeForLog';
@@ -281,11 +279,6 @@ export class McpBridgeServer {
       return;
     }
 
-    if (req.url?.startsWith('/second-brain/report')) {
-      await this.handleSecondBrainReport(req, res);
-      return;
-    }
-
     if (req.url?.startsWith('/second-brain/')) {
       await this.handleSecondBrainTool(req, res);
       return;
@@ -458,31 +451,6 @@ export class McpBridgeServer {
       if (!res.writableEnded) {
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ prompt: '', error: errMsg }));
-      }
-    }
-  }
-
-  private async handleSecondBrainReport(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-    const t0 = Date.now();
-    try {
-      const body = await this.readBody(req);
-      const payload = JSON.parse(body) as {
-        chatId: string;
-        name?: string;
-        messages: SecondBrainChatReportMessage[];
-      };
-      log('INFO', `Second brain report request received: chatId="${payload.chatId}" messages=${payload.messages?.length ?? 0}`);
-
-      const result = await reportSecondBrainChat(payload);
-      log('INFO', `Second brain report completed in ${Date.now() - t0}ms, success=${result.success}`);
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(result));
-    } catch (error) {
-      const errMsg = error instanceof Error ? error.message : String(error);
-      log('ERROR', `Second brain report request failed after ${Date.now() - t0}ms: ${errMsg}`);
-      if (!res.writableEnded) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, error: errMsg }));
       }
     }
   }
