@@ -2,12 +2,20 @@
 # Local Vision face tracking; macOS + Swift required. No media is uploaded.
 # Usage: face_track.sh PROJECT (after align_talk.py creates talk/CLIP/)
 set -euo pipefail
+
+cleanup_face_work() {
+  if [ -n "${FACE_WORK:-}" ] && [ -d "$FACE_WORK" ] && [ -f "$FACE_WORK/.motion_face_work" ]; then
+    rm -r -- "$FACE_WORK" 2>/dev/null || true
+  fi
+}
+
 [ "$#" -eq 1 ] || { echo 'Usage: face_track.sh PROJECT' >&2; exit 2; }
 [ "$(uname -s)" = Darwin ] || { echo 'Face tracking requires macOS Vision and Swift.' >&2; exit 2; }
 D="$1"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 FACE_WORK=$(mktemp -d "${TMPDIR:-/tmp}/motion-face.XXXXXX")
-trap 'rm -rf "$FACE_WORK"' EXIT
+: > "$FACE_WORK/.motion_face_work"
+trap 'cleanup_face_work' EXIT
 swiftc -O "$HERE/face_track.swift" -o "$FACE_WORK/face"
 python3 - "$D" "$FACE_WORK" <<'PY'
 import json

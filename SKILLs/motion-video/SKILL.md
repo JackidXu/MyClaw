@@ -2,12 +2,12 @@
 name: motion-video
 description: 使用完整动画工程包，把新口播、文案与自有素材制作成可编辑动效视频和 60fps MP4；也支持轻量 TPL、手绘续接、字幕与改旧片。支持 Windows、macOS、Linux，以及 Codex、Claude Code、豆包、DeepSeek、WorkBuddy 等可读写文件并运行命令的助手。
 metadata:
-  version: "3.14.0-rc.1"
+  version: "3.14.0-rc.2"
 ---
 
 # motion-video
 
-当前为 **3.14.0-rc.1 兼容性升级候选**，实际默认映射以 template-catalog.json 为准。新增候选接入横竖屏选型，旧版本可显式使用，稳定验收不追认到新增组；读[升级范围与验收](references/quality-upgrade.md)。最终效果待用户同视频 A/B 确认。
+当前为 **3.14.0-rc.2 兼容性升级候选**，实际默认映射以 template-catalog.json 为准。新增候选接入横竖屏选型，旧版本可显式使用，稳定验收不追认到新增组；读[升级范围与验收](references/quality-upgrade.md)。最终效果待用户同视频 A/B 确认。
 
 用户提供剪好的口播视频、文案，最好还有新口播的时间码字幕；选用含录屏、作品墙、头像、标识或配乐的场景时，还须提供本期有权使用的素材。你负责把**完整场景编舞**适配到新台词与片长，生成可编辑工程，核查后导出新 MP4。先读 [制作约定](references/rules.md)。`SKILL_DIR` 是本文件目录，`PL="$SKILL_DIR/scripts/pipeline.sh"`。 制作记录保存实际 Skill 路径、版本和所用入口；同名旧安装、仓库版本与已生成工程的冻结运行代码可能不同，不能用最新版说明追认旧工程。
 

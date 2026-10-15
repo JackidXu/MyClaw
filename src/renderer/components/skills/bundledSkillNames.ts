@@ -87,4 +87,6 @@ export const BUNDLED_SKILL_DISPLAY_NAMES: Record<string, LocalizedText> = {
   'whisper-tool': { zh: 'Whisper 语音识别', en: 'Whisper Tool' },
   'yixiaoer': { zh: '蚁小二多平台分发', en: 'YiXiaoEr Distribution' },
   'motion-video': { zh: '动效视频制作', en: 'Motion Video' },
+  'video-maker': { zh: '视频制作', en: 'Video Maker' },
+  'boss-ip-cover': { zh: '老板IP封面', en: 'Boss IP Cover' },
 };
