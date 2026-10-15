@@ -1177,7 +1177,7 @@ index ebd4ef0318..d54e991c5b 100644
 +      const pruned = truncateHistoricalToolResultText(content);
 +      if (pruned !== content) {
 +        changed = true;
-+        return { ...message, content: pruned } as AgentMessage;
++        return { ...message, content: pruned } as unknown as AgentMessage;
 +      }
 +      return message;
 +    }

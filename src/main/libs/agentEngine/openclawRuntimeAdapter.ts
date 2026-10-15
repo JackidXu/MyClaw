@@ -5505,17 +5505,19 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     let isDeprecatedOverride = false;
     if (session.modelOverride && !isAutoModelRef(session.modelOverride)) {
       const availableCandidates = getAvailableModelCandidates();
-      const trimmedOverride = session.modelOverride.trim().toLowerCase();
-      const isKnown = availableCandidates.some(c => (
-        c.ref.toLowerCase() === trimmedOverride ||
-        c.modelId === trimmedOverride ||
-        c.ref.toLowerCase().endsWith('/' + trimmedOverride)
-      ));
-      if (!isKnown) {
-        isDeprecatedOverride = true;
-        console.warn(`[OpenClawRuntime] Deprecated modelOverride "${session.modelOverride}" detected for session ${sessionId}, self-healing to auto.`);
-        this.store.updateSession(sessionId, { modelOverride: '' });
-        this.notifySessionsChanged(sessionId);
+      if (availableCandidates.length > 0) {
+        const trimmedOverride = session.modelOverride.trim().toLowerCase();
+        const isKnown = availableCandidates.some(c => (
+          c.ref.toLowerCase() === trimmedOverride ||
+          c.modelId === trimmedOverride ||
+          c.ref.toLowerCase().endsWith('/' + trimmedOverride)
+        ));
+        if (!isKnown) {
+          isDeprecatedOverride = true;
+          console.warn(`[OpenClawRuntime] Deprecated modelOverride "${session.modelOverride}" detected for session ${sessionId}, self-healing to auto.`);
+          this.store.updateSession(sessionId, { modelOverride: '' });
+          this.notifySessionsChanged(sessionId);
+        }
       }
     }
 
