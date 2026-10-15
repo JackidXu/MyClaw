@@ -314,10 +314,10 @@ index 0000000000..2910da3e8c
 +  });
 +});
 diff --git a/src/agents/embedded-agent-runner/run/attempt.llm-boundary.test.ts b/src/agents/embedded-agent-runner/run/attempt.llm-boundary.test.ts
-index 9783d24092..f8e6e9c98f 100644
+index 9783d24092..ba41190b44 100644
 --- a/src/agents/embedded-agent-runner/run/attempt.llm-boundary.test.ts
 +++ b/src/agents/embedded-agent-runner/run/attempt.llm-boundary.test.ts
-@@ -1,7 +1,9 @@
+@@ -1,8 +1,11 @@
  import { describe, expect, it } from "vitest";
 +import { buildTimestampPrefix } from "../../../gateway/server-methods/agent-timestamp.js";
  import {
@@ -325,9 +325,11 @@ index 9783d24092..f8e6e9c98f 100644
    insertRuntimeContextMessageForPrompt,
 +  normalizeCurrentPromptTextForLlmBoundary,
    normalizeMessagesForLlmBoundary,
++  pruneHistoricalToolResults,
  } from "./attempt.llm-boundary.js";
  
-@@ -31,10 +33,16 @@ describe("normalizeMessagesForLlmBoundary", () => {
+ describe("normalizeMessagesForLlmBoundary", () => {
+@@ -31,10 +34,16 @@ describe("normalizeMessagesForLlmBoundary", () => {
  
      const output = normalizeMessagesForLlmBoundary(
        input as Parameters<typeof normalizeMessagesForLlmBoundary>[0],
@@ -348,7 +350,7 @@ index 9783d24092..f8e6e9c98f 100644
        "Reply target of current user message (untrusted, for context):",
      );
      expect(JSON.stringify(input)).toContain("Conversation info");
-@@ -62,6 +70,191 @@ describe("normalizeMessagesForLlmBoundary", () => {
+@@ -62,6 +71,191 @@ describe("normalizeMessagesForLlmBoundary", () => {
      expect(output[0]?.content).toBe("Plain historical ask");
    });
  
@@ -540,7 +542,7 @@ index 9783d24092..f8e6e9c98f 100644
    it("preserves inbound metadata on the current user turn", () => {
      const historicalEnvelope =
        'Conversation info (untrusted metadata):\n```json\n{"channel":"discord"}\n```\n\nOld ask';
-@@ -87,13 +280,17 @@ describe("normalizeMessagesForLlmBoundary", () => {
+@@ -87,13 +281,17 @@ describe("normalizeMessagesForLlmBoundary", () => {
  
      const output = normalizeMessagesForLlmBoundary(
        input as Parameters<typeof normalizeMessagesForLlmBoundary>[0],
@@ -563,7 +565,7 @@ index 9783d24092..f8e6e9c98f 100644
    });
  
    it("preserves current user inbound metadata through tool-result continuation", () => {
-@@ -121,12 +318,16 @@ describe("normalizeMessagesForLlmBoundary", () => {
+@@ -121,12 +319,16 @@ describe("normalizeMessagesForLlmBoundary", () => {
  
      const output = normalizeMessagesForLlmBoundary(
        input as Parameters<typeof normalizeMessagesForLlmBoundary>[0],
@@ -583,7 +585,7 @@ index 9783d24092..f8e6e9c98f 100644
    });
  
    it("strips tool result details before provider conversion", () => {
-@@ -151,6 +352,69 @@ describe("normalizeMessagesForLlmBoundary", () => {
+@@ -151,6 +353,69 @@ describe("normalizeMessagesForLlmBoundary", () => {
      expect(input[0]).toHaveProperty("details");
    });
  
@@ -653,7 +655,7 @@ index 9783d24092..f8e6e9c98f 100644
    it("keeps only pre-user current-turn runtime context at the LLM boundary", () => {
      const input = [
        {
-@@ -199,6 +463,11 @@ describe("normalizeMessagesForLlmBoundary", () => {
+@@ -199,6 +464,11 @@ describe("normalizeMessagesForLlmBoundary", () => {
      expect(output.some((item) => item.content === "current secret runtime context")).toBe(true);
      expect(output.some((item) => item.content === "post-user stale runtime context")).toBe(false);
      expect(output.some((item) => item.customType === "other-extension-context")).toBe(true);
@@ -665,7 +667,7 @@ index 9783d24092..f8e6e9c98f 100644
    });
  
    it("keeps overflow retry runtime context immediately before the active user", () => {
-@@ -247,7 +516,9 @@ describe("normalizeMessagesForLlmBoundary", () => {
+@@ -247,7 +517,9 @@ describe("normalizeMessagesForLlmBoundary", () => {
        customType: "openclaw.runtime-context",
        content: "retry runtime context",
      });
@@ -676,7 +678,7 @@ index 9783d24092..f8e6e9c98f 100644
    });
  
    it("keeps prompt-local runtime context before the active user in existing sessions", () => {
-@@ -290,7 +561,9 @@ describe("normalizeMessagesForLlmBoundary", () => {
+@@ -290,7 +562,9 @@ describe("normalizeMessagesForLlmBoundary", () => {
        customType: "openclaw.runtime-context",
        content: "current runtime context",
      });
@@ -687,7 +689,7 @@ index 9783d24092..f8e6e9c98f 100644
    });
  
    it("keeps only safe blocked metadata at the LLM boundary", () => {
-@@ -319,12 +592,10 @@ describe("normalizeMessagesForLlmBoundary", () => {
+@@ -319,12 +593,10 @@ describe("normalizeMessagesForLlmBoundary", () => {
        input as Parameters<typeof normalizeMessagesForLlmBoundary>[0],
      ) as unknown as Array<Record<string, unknown>>;
  
@@ -704,8 +706,93 @@ index 9783d24092..f8e6e9c98f 100644
      expect(output[0]).toHaveProperty("__openclaw.beforeAgentRunBlocked");
      expect(output[0]).not.toHaveProperty("__openclaw.beforeAgentRunBlocked.reason");
      expect(JSON.stringify(output)).not.toContain("secret prompt");
+@@ -400,3 +672,84 @@ describe("normalizeMessagesForLlmBoundary", () => {
+     expect(session.agent.transformContext).toBe(originalTransform);
+   });
+ });
++
++describe("pruneHistoricalToolResults", () => {
++  it("folds oversized tool results from past completed turns while preserving active turn intact", () => {
++    const pastHugeOutput = "A".repeat(5000);
++    const activeHugeOutput = "B".repeat(5000);
++
++    const messages = [
++      { role: "user", content: "first prompt", timestamp: 1 },
++      { role: "assistant", content: [{ type: "toolCall", id: "call_1", name: "exec", arguments: {} }] },
++      { role: "toolResult", toolCallId: "call_1", content: pastHugeOutput },
++      { role: "assistant", content: "completed first turn" },
++      { role: "user", content: "second prompt (active)", timestamp: 2 },
++      { role: "assistant", content: [{ type: "toolCall", id: "call_2", name: "exec", arguments: {} }] },
++      { role: "toolResult", toolCallId: "call_2", content: activeHugeOutput },
++    ];
++
++    const pruned = pruneHistoricalToolResults(messages as never);
++
++    const pastResult = (pruned[2] as { content: string }).content;
++    expect(pastResult).toContain("……[历史工具输出已折叠，过程日志已省略 4400 字符]……");
++    expect(pastResult.startsWith("A".repeat(300))).toBe(true);
++    expect(pastResult.endsWith("A".repeat(300))).toBe(true);
++
++    const activeResult = (pruned[6] as { content: string }).content;
++    expect(activeResult).toBe(activeHugeOutput);
++  });
++
++  it("is idempotent and does not repeatedly fold an already-folded tool result", () => {
++    const pastHugeOutput = "X".repeat(3000);
++    const messages = [
++      { role: "user", content: "prompt", timestamp: 1 },
++      { role: "toolResult", toolCallId: "call_1", content: pastHugeOutput },
++      { role: "assistant", content: "done" },
++      { role: "user", content: "next turn", timestamp: 2 },
++    ];
++
++    const pass1 = pruneHistoricalToolResults(messages as never);
++    const pass2 = pruneHistoricalToolResults(pass1);
++
++    expect((pass1[1] as { content: string }).content).toBe((pass2[1] as { content: string }).content);
++    expect((pass2[1] as { content: string }).content).toContain("……[历史工具输出已折叠，过程日志已省略 2400 字符]……");
++  });
++
++  it("leaves small tool results below threshold untouched", () => {
++    const smallOutput = "Hello world";
++    const messages = [
++      { role: "user", content: "prompt", timestamp: 1 },
++      { role: "toolResult", toolCallId: "call_1", content: smallOutput },
++      { role: "assistant", content: "done" },
++      { role: "user", content: "next", timestamp: 2 },
++    ];
++
++    const pruned = pruneHistoricalToolResults(messages as never);
++    expect((pruned[1] as { content: string }).content).toBe(smallOutput);
++  });
++
++  it("folds earlier tool results within the same single turn (e.g. subagent multi-step execution)", () => {
++    const earlyHugeOutput = "E".repeat(4000);
++    const latestHugeOutput = "L".repeat(4000);
++
++    // 模拟子智能体场景：只有一个初始 user 提示，后面连续多步 assistant -> toolResult
++    const messages = [
++      { role: "user", content: "execute subagent task", timestamp: 1 },
++      { role: "assistant", content: [{ type: "toolCall", id: "call_early", name: "exec", arguments: {} }] },
++      { role: "toolResult", toolCallId: "call_early", content: earlyHugeOutput },
++      { role: "assistant", content: [{ type: "toolCall", id: "call_latest", name: "exec", arguments: {} }] },
++      { role: "toolResult", toolCallId: "call_latest", content: latestHugeOutput },
++    ];
++
++    const pruned = pruneHistoricalToolResults(messages as never);
++
++    // 早期步骤应被折叠
++    const earlyResult = (pruned[2] as { content: string }).content;
++    expect(earlyResult).toContain("……[历史工具输出已折叠，过程日志已省略 3400 字符]……");
++
++    // 最新待决断的一步工具输出必须完整保留
++    const latestResult = (pruned[4] as { content: string }).content;
++    expect(latestResult).toBe(latestHugeOutput);
++  });
++});
++
 diff --git a/src/agents/embedded-agent-runner/run/attempt.llm-boundary.ts b/src/agents/embedded-agent-runner/run/attempt.llm-boundary.ts
-index ebd4ef0318..2b80f92cc2 100644
+index ebd4ef0318..d54e991c5b 100644
 --- a/src/agents/embedded-agent-runner/run/attempt.llm-boundary.ts
 +++ b/src/agents/embedded-agent-runner/run/attempt.llm-boundary.ts
 @@ -1,4 +1,6 @@
@@ -715,7 +802,7 @@ index ebd4ef0318..2b80f92cc2 100644
  import { stripHistoricalRuntimeContextCustomMessages } from "../../internal-runtime-context.js";
  import type { AgentMessage } from "../../runtime/index.js";
  import { stripToolResultDetails } from "../../session-transcript-repair.js";
-@@ -6,25 +8,78 @@ import { normalizeAssistantReplayContent } from "../replay-history.js";
+@@ -6,25 +8,79 @@ import { normalizeAssistantReplayContent } from "../replay-history.js";
  import { markTranscriptPromptText } from "../tool-result-context-guard.js";
  import type { RuntimeContextCustomMessage } from "./runtime-context-prompt.js";
  
@@ -755,11 +842,13 @@ index ebd4ef0318..2b80f92cc2 100644
    );
 -  const withoutHistoricalInboundMetadata =
 -    stripHistoricalInboundMetadataFromUserMessages(normalized);
+-  return stripHistoricalRuntimeContextCustomMessages(withoutHistoricalInboundMetadata);
 +  const withoutHistoricalInboundMetadata = stripHistoricalInboundMetadataFromUserMessages(
 +    normalized,
 +    options,
 +  );
-   return stripHistoricalRuntimeContextCustomMessages(withoutHistoricalInboundMetadata);
++  const prunedHistoricalTools = pruneHistoricalToolResults(withoutHistoricalInboundMetadata);
++  return stripHistoricalRuntimeContextCustomMessages(prunedHistoricalTools);
  }
  
  export function normalizeMessagesForCurrentPromptBoundary(params: {
@@ -799,7 +888,7 @@ index ebd4ef0318..2b80f92cc2 100644
  }
  
  export function installRuntimeContextMessageForPrompt(params: {
-@@ -239,26 +294,208 @@ export function installModelPromptTransform(params: {
+@@ -239,26 +295,208 @@ export function installModelPromptTransform(params: {
    };
  }
  
@@ -1013,7 +1102,7 @@ index ebd4ef0318..2b80f92cc2 100644
      const nextContent = content.map((block) => {
        if (!block || typeof block !== "object") {
          return block;
-@@ -267,12 +504,18 @@ function stripHistoricalInboundMetadataFromUserMessages(messages: AgentMessage[]
+@@ -267,12 +505,18 @@ function stripHistoricalInboundMetadataFromUserMessages(messages: AgentMessage[]
        if (textBlock.type !== "text" || typeof textBlock.text !== "string") {
          return block;
        }
@@ -1035,6 +1124,91 @@ index ebd4ef0318..2b80f92cc2 100644
      });
      if (!contentChanged) {
        return message;
+@@ -348,3 +592,84 @@ function isToolCallAssistantMessage(message: AgentMessage): boolean {
+     return type === "toolCall" || type === "toolUse" || type === "functionCall";
+   });
+ }
++
++const HISTORICAL_TOOL_RESULT_MAX_CHARS = 1000;
++const HISTORICAL_TOOL_RESULT_HEAD_CHARS = 300;
++const HISTORICAL_TOOL_RESULT_TAIL_CHARS = 300;
++const HISTORICAL_TOOL_RESULT_PRUNED_MARKER = "……[历史工具输出已折叠，过程日志已省略";
++
++function truncateHistoricalToolResultText(text: string): string {
++  if (text.length <= HISTORICAL_TOOL_RESULT_MAX_CHARS) {
++    return text;
++  }
++  if (text.includes(HISTORICAL_TOOL_RESULT_PRUNED_MARKER)) {
++    return text;
++  }
++  const omittedChars = text.length - HISTORICAL_TOOL_RESULT_HEAD_CHARS - HISTORICAL_TOOL_RESULT_TAIL_CHARS;
++  if (omittedChars <= 0) {
++    return text;
++  }
++  const head = text.slice(0, HISTORICAL_TOOL_RESULT_HEAD_CHARS);
++  const tail = text.slice(text.length - HISTORICAL_TOOL_RESULT_TAIL_CHARS);
++  return `${head}\n\n${HISTORICAL_TOOL_RESULT_PRUNED_MARKER} ${omittedChars} 字符]……\n\n${tail}`;
++}
++
++export function pruneHistoricalToolResults(messages: AgentMessage[]): AgentMessage[] {
++  // 查找活跃轮次（Active Turn）中正在进行的一批工具调用。
++  // 在单 Turn（如子智能体）连续执行数十步工具调用的场景中，尾部紧邻的一批 toolResult 属于当前决策依赖的最新步骤；
++  // 而更早之前已经消费完毕的 toolResult 则属于历史步骤，予以安全静态折叠。
++  let pruneBoundaryIndex = messages.length;
++  for (let i = messages.length - 1; i >= 0; i--) {
++    const msg = messages[i];
++    if (msg.role === "assistant") {
++      pruneBoundaryIndex = i;
++      break;
++    }
++  }
++
++  if (pruneBoundaryIndex <= 0) {
++    return messages;
++  }
++
++  let changed = false;
++  const nextMessages = messages.map((message, index) => {
++    if (index >= pruneBoundaryIndex || message.role !== "toolResult") {
++      return message;
++    }
++    const content = (message as { content?: unknown }).content;
++    if (typeof content === "string") {
++      const pruned = truncateHistoricalToolResultText(content);
++      if (pruned !== content) {
++        changed = true;
++        return { ...message, content: pruned } as AgentMessage;
++      }
++      return message;
++    }
++    if (!Array.isArray(content)) {
++      return message;
++    }
++    let blockChanged = false;
++    const nextContent = content.map((block) => {
++      if (!block || typeof block !== "object") {
++        return block;
++      }
++      const textBlock = block as { type?: unknown; text?: unknown };
++      if (textBlock.type === "text" && typeof textBlock.text === "string") {
++        const pruned = truncateHistoricalToolResultText(textBlock.text);
++        if (pruned !== textBlock.text) {
++          blockChanged = true;
++          return { ...block, text: pruned };
++        }
++      }
++      return block;
++    });
++    if (blockChanged) {
++      changed = true;
++      return { ...message, content: nextContent } as AgentMessage;
++    }
++    return message;
++  });
++
++  return changed ? nextMessages : messages;
++}
++
 diff --git a/src/agents/embedded-agent-runner/run/attempt.spawn-workspace.context-engine.test.ts b/src/agents/embedded-agent-runner/run/attempt.spawn-workspace.context-engine.test.ts
 index 27077856cb..7b9cd708ac 100644
 --- a/src/agents/embedded-agent-runner/run/attempt.spawn-workspace.context-engine.test.ts
