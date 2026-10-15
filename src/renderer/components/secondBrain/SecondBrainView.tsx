@@ -106,6 +106,10 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
   const [itemsPage, setItemsPage] = useState(1);
   const [itemsLastPage, setItemsLastPage] = useState(1);
   const [itemsTotal, setItemsTotal] = useState(0);
+  /** 批量操作：当前选中的 nodeId 集合 */
+  const [selectedNodeIds, setSelectedNodeIds] = useState<Set<number>>(new Set());
+  /** 批量操作执行中状态（'adopt' | 'reject' | null） */
+  const [batchActionType, setBatchActionType] = useState<'adopt' | 'reject' | null>(null);
 
   /** 今日 AI 自动吸收相关 */
   const [todayAdoptedList, setTodayAdoptedList] = useState<CognitionItem[]>([]);
@@ -429,6 +433,11 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
         setEditingNodeId(null);
       }
       setItems((prev) => prev.filter((i) => i.node_id !== item.node_id));
+      setSelectedNodeIds((prev) => {
+        const next = new Set(prev);
+        next.delete(item.node_id);
+        return next;
+      });
       setItemsTotal((prev) => Math.max(0, prev - 1));
       loadStats();
       loadTodayAdopted();
@@ -453,6 +462,11 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
         setEditingNodeId(null);
       }
       setItems((prev) => prev.filter((i) => i.node_id !== item.node_id));
+      setSelectedNodeIds((prev) => {
+        const next = new Set(prev);
+        next.delete(item.node_id);
+        return next;
+      });
       setItemsTotal((prev) => Math.max(0, prev - 1));
       loadStats();
       loadItems(itemsPage, { silent: true });
@@ -462,6 +476,148 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
       showToast('error', `驳回失败: ${err?.message || '未知错误'}`);
     } finally {
       setActioning(item.node_id, false);
+    }
+  };
+
+  /** 切换单项选择状态 */
+  const toggleSelectNode = (nodeId: number) => {
+    setSelectedNodeIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(nodeId)) {
+        next.delete(nodeId);
+      } else {
+        next.add(nodeId);
+      }
+      return next;
+    });
+  };
+
+  /** 全选 / 取消全选当前页 */
+  const toggleSelectAllCurrentPage = () => {
+    const selectableItems = items.filter((item) => !actioningIds.has(item.node_id));
+    if (selectableItems.length === 0) return;
+
+    const allSelected = selectableItems.every((item) => selectedNodeIds.has(item.node_id));
+    if (allSelected) {
+      setSelectedNodeIds((prev) => {
+        const next = new Set(prev);
+        selectableItems.forEach((item) => next.delete(item.node_id));
+        return next;
+      });
+    } else {
+      setSelectedNodeIds((prev) => {
+        const next = new Set(prev);
+        selectableItems.forEach((item) => next.add(item.node_id));
+        return next;
+      });
+    }
+  };
+
+  /** 批量采纳 */
+  const handleBatchAdopt = async () => {
+    if (selectedNodeIds.size === 0 || batchActionType !== null) return;
+    const targetItems = items.filter((item) => selectedNodeIds.has(item.node_id));
+    if (targetItems.length === 0) return;
+
+    setBatchActionType('adopt');
+    // 标记所有选中项为处理中
+    targetItems.forEach((i) => setActioning(i.node_id, true));
+
+    let successCount = 0;
+    let failCount = 0;
+
+    try {
+      await Promise.all(
+        targetItems.map(async (item) => {
+          try {
+            const propToAdopt = (editingNodeId === item.node_id ? editingPropText : editedPropositions[item.node_id]) ?? item.proposition;
+            const elabToAdopt = (editingNodeId === item.node_id ? editingElabText : editedElaborations[item.node_id]) ?? item.elaboration;
+            await adoptCognitionItem({
+              nodeId: item.node_id,
+              proposition: propToAdopt,
+              elaboration: elabToAdopt,
+            });
+            successCount += 1;
+            setSelectedNodeIds((prev) => {
+              const next = new Set(prev);
+              next.delete(item.node_id);
+              return next;
+            });
+          } catch (err) {
+            console.warn(`[SecondBrainView] 批量采纳节点 ${item.node_id} 失败:`, err);
+            failCount += 1;
+          } finally {
+            setActioning(item.node_id, false);
+          }
+        })
+      );
+
+      if (editingNodeId && selectedNodeIds.has(editingNodeId)) {
+        setEditingNodeId(null);
+      }
+
+      loadStats();
+      loadTodayAdopted();
+      loadTrend();
+      loadItems(itemsPage, { silent: true });
+
+      if (failCount === 0) {
+        showToast('success', `已批量采纳 ${successCount} 条认知，已沉淀至商业第二大脑`);
+      } else {
+        showToast('info', `批量采纳完成：成功 ${successCount} 条，失败 ${failCount} 条`);
+      }
+    } finally {
+      setBatchActionType(null);
+    }
+  };
+
+  /** 批量驳回 */
+  const handleBatchReject = async () => {
+    if (selectedNodeIds.size === 0 || batchActionType !== null) return;
+    const targetItems = items.filter((item) => selectedNodeIds.has(item.node_id));
+    if (targetItems.length === 0) return;
+
+    setBatchActionType('reject');
+    // 标记所有选中项为处理中
+    targetItems.forEach((i) => setActioning(i.node_id, true));
+
+    let successCount = 0;
+    let failCount = 0;
+
+    try {
+      await Promise.all(
+        targetItems.map(async (item) => {
+          try {
+            await rejectCognitionItem(item.node_id);
+            successCount += 1;
+            setSelectedNodeIds((prev) => {
+              const next = new Set(prev);
+              next.delete(item.node_id);
+              return next;
+            });
+          } catch (err) {
+            console.warn(`[SecondBrainView] 批量驳回节点 ${item.node_id} 失败:`, err);
+            failCount += 1;
+          } finally {
+            setActioning(item.node_id, false);
+          }
+        })
+      );
+
+      if (editingNodeId && selectedNodeIds.has(editingNodeId)) {
+        setEditingNodeId(null);
+      }
+
+      loadStats();
+      loadItems(itemsPage, { silent: true });
+
+      if (failCount === 0) {
+        showToast('success', `已批量驳回 ${successCount} 条认知`);
+      } else {
+        showToast('info', `批量驳回完成：成功 ${successCount} 条，失败 ${failCount} 条`);
+      }
+    } finally {
+      setBatchActionType(null);
     }
   };
 
@@ -527,6 +683,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
 
   /** 翻页或挂载时拉取待审核认知列表 */
   useEffect(() => {
+    setSelectedNodeIds(new Set());
     loadItems(itemsPage);
   }, [itemsPage, loadItems]);
 
@@ -1901,20 +2058,74 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
 
           {/* 3. 待审核认知区 (#s-pending) */}
           <div className="rounded-2xl border border-border bg-surface p-5 md:p-6 shadow-[0_2px_8px_rgba(0,0,0,0.03)] space-y-4">
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-sm font-bold text-foreground">
-                  待审核认知
-                </h2>
-                {itemsTotal > 0 && (
-                  <span className="text-xs font-bold bg-[#f5a623]/15 text-[#f5a623] px-2 py-0.5 rounded-md">
-                    {itemsTotal}
-                  </span>
-                )}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-sm font-bold text-foreground">
+                    待审核认知
+                  </h2>
+                  {itemsTotal > 0 && (
+                    <span className="text-xs font-bold bg-[#f5a623]/15 text-[#f5a623] px-2 py-0.5 rounded-md">
+                      {itemsTotal}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-secondary mt-1">
+                  AI 拿不准的才会出现在这里 · 点「编辑」可直接修正局部信息 · 想补材料就重新上传文档
+                </p>
               </div>
-              <p className="text-xs text-secondary mt-1">
-                AI 拿不准的才会出现在这里 · 点「编辑」可直接修正局部信息 · 想补材料就重新上传文档
-              </p>
+
+              {/* 批量操作工具栏 */}
+              {!itemsLoading && items.length > 0 && (
+                <div className="flex items-center gap-2.5 self-start sm:self-auto shrink-0 bg-surface-raised/70 border border-border/80 px-3 py-1.5 rounded-xl">
+                  <label className="flex items-center gap-1.5 text-xs text-secondary hover:text-foreground cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={
+                        items.length > 0 &&
+                        items.every((item) => selectedNodeIds.has(item.node_id))
+                      }
+                      ref={(el) => {
+                        if (el) {
+                          const hasSelected = items.some((item) => selectedNodeIds.has(item.node_id));
+                          const allSelected = items.length > 0 && items.every((item) => selectedNodeIds.has(item.node_id));
+                          el.indeterminate = hasSelected && !allSelected;
+                        }
+                      }}
+                      onChange={toggleSelectAllCurrentPage}
+                      disabled={batchActionType !== null}
+                      className="rounded border-border text-primary focus:ring-primary h-3.5 w-3.5 cursor-pointer disabled:opacity-50"
+                    />
+                    <span>本页全选</span>
+                  </label>
+
+                  {selectedNodeIds.size > 0 && (
+                    <span className="text-xs text-secondary font-medium">
+                      已选 <b className="text-foreground">{selectedNodeIds.size}</b> 项
+                    </span>
+                  )}
+
+                  <div className="h-3.5 w-[1px] bg-border/80 mx-0.5" />
+
+                  <button
+                    type="button"
+                    disabled={selectedNodeIds.size === 0 || batchActionType !== null}
+                    onClick={handleBatchAdopt}
+                    className="bg-[#f5a623] hover:bg-[#df9318] text-white font-bold text-xs px-2.5 py-1 rounded-lg border border-[#f5a623] shadow-2xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    {batchActionType === 'adopt' ? '采纳中…' : '批量采纳'}
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={selectedNodeIds.size === 0 || batchActionType !== null}
+                    onClick={handleBatchReject}
+                    className="border border-border bg-surface hover:bg-surface-raised text-foreground font-semibold text-xs px-2.5 py-1 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    {batchActionType === 'reject' ? '驳回中…' : '批量驳回'}
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* 加载中 */}
@@ -1941,17 +2152,32 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                 {items.map((item) => {
                   const isConflict = Boolean(item.replaces);
                   const isEditing = editingNodeId === item.node_id;
+                  const isSelected = selectedNodeIds.has(item.node_id);
+                  const isActioning = actioningIds.has(item.node_id);
 
                   return (
                     <div
                       key={item.node_id}
-                      className={`rounded-2xl border border-border ${
+                      className={`rounded-2xl border ${
+                        isSelected
+                          ? 'border-primary/60 ring-1 ring-primary/30'
+                          : 'border-border'
+                      } ${
                         isConflict ? 'border-l-[3.5px] border-l-[#f53f3f]' : 'border-l-[3.5px] border-l-[#9b59b6]'
                       } bg-surface p-4 md:p-5 shadow-[0_2px_8px_rgba(0,0,0,0.03)] space-y-3.5 transition`}
                     >
                       {/* 顶部标签与来源 */}
                       <div className="flex items-center justify-between gap-2 text-xs">
                         <div className="flex items-center gap-2 flex-wrap">
+                          <label className="flex items-center cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              disabled={isActioning || batchActionType !== null}
+                              onChange={() => toggleSelectNode(item.node_id)}
+                              className="rounded border-border text-primary focus:ring-primary h-3.5 w-3.5 cursor-pointer disabled:opacity-50"
+                            />
+                          </label>
                           <span className="text-[10.5px] font-extrabold text-[#9b59b6] bg-[#9b59b6]/12 px-2.5 py-0.5 rounded-[7px]">
                             {LAYER_LABEL[item.layer] ?? `层级${item.layer}`}
                           </span>
