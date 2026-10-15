@@ -9,6 +9,7 @@ export interface AutoRoutingCandidate {
   supportsThinking: boolean;
   supportsImage: boolean;
   isRecommended?: boolean;
+  isStrong?: boolean;
   contextWindow?: number;
 }
 
@@ -25,18 +26,6 @@ const COMPLEX_KEYWORDS = [
   'plan', 'summarize', 'compare', 'explain',
   // 长文本处理
   '翻译', '总结以下', '整理以下', 'translate',
-];
-
-// 高性能/思考模型关键词
-const STRONG_KEYWORDS = [
-  'pro', 'plus', 'opus', 'sonnet', 'reasoner', 'r1', 'thinking',
-  'k2', 'turbo', 'ultra', 'max', 'large', 'heavy',
-];
-
-// 轻量模型关键词
-const LITE_KEYWORDS = [
-  'flash', 'mini', 'lite', 'haiku', 'fast', 'micro', 'nano', 'light',
-  'small', 'slim', 'quick',
 ];
 
 /**
@@ -106,6 +95,7 @@ export function getAvailableModelCandidates(): AutoRoutingCandidate[] {
           supportsThinking: model.supportsThinking === true,
           supportsImage: model.supportsImage === true,
           isRecommended: (model as any).isRecommended === true,
+          isStrong: (model as any).isStrong === true,
           contextWindow: typeof model.contextWindow === 'number' && model.contextWindow > 0
             ? model.contextWindow
             : undefined,
@@ -161,29 +151,22 @@ export function selectPhysicalModelForAutoRouting(options: {
     }
   }
 
-  const isStrongModel = (c: AutoRoutingCandidate): boolean =>
-    c.supportsThinking || STRONG_KEYWORDS.some(kw => c.modelId.includes(kw));
-
-  const isLiteModel = (c: AutoRoutingCandidate): boolean =>
-    !c.supportsThinking && LITE_KEYWORDS.some(kw => c.modelId.includes(kw));
-
   const complexity = evaluatePromptComplexity(
     options.prompt,
     options.imageAttachments,
     options.mediaReferences,
   );
 
-  const strongModels = filteredCandidates.filter(isStrongModel);
-  const liteModels = filteredCandidates.filter(isLiteModel);
+  const strongModels = filteredCandidates.filter(c => c.isStrong);
   const recommendedModels = filteredCandidates.filter(c => c.isRecommended);
 
   let selected: AutoRoutingCandidate | undefined;
   if (complexity === 'complex') {
-    // 复杂任务：强思考模型 > 服务端推荐模型 > 候选列表第一个
+    // 复杂任务：强模型 > 服务端推荐模型 > 候选列表第一个
     selected = strongModels[0] ?? recommendedModels[0] ?? filteredCandidates[0];
   } else {
-    // 简单任务：服务端推荐模型 > 轻量模型 > 候选列表第一个
-    selected = recommendedModels[0] ?? liteModels[0] ?? filteredCandidates[0];
+    // 简单任务：服务端推荐模型 > 候选列表第一个
+    selected = recommendedModels[0] ?? filteredCandidates[0];
   }
 
   return selected?.ref ?? null;

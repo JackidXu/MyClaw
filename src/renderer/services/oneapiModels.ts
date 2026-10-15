@@ -22,6 +22,7 @@ export interface OneApiChatModel {
   maxTokens?: number;
   description?: string;
   isRecommended?: boolean;
+  isStrong?: boolean;
   isDefault?: boolean;
   [key: string]: unknown;
 }
@@ -150,6 +151,7 @@ export async function fetchAndFilterOneApiChatModels(
             maxTokens: typeof m.maxTokens === 'number' ? m.maxTokens : 8192,
             description: m.description || '',
             isRecommended: Boolean(m.isRecommended),
+            isStrong: Boolean(m.isStrong),
             isDefault: Boolean(m.isDefault),
           };
         });
