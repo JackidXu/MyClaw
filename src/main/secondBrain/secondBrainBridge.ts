@@ -20,11 +20,16 @@ export interface FmpToolDefinition {
 // 存储应用级工具列表（应用初始化时加载一次）
 let latestToolDefinitions: FmpToolDefinition[] = [];
 
-/** 更新应用级工具列表（完全动态，不感知具体工具名） */
-export function updateSecondBrainToolDefinitions(tools?: FmpToolDefinition[] | null): void {
-  if (Array.isArray(tools) && tools.length > 0) {
-    latestToolDefinitions = tools;
+/** 更新应用级工具列表（完全动态，不感知具体工具名），返回是否发生变化 */
+export function updateSecondBrainToolDefinitions(tools?: FmpToolDefinition[] | null): boolean {
+  const next = Array.isArray(tools) ? tools : [];
+  const prevSerialized = JSON.stringify(latestToolDefinitions.map(t => t.function?.name ?? ''));
+  const nextSerialized = JSON.stringify(next.map(t => t.function?.name ?? ''));
+  if (prevSerialized !== nextSerialized) {
+    latestToolDefinitions = next;
+    return true;
   }
+  return false;
 }
 
 /** 获取应用级工具列表 */
@@ -39,13 +44,16 @@ export function getSecondBrainToolDefinition(): FmpToolDefinition | null {
 
 /**
  * 主进程同步第二大脑工具定义（直接存入内存变量）
- * 应用启动时调用一次，供网关生成配置使用
+ * 返回值表示工具定义是否发生变更
  */
-export async function syncSecondBrainTools(): Promise<void> {
+export async function syncSecondBrainTools(): Promise<boolean> {
   const granted = hasSecondBrainPermission();
   if (!granted) {
-    latestToolDefinitions = [];
-    return;
+    if (latestToolDefinitions.length > 0) {
+      latestToolDefinitions = [];
+      return true;
+    }
+    return false;
   }
 
   try {
@@ -54,12 +62,17 @@ export async function syncSecondBrainTools(): Promise<void> {
     );
 
     if (res.ok && res.data && Array.isArray(res.data.data?.tools) && res.data.data.tools.length > 0) {
-      updateSecondBrainToolDefinitions(res.data.data.tools);
-      console.log(`[SecondBrainBridge] synced ${res.data.data.tools.length} tools into memory for OpenClaw config`);
+      const changed = updateSecondBrainToolDefinitions(res.data.data.tools);
+      console.log(`[SecondBrainBridge] synced ${res.data.data.tools.length} tools into memory for OpenClaw config (changed=${changed})`);
+      return changed;
+    } else if (latestToolDefinitions.length > 0) {
+      latestToolDefinitions = [];
+      return true;
     }
   } catch (error) {
     console.warn('[SecondBrainBridge] syncSecondBrainTools error:', error);
   }
+  return false;
 }
 
 /** 通用格式化第二大脑工具返回结果供大模型消费 */

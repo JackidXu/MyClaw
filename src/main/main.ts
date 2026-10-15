@@ -15380,7 +15380,13 @@ if (!gotTheLock) {
       // 监听权威 VIP 状态变更，自动联动第二大脑工具的注册与清空
       mainVipService.onStatusChange(async () => {
         try {
-          await syncSecondBrainTools();
+          const changed = await syncSecondBrainTools();
+          if (changed) {
+            void syncOpenClawConfig({
+              reason: 'second-brain-tools-changed',
+              restartGatewayIfRunning: false,
+            });
+          }
         } catch (err) {
           console.warn('[Main] VIP status change: syncSecondBrainTools failed:', err);
         }

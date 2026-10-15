@@ -25,7 +25,7 @@ const DEFAULT_VIP_STATUS: MainVipStatus = {
   permissions: [],
 };
 
-type VipStatusChangeListener = (status: MainVipStatus) => void;
+type VipStatusChangeListener = (status: MainVipStatus) => void | Promise<void>;
 
 class MainVipService {
   private status: MainVipStatus = { ...DEFAULT_VIP_STATUS };
@@ -80,7 +80,7 @@ class MainVipService {
       `[MainVipService] VIP status refreshed: authorized=${this.status.authorized}, permissions=[${this.status.permissions.join(', ')}]`,
     );
 
-    this.notifyListeners();
+    await this.notifyListeners();
     this.broadcastStatus();
 
     return this.status;
@@ -92,7 +92,7 @@ class MainVipService {
   resetVipStatus(): void {
     this.status = { ...DEFAULT_VIP_STATUS };
     console.log('[MainVipService] VIP status reset to default (unauthorized)');
-    this.notifyListeners();
+    void this.notifyListeners();
     this.broadcastStatus();
   }
 
@@ -104,10 +104,10 @@ class MainVipService {
     };
   }
 
-  private notifyListeners(): void {
+  private async notifyListeners(): Promise<void> {
     for (const listener of this.listeners) {
       try {
-        listener(this.status);
+        await listener(this.status);
       } catch (err) {
         console.error('[MainVipService] Error in status change listener:', err);
       }
