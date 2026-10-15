@@ -483,7 +483,7 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
                   <p className="text-sm font-medium">该分类下没有专家</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 min-[1240px]:grid-cols-3 gap-4">
                   {filteredPresets.map((expert) => (
                     <PrototypeExpertCard
                       key={expert.id}
@@ -513,7 +513,7 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
                   </button>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 min-[1240px]:grid-cols-3 gap-4">
                   {/* 新增专家虚线引导卡片 */}
                   <div
                     onClick={() => setIsCreateOpen(true)}
@@ -880,7 +880,7 @@ const PrototypeExpertCard: React.FC<{
     >
       {/* 左侧头像：纯净无边框 */}
       <div className="shrink-0 relative">
-        <div className="w-18 h-18 sm:w-20 sm:h-20 rounded-2xl overflow-hidden flex items-center justify-center bg-slate-100 dark:bg-zinc-800">
+        <div className="w-16 h-16 sm:w-18 sm:h-18 rounded-2xl overflow-hidden flex items-center justify-center bg-slate-100 dark:bg-zinc-800">
           <AgentAvatarIcon
             avatar={expert.avatar}
             className="w-full h-full rounded-2xl object-cover group-hover:scale-105 transition-transform duration-300"
@@ -892,8 +892,10 @@ const PrototypeExpertCard: React.FC<{
       <div className={`flex-1 min-w-0 flex flex-col justify-between self-stretch gap-1.5 ${isCustom ? 'pr-7' : ''}`}>
         <div>
           <div className="flex items-center justify-between gap-1.5">
-            <div className="flex items-center gap-2 min-w-0">
-              <h4 className="text-base font-bold text-foreground truncate">{expert.name}</h4>
+            <div className="flex items-center gap-1.5 min-w-0">
+              <h4 className="text-sm sm:text-base font-bold text-foreground truncate" title={expert.name}>
+                {expert.name}
+              </h4>
               {!isCustom ? (
                 <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/50 border border-amber-200/80 dark:border-amber-900 px-1.5 py-0.2 rounded-full shrink-0">
                   官方
