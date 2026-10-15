@@ -15391,6 +15391,12 @@ if (!gotTheLock) {
       console.warn('[Main] initApp: initVipStatus or syncSecondBrainTools failed (non-fatal):', err);
     }
 
+    try {
+      await startAskUserServer();
+    } catch (err) {
+      console.error('[OpenClaw] initApp: AskUser server startup failed (non-fatal):', err);
+    }
+
     profiler.mark('syncOpenClawConfig');
     const startupSync = await syncOpenClawConfig({
       reason: 'startup',
