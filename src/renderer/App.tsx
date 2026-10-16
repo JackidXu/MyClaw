@@ -1066,12 +1066,13 @@ const App: React.FC = () => {
     ));
   }, [isSidebarCollapsed, mainView]);
 
-  const handleNewChat = useCallback(() => {
+  const handleNewChat = useCallback((targetAgentId?: string) => {
     // Only clear when already on home (no session) — preserve __home__ draft when returning from a session
     const shouldClearInput = mainView === 'cowork' && !currentSessionId;
-    if (store.getState().agent.currentAgentId !== AgentId.Main) {
-      agentService.switchAgent(AgentId.Main);
-      void coworkService.loadSessions(AgentId.Main);
+    const nextAgentId = targetAgentId || AgentId.Main;
+    if (store.getState().agent.currentAgentId !== nextAgentId) {
+      agentService.switchAgent(nextAgentId);
+      void coworkService.loadSessions(nextAgentId);
     }
     coworkService.clearSession({ restoreAgentSkills: true });
     dispatch(clearSelection());

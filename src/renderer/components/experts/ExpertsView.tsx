@@ -32,7 +32,7 @@ interface PresetAgent {
 interface ExpertsViewProps {
   isSidebarCollapsed?: boolean;
   onToggleSidebar?: () => void;
-  onNewChat?: () => void;
+  onNewChat?: (targetAgentId?: string) => void;
   updateBadge?: React.ReactNode;
 }
 
@@ -193,16 +193,12 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
       }
 
       if (installed) {
-        agentService.switchAgent(installed.id);
-        await coworkService.loadSessions(installed.id);
-        coworkService.clearSession({ restoreAgentSkills: true });
-
         if (selectedTeamDetail) {
           setSelectedTeamDetail(null);
         }
 
         if (onNewChat) {
-          onNewChat();
+          onNewChat(installed.id);
         }
 
         // 如果传入了引导问题，将其填入输入框草稿并聚焦到末尾
