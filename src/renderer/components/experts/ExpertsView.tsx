@@ -492,6 +492,18 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
                       isCustom={false}
                       isSummoned={isAgentSummoned(expert.id)}
                       onStartWork={handleStartWork}
+                      onEdit={async () => {
+                        let installed = installedAgents.find(
+                          (a) => a.presetId === expert.id || a.id === expert.id
+                        );
+                        if (!installed) {
+                          installed = await window.electron.agents.addPreset(expert.id);
+                          await agentService.loadAgents();
+                        }
+                        if (installed) {
+                          setEditingAgentId(installed.id);
+                        }
+                      }}
                     />
                   ))}
                 </div>
@@ -873,6 +885,7 @@ const PrototypeExpertCard: React.FC<{
 }> = ({ expert, hiringId, isCustom, isSummoned = false, onStartWork, onEdit, onDelete }) => {
   const department = expert.department && expert.department.trim() !== '其他' ? expert.department.trim() : null;
   const author = expert.author;
+  const hasMenu = Boolean(onEdit || onDelete);
 
   return (
     <div
@@ -889,7 +902,7 @@ const PrototypeExpertCard: React.FC<{
       </div>
 
       {/* 右侧内容 */}
-      <div className={`flex-1 min-w-0 flex flex-col justify-between self-stretch gap-1.5 ${isCustom ? 'pr-7' : ''}`}>
+      <div className={`flex-1 min-w-0 flex flex-col justify-between self-stretch gap-1.5 ${hasMenu ? 'pr-7' : ''}`}>
         <div>
           <div className="flex items-center justify-between gap-1.5">
             <div className="flex items-center gap-1.5 min-w-0">
@@ -960,8 +973,8 @@ const PrototypeExpertCard: React.FC<{
         }
       </div>
 
-      {/* 自定义专家的三点操作菜单（固定在右上角，独立区域，不与召唤按钮重合） */}
-      {isCustom && (
+      {/* 专家的三点操作菜单（固定在右上角，独立区域，不与召唤按钮重合） */}
+      {hasMenu && (
         <div className="absolute right-2.5 top-3.5 group/menu cursor-pointer z-20">
           <div className="p-1 rounded-md hover:bg-secondary/15 text-secondary hover:text-foreground transition-colors">
             <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
@@ -970,16 +983,20 @@ const PrototypeExpertCard: React.FC<{
           </div>
           <div className="absolute right-0 top-full pt-1 hidden group-hover/menu:block z-30">
             <div className="bg-surface border border-border rounded-lg shadow-lg w-20 py-1 animate-in fade-in duration-100">
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); onEdit?.(); }}
-                className="w-full text-left px-3 py-1.5 text-xs text-foreground hover:bg-secondary/15 transition-colors cursor-pointer font-medium"
-              >编辑</button>
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); onDelete?.(); }}
-                className="w-full text-left px-3 py-1.5 text-xs text-red-500 hover:bg-red-50 transition-colors cursor-pointer font-medium"
-              >删除</button>
+              {onEdit && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onEdit(); }}
+                  className="w-full text-left px-3 py-1.5 text-xs text-foreground hover:bg-secondary/15 transition-colors cursor-pointer font-medium"
+                >编辑</button>
+              )}
+              {onDelete && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                  className="w-full text-left px-3 py-1.5 text-xs text-red-500 hover:bg-red-50 transition-colors cursor-pointer font-medium"
+                >删除</button>
+              )}
             </div>
           </div>
         </div>

@@ -22,6 +22,7 @@ import { resolveOpenClawModelRef, toOpenClawModelRef } from '../../utils/opencla
 import { getVisibleIMPlatforms } from '../../utils/regionFilter';
 import Modal from '../common/Modal';
 import TrashIcon from '../icons/TrashIcon';
+import AgentAvatarIcon from './AgentAvatarIcon';
 import AgentAvatarPicker from './AgentAvatarPicker';
 import AgentConfirmDialog from './AgentConfirmDialog';
 import AgentDetailToolbar from './AgentDetailToolbar';
@@ -79,7 +80,7 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
   const availableModels = useSelector((state: RootState) => state.model.availableModels);
   const defaultSelectedModel = useSelector((state: RootState) => state.model.defaultSelectedModel);
   const skills = useSelector((state: RootState) => state.skill.skills);
-  const [, setAgent] = useState<Agent | null>(null);
+  const [currentAgent, setCurrentAgent] = useState<Agent | null>(null);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [systemPrompt, setSystemPrompt] = useState('');
@@ -98,6 +99,11 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
   const [showUnsavedConfirm, setShowUnsavedConfirm] = useState(false);
   const [activeTab, setActiveTab] = useState<AgentDetailTab>(AgentDetailTab.Prompt);
   const openedAgentIdRef = useRef<string | null>(null);
+
+  // 判断是否为内置预设专家（非自定义专家、非主理 Agent）
+  const isPresetAgent = Boolean(
+    currentAgent && (currentAgent.source === 'preset' || Boolean(currentAgent.presetId)) && currentAgent.id !== 'main'
+  );
 
   // IM binding state — keys are platform names or `platform:<instanceId>` for multi-instance platforms.
   const [imConfig, setImConfig] = useState<IMGatewayConfig | null>(null);
@@ -264,7 +270,12 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
         nextIdentity = mainIdentity;
       }
 
-      setAgent(a);
+      const isPreset = (a.source === 'preset' || Boolean(a.presetId)) && a.id !== 'main';
+      if (isPreset) {
+        setActiveTab(AgentDetailTab.Im);
+      }
+
+      setCurrentAgent(a);
       setName(a.name);
       setDescription(a.description);
       setSystemPrompt(nextSystemPrompt);
@@ -551,14 +562,16 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
     ? getAgentDisplayName({ id: agentId, name })
     : name;
 
-  const tabs: { key: AgentDetailTab; label: string }[] = [
-    { key: AgentDetailTab.Identity, label: i18nService.t('coworkBootstrapIdentityTitle') },
-    { key: AgentDetailTab.Prompt, label: i18nService.t('coworkBootstrapSoulTitle') },
-    { key: AgentDetailTab.User, label: i18nService.t('coworkBootstrapUserTitle') },
-    { key: AgentDetailTab.Skills, label: i18nService.t('agentTabSkills') },
-    { key: AgentDetailTab.Collaboration, label: i18nService.t('agentTabCollaboration') },
-    { key: AgentDetailTab.Im, label: i18nService.t('agentTabIM') },
-  ];
+  const tabs: { key: AgentDetailTab; label: string }[] = isPresetAgent
+    ? [{ key: AgentDetailTab.Im, label: i18nService.t('agentTabIM') }]
+    : [
+        { key: AgentDetailTab.Identity, label: i18nService.t('coworkBootstrapIdentityTitle') },
+        { key: AgentDetailTab.Prompt, label: i18nService.t('coworkBootstrapSoulTitle') },
+        { key: AgentDetailTab.User, label: i18nService.t('coworkBootstrapUserTitle') },
+        { key: AgentDetailTab.Skills, label: i18nService.t('agentTabSkills') },
+        { key: AgentDetailTab.Collaboration, label: i18nService.t('agentTabCollaboration') },
+        { key: AgentDetailTab.Im, label: i18nService.t('agentTabIM') },
+      ];
 
   const renderTextEditor = (
     value: string,
@@ -795,28 +808,48 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
       >
         <div className="flex shrink-0 items-start justify-between gap-4 px-7 py-5">
           <div className="flex min-w-0 flex-1 items-start gap-3">
-            <AgentAvatarPicker value={icon} onChange={setIcon} />
+            {isPresetAgent ? (
+              <div className="w-11 h-11 rounded-full overflow-hidden shrink-0 flex items-center justify-center bg-slate-100 dark:bg-zinc-800">
+                <AgentAvatarIcon avatar={icon} className="w-full h-full object-cover" />
+              </div>
+            ) : (
+              <AgentAvatarPicker value={icon} onChange={setIcon} />
+            )}
             <div className="min-w-0 flex-1 pt-0.5">
-              <input
-                type="text"
-                value={nameInputValue}
-                onChange={(e) => {
-                  setNameTouched(true);
-                  setName(e.target.value);
-                }}
-                placeholder={i18nService.t('agentNamePlaceholder')}
-                aria-label={i18nService.t('agentName')}
-                className="w-full bg-transparent text-lg font-semibold leading-6 text-foreground placeholder:text-secondary/40 focus:outline-none"
-              />
-              <input
-                type="text"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder={i18nService.t('agentDescriptionPlaceholder')}
-                aria-label={i18nService.t('agentDescription')}
-                className="mt-0.5 w-full bg-transparent text-sm leading-5 text-secondary placeholder:text-secondary/50 focus:outline-none"
-              />
-              {/* 移除级别和部门选择 */}
+              {isPresetAgent ? (
+                <>
+                  <div className="text-lg font-semibold leading-6 text-foreground truncate">
+                    {nameInputValue}
+                  </div>
+                  {description && (
+                    <div className="mt-0.5 text-sm leading-5 text-secondary truncate">
+                      {description}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <input
+                    type="text"
+                    value={nameInputValue}
+                    onChange={(e) => {
+                      setNameTouched(true);
+                      setName(e.target.value);
+                    }}
+                    placeholder={i18nService.t('agentNamePlaceholder')}
+                    aria-label={i18nService.t('agentName')}
+                    className="w-full bg-transparent text-lg font-semibold leading-6 text-foreground placeholder:text-secondary/40 focus:outline-none"
+                  />
+                  <input
+                    type="text"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder={i18nService.t('agentDescriptionPlaceholder')}
+                    aria-label={i18nService.t('agentDescription')}
+                    className="mt-0.5 w-full bg-transparent text-sm leading-5 text-secondary placeholder:text-secondary/50 focus:outline-none"
+                  />
+                </>
+              )}
             </div>
           </div>
           <button type="button" onClick={handleClose} className="mt-1 p-2 rounded-lg hover:bg-surface-raised transition-colors">
@@ -902,7 +935,7 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
             onWorkingDirectoryChange={setWorkingDirectory}
           />
           <div className="flex shrink-0 gap-2">
-            {!isMainAgent && (
+            {!isMainAgent && !isPresetAgent && (
               <button
                 type="button"
                 onClick={() => setShowDeleteConfirm(true)}
