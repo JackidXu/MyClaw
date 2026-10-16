@@ -245,7 +245,7 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
               </button>
               <button
                 type="button"
-                onClick={onNewChat}
+                onClick={() => onNewChat?.()}
                 className="h-8 w-8 inline-flex items-center justify-center rounded-lg text-secondary hover:bg-surface-raised transition-colors"
                 title="新建对话"
               >
