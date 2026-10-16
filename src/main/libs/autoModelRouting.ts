@@ -162,8 +162,9 @@ export function selectPhysicalModelForAutoRouting(options: {
 
   let selected: AutoRoutingCandidate | undefined;
   if (complexity === 'complex') {
-    // 复杂任务：强模型 > 服务端推荐模型 > 候选列表第一个
-    selected = strongModels[0] ?? recommendedModels[0] ?? filteredCandidates[0];
+    // 复杂任务：强模型中优先取服务端推荐模型，其次取首个强模型，无强模型时回退到推荐模型或候选列表首项
+    const strongRecommended = strongModels.find(c => c.isRecommended);
+    selected = strongRecommended ?? strongModels[0] ?? recommendedModels[0] ?? filteredCandidates[0];
   } else {
     // 简单任务：服务端推荐模型 > 候选列表第一个
     selected = recommendedModels[0] ?? filteredCandidates[0];
