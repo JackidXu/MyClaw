@@ -4421,8 +4421,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
         // rejected-key set or accumulate in sessionIdBySessionKey.
         const sessionId = isCronSessionKey(key)
           ? this.channelSessionSync.resolveOrCreateCronSession(key)
-          : this.channelSessionSync.resolveOrCreateSession(key)
-            ?? this.channelSessionSync.resolveOrCreateMainAgentSession(key);
+          : this.channelSessionSync.resolveOrCreateSession(key);
         if (sessionId && isRecord(row)) {
           this.syncChannelSessionRunStatus({
             coworkSessionId: sessionId,
@@ -7981,11 +7980,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     if (isCronSessionKey(sessionKey)) {
       return this.channelSessionSync.resolveOrCreateCronSession(sessionKey) ?? null;
     }
-    return this.channelSessionSync.resolveOrCreateSession(sessionKey)
-      ?? (!this.heartbeatSessionKeys.has(sessionKey)
-        ? this.channelSessionSync.resolveOrCreateMainAgentSession(sessionKey)
-        : null)
-      ?? null;
+    return this.channelSessionSync.resolveOrCreateSession(sessionKey) ?? null;
   }
 
   private resolveSessionIdBySessionKey(sessionKey: string): string | null {

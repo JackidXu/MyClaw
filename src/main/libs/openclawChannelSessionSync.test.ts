@@ -64,17 +64,16 @@ test('channel sync does not treat managed local session keys as channel sessions
   expect(isManagedSessionKey('agent:main:lobsterai:abc-123')).toBe(true);
   expect(sync.isChannelSessionKey('agent:main:lobsterai:abc-123')).toBe(false);
   expect(sync.resolveOrCreateSession('agent:main:lobsterai:abc-123')).toBe(null);
-  expect(sync.resolveOrCreateMainAgentSession('agent:main:lobsterai:abc-123')).toBe(null);
 });
 
-test('channel sync still recognizes real channel session keys', () => {
+test('channel sync still recognizes real channel session keys and ignores internal main agent keys', () => {
   const sync = createSync();
 
   expect(parseChannelSessionKey('agent:main:feishu:dm:ou_123')).toEqual({
     platform: 'feishu',
     conversationId: 'dm:ou_123',
   });
-  expect(sync.isChannelSessionKey('agent:main:main')).toBe(true);
+  expect(sync.isChannelSessionKey('agent:main:main')).toBe(false);
 });
 
 test('channel sync recognizes OpenClaw cron run-scoped session keys', () => {
