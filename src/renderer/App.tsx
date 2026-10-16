@@ -100,6 +100,7 @@ import {
   clearDraftAttachments,
   clearDraftSelectedTextSnippets,
   setDraftCollaborationMode,
+  setDraftKitIds,
   setDraftPrompt,
   setDraftSkillIds,
 } from './store/slices/coworkSlice';
@@ -1080,6 +1081,8 @@ const App: React.FC = () => {
       draftKey: '__home__',
       mode: CoworkCollaborationMode.Default,
     }));
+    dispatch(setDraftSkillIds({ draftKey: '__home__', skillIds: [] }));
+    dispatch(setDraftKitIds({ draftKey: '__home__', kitIds: [] }));
     setMainView('cowork');
     window.setTimeout(() => {
       window.dispatchEvent(new CustomEvent(CoworkUiEvent.FocusInput, {
