@@ -39,6 +39,7 @@ export const RecordingListColumn: React.FC<RecordingListColumnProps> = ({
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const [renamingItem, setRenamingItem] = useState<LocalRecordingItem | null>(null);
+  const [deletingLocalItem, setDeletingLocalItem] = useState<LocalRecordingItem | null>(null);
   const [renameText, setRenameText] = useState('');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -421,7 +422,7 @@ export const RecordingListColumn: React.FC<RecordingListColumnProps> = ({
                         <div
                           onClick={() => {
                             setActiveMenuId(null);
-                            onDeleteSingle(item);
+                            setDeletingLocalItem(item);
                           }}
                           className="px-2.5 py-1.5 rounded-[7px] text-[#d4380d] hover:bg-[#fff4ef] cursor-pointer"
                         >
@@ -485,6 +486,52 @@ export const RecordingListColumn: React.FC<RecordingListColumnProps> = ({
               className="text-[12px] font-medium px-4 py-1.5 rounded-[7px] bg-[#FF6B35] hover:bg-[#e2531f] text-white disabled:opacity-50 cursor-pointer"
             >
               确认
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* 删除本机记录二次确认弹窗：使用规范的精致 Modal */}
+      {deletingLocalItem && (
+        <Modal
+          isOpen={true}
+          onClose={() => setDeletingLocalItem(null)}
+          onEscape={() => setDeletingLocalItem(null)}
+          overlayClassName="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-2xs"
+          className="w-[360px] bg-white rounded-[14px] p-5 shadow-[0_20px_50px_rgba(0,0,0,0.18)] border border-[#ebebee]"
+        >
+          <div className="flex items-center gap-2.5 mb-2.5 text-[#dc2626]">
+            <div className="w-8 h-8 rounded-[8px] bg-[#fff5f5] flex items-center justify-center text-base">
+              🗑
+            </div>
+            <h4 className="text-[14.5px] font-semibold text-[#1c1c1e]">删除本机记录</h4>
+          </div>
+          <div className="text-[12.5px] text-[#505055] space-y-2 mb-4 leading-relaxed">
+            <p>
+              确定要删除录音 <b className="text-[#1c1c1e] select-all">「{deletingLocalItem.title || deletingLocalItem.name}」</b> 吗？
+            </p>
+            <div className="p-2.5 rounded-[8px] bg-[#f4f4f6] text-[11.5px] text-[#8b8b90]">
+              💡 <b>注意</b>：此操作将同时删除本地数据库记录与本机磁盘中的音频文件；<b>不会影响</b>录音卡硬件内的原始文件。
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setDeletingLocalItem(null)}
+              className="text-[12px] px-3.5 py-1.5 rounded-[7px] border border-[#ebebee] hover:border-[#c6c6cc] text-[#505055] cursor-pointer"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const target = deletingLocalItem;
+                setDeletingLocalItem(null);
+                onDeleteSingle(target);
+              }}
+              className="text-[12px] font-medium px-4 py-1.5 rounded-[7px] bg-[#dc2626] hover:bg-[#b91c1c] text-white shadow-xs cursor-pointer"
+            >
+              确认删除
             </button>
           </div>
         </Modal>

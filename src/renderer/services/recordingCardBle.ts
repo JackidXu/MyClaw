@@ -737,6 +737,23 @@ export async function getStorageCapacity(): Promise<{ freeKb: number; totalKb: n
   }
 }
 
+/**
+ * 删除录音卡硬件内的指定文件（严格对齐文档第三章第7节 0x1E 0x00）
+ * app -> device: 0x01 0x1E 0x00 [文件名 ASCII 字符]
+ * device -> app: 0x01 0x1E 0x00 0x01 (成功) | 0x01 0x1E 0x00 0x02 (失败)
+ */
+export async function deleteFileFromDevice(fileName: string): Promise<boolean> {
+  const nameBytes = new TextEncoder().encode(fileName);
+  const resp = await sendBleCommandAndExpect(0x1e, 0x00, nameBytes, CMD_TIMEOUT_MS);
+  // resp[3] 为状态码：0x01 成功，0x02 失败
+  const statusCode = resp[3];
+  if (statusCode === 0x01) {
+    return true;
+  }
+  logBle('warn', `删除录音卡文件「${fileName}」失败，硬件返回状态码: 0x${statusCode?.toString(16)}`);
+  return false;
+}
+
 /** 断开 BLE 连接，清理所有挂起等待器 */
 export function disconnect(): void {
   if (!session) return;

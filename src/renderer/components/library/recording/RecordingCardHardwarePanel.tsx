@@ -68,6 +68,8 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
 
   // 转存与 Wi-Fi 状态
   const [showCardFilesModal, setShowCardFilesModal] = useState(false);
+  const [deleteConfirmFile, setDeleteConfirmFile] = useState<BleRecordingFile | null>(null);
+  const [deletingFileName, setDeletingFileName] = useState<string | null>(null);
   const [syncingFileNames, setSyncingFileNames] = useState<Set<string>>(new Set());
   const [syncProgress, setSyncProgress] = useState<Record<string, number>>({});
   const [showWifiSyncModal, setShowWifiSyncModal] = useState(false);
@@ -577,6 +579,33 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
     recordingCardBle.abortBleOperations();
   };
 
+  /** 从录音卡硬件删除文件（物理删除卡内文件，绝对不触碰电脑本地数据库与本地音频） */
+  const handleDeleteCardFile = async (file: BleRecordingFile) => {
+    if (deletingFileName || isAnySyncing) return;
+    setDeletingFileName(file.name);
+    try {
+      const ok = await recordingCardBle.deleteFileFromDevice(file.name);
+      if (!ok) {
+        throw new Error('录音卡拒绝删除或响应失败');
+      }
+      onShowToast('success', `录音卡内文件「${file.name}」已永久删除`);
+      // 从当前列表移除
+      setBleFiles(prev => prev.filter(f => f.name !== file.name));
+      // 自动刷新硬件存储容量
+      try {
+        const cap = await recordingCardBle.getStorageCapacity();
+        setBleDevice(prev => (prev ? { ...prev, freeKb: cap.freeKb, totalKb: cap.totalKb } : null));
+      } catch {
+        // 容量刷新失败不影响删除结果
+      }
+    } catch (err: any) {
+      onShowToast('error', `删除卡内文件失败: ${err?.message || err}`);
+    } finally {
+      setDeletingFileName(null);
+      setDeleteConfirmFile(null);
+    }
+  };
+
   const unsavedFiles = bleFiles.filter(f => !isFileSavedLocally(f.name));
 
   return (
@@ -798,10 +827,10 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
                       {!isSaved && (
                         <button
                           type="button"
-                          disabled={isAnySyncing}
+                          disabled={isAnySyncing || deletingFileName === file.name}
                           onClick={() => triggerWifiFlow(() => executeTransferOne(file))}
                           className={`rounded-[7px] px-3 py-1.5 text-[12px] font-medium transition-colors ${
-                            isAnySyncing
+                            isAnySyncing || deletingFileName === file.name
                               ? 'border border-[#ebebee] text-[#a1a1aa] bg-white cursor-not-allowed'
                               : 'border border-[#f3c8ab] bg-[#fff4ee] text-[#e2531f] hover:bg-[#ffe9dd] cursor-pointer'
                           }`}
@@ -809,6 +838,22 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
                           {isSyncing ? '转存中…' : '转存本机'}
                         </button>
                       )}
+
+                      {/* 从录音卡硬件删除按钮 */}
+                      <button
+                        type="button"
+                        disabled={isAnySyncing || deletingFileName === file.name}
+                        onClick={() => setDeleteConfirmFile(file)}
+                        className="rounded-[7px] border border-[#ebebee] hover:border-[#fca5a5] hover:bg-[#fff5f5] p-1.5 text-[#8b8b90] hover:text-[#dc2626] transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                        title="从录音卡中永久删除此文件"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="3 6 5 6 21 6" />
+                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                          <line x1="10" y1="11" x2="10" y2="17" />
+                          <line x1="14" y1="11" x2="14" y2="17" />
+                        </svg>
+                      </button>
                     </div>
                   </div>
                 );
@@ -995,6 +1040,49 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
               className="text-[12px] font-medium px-4 py-1.5 rounded-[7px] bg-[#d4380d] hover:bg-[#b32b05] text-white"
             >
               确认解绑
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* 删除录音卡文件二次确认弹窗 */}
+      {deleteConfirmFile && (
+        <Modal
+          isOpen={true}
+          onClose={() => !deletingFileName && setDeleteConfirmFile(null)}
+          overlayClassName="fixed inset-0 z-[110] flex items-center justify-center bg-black/40 backdrop-blur-2xs"
+          className="w-[380px] bg-white rounded-[14px] p-5 shadow-[0_20px_50px_rgba(0,0,0,0.18)] border border-[#ebebee]"
+        >
+          <div className="flex items-center gap-2.5 mb-2.5 text-[#dc2626]">
+            <div className="w-8 h-8 rounded-[8px] bg-[#fff5f5] flex items-center justify-center text-base">
+              ⚠️
+            </div>
+            <h4 className="text-[14.5px] font-semibold text-[#1c1c1e]">永久删除卡内文件？</h4>
+          </div>
+          <div className="text-[12.5px] text-[#505055] space-y-2 mb-4 leading-relaxed">
+            <p>
+              确定要从录音卡中永久删除文件 <b className="text-[#1c1c1e] font-mono select-all">「{deleteConfirmFile.name}」</b> 吗？
+            </p>
+            <div className="p-2.5 rounded-[8px] bg-[#f4f4f6] text-[11.5px] text-[#8b8b90]">
+              💡 <b>注意</b>：此操作仅会释放录音卡硬件内的物理存储空间，<b>不会影响</b>你电脑上已转存的音频文件与逐字稿。
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              disabled={Boolean(deletingFileName)}
+              onClick={() => setDeleteConfirmFile(null)}
+              className="text-[12px] px-3.5 py-1.5 rounded-[7px] border border-[#ebebee] hover:border-[#c6c6cc] text-[#505055] cursor-pointer disabled:opacity-50"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              disabled={Boolean(deletingFileName)}
+              onClick={() => handleDeleteCardFile(deleteConfirmFile)}
+              className="text-[12px] font-medium px-4 py-1.5 rounded-[7px] bg-[#dc2626] hover:bg-[#b91c1c] text-white shadow-xs cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+            >
+              {deletingFileName ? '正在删除…' : '确认删除卡内文件'}
             </button>
           </div>
         </Modal>

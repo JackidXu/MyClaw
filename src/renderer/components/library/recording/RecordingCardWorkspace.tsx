@@ -475,7 +475,6 @@ export const RecordingCardWorkspace: React.FC<RecordingCardWorkspaceProps> = ({
   };
 
   const handleDelete = async (item: LocalRecordingItem) => {
-    if (!confirm(`确定删除录音「${item.title || item.name}」吗？`)) return;
     await window.electron.localRecordings?.deleteRecord?.(item.id, true);
     toast('success', '已删除录音记录与本地音频');
     if (selectedId === item.id) {
