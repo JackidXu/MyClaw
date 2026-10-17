@@ -35,7 +35,7 @@ export const RecordingListColumn: React.FC<RecordingListColumnProps> = ({
 }) => {
   const [keyword, setKeyword] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'local' | 'pushed'>('all');
-  const [isManageMode, setIsManageMode] = useState(false);
+  const [isManageMode, _setIsManageMode] = useState(false);
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const [renamingItem, setRenamingItem] = useState<LocalRecordingItem | null>(null);
@@ -110,7 +110,7 @@ export const RecordingListColumn: React.FC<RecordingListColumnProps> = ({
     }
 
     if (filterType === 'local') {
-      return item.status === LocalRecordingStatus.Transcribed;
+      return item.status !== LocalRecordingStatus.Synced;
     }
     if (filterType === 'pushed') {
       return item.status === LocalRecordingStatus.Synced;
@@ -153,7 +153,8 @@ export const RecordingListColumn: React.FC<RecordingListColumnProps> = ({
           >
             导入
           </button>
-          <button
+          {/* TODO: 批量管理功能暂不开放，后续视产品需求再行启用 */}
+          {/* <button
             type="button"
             onClick={() => {
               setIsManageMode(!isManageMode);
@@ -167,7 +168,7 @@ export const RecordingListColumn: React.FC<RecordingListColumnProps> = ({
             title={isManageMode ? '退出管理模式' : '进入批量管理模式'}
           >
             {isManageMode ? '完成' : '管理'}
-          </button>
+          </button> */}
         </div>
       </div>
 
