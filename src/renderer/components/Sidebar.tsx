@@ -1,8 +1,6 @@
 import {
   ChevronDownIcon,
-  DocumentTextIcon,
   ExclamationTriangleIcon,
-  MicrophoneIcon,
 } from '@heroicons/react/24/outline';
 import { AgentId } from '@shared/agent';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -56,11 +54,12 @@ interface SidebarProps {
   onShowSettings: () => void;
   onShowLogin?: () => void;
   activeView: 'cowork' | 'skills' | 'scheduledTasks' | 'kits' | 'mcp' | 'sites' | 'experts' | 'secondBrain' | 'library' | 'recordingCard';
+  expertActiveTab?: 'teams' | 'experts' | 'skills' | 'mcp';
   onShowSkills: () => void;
   onShowCowork: () => void;
   onShowScheduledTasks: () => void;
   onShowKits?: () => void;
-  onShowExperts: () => void;
+  onShowExperts: (tab?: 'teams' | 'experts' | 'skills' | 'mcp') => void;
   onShowSecondBrain: () => void;
   onShowMcp?: () => void;
   onShowSites: () => void;
@@ -189,12 +188,14 @@ const Sidebar: React.FC<SidebarProps> = ({
   onShowSettings,
   onShowLogin,
   activeView,
+  expertActiveTab,
   onShowSkills,
   onShowCowork,
   onShowScheduledTasks,
   onShowKits,
   onShowExperts,
   onShowSecondBrain,
+  onShowMcp,
   onShowSites,
   onShowLibrary,
   onShowRecordingCard,
@@ -216,6 +217,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   void hideAdBanner;
   void onShowKits;
   void onShowSkills;
+  void onShowMcp;
   const currentAgentId = useSelector((state: RootState) => state.agent.currentAgentId);
   const isLoggedIn = useSelector((state: RootState) => state.auth.isLoggedIn);
   const isAuthLoading = useSelector((state: RootState) => state.auth.isLoading);
@@ -223,6 +225,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   const currentSessionId = useSelector(selectCurrentSessionId);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isBatchMode, setIsBatchMode] = useState(false);
+  const isTeamGroupActive = activeView === 'experts' || activeView === 'skills' || activeView === 'mcp';
+  const [isTeamMenuExpanded, setIsTeamMenuExpanded] = useState(true);
   const isLibraryGroupActive = activeView === 'library' || activeView === 'recordingCard';
   const [isLibraryMenuExpanded, setIsLibraryMenuExpanded] = useState(true);
   const [pendingCognitionCount, setPendingCognitionCount] = useState<number>(0);
@@ -1031,18 +1035,100 @@ const Sidebar: React.FC<SidebarProps> = ({
             )}
           </button>
           */}
-          <button
-            type="button"
-            onClick={() => {
-              setIsSearchOpen(false);
-              onShowExperts();
-            }}
-            className={activeView === 'experts' ? activeSidebarNavItemClassName : sidebarNavItemClassName}
-            aria-current={activeView === 'experts' ? 'page' : undefined}
-          >
-            <SidebarKitsIcon className="h-4 w-4 shrink-0" />
-            <span className="min-w-0 truncate">AI 团队</span>
-          </button>
+          <div className="space-y-0.5">
+            <button
+              type="button"
+              onClick={() => {
+                setIsTeamMenuExpanded(prev => !prev);
+                if (!isTeamGroupActive) {
+                  setIsSearchOpen(false);
+                  onShowExperts();
+                }
+              }}
+              className={
+                isTeamGroupActive && !isTeamMenuExpanded
+                  ? activeSidebarNavItemClassName
+                  : sidebarNavItemClassName
+              }
+              aria-expanded={isTeamMenuExpanded}
+            >
+              <SidebarKitsIcon className="h-4 w-4 shrink-0" />
+              <span className="min-w-0 truncate flex-1 text-left">AI 团队</span>
+              <ChevronDownIcon
+                className={`h-3.5 w-3.5 text-secondary/70 transition-transform duration-200 shrink-0 ${
+                  isTeamMenuExpanded ? 'rotate-180' : ''
+                }`}
+              />
+            </button>
+
+            {isTeamMenuExpanded && (
+              <div className="ml-2.5 pl-3 border-l border-border/70 flex flex-col gap-0.5 py-0.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSearchOpen(false);
+                    onShowExperts('teams');
+                  }}
+                  className={`w-full inline-flex h-[30px] items-center gap-2 rounded-md px-2 text-left text-[12.5px] transition-colors ${
+                    activeView === 'experts' && (expertActiveTab === 'teams' || !expertActiveTab)
+                      ? 'font-medium text-foreground bg-foreground/[0.07] dark:bg-white/[0.08]'
+                      : 'text-foreground/75 hover:bg-foreground/[0.04] hover:text-foreground dark:hover:bg-white/[0.05]'
+                  }`}
+                  aria-current={activeView === 'experts' && (expertActiveTab === 'teams' || !expertActiveTab) ? 'page' : undefined}
+                >
+                  <span className="truncate">{i18nService.t('expertTabTeams')}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSearchOpen(false);
+                    onShowExperts('experts');
+                  }}
+                  className={`w-full inline-flex h-[30px] items-center gap-2 rounded-md px-2 text-left text-[12.5px] transition-colors ${
+                    activeView === 'experts' && expertActiveTab === 'experts'
+                      ? 'font-medium text-foreground bg-foreground/[0.07] dark:bg-white/[0.08]'
+                      : 'text-foreground/75 hover:bg-foreground/[0.04] hover:text-foreground dark:hover:bg-white/[0.05]'
+                  }`}
+                  aria-current={activeView === 'experts' && expertActiveTab === 'experts' ? 'page' : undefined}
+                >
+                  <span className="truncate">{i18nService.t('expertTabExperts')}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSearchOpen(false);
+                    onShowExperts('skills');
+                  }}
+                  className={`w-full inline-flex h-[30px] items-center gap-2 rounded-md px-2 text-left text-[12.5px] transition-colors ${
+                    (activeView === 'experts' && expertActiveTab === 'skills') || activeView === 'skills'
+                      ? 'font-medium text-foreground bg-foreground/[0.07] dark:bg-white/[0.08]'
+                      : 'text-foreground/75 hover:bg-foreground/[0.04] hover:text-foreground dark:hover:bg-white/[0.05]'
+                  }`}
+                  aria-current={(activeView === 'experts' && expertActiveTab === 'skills') || activeView === 'skills' ? 'page' : undefined}
+                >
+                  <span className="truncate">技能库</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSearchOpen(false);
+                    onShowExperts('mcp');
+                  }}
+                  className={`w-full inline-flex h-[30px] items-center gap-2 rounded-md px-2 text-left text-[12.5px] transition-colors ${
+                    (activeView === 'experts' && expertActiveTab === 'mcp') || activeView === 'mcp'
+                      ? 'font-medium text-foreground bg-foreground/[0.07] dark:bg-white/[0.08]'
+                      : 'text-foreground/75 hover:bg-foreground/[0.04] hover:text-foreground dark:hover:bg-white/[0.05]'
+                  }`}
+                  aria-current={(activeView === 'experts' && expertActiveTab === 'mcp') || activeView === 'mcp' ? 'page' : undefined}
+                >
+                  <span className="truncate">MCP</span>
+                </button>
+              </div>
+            )}
+          </div>
           {!hideSites && (
             <button
               type="button"
@@ -1103,7 +1189,6 @@ const Sidebar: React.FC<SidebarProps> = ({
                     }`}
                     aria-current={activeView === 'library' ? 'page' : undefined}
                   >
-                    <DocumentTextIcon className="h-3.5 w-3.5 shrink-0 opacity-70" />
                     <span className="truncate">文档</span>
                   </button>
 
@@ -1115,15 +1200,17 @@ const Sidebar: React.FC<SidebarProps> = ({
                         setIsSearchOpen(false);
                         onShowRecordingCard();
                       }}
-                      className={`w-full inline-flex h-[30px] items-center gap-2 rounded-md px-2 text-left text-[12.5px] transition-colors ${
+                      className={`w-full inline-flex h-[30px] items-center justify-between rounded-md px-2 text-left text-[12.5px] transition-colors ${
                         activeView === 'recordingCard'
                           ? 'font-medium text-foreground bg-foreground/[0.07] dark:bg-white/[0.08]'
                           : 'text-foreground/75 hover:bg-foreground/[0.04] hover:text-foreground dark:hover:bg-white/[0.05]'
                       }`}
                       aria-current={activeView === 'recordingCard' ? 'page' : undefined}
                     >
-                      <MicrophoneIcon className="h-3.5 w-3.5 shrink-0 opacity-70" />
                       <span className="truncate">录音卡</span>
+                      <span className="text-[9px] font-bold text-white bg-amber-500 px-1.5 py-0.5 rounded-full leading-none shrink-0 scale-90">
+                        NEW
+                      </span>
                     </button>
                   )}
                 </div>

@@ -227,6 +227,7 @@ const App: React.FC = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [settingsOptions, setSettingsOptions] = useState<SettingsOpenOptions & { requestId: number }>({ requestId: 0 });
   const [mainView, setMainView] = useState<'cowork' | 'skills' | 'scheduledTasks' | 'kits' | 'mcp' | 'sites' | 'experts' | 'secondBrain' | 'library' | 'recordingCard'>('cowork');
+  const [expertActiveTab, setExpertActiveTab] = useState<'teams' | 'experts' | 'skills' | 'mcp'>('teams');
   const [skillsActiveTab, setSkillsActiveTab] = useState<'skills' | 'mcp'>('skills');
   void skillsActiveTab;
   void setSkillsActiveTab;
@@ -958,7 +959,8 @@ const App: React.FC = () => {
     setMainView('kits');
   }, []);
 
-  const handleShowExperts = useCallback(() => {
+  const handleShowExperts = useCallback((tab: 'teams' | 'experts' | 'skills' | 'mcp' = 'teams') => {
+    setExpertActiveTab(tab);
     setMainView('experts');
   }, []);
 
@@ -2362,6 +2364,7 @@ const App: React.FC = () => {
           onShowLogin={handleShowLogin}
           onShowSettings={handleShowSettings}
           activeView={mainView}
+          expertActiveTab={expertActiveTab}
           onShowSkills={handleShowSkills}
           onShowCowork={handleShowCowork}
           onShowScheduledTasks={handleShowScheduledTasks}
@@ -2439,6 +2442,7 @@ const App: React.FC = () => {
               />
             ) : mainView === 'experts' ? (
               <ExpertsView
+                initialTab={expertActiveTab}
                 isSidebarCollapsed={isSidebarCollapsed}
                 onToggleSidebar={handleToggleSidebar}
                 onNewChat={handleNewChat}

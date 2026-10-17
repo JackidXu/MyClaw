@@ -10,6 +10,7 @@ import type { ExpertTeam } from '../../types/expertTeam';
 import AgentAvatarIcon from '../agent/AgentAvatarIcon';
 import AgentCreateModal from '../agent/AgentCreateModal';
 import AgentSettingsPanel from '../agent/AgentSettingsPanel';
+import { MANAGEMENT_PAGE_TITLE_TEXT } from '../common/managementTypography';
 import Modal from '../common/Modal';
 import ComposeIcon from '../icons/ComposeIcon';
 import SidebarToggleIcon from '../icons/SidebarToggleIcon';
@@ -34,6 +35,7 @@ interface ExpertsViewProps {
   onToggleSidebar?: () => void;
   onNewChat?: (targetAgentId?: string) => void;
   updateBadge?: React.ReactNode;
+  initialTab?: 'teams' | 'experts' | 'skills' | 'mcp';
 }
 
 const ExpertsView: React.FC<ExpertsViewProps> = ({
@@ -41,6 +43,7 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
   onToggleSidebar,
   onNewChat,
   updateBadge,
+  initialTab = 'teams',
 }) => {
   const [selectedDept, setSelectedDept] = useState('全部');
   const [searchQuery, setSearchQuery] = useState('');
@@ -49,8 +52,14 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
   const [loading, setLoading] = useState(true);
   const [hiringId, setHiringId] = useState<string | null>(null);
 
-  // 一级 Tab：专家团 / 专家 / 技能库 / MCP
-  const [activeTab, setActiveTab] = useState<'teams' | 'experts' | 'skills' | 'mcp'>('teams');
+  // 当前激活视图：专家团 / 专家 / 技能库 / MCP（通过侧边栏直接驱动，顶部 Tab 移除）
+  const [activeTab, setActiveTab] = useState<'teams' | 'experts' | 'skills' | 'mcp'>(initialTab);
+
+  useEffect(() => {
+    setActiveTab(initialTab);
+    setSelectedDept('全部');
+    setSearchQuery('');
+  }, [initialTab]);
 
   // 专家 Tab 内子 Tab：内置 / 我的
   const [expertSubTab, setExpertSubTab] = useState<'preset' | 'custom'>('preset');
@@ -222,12 +231,6 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
     }
   };
 
-  const handleTabChange = (tab: 'teams' | 'experts' | 'skills' | 'mcp') => {
-    setActiveTab(tab);
-    setSelectedDept('全部');
-    setSearchQuery('');
-  };
-
   return (
     <div className="flex-1 flex flex-col bg-background h-full overflow-hidden">
       {/* 头部导航标题/页签 */}
@@ -255,79 +258,15 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
             </div>
           )}
 
-          {/* 顶层页签：专家团 / 专家 / 技能库 / MCP */}
-          <div className="non-draggable flex items-center space-x-4 h-8 text-[13.5px] font-semibold select-none">
-            <button
-              type="button"
-              onClick={() => handleTabChange('teams')}
-              className={`relative py-1 transition-colors focus:outline-none cursor-pointer flex items-center gap-1.5 ${
-                activeTab === 'teams'
-                  ? 'text-foreground font-semibold'
-                  : 'text-secondary hover:text-foreground font-medium'
-              }`}
-            >
-              <span>{i18nService.t('expertTabTeams')}</span>
-              <span className="text-[9.5px] font-bold text-white bg-amber-500 px-1.5 py-0.5 rounded-full leading-none">
-                NEW
-              </span>
-              <div
-                className={`absolute bottom-[-10px] left-0 right-0 h-0.5 rounded-full transition-colors ${
-                  activeTab === 'teams' ? 'bg-primary' : 'bg-transparent'
-                }`}
-              />
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleTabChange('experts')}
-              className={`relative py-1 transition-colors focus:outline-none cursor-pointer ${
-                activeTab === 'experts'
-                  ? 'text-foreground font-semibold'
-                  : 'text-secondary hover:text-foreground font-medium'
-              }`}
-            >
-              {i18nService.t('expertTabExperts')}
-              <div
-                className={`absolute bottom-[-10px] left-0 right-0 h-0.5 rounded-full transition-colors ${
-                  activeTab === 'experts' ? 'bg-primary' : 'bg-transparent'
-                }`}
-              />
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleTabChange('skills')}
-              className={`relative py-1 transition-colors focus:outline-none cursor-pointer ${
-                activeTab === 'skills'
-                  ? 'text-foreground font-semibold'
-                  : 'text-secondary hover:text-foreground font-medium'
-              }`}
-            >
-              技能库
-              <div
-                className={`absolute bottom-[-10px] left-0 right-0 h-0.5 rounded-full transition-colors ${
-                  activeTab === 'skills' ? 'bg-primary' : 'bg-transparent'
-                }`}
-              />
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleTabChange('mcp')}
-              className={`relative py-1 transition-colors focus:outline-none cursor-pointer ${
-                activeTab === 'mcp'
-                  ? 'text-foreground font-semibold'
-                  : 'text-secondary hover:text-foreground font-medium'
-              }`}
-            >
-              MCP
-              <div
-                className={`absolute bottom-[-10px] left-0 right-0 h-0.5 rounded-full transition-colors ${
-                  activeTab === 'mcp' ? 'bg-primary' : 'bg-transparent'
-                }`}
-              />
-            </button>
-          </div>
+          <h1 className={`${MANAGEMENT_PAGE_TITLE_TEXT} font-semibold text-foreground`}>
+            {activeTab === 'teams'
+              ? i18nService.t('expertTabTeams')
+              : activeTab === 'experts'
+              ? i18nService.t('expertTabExperts')
+              : activeTab === 'skills'
+              ? '技能库'
+              : 'MCP'}
+          </h1>
         </div>
 
         {/* 右上角搜索框和创建按钮 */}
