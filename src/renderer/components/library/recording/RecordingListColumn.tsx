@@ -135,7 +135,7 @@ export const RecordingListColumn: React.FC<RecordingListColumnProps> = ({
         {/* 左侧：主标题 + 副标题（上下排布） */}
         <div className="flex flex-col min-w-0 shrink-0">
           <b className="text-[13px] font-semibold text-[#1c1c1e] leading-tight whitespace-nowrap">
-            录音卡内
+            录音文件
           </b>
           <span className="text-[10px] text-[#8b8b90] leading-tight whitespace-nowrap mt-0.5 tabular-nums">
             {totalCount} 个文件 · {pendingCount} 待转写
@@ -425,7 +425,7 @@ export const RecordingListColumn: React.FC<RecordingListColumnProps> = ({
                           }}
                           className="px-2.5 py-1.5 rounded-[7px] text-[#d4380d] hover:bg-[#fff4ef] cursor-pointer"
                         >
-                          删除录音记录
+                          删除本机记录
                         </div>
                       </div>
                     )}

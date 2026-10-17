@@ -43,6 +43,7 @@ export class LocalRecordingStore {
         size INTEGER NOT NULL DEFAULT 0,
         source_type TEXT NOT NULL DEFAULT 'card',
         status TEXT NOT NULL DEFAULT 'pending',
+        card_file_id TEXT,
         task_id TEXT,
         tos_url TEXT,
         tos_key TEXT,
@@ -55,6 +56,7 @@ export class LocalRecordingStore {
       );
       CREATE INDEX IF NOT EXISTS idx_local_recordings_status ON local_recordings(status);
       CREATE INDEX IF NOT EXISTS idx_local_recordings_created ON local_recordings(created_at);
+      CREATE INDEX IF NOT EXISTS idx_local_recordings_card_file_id ON local_recordings(card_file_id);
     `);
 
     // 平滑迁移补齐老表字段
@@ -65,6 +67,10 @@ export class LocalRecordingStore {
     }
     if (!colNames.has('tos_key')) {
       this.db.exec('ALTER TABLE local_recordings ADD COLUMN tos_key TEXT');
+    }
+    if (!colNames.has('card_file_id')) {
+      this.db.exec('ALTER TABLE local_recordings ADD COLUMN card_file_id TEXT');
+      this.db.exec('CREATE INDEX IF NOT EXISTS idx_local_recordings_card_file_id ON local_recordings(card_file_id)');
     }
   }
 
@@ -99,11 +105,11 @@ export class LocalRecordingStore {
     const stmt = this.db.prepare(`
       INSERT INTO local_recordings (
         id, name, title, local_path, duration, duration_ms, size,
-        source_type, status, task_id, tos_url, tos_key, transcript_text, utterances_json,
+        source_type, status, card_file_id, task_id, tos_url, tos_key, transcript_text, utterances_json,
         summary_text, items_json, created_at, updated_at
       ) VALUES (
         @id, @name, @title, @localPath, @duration, @durationMs, @size,
-        @sourceType, @status, @taskId, @tosUrl, @tosKey, @transcriptText, @utterancesJson,
+        @sourceType, @status, @cardFileId, @taskId, @tosUrl, @tosKey, @transcriptText, @utterancesJson,
         @summaryText, @itemsJson, @createdAt, @updatedAt
       )
       ON CONFLICT(id) DO UPDATE SET
@@ -115,6 +121,7 @@ export class LocalRecordingStore {
         size = excluded.size,
         source_type = excluded.source_type,
         status = excluded.status,
+        card_file_id = excluded.card_file_id,
         task_id = excluded.task_id,
         tos_url = excluded.tos_url,
         tos_key = excluded.tos_key,
@@ -135,6 +142,7 @@ export class LocalRecordingStore {
       size: item.size || 0,
       sourceType: item.sourceType || 'card',
       status: item.status || 'pending',
+      cardFileId: item.cardFileId || null,
       taskId: item.taskId || null,
       tosUrl: item.tosUrl || null,
       tosKey: item.tosKey || null,
@@ -227,6 +235,7 @@ export class LocalRecordingStore {
       size: row.size,
       sourceType: row.source_type,
       status: row.status,
+      cardFileId: row.card_file_id || undefined,
       taskId: row.task_id || undefined,
       tosUrl: row.tos_url || undefined,
       tosKey: row.tos_key || undefined,

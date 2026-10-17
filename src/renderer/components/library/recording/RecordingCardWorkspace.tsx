@@ -21,7 +21,7 @@ import {
   uploadFileToTos,
 } from '../../../services/secondBrainApi';
 import { formatAudioDuration, getAudioBlobDuration } from './audioDuration';
-import { RecordingDeviceCard } from './RecordingDeviceCard';
+import { RecordingCardHardwarePanel } from './RecordingCardHardwarePanel';
 import { RecordingListColumn } from './RecordingListColumn';
 import { RecordingSummaryColumn } from './RecordingSummaryColumn';
 import { RecordingTranscriptColumn } from './RecordingTranscriptColumn';
@@ -40,10 +40,6 @@ export const RecordingCardWorkspace: React.FC<RecordingCardWorkspaceProps> = ({
   const [transcribingIds, setTranscribingIds] = useState<Set<string>>(new Set());
   const [transcribeProgressMap, setTranscribeProgressMap] = useState<Record<string, string>>({});
   const [summarizingId, setSummarizingId] = useState<string | null>(null);
-
-  // 录音卡设备状态
-  const [isDeviceConnected, setIsDeviceConnected] = useState(false);
-  const [deviceName, setDeviceName] = useState('M1(BLE)');
 
   const toast = useCallback(
     (type: 'success' | 'error' | 'info', msg: string) => {
@@ -516,7 +512,7 @@ export const RecordingCardWorkspace: React.FC<RecordingCardWorkspaceProps> = ({
   };
 
   return (
-    <div className="w-full max-w-[1240px] mx-auto p-4 space-y-3 select-none flex flex-col h-full min-h-0">
+    <div className="w-full max-w-[1240px] mx-auto p-4 space-y-3 select-none flex flex-col h-full min-h-0 overflow-hidden">
       {/* 顶部安全提示条 (.rc-local) */}
       <div className="bg-[#fafafb] border border-[#ebebee] rounded-[10px] p-[10px_14px] flex items-center gap-2.5 text-[12.5px] text-[#505055] leading-[1.6] shrink-0">
         <span className="w-[26px] h-[26px] rounded-[8px] bg-[#fff4ee] text-[#e2531f] flex items-center justify-center shrink-0">
@@ -531,32 +527,17 @@ export const RecordingCardWorkspace: React.FC<RecordingCardWorkspaceProps> = ({
         </span>
       </div>
 
-      {/* 设备状态卡片 (.rcd-dev) */}
+      {/* 录音卡硬件控制与管理面板 */}
       <div className="shrink-0">
-        <RecordingDeviceCard
-          deviceName={deviceName}
-          isConnected={isDeviceConnected}
-          localTranscribedCount={
-            recordings.filter(r => r.status !== LocalRecordingStatus.Pending).length
-          }
-          onConnect={() => {
-            setIsDeviceConnected(true);
-            setDeviceName('M1(BLE)');
-            toast('success', '录音卡蓝牙连接成功');
-          }}
-          onDisconnect={() => {
-            setIsDeviceConnected(false);
-            toast('info', '已断开录音卡连接');
-          }}
-          onUnbind={() => {
-            setIsDeviceConnected(false);
-            toast('info', '已解除设备绑定');
-          }}
+        <RecordingCardHardwarePanel
+          localRecordings={recordings}
+          onLocalRecordingsChanged={loadLocalRecordings}
+          onShowToast={toast}
         />
       </div>
 
       {/* 三栏工作台主体容器 (.rcw) */}
-      <div className="flex-1 min-h-[580px] flex border border-[#ebebee] rounded-[12px] bg-white overflow-hidden shadow-[0_1px_3px_rgba(28,28,30,0.03)]">
+      <div className="flex-1 min-h-0 flex border border-[#ebebee] rounded-[12px] bg-white overflow-hidden shadow-[0_1px_3px_rgba(28,28,30,0.03)]">
         {/* 左栏：录音列表 (.rcw-list) */}
         <RecordingListColumn
           items={recordings}

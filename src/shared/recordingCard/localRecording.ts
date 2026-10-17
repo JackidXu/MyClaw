@@ -65,6 +65,7 @@ export interface LocalRecordingItem {
   size: number;
   sourceType: 'card' | 'imported';
   status: LocalRecordingStatus;
+  cardFileId?: string;
   taskId?: string;
   tosUrl?: string;
   tosKey?: string;
