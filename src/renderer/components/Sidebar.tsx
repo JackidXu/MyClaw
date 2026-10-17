@@ -1,4 +1,9 @@
-import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import {
+  ChevronDownIcon,
+  DocumentTextIcon,
+  ExclamationTriangleIcon,
+  MicrophoneIcon,
+} from '@heroicons/react/24/outline';
 import { AgentId } from '@shared/agent';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
@@ -50,7 +55,7 @@ import ReportIssueModal from './ReportIssueModal';
 interface SidebarProps {
   onShowSettings: () => void;
   onShowLogin?: () => void;
-  activeView: 'cowork' | 'skills' | 'scheduledTasks' | 'kits' | 'mcp' | 'sites' | 'experts' | 'secondBrain' | 'library';
+  activeView: 'cowork' | 'skills' | 'scheduledTasks' | 'kits' | 'mcp' | 'sites' | 'experts' | 'secondBrain' | 'library' | 'recordingCard';
   onShowSkills: () => void;
   onShowCowork: () => void;
   onShowScheduledTasks: () => void;
@@ -60,6 +65,7 @@ interface SidebarProps {
   onShowMcp?: () => void;
   onShowSites: () => void;
   onShowLibrary?: () => void;
+  onShowRecordingCard?: () => void;
   onNewChat: () => void;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
@@ -191,6 +197,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onShowSecondBrain,
   onShowSites,
   onShowLibrary,
+  onShowRecordingCard,
   onNewChat,
   isCollapsed,
   onToggleCollapse,
@@ -216,6 +223,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   const currentSessionId = useSelector(selectCurrentSessionId);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isBatchMode, setIsBatchMode] = useState(false);
+  const isLibraryGroupActive = activeView === 'library' || activeView === 'recordingCard';
+  const [isLibraryMenuExpanded, setIsLibraryMenuExpanded] = useState(true);
   const [pendingCognitionCount, setPendingCognitionCount] = useState<number>(0);
 
   const [hasSecondBrain, setHasSecondBrain] = useState<boolean>(() => vipService.hasSecondBrainPermission());
@@ -1050,19 +1059,76 @@ const Sidebar: React.FC<SidebarProps> = ({
             </button>
           )}
           {onShowLibrary && (
-            <button
-              type="button"
-              onClick={() => {
-                reportSidebarAction('open_library', { activeView, isCollapsed });
-                setIsSearchOpen(false);
-                onShowLibrary();
-              }}
-              className={activeView === 'library' ? activeSidebarNavItemClassName : sidebarNavItemClassName}
-              aria-current={activeView === 'library' ? 'page' : undefined}
-            >
-              <SidebarLibraryIcon className="h-4 w-4 shrink-0" />
-              <span className="min-w-0 truncate">{i18nService.t('librarySidebarTitle')}</span>
-            </button>
+            <div className="space-y-0.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsLibraryMenuExpanded(prev => !prev);
+                  if (!isLibraryGroupActive) {
+                    setIsSearchOpen(false);
+                    onShowLibrary();
+                  }
+                }}
+                className={
+                  isLibraryGroupActive && !isLibraryMenuExpanded
+                    ? activeSidebarNavItemClassName
+                    : sidebarNavItemClassName
+                }
+                aria-expanded={isLibraryMenuExpanded}
+              >
+                <SidebarLibraryIcon className="h-4 w-4 shrink-0" />
+                <span className="min-w-0 truncate flex-1 text-left">
+                  {i18nService.t('librarySidebarTitle')}
+                </span>
+                <ChevronDownIcon
+                  className={`h-3.5 w-3.5 text-secondary/70 transition-transform duration-200 shrink-0 ${
+                    isLibraryMenuExpanded ? 'rotate-180' : ''
+                  }`}
+                />
+              </button>
+
+              {isLibraryMenuExpanded && (
+                <div className="ml-2.5 pl-3 border-l border-border/70 flex flex-col gap-0.5 py-0.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      reportSidebarAction('open_library', { activeView, isCollapsed });
+                      setIsSearchOpen(false);
+                      onShowLibrary();
+                    }}
+                    className={`w-full inline-flex h-[30px] items-center gap-2 rounded-md px-2 text-left text-[12.5px] transition-colors ${
+                      activeView === 'library'
+                        ? 'font-medium text-foreground bg-foreground/[0.07] dark:bg-white/[0.08]'
+                        : 'text-foreground/75 hover:bg-foreground/[0.04] hover:text-foreground dark:hover:bg-white/[0.05]'
+                    }`}
+                    aria-current={activeView === 'library' ? 'page' : undefined}
+                  >
+                    <DocumentTextIcon className="h-3.5 w-3.5 shrink-0 opacity-70" />
+                    <span className="truncate">文档</span>
+                  </button>
+
+                  {onShowRecordingCard && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        reportSidebarAction('open_library', { activeView, isCollapsed });
+                        setIsSearchOpen(false);
+                        onShowRecordingCard();
+                      }}
+                      className={`w-full inline-flex h-[30px] items-center gap-2 rounded-md px-2 text-left text-[12.5px] transition-colors ${
+                        activeView === 'recordingCard'
+                          ? 'font-medium text-foreground bg-foreground/[0.07] dark:bg-white/[0.08]'
+                          : 'text-foreground/75 hover:bg-foreground/[0.04] hover:text-foreground dark:hover:bg-white/[0.05]'
+                      }`}
+                      aria-current={activeView === 'recordingCard' ? 'page' : undefined}
+                    >
+                      <MicrophoneIcon className="h-3.5 w-3.5 shrink-0 opacity-70" />
+                      <span className="truncate">录音卡</span>
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>

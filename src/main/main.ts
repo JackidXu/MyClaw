@@ -262,6 +262,8 @@ import { registerNimQrLoginHandlers } from './ipcHandlers/nimQrLogin';
 import { registerPermissionIpcHandlers } from './ipcHandlers/permissions/handlers';
 import { registerPluginHandlers } from './ipcHandlers/plugins';
 import { registerRecordingCardIpcHandlers } from './ipcHandlers/recordingCard/handlers';
+import { registerLocalRecordingIpcHandlers } from './ipcHandlers/recording/handlers';
+import { LocalRecordingStore } from './recordings/localRecordingStore';
 import {
   getCronJobService,
   initCronJobServiceManager,
@@ -8938,6 +8940,23 @@ if (!gotTheLock) {
 
   // RecordingCard Wi-Fi IPC handlers
   registerRecordingCardIpcHandlers();
+
+  // Local Recordings IPC handlers
+  let localRecordingStore: LocalRecordingStore | null = null;
+  const getLocalRecordingStore = (): LocalRecordingStore | null => {
+    if (!localRecordingStore) {
+      try {
+        const s = getStore();
+        if (s) {
+          localRecordingStore = new LocalRecordingStore(s.getDatabase());
+        }
+      } catch (err) {
+        console.warn('[Main] getLocalRecordingStore failed:', err);
+      }
+    }
+    return localRecordingStore;
+  };
+  registerLocalRecordingIpcHandlers(getLocalRecordingStore);
 
   // Kits IPC handlers
   registerKitHandlers({

@@ -734,6 +734,44 @@ interface IElectronAPI {
     checkOnline: () => Promise<boolean>;
     hasSavedWifi: (ssid: string) => Promise<boolean>;
   };
+  localRecordings: {
+    getList: () => Promise<{
+      success: boolean;
+      data?: import('../../shared/recordingCard/localRecording').LocalRecordingItem[];
+      error?: string;
+    }>;
+    getById: (id: string) => Promise<{
+      success: boolean;
+      data?: import('../../shared/recordingCard/localRecording').LocalRecordingItem | null;
+      error?: string;
+    }>;
+    saveAudioFile: (
+      filename: string,
+      arrayBuffer: ArrayBuffer,
+    ) => Promise<{
+      success: boolean;
+      data?: { localPath: string; size: number };
+      error?: string;
+    }>;
+    upsertRecord: (
+      item: import('../../shared/recordingCard/localRecording').LocalRecordingItem,
+    ) => Promise<{
+      success: boolean;
+      data?: import('../../shared/recordingCard/localRecording').LocalRecordingItem;
+      error?: string;
+    }>;
+    deleteRecord: (
+      id: string,
+      deleteFile?: boolean,
+    ) => Promise<{ success: boolean; error?: string }>;
+    updateStatus: (
+      id: string,
+      status: import('../../shared/recordingCard/localRecording').LocalRecordingStatus,
+    ) => Promise<{ success: boolean; error?: string }>;
+    readAudioFile: (
+      filePath: string,
+    ) => Promise<{ success: boolean; data?: ArrayBuffer; error?: string }>;
+  };
   skills: {
     list: () => Promise<{ success: boolean; skills?: Skill[]; error?: string }>;
     setEnabled: (options: {

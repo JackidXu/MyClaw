@@ -38,6 +38,7 @@ import EngineStartupOverlay from './components/cowork/EngineStartupOverlay';
 import ExpertsView from './components/experts/ExpertsView';
 import KitsView from './components/kits/KitsView';
 import LibraryView from './components/library/LibraryView';
+import RecordingCardView from './components/library/recording/RecordingCardView';
 import NewUserOnboardingOverlay, {
   NewUserOnboardingStep,
   type NewUserOnboardingStep as NewUserOnboardingStepType,
@@ -225,7 +226,7 @@ const logAppUpdateRendererLifecycle = (
 const App: React.FC = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [settingsOptions, setSettingsOptions] = useState<SettingsOpenOptions & { requestId: number }>({ requestId: 0 });
-  const [mainView, setMainView] = useState<'cowork' | 'skills' | 'scheduledTasks' | 'kits' | 'mcp' | 'sites' | 'experts' | 'secondBrain' | 'library'>('cowork');
+  const [mainView, setMainView] = useState<'cowork' | 'skills' | 'scheduledTasks' | 'kits' | 'mcp' | 'sites' | 'experts' | 'secondBrain' | 'library' | 'recordingCard'>('cowork');
   const [skillsActiveTab, setSkillsActiveTab] = useState<'skills' | 'mcp'>('skills');
   void skillsActiveTab;
   void setSkillsActiveTab;
@@ -922,6 +923,10 @@ const App: React.FC = () => {
       requestId: current.requestId + 1,
     }));
     setMainView('library');
+  }, []);
+
+  const handleShowRecordingCard = useCallback(() => {
+    setMainView('recordingCard');
   }, []);
 
   useEffect(() => {
@@ -2366,6 +2371,7 @@ const App: React.FC = () => {
           onShowMcp={handleShowMcp}
           onShowSites={handleShowSites}
           onShowLibrary={handleShowLibrary}
+          onShowRecordingCard={handleShowRecordingCard}
           onNewChat={handleNewChat}
           isCollapsed={isSidebarCollapsed}
           onToggleCollapse={handleToggleSidebar}
@@ -2465,6 +2471,25 @@ const App: React.FC = () => {
                 updateBadge={collapsedHeaderUpdateBadge}
                 requestedSource={libraryNavigationRequest.source}
                 navigationRequestId={libraryNavigationRequest.requestId}
+              />
+            ) : mainView === 'recordingCard' ? (
+              <RecordingCardView
+                isSidebarCollapsed={isSidebarCollapsed}
+                onToggleSidebar={handleToggleSidebar}
+                updateBadge={collapsedHeaderUpdateBadge}
+                onNavigateToChat={(content) => {
+                  setMainView('cowork');
+                  window.setTimeout(() => {
+                    window.dispatchEvent(
+                      new CustomEvent(CoworkUiEvent.FocusInput, {
+                        detail: {
+                          text: content,
+                          clear: false,
+                        },
+                      }),
+                    );
+                  }, 50);
+                }}
               />
             ) : (
               <CoworkView

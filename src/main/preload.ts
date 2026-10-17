@@ -99,6 +99,11 @@ import {
   RecordingCardWifiIpc,
 } from '../shared/recordingCard/constants';
 import {
+  LocalRecordingIpc,
+  type LocalRecordingItem,
+  type LocalRecordingStatus,
+} from '../shared/recordingCard/localRecording';
+import {
   type SecondBrainAutoUploadConfig,
   SecondBrainAutoUploadIpc,
   type SecondBrainAutoUploadStatus,
@@ -205,6 +210,20 @@ contextBridge.exposeInMainWorld('electron', {
     checkOnline: () => ipcRenderer.invoke(RecordingCardWifiIpc.CheckOnline),
     hasSavedWifi: (ssid: string) =>
       ipcRenderer.invoke(RecordingCardWifiIpc.HasSavedWifi, ssid),
+  },
+  localRecordings: {
+    getList: () => ipcRenderer.invoke(LocalRecordingIpc.GetList),
+    getById: (id: string) => ipcRenderer.invoke(LocalRecordingIpc.GetById, id),
+    saveAudioFile: (filename: string, arrayBuffer: ArrayBuffer) =>
+      ipcRenderer.invoke(LocalRecordingIpc.SaveAudioFile, filename, arrayBuffer),
+    upsertRecord: (item: LocalRecordingItem) =>
+      ipcRenderer.invoke(LocalRecordingIpc.UpsertRecord, item),
+    deleteRecord: (id: string, deleteFile?: boolean) =>
+      ipcRenderer.invoke(LocalRecordingIpc.DeleteRecord, id, deleteFile),
+    updateStatus: (id: string, status: LocalRecordingStatus) =>
+      ipcRenderer.invoke(LocalRecordingIpc.UpdateStatus, id, status),
+    readAudioFile: (filePath: string) =>
+      ipcRenderer.invoke(LocalRecordingIpc.ReadAudioFile, filePath),
   },
   skills: {
     list: () => ipcRenderer.invoke('skills:list'),
