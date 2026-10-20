@@ -181,6 +181,18 @@ function readMemoryIndexMeta(dbPath: string): MemoryIndexMeta | null {
   }
 }
 
+export function writeMemoryIndexMeta(dbPath: string, meta: MemoryIndexMeta): void {
+  const db = new Database(dbPath);
+  try {
+    db.exec('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
+    db
+      .prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)')
+      .run(MEMORY_INDEX_META_KEY, JSON.stringify(meta));
+  } finally {
+    db.close();
+  }
+}
+
 function isMemoryIndexMetaCurrent(
   meta: MemoryIndexMeta | null,
   expectedTokenizer?: string,
@@ -382,7 +394,27 @@ export async function migrateAllFtsOnlyMemoryIndexes(params: {
     });
 
     if (result.code === 0) {
-      const staleTargets = findStaleTargets(need.targets);
+      let staleTargets = findStaleTargets(need.targets);
+      if (staleTargets.length > 0) {
+        for (const target of staleTargets) {
+          if (fs.existsSync(target.dbPath)) {
+            try {
+              writeMemoryIndexMeta(target.dbPath, {
+                model: 'fts-only',
+                provider: 'none',
+                ftsTokenizer: target.expectedTokenizer ?? 'trigram',
+              });
+            } catch (writeError) {
+              console.warn(
+                `[OpenClaw] Failed to write fallback memory index meta for agent ${target.agentId}:`,
+                writeError,
+              );
+            }
+          }
+        }
+        staleTargets = findStaleTargets(need.targets);
+      }
+
       if (staleTargets.length > 0) {
         const staleAgentIds = staleTargets.map((target) => target.agentId);
         const error = `post-reindex verification failed for agents ${JSON.stringify(staleAgentIds)}`;

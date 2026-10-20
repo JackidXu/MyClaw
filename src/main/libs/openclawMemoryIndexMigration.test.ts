@@ -394,13 +394,52 @@ describe('openclawMemoryIndexMigration', () => {
     expect(result).toEqual({ status: 'failed', code: 2 });
   });
 
-  test('returns failed when successful CLI exit leaves a stale target index', async () => {
+  test('automatically populates index meta when successful CLI leaves meta missing or stale', async () => {
     writeConfig(ftsOnlyMemorySearch());
     writeIndexMeta('main', oldIndexMeta());
     const runner = vi.fn<MemoryIndexMigrationRunner>().mockResolvedValue({
       code: 0,
       stdout: 'updated',
       stderr: '',
+    });
+
+    const result = await migrateAllFtsOnlyMemoryIndexes({
+      stateDir,
+      configPath,
+      runtimeRoot,
+      electronNodeRuntimePath,
+      env: {},
+      runner,
+    });
+
+    expect(result).toMatchObject({
+      status: 'migrated',
+      code: 0,
+    });
+
+    const db = new Database(defaultIndexPath('main'), { readonly: true });
+    try {
+      const row = db.prepare('SELECT value FROM meta WHERE key = ?').get('memory_index_meta_v1') as { value: string };
+      expect(JSON.parse(row.value)).toEqual({
+        model: 'fts-only',
+        provider: 'none',
+        ftsTokenizer: 'trigram',
+      });
+    } finally {
+      db.close();
+    }
+  });
+
+  test('returns failed when successful CLI exit leaves a missing index db file', async () => {
+    writeConfig(ftsOnlyMemorySearch());
+    writeIndexMeta('main', oldIndexMeta());
+    const runner = vi.fn<MemoryIndexMigrationRunner>().mockImplementation(async () => {
+      fs.rmSync(defaultIndexPath('main'), { force: true });
+      return {
+        code: 0,
+        stdout: 'deleted',
+        stderr: '',
+      };
     });
 
     const result = await migrateAllFtsOnlyMemoryIndexes({
