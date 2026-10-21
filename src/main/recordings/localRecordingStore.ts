@@ -48,6 +48,7 @@ export class LocalRecordingStore {
         tos_url TEXT,
         tos_key TEXT,
         transcript_text TEXT,
+        transcribe_error TEXT,
         utterances_json TEXT,
         summary_text TEXT,
         items_json TEXT,
@@ -67,6 +68,9 @@ export class LocalRecordingStore {
     }
     if (!colNames.has('tos_key')) {
       this.db.exec('ALTER TABLE local_recordings ADD COLUMN tos_key TEXT');
+    }
+    if (!colNames.has('transcribe_error')) {
+      this.db.exec('ALTER TABLE local_recordings ADD COLUMN transcribe_error TEXT');
     }
     if (!colNames.has('card_file_id')) {
       this.db.exec('ALTER TABLE local_recordings ADD COLUMN card_file_id TEXT');
@@ -105,11 +109,11 @@ export class LocalRecordingStore {
     const stmt = this.db.prepare(`
       INSERT INTO local_recordings (
         id, name, title, local_path, duration, duration_ms, size,
-        source_type, status, card_file_id, task_id, tos_url, tos_key, transcript_text, utterances_json,
+        source_type, status, card_file_id, task_id, tos_url, tos_key, transcript_text, transcribe_error, utterances_json,
         summary_text, items_json, created_at, updated_at
       ) VALUES (
         @id, @name, @title, @localPath, @duration, @durationMs, @size,
-        @sourceType, @status, @cardFileId, @taskId, @tosUrl, @tosKey, @transcriptText, @utterancesJson,
+        @sourceType, @status, @cardFileId, @taskId, @tosUrl, @tosKey, @transcriptText, @transcribeError, @utterancesJson,
         @summaryText, @itemsJson, @createdAt, @updatedAt
       )
       ON CONFLICT(id) DO UPDATE SET
@@ -126,6 +130,7 @@ export class LocalRecordingStore {
         tos_url = excluded.tos_url,
         tos_key = excluded.tos_key,
         transcript_text = excluded.transcript_text,
+        transcribe_error = excluded.transcribe_error,
         utterances_json = excluded.utterances_json,
         summary_text = excluded.summary_text,
         items_json = excluded.items_json,
@@ -147,6 +152,7 @@ export class LocalRecordingStore {
       tosUrl: item.tosUrl || null,
       tosKey: item.tosKey || null,
       transcriptText: item.transcriptText || null,
+      transcribeError: item.transcribeError || null,
       utterancesJson,
       summaryText: item.summary || null,
       itemsJson,
@@ -240,6 +246,7 @@ export class LocalRecordingStore {
       tosUrl: row.tos_url || undefined,
       tosKey: row.tos_key || undefined,
       transcriptText: row.transcript_text || undefined,
+      transcribeError: row.transcribe_error || undefined,
       utterances,
       summary: row.summary_text || undefined,
       items,

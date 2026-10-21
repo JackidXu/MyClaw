@@ -5,7 +5,7 @@
  * 顶部设备卡片已移除自动传输与设置；中栏播放音频直接调用浏览器打开。
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef,useState } from 'react';
 
 import type { LocalRecordingItem } from '../../../../shared/recordingCard/localRecording';
 import { LocalRecordingStatus } from '../../../../shared/recordingCard/localRecording';
@@ -38,25 +38,53 @@ export const RecordingCardWorkspace: React.FC<RecordingCardWorkspaceProps> = ({
   const [recordings, setRecordings] = useState<LocalRecordingItem[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [transcribingIds, setTranscribingIds] = useState<Set<string>>(new Set());
+  const transcribingIdsRef = useRef<Set<string>>(new Set());
+  transcribingIdsRef.current = transcribingIds;
   const [transcribeProgressMap, setTranscribeProgressMap] = useState<Record<string, string>>({});
   const [summarizingId, setSummarizingId] = useState<string | null>(null);
 
+  // 组件挂载防护与活跃轮询任务取消管理（确保卸载时彻底清理）
+  const isMountedRef = useRef(true);
+  const activeCancelMapRef = useRef<Map<string, () => void>>(new Map());
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    const cancelMap = activeCancelMapRef.current;
+    return () => {
+      isMountedRef.current = false;
+      // 页面卸载时主动取消所有正在进行的后台转写轮询
+      for (const cancelFn of cancelMap.values()) {
+        try {
+          cancelFn();
+        } catch {
+          // 忽略
+        }
+      }
+      cancelMap.clear();
+    };
+  }, []);
+
   const toast = useCallback(
     (type: 'success' | 'error' | 'info', msg: string) => {
+      if (!isMountedRef.current) return;
       onShowToast?.(type, msg);
     },
     [onShowToast],
   );
 
+  // 后台接力轮询方法引用，避免与 loadLocalRecordings 产生循环或跨闭包引用
+  const handleResumeTranscribeRef = useRef<((item: LocalRecordingItem) => Promise<void>) | null>(null);
+  // 同步执行锁，防止短时间内 React 渲染引起的并发多次重复接力查询
+  const activePollingTasksRef = useRef<Set<string>>(new Set());
+
   // 1. 加载本地 SQLite 录音列表，并对缺失时长的历史记录异步补算回写
   const loadLocalRecordings = useCallback(async () => {
     try {
       const res = await window.electron.localRecordings?.getList?.();
+      if (!isMountedRef.current) return;
       if (res?.success && Array.isArray(res.data)) {
         setRecordings(res.data);
-        if (res.data.length > 0 && !selectedId) {
-          setSelectedId(res.data[0].id);
-        }
+        setSelectedId(prev => prev || (res.data.length > 0 ? res.data[0].id : null));
 
         // 异步检查并补齐历史存量 00:00 录音的时长 (通过主进程原生 fs 读取，无 CSP 限制)
         for (const item of res.data) {
@@ -67,15 +95,20 @@ export const RecordingCardWorkspace: React.FC<RecordingCardWorkspaceProps> = ({
                 if (readRes?.success && readRes.data) {
                   const blob = new Blob([readRes.data]);
                   const durSec = await getAudioBlobDuration(blob);
-                  if (durSec > 0) {
+                  if (durSec > 0 && isMountedRef.current) {
+                    // 关键防护：必须基于数据库中最新的记录进行时长合并，严禁使用闭包老 item 冲掉刚落库的 tosUrl/taskId
+                    const latestData = await window.electron.localRecordings?.getById?.(item.id);
+                    const baseItem = latestData?.data || item;
                     const updated: LocalRecordingItem = {
-                      ...item,
+                      ...baseItem,
                       duration: formatAudioDuration(durSec),
                       durationMs: Math.round(durSec * 1000),
                       updatedAt: Date.now(),
                     };
                     await window.electron.localRecordings?.upsertRecord?.(updated);
-                    setRecordings(prev => prev.map(r => (r.id === item.id ? updated : r)));
+                    if (isMountedRef.current) {
+                      setRecordings(prev => prev.map(r => (r.id === item.id ? updated : r)));
+                    }
                   }
                 }
               } catch (e) {
@@ -83,16 +116,162 @@ export const RecordingCardWorkspace: React.FC<RecordingCardWorkspaceProps> = ({
               }
             })();
           }
+
+          // 页面初始化或切页时，发现有处于转写中 (Transcribing) 且已生成 taskId 的记录，自动无缝接力拉起后台轮询
+          // 增加 activePollingTasksRef 同步锁，确保同一任务绝对不会被瞬间重复并发拉起
+          if (
+            item.status === LocalRecordingStatus.Transcribing &&
+            item.taskId &&
+            !activePollingTasksRef.current.has(item.id) &&
+            !transcribingIdsRef.current.has(item.id)
+          ) {
+            activePollingTasksRef.current.add(item.id);
+            void handleResumeTranscribeRef.current?.(item);
+          }
         }
       }
     } catch (err: any) {
       console.warn('[RecordingCardWorkspace] loadLocalRecordings error:', err);
     }
-  }, [selectedId]);
+  }, []);
 
   useEffect(() => {
     void loadLocalRecordings();
   }, [loadLocalRecordings]);
+
+  // 后台接力轮询已提交但未完成的转写任务
+  const handleResumeTranscribe = useCallback(async (item: LocalRecordingItem) => {
+    if (!item.taskId) return;
+
+    activePollingTasksRef.current.add(item.id);
+
+    setTranscribingIds(prev => new Set(prev).add(item.id));
+    setTranscribeProgressMap(prev => ({
+      ...prev,
+      [item.id]: '正在恢复转写进度...',
+    }));
+
+    let isCancelled = false;
+    activeCancelMapRef.current.set(item.id, () => {
+      isCancelled = true;
+    });
+
+    try {
+      const durationSec = item.durationMs && item.durationMs > 0 ? Math.ceil(item.durationMs / 1000) : 0;
+      const asrResult = await asrService.pollAsrResult(item.taskId, {
+        durationSec,
+        isCancelled: () => isCancelled || !isMountedRef.current,
+        onProgress: msg => {
+          if (isMountedRef.current) {
+            setTranscribeProgressMap(prev => ({ ...prev, [item.id]: msg }));
+          }
+        },
+      });
+
+      // 阶段 1: 逐字稿就绪，立即解锁中栏，更新本地 SQLite
+      const transcribedItem: LocalRecordingItem = {
+        ...item,
+        status: LocalRecordingStatus.Transcribed,
+        transcriptText: asrResult.text,
+        utterances: asrResult.utterances,
+        updatedAt: Date.now(),
+      };
+      await window.electron.localRecordings?.upsertRecord?.(transcribedItem);
+
+      if (isMountedRef.current) {
+        setRecordings(prev => prev.map(r => (r.id === item.id ? transcribedItem : r)));
+        // 立即移除转写态，中栏秒级展示逐字稿
+        setTranscribingIds(prev => {
+          const next = new Set(prev);
+          next.delete(item.id);
+          return next;
+        });
+        setTranscribeProgressMap(prev => {
+          const next = { ...prev };
+          delete next[item.id];
+          return next;
+        });
+      }
+
+      // 阶段 2: 独立进入 AI 总结阶段（右栏独立 loading）
+      if (!transcribedItem.summary && isMountedRef.current) {
+        setSummarizingId(item.id);
+        try {
+          const summaryResult = await recordingSummaryService.generateSummary({
+            transcriptText: asrResult.text,
+            utterances: asrResult.utterances,
+            originalFilename: item.name,
+          });
+
+          const completedItem: LocalRecordingItem = {
+            ...transcribedItem,
+            title: summaryResult.title || transcribedItem.title,
+            summary: summaryResult.summary,
+            items: summaryResult.items || [],
+            updatedAt: Date.now(),
+          };
+          await window.electron.localRecordings?.upsertRecord?.(completedItem);
+          if (isMountedRef.current) {
+            setRecordings(prev => prev.map(r => (r.id === item.id ? completedItem : r)));
+            toast('success', `「${completedItem.title}」转写与智能纪要已生成！`);
+          }
+        } catch (sumErr) {
+          console.warn('[RecordingCardWorkspace] 自动提炼纪要异常:', sumErr);
+        } finally {
+          if (isMountedRef.current) {
+            setSummarizingId(null);
+          }
+        }
+      }
+    } catch (err: any) {
+      if (isCancelled || !isMountedRef.current) return;
+      const errorMsg = err?.message || String(err || '语音转写处理失败');
+      console.warn('[RecordingCardWorkspace] 接力转写异常:', errorMsg);
+
+      // 【核心终态保护】：检查最新数据库状态！如果其实已经转写成功了，绝对不可逆向改写为 Failed！
+      const latestData = await window.electron.localRecordings?.getById?.(item.id);
+      if (
+        latestData?.data?.status === LocalRecordingStatus.Transcribed ||
+        Boolean(latestData?.data?.transcriptText)
+      ) {
+        console.log('[RecordingCardWorkspace] 检测到该记录已成功转写，忽略并跳过竞态错误写入:', item.id);
+        return;
+      }
+
+      // 仅在未成功且确实失败时，记录失败终态及原因，显式保留 tosUrl / tosKey
+      const baseItem = latestData?.data || item;
+      const failedRecord: LocalRecordingItem = {
+        ...baseItem,
+        status: LocalRecordingStatus.Failed,
+        tosUrl: baseItem.tosUrl,
+        tosKey: baseItem.tosKey,
+        transcribeError: errorMsg,
+        updatedAt: Date.now(),
+      };
+      await window.electron.localRecordings?.upsertRecord?.(failedRecord);
+      if (isMountedRef.current) {
+        setRecordings(prev => prev.map(r => (r.id === item.id ? failedRecord : r)));
+        toast('error', `转写失败: ${errorMsg}`);
+      }
+    } finally {
+      activePollingTasksRef.current.delete(item.id);
+      activeCancelMapRef.current.delete(item.id);
+      if (isMountedRef.current) {
+        setTranscribingIds(prev => {
+          const next = new Set(prev);
+          next.delete(item.id);
+          return next;
+        });
+        setTranscribeProgressMap(prev => {
+          const next = { ...prev };
+          delete next[item.id];
+          return next;
+        });
+        setSummarizingId(null);
+      }
+    }
+  }, [toast]);
+  handleResumeTranscribeRef.current = handleResumeTranscribe;
 
   // 当前选中的录音对象
   const selectedItem = recordings.find(r => r.id === selectedId) || null;
@@ -147,22 +326,38 @@ export const RecordingCardWorkspace: React.FC<RecordingCardWorkspaceProps> = ({
   const handleTranscribeOne = async (item: LocalRecordingItem) => {
     if (transcribingIds.has(item.id)) return;
 
-    setTranscribingIds(prev => new Set(prev).add(item.id));
+    // 严谨校验：从本地 SQLite 数据库获取最新记录，确保获取到最新写入的 tosUrl / tosKey
+    let currentItem = item;
+    try {
+      const latestData = await window.electron.localRecordings?.getById?.(item.id);
+      if (latestData?.data) {
+        currentItem = latestData.data;
+      }
+    } catch (e) {
+      console.debug('[RecordingCardWorkspace] getById error:', e);
+    }
+
+    setTranscribingIds(prev => new Set(prev).add(currentItem.id));
     setTranscribeProgressMap(prev => ({
       ...prev,
-      [item.id]: '正在准备音频文件...',
+      [currentItem.id]: '正在准备音频文件...',
     }));
 
-    try {
-      let tosUrl = item.tosUrl;
-      let tosKey = item.tosKey;
+    let isCancelled = false;
+    activeCancelMapRef.current.set(currentItem.id, () => {
+      isCancelled = true;
+    });
 
-      // 步骤 A: 如果本地未曾上传过该音频，才获取预签名并上传到云端存储；若已存在则直接复用
+    try {
+      let tosUrl = currentItem.tosUrl;
+      let tosKey = currentItem.tosKey;
+
+      // 步骤 A: 准备音频传输通道；若已就绪则直接复用
       if (!tosUrl || !tosKey) {
-        toast('info', `正在上传「${item.title || item.name}」到云端...`);
+        toast('info', `正在准备录音数据「${currentItem.title || currentItem.name}」...`);
 
         // 通过主进程读取本地音频文件
-        const fileData = await window.electron.localRecordings?.getById?.(item.id);
+        const fileData = await window.electron.localRecordings?.getById?.(currentItem.id);
         if (!fileData?.data?.localPath) {
           throw new Error('未找到本地音频文件路径');
         }
@@ -184,9 +379,24 @@ export const RecordingCardWorkspace: React.FC<RecordingCardWorkspaceProps> = ({
 
         tosUrl = presign.tos_url || presign.upload_url.split('?')[0];
         tosKey = presign.key;
+
+        // 【关键优化 1】：上传 TOS 成功瞬间立刻持久化落盘！
+        // 彻底杜绝后续网络闪断或提交异常导致重复上传 40MB 大音频
+        const uploadedRecord: LocalRecordingItem = {
+          ...item,
+          tosUrl,
+          tosKey,
+          updatedAt: Date.now(),
+        };
+        await window.electron.localRecordings?.upsertRecord?.(uploadedRecord);
+        if (isMountedRef.current) {
+          setRecordings(prev => prev.map(r => (r.id === item.id ? uploadedRecord : r)));
+        }
       }
 
-      // 步骤 B: 提交语音转写任务 (使用公网直链)
+      if (isCancelled || !isMountedRef.current) return;
+
+      // 步骤 B: 提交语音转写任务 (向火山创建全新任务，不复用旧的失败 taskId)
       const ext = item.name.split('.').pop()?.toLowerCase() || 'ogg';
 
       setTranscribeProgressMap(prev => ({
@@ -200,19 +410,71 @@ export const RecordingCardWorkspace: React.FC<RecordingCardWorkspaceProps> = ({
         codec: ext === 'ogg' ? 'opus' : undefined,
       });
 
-      // 步骤 C: 轮询等待转写完成
-      const asrResult = await asrService.pollAsrResult(submitRes.task_id, {
+      // 提交成功后立刻在本地 SQLite 更新 taskId 和 transcribing 状态，并清空历史错误
+      const transcribingRecord: LocalRecordingItem = {
+        ...item,
+        status: LocalRecordingStatus.Transcribing,
+        taskId: submitRes.taskId,
+        tosUrl,
+        tosKey,
+        transcribeError: undefined,
+        updatedAt: Date.now(),
+      };
+      await window.electron.localRecordings?.upsertRecord?.(transcribingRecord);
+      if (isMountedRef.current) {
+        setRecordings(prev => prev.map(r => (r.id === item.id ? transcribingRecord : r)));
+      }
+
+      // 计算音频秒数供服务端精准扣费（1元/小时）
+      const durationSec = item.durationMs && item.durationMs > 0 ? Math.ceil(item.durationMs / 1000) : 0;
+
+      // 步骤 C: 轮询等待转写完成（完全由服务端接口状态驱动终态，绝不自作主张判超时）
+      const asrResult = await asrService.pollAsrResult(submitRes.taskId, {
+        durationSec,
+        isCancelled: () => isCancelled || !isMountedRef.current,
         onProgress: msg => {
-          setTranscribeProgressMap(prev => ({ ...prev, [item.id]: msg }));
+          if (isMountedRef.current) {
+            setTranscribeProgressMap(prev => ({ ...prev, [item.id]: msg }));
+          }
         },
       });
 
-      // 步骤 D: 自动调用服务端提炼商业纪要
-      setTranscribeProgressMap(prev => ({
-        ...prev,
-        [item.id]: '正在提炼商业纪要与核心决策...',
-      }));
-      setSummarizingId(item.id);
+      if (isCancelled || !isMountedRef.current) return;
+
+      // 阶段 1 解耦完成：逐字稿识别完毕，立刻更新本地 SQLite 并从 transcribingIds 移出！
+      const transcribedItem: LocalRecordingItem = {
+        ...item,
+        status: LocalRecordingStatus.Transcribed,
+        taskId: submitRes.taskId,
+        tosUrl,
+        tosKey,
+        transcriptText: asrResult.text,
+        transcribeError: undefined,
+        utterances: asrResult.utterances,
+        updatedAt: Date.now(),
+      };
+      await window.electron.localRecordings?.upsertRecord?.(transcribedItem);
+
+      if (isMountedRef.current) {
+        setRecordings(prev => prev.map(r => (r.id === item.id ? transcribedItem : r)));
+        // 瞬间解锁中栏 loading
+        setTranscribingIds(prev => {
+          const next = new Set(prev);
+          next.delete(item.id);
+          return next;
+        });
+        setTranscribeProgressMap(prev => {
+          const next = { ...prev };
+          delete next[item.id];
+          return next;
+        });
+        toast('info', `「${transcribedItem.title}」逐字稿转写完成，正在提炼智能纪要...`);
+      }
+
+      // 阶段 2 独立进行：自动调用服务端提炼商业纪要（仅右栏处于 summarizing 状态）
+      if (isMountedRef.current) {
+        setSummarizingId(item.id);
+      }
 
       let summaryResult: GeneratedSummaryResult | null = null;
       try {
@@ -225,42 +487,67 @@ export const RecordingCardWorkspace: React.FC<RecordingCardWorkspaceProps> = ({
         console.warn('[RecordingCardWorkspace] 自动提炼纪要异常:', sumErr);
       }
 
-      // 步骤 E: 落库本地 SQLite (持久化真实的 tosUrl 和 tosKey，绝对不覆盖为 task_id)
-      const updatedItem: LocalRecordingItem = {
-        ...item,
-        title: summaryResult?.title || item.title,
-        status: LocalRecordingStatus.Transcribed,
-        taskId: submitRes.task_id,
-        tosUrl,
-        tosKey,
-        transcriptText: asrResult.text,
-        utterances: asrResult.utterances,
+      if (isCancelled || !isMountedRef.current) return;
+
+      // 纪要完成：落库最终状态
+      const finalItem: LocalRecordingItem = {
+        ...transcribedItem,
+        title: summaryResult?.title || transcribedItem.title,
         summary: summaryResult?.summary || undefined,
         items: summaryResult?.items || [],
         updatedAt: Date.now(),
       };
 
-      await window.electron.localRecordings?.upsertRecord?.(updatedItem);
-      if (summaryResult?.summary) {
-        toast('success', `「${updatedItem.title}」转写与智能纪要已生成！`);
-      } else {
-        toast('info', `「${updatedItem.title}」逐字稿转写完成，可一键提炼纪要`);
+      await window.electron.localRecordings?.upsertRecord?.(finalItem);
+      if (isMountedRef.current) {
+        setRecordings(prev => prev.map(r => (r.id === item.id ? finalItem : r)));
+        if (summaryResult?.summary) {
+          toast('success', `「${finalItem.title}」智能纪要已生成！`);
+        }
       }
-      await loadLocalRecordings();
     } catch (err: any) {
-      toast('error', `转写失败: ${err?.message || err}`);
+      if (isCancelled || !isMountedRef.current) return;
+      const errorMsg = err?.message || String(err || '语音转写处理失败');
+
+      // 【核心终态保护】：检查最新数据库状态！如果其实已经转写成功了，绝对不可逆向改写为 Failed！
+      const latestData = await window.electron.localRecordings?.getById?.(item.id);
+      if (
+        latestData?.data?.status === LocalRecordingStatus.Transcribed ||
+        Boolean(latestData?.data?.transcriptText)
+      ) {
+        console.log('[RecordingCardWorkspace] 检测到该记录已成功转写，忽略并跳过错误覆写:', item.id);
+        return;
+      }
+
+      // 记录失败终态及原因，并绝对保留已上传就绪的 tosUrl / tosKey，保证点击重试时无需重新上传音频
+      const failedRecord: LocalRecordingItem = {
+        ...currentItem,
+        status: LocalRecordingStatus.Failed,
+        tosUrl: tosUrl || currentItem.tosUrl,
+        tosKey: tosKey || currentItem.tosKey,
+        transcribeError: errorMsg,
+        updatedAt: Date.now(),
+      };
+      await window.electron.localRecordings?.upsertRecord?.(failedRecord);
+      if (isMountedRef.current) {
+        setRecordings(prev => prev.map(r => (r.id === item.id ? failedRecord : r)));
+        toast('error', `转写失败: ${errorMsg}`);
+      }
     } finally {
-      setTranscribingIds(prev => {
-        const next = new Set(prev);
-        next.delete(item.id);
-        return next;
-      });
-      setTranscribeProgressMap(prev => {
-        const next = { ...prev };
-        delete next[item.id];
-        return next;
-      });
-      setSummarizingId(null);
+      activeCancelMapRef.current.delete(item.id);
+      if (isMountedRef.current) {
+        setTranscribingIds(prev => {
+          const next = new Set(prev);
+          next.delete(item.id);
+          return next;
+        });
+        setTranscribeProgressMap(prev => {
+          const next = { ...prev };
+          delete next[item.id];
+          return next;
+        });
+        setSummarizingId(null);
+      }
     }
   };
 
@@ -475,6 +762,24 @@ export const RecordingCardWorkspace: React.FC<RecordingCardWorkspaceProps> = ({
   };
 
   const handleDelete = async (item: LocalRecordingItem) => {
+    // 关键机制：如果当前录音正在后台转写中，必须立即触发主动取消！
+    // 彻底防止删除后火山返回识别结果时重新把该记录 INSERT 回 SQLite 产生“起死回生”的僵尸 Bug
+    const cancelFn = activeCancelMapRef.current.get(item.id);
+    if (cancelFn) {
+      cancelFn();
+      activeCancelMapRef.current.delete(item.id);
+    }
+    setTranscribingIds(prev => {
+      const next = new Set(prev);
+      next.delete(item.id);
+      return next;
+    });
+    setTranscribeProgressMap(prev => {
+      const next = { ...prev };
+      delete next[item.id];
+      return next;
+    });
+
     await window.electron.localRecordings?.deleteRecord?.(item.id, true);
     toast('success', '已删除录音记录与本地音频');
     if (selectedId === item.id) {
@@ -541,6 +846,7 @@ export const RecordingCardWorkspace: React.FC<RecordingCardWorkspaceProps> = ({
         <RecordingListColumn
           items={recordings}
           selectedId={selectedId}
+          transcribingIds={transcribingIds}
           onSelect={item => setSelectedId(item.id)}
           onImportAudio={handleImportFile}
           onTranscribeSingle={handleTranscribeOne}

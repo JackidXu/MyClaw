@@ -95,6 +95,49 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
   };
 
   /**
+   * 解析并格式化录音文件创建时间
+   * 优先使用硬件上报的 createTime（秒级时间戳），若无则从文件名 RYYYYMMDD-HHmmss 中精准提取
+   */
+  const formatFileRecordTime = (file: BleRecordingFile): string => {
+    if (file.createTime && file.createTime > 0) {
+      const date = new Date(file.createTime * 1000);
+      if (!isNaN(date.getTime())) {
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, '0');
+        const d = String(date.getDate()).padStart(2, '0');
+        const hh = String(date.getHours()).padStart(2, '0');
+        const mm = String(date.getMinutes()).padStart(2, '0');
+        return `${y}-${m}-${d} ${hh}:${mm}`;
+      }
+    }
+
+    // 从文件名提取：R20261021-161845.opus -> 2026-10-21 16:18
+    const match = file.name.match(/R?(\d{4})(\d{2})(\d{2})[-_](\d{2})(\d{2})(\d{2})?/i);
+    if (match) {
+      const [, y, m, d, hh, mm] = match;
+      return `${y}-${m}-${d} ${hh}:${mm}`;
+    }
+
+    return '';
+  };
+
+  /**
+   * 获取文件排序时间戳（毫秒），用于按最新时间倒序排序
+   */
+  const getFileSortTimestamp = (file: BleRecordingFile): number => {
+    if (file.createTime && file.createTime > 0) {
+      return file.createTime * 1000;
+    }
+    const match = file.name.match(/R?(\d{4})(\d{2})(\d{2})[-_](\d{2})(\d{2})(\d{2})?/i);
+    if (match) {
+      const [, y, m, d, hh, mm, ss = '00'] = match;
+      const ts = new Date(`${y}-${m}-${d}T${hh}:${mm}:${ss}`).getTime();
+      if (!isNaN(ts)) return ts;
+    }
+    return 0;
+  };
+
+  /**
    * 严格基于 cardFileId 唯一识别录音卡文件是否已转存本机
    * 即使用户重命名或智能纪要改写了标题，cardFileId 永不改变！
    */
@@ -182,6 +225,8 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
         duration: Math.round(f.duration_ms / 1000),
         createTime: f.creat_time,
       }));
+      // 最新录音排在最前面 (降序倒排)
+      list.sort((a, b) => getFileSortTimestamp(b) - getFileSortTimestamp(a));
       setBleFiles(list);
       setBleFilesPage(1);
     } catch (err: any) {
@@ -444,6 +489,14 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
       setOpeningWifiAp(true);
       setAutoConnectingWifi(false);
       try {
+        // 按需自愈：若当前蓝牙已断开（例如刚刚删除文件后硬件短暂复位），优先尝试静默回连
+        if (!recordingCardBle.isConnected()) {
+          try {
+            await recordingCardBle.reconnect(2, 1000);
+          } catch {
+            throw new Error('录音卡蓝牙连接已中断，请检查设备是否开启或重新连接');
+          }
+        }
         await recordingCardBle.openWifi();
         setBleDevice(prev => (prev ? { ...prev, wifiApOpened: true } : null));
         await new Promise(r => setTimeout(r, 3500));
@@ -800,6 +853,12 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
                     <div className="flex-1 min-w-0">
                       <div className="text-[13.5px] font-medium text-[#1c1c1e] truncate">{file.name}</div>
                       <div className="text-[11.5px] text-[#8b8b90] mt-0.5 flex items-center gap-1.5 tabular-nums">
+                        {formatFileRecordTime(file) && (
+                          <>
+                            <span>{formatFileRecordTime(file)}</span>
+                            <span>·</span>
+                          </>
+                        )}
                         <span>{formatAudioDuration(file.duration)}</span>
                         <span>·</span>
                         <span>{formatBytes(file.size)}</span>

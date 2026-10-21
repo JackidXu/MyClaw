@@ -31,6 +31,8 @@ export const LocalRecordingStatus = {
   Transcribing: 'transcribing',
   /** 已转写·仅存在本机 */
   Transcribed: 'transcribed',
+  /** 转写失败 */
+  Failed: 'failed',
   /** 已入脑（已同步到第二大脑） */
   Synced: 'synced',
 } as const;
@@ -70,6 +72,7 @@ export interface LocalRecordingItem {
   tosUrl?: string;
   tosKey?: string;
   transcriptText?: string;
+  transcribeError?: string;
   utterances?: RecordingUtterance[];
   summary?: string;
   items?: RecordingExtractedItem[];

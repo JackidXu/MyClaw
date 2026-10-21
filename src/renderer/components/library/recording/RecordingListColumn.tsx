@@ -13,6 +13,7 @@ import Modal from '../../common/Modal';
 interface RecordingListColumnProps {
   items: LocalRecordingItem[];
   selectedId: string | null;
+  transcribingIds?: Set<string>;
   onSelect: (item: LocalRecordingItem) => void;
   onImportAudio: (file: File) => void;
   onTranscribeSingle: (item: LocalRecordingItem) => void;
@@ -26,6 +27,7 @@ interface RecordingListColumnProps {
 export const RecordingListColumn: React.FC<RecordingListColumnProps> = ({
   items,
   selectedId,
+  transcribingIds,
   onSelect,
   onImportAudio,
   onTranscribeSingle,
@@ -262,7 +264,12 @@ export const RecordingListColumn: React.FC<RecordingListColumnProps> = ({
             onClick={() => {
               const selectedList = filteredItems.filter(i => selectedItemIds.has(i.id));
               selectedList.forEach(item => {
-                if (item.status === LocalRecordingStatus.Pending) onTranscribeSingle(item);
+                if (
+                  item.status === LocalRecordingStatus.Pending ||
+                  item.status === LocalRecordingStatus.Failed
+                ) {
+                  onTranscribeSingle(item);
+                }
               });
             }}
             className="text-[11px] text-[#505055] border border-[#dfdfe3] bg-white rounded-[6px] px-2 py-0.5 hover:border-[#c6c6cc] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
@@ -307,7 +314,16 @@ export const RecordingListColumn: React.FC<RecordingListColumnProps> = ({
           filteredItems.map(item => {
             const isSelected = selectedId === item.id;
             const isTranscribed = item.status === LocalRecordingStatus.Transcribed;
-            const isPending = item.status === LocalRecordingStatus.Pending;
+            const isSynced = item.status === LocalRecordingStatus.Synced;
+            const isItemTranscribing =
+              item.status === LocalRecordingStatus.Transcribing ||
+              Boolean(transcribingIds?.has(item.id));
+            const isFailed = item.status === LocalRecordingStatus.Failed;
+            const isPending =
+              !isItemTranscribing &&
+              !isTranscribed &&
+              !isFailed &&
+              !isSynced;
             const isChecked = selectedItemIds.has(item.id);
 
             return (
@@ -336,10 +352,10 @@ export const RecordingListColumn: React.FC<RecordingListColumnProps> = ({
                   </span>
                 )}
 
-                {/* 录音小图标 (.rcd-fic) */}
+                {/* 录音小图标 (.rcd-fic) - 仅已转写和已推送点亮，失败与待转写保持灰色未完成态 */}
                 <div
                   className={`w-7 h-7 rounded-[8px] flex items-center justify-center shrink-0 ${
-                    isTranscribed
+                    isSynced || isTranscribed
                       ? 'bg-[#fff4ee] text-[#e2531f] border border-[#f8d9c6]'
                       : 'bg-[#f4f4f6] text-[#8b8b90] border border-[#ebebee]'
                   }`}
@@ -361,16 +377,47 @@ export const RecordingListColumn: React.FC<RecordingListColumnProps> = ({
                   </small>
                 </div>
 
-                {/* 右侧状态标签或转写按钮 */}
+                {/* 右侧状态标签或转写/重试按钮 */}
                 <div className="flex items-center gap-1.5 shrink-0">
-                  {item.status === LocalRecordingStatus.Synced ? (
-                    <span className="text-[10.5px] px-2 py-0.5 rounded-[6px] bg-[#eaf2ff] text-[#1a6ff2] border border-[#cfe0ff]">
-                      已入脑
+                  {isSynced ? (
+                    <span className="text-[10.5px] px-2 py-0.5 rounded-[5px] bg-[#edf4ff] text-[#2563eb] select-none cursor-default font-normal">
+                      已推送
                     </span>
                   ) : isTranscribed ? (
-                    <span className="text-[10.5px] px-2 py-0.5 rounded-[6px] bg-[#eef7f0] text-[#2f9e58] border border-[#cfe8d6]">
+                    <span className="text-[10.5px] px-2 py-0.5 rounded-[5px] bg-[#f0fdf4] text-[#16a34a] select-none cursor-default font-normal">
                       已转写
                     </span>
+                  ) : isItemTranscribing ? (
+                    <span className="inline-flex items-center gap-1 text-[10.5px] px-2 py-0.5 rounded-[5px] bg-[#fff7ed] text-[#ea580c] select-none cursor-default font-normal">
+                      <span className="w-2.5 h-2.5 rounded-full border border-[#ea580c] border-t-transparent animate-spin inline-block" />
+                      转写中...
+                    </span>
+                  ) : isFailed ? (
+                    <div className="flex items-center gap-1">
+                      <span
+                        title={item.transcribeError || '转写失败，点击旁边重试'}
+                        className="text-[10.5px] px-1.5 py-0.5 rounded-[5px] bg-[#fef2f2] text-[#ef4444] select-none cursor-help font-normal"
+                      >
+                        转写失败
+                      </span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onTranscribeSingle(item);
+                        }}
+                        title="重新提交转写"
+                        className="inline-flex items-center gap-0.5 text-[11px] font-medium text-[#FF6B35] bg-white border border-[#FF6B35]/30 rounded-[6px] px-1.5 py-0.5 hover:bg-[#fff4ee] hover:border-[#FF6B35] active:scale-95 cursor-pointer transition-all shadow-2xs"
+                      >
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
+                          <path d="M21 3v5h-5" />
+                          <path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
+                          <path d="M3 21v-5h5" />
+                        </svg>
+                        重试
+                      </button>
+                    </div>
                   ) : isPending ? (
                     <button
                       type="button"
@@ -378,15 +425,11 @@ export const RecordingListColumn: React.FC<RecordingListColumnProps> = ({
                         e.stopPropagation();
                         onTranscribeSingle(item);
                       }}
-                      className="text-[11px] font-medium text-[#e2531f] bg-[#fff4ee] border border-[#f3c8ab] rounded-[6px] px-2.5 py-0.5 hover:bg-[#ffe9dd] cursor-pointer transition-colors shrink-0"
+                      className="text-[11px] font-medium text-white bg-[#FF6B35] rounded-[6px] px-2.5 py-0.5 hover:bg-[#fa5a20] active:scale-95 cursor-pointer transition-all shadow-2xs shrink-0"
                     >
                       转写
                     </button>
-                  ) : (
-                    <span className="text-[10.5px] px-1.5 py-0.5 rounded-[6px] bg-[#fff4ee] text-[#e2531f] border border-[#f3c8ab]">
-                      转写中...
-                    </span>
-                  )}
+                  ) : null}
 
                   {/* 更多操作三点菜单 */}
                   <div className="relative">

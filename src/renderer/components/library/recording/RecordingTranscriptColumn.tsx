@@ -7,6 +7,7 @@
 import React from 'react';
 
 import type { LocalRecordingItem } from '../../../../shared/recordingCard/localRecording';
+import { LocalRecordingStatus } from '../../../../shared/recordingCard/localRecording';
 
 interface RecordingTranscriptColumnProps {
   item: LocalRecordingItem | null;
@@ -123,6 +124,33 @@ export const RecordingTranscriptColumn: React.FC<RecordingTranscriptColumnProps>
             <div className="w-9 h-9 rounded-full border-2 border-[#f3c8ab] border-t-[#FF6B35] animate-spin mb-3" />
             <b className="text-[13.5px] text-[#1c1c1e]">正在转写录音内容...</b>
             <p className="text-[12px] mt-1 text-[#e2531f]">{transcribeProgressText || '请稍候'}</p>
+          </div>
+        ) : item.status === LocalRecordingStatus.Failed ? (
+          <div className="h-full flex flex-col items-center justify-center text-center p-8 text-[#8b8b90]">
+            <div className="w-11 h-11 rounded-full bg-[#fef2f2] text-[#ef4444] border border-[#fecaca] flex items-center justify-center mb-3">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="8" x2="12" y2="12" />
+                <line x1="12" y1="16" x2="12.01" y2="16" />
+              </svg>
+            </div>
+            <b className="text-[13.5px] font-semibold text-[#1c1c1e] mb-1">转写失败</b>
+            <p className="text-[12px] text-[#ef4444] bg-[#fef2f2] border border-[#fecaca] rounded-[6px] px-3 py-1.5 max-w-[360px] break-all mb-4 select-text font-mono">
+              {item.transcribeError || '语音转写处理异常'}
+            </p>
+            <button
+              type="button"
+              onClick={onTranscribe}
+              className="inline-flex items-center gap-1.5 text-[12.5px] font-medium text-white bg-[#FF6B35] rounded-[8px] px-4 py-2 hover:bg-[#e2531f] active:scale-95 transition-all cursor-pointer shadow-xs"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
+                <path d="M21 3v5h-5" />
+                <path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
+                <path d="M3 21v-5h5" />
+              </svg>
+              重新提交转写
+            </button>
           </div>
         ) : !item.transcriptText ? (
           <div className="h-full flex flex-col items-center justify-center text-center p-8 text-[#8b8b90]">
