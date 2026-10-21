@@ -83,11 +83,12 @@ export const RecordingCardWorkspace: React.FC<RecordingCardWorkspaceProps> = ({
       const res = await window.electron.localRecordings?.getList?.();
       if (!isMountedRef.current) return;
       if (res?.success && Array.isArray(res.data)) {
-        setRecordings(res.data);
-        setSelectedId(prev => prev || (res.data.length > 0 ? res.data[0].id : null));
+        const list = res.data;
+        setRecordings(list);
+        setSelectedId(prev => prev || (list.length > 0 ? list[0].id : null));
 
         // 异步检查并补齐历史存量 00:00 录音的时长 (通过主进程原生 fs 读取，无 CSP 限制)
-        for (const item of res.data) {
+        for (const item of list) {
           if ((!item.durationMs || item.duration === '00:00') && item.localPath) {
             void (async () => {
               try {
@@ -348,10 +349,10 @@ export const RecordingCardWorkspace: React.FC<RecordingCardWorkspaceProps> = ({
       isCancelled = true;
     });
 
-    try {
-      let tosUrl = currentItem.tosUrl;
-      let tosKey = currentItem.tosKey;
+    let tosUrl = currentItem.tosUrl;
+    let tosKey = currentItem.tosKey;
 
+    try {
       // 步骤 A: 准备音频传输通道；若已就绪则直接复用
       if (!tosUrl || !tosKey) {
         toast('info', `正在准备录音数据「${currentItem.title || currentItem.name}」...`);
