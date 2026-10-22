@@ -1,0 +1,13 @@
+{
+  "id": "lobsterai-context-prune",
+  "name": "LobsterAI Context Pruning Engine",
+  "description": "Applies proactive context management and historical tool result folding to keep context within model limits.",
+  "activation": {
+    "onStartup": true
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

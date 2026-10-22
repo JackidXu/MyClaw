@@ -2487,6 +2487,7 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
     const hasMediaGenPlugin = isBundledPluginAvailable('lobster-media-generation');
     const hasSecondBrainPlugin = isBundledPluginAvailable('second-brain');
     const hasWebSearchPlugin = isBundledPluginAvailable('web-search');
+    const hasContextPrunePlugin = isBundledPluginAvailable('lobsterai-context-prune');
 
     // Runtime-bundled xai extension (dist/extensions/xai): provides the Grok
     // model compat hooks (e.g. only grok-4.3 accepts reasoningEffort) plus the
@@ -2741,6 +2742,7 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
           ...(hasMediaGenPlugin ? { 'lobster-media-generation': { enabled: true } } : {}),
           ...(hasSecondBrainPlugin ? { 'second-brain': { enabled: true } } : {}),
           ...(hasWebSearchPlugin ? { 'web-search': { enabled: true } } : {}),
+          ...(hasContextPrunePlugin ? { 'lobsterai-context-prune': { enabled: true } } : {}),
 
           ...(hasModelCompatConfig
             ? {
@@ -2792,6 +2794,7 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
           ...(hasMediaGenPlugin ? ['lobster-media-generation'] : []),
           ...(hasSecondBrainPlugin ? ['second-brain'] : []),
           ...(hasWebSearchPlugin ? ['web-search'] : []),
+          ...(hasContextPrunePlugin ? ['lobsterai-context-prune'] : []),
           ...(hasModelCompatConfig
             ? [OPENCLAW_MODEL_COMPAT_PLUGIN_ID]
             : []),
@@ -2827,6 +2830,7 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
                 slots: {
                   ...((existingPlugins as Record<string, unknown>).slots as Record<string, unknown> | undefined),
                   memory: OPENCLAW_MEMORY_CORE_PLUGIN_ID,
+                  ...(hasContextPrunePlugin ? { contextEngine: 'lobsterai-context-prune' } : {}),
                 },
                 entries: pluginEntries,
               },
