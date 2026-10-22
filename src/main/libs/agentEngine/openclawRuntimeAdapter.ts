@@ -2811,6 +2811,27 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     );
   }
 
+  private isLifecycleEventRecoveringOrRetrying(turn: ActiveTurn | undefined, data: unknown): boolean {
+    if (turn && this.isWaitingForRecoverableFollowup(turn)) {
+      return true;
+    }
+    if (isRecord(data)) {
+      if (data.willRetry === true || data.retry === true || data.phase === 'compaction') {
+        return true;
+      }
+      const rawError = typeof data.error === 'string' ? data.error.toLowerCase() : '';
+      if (
+        rawError.includes('context overflow') ||
+        rawError.includes('context length') ||
+        rawError.includes('token limit') ||
+        rawError.includes('maximum context')
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   private clearContextMaintenanceState(sessionId: string, turn: ActiveTurn, reason: string): void {
     const wasActive = this.isWaitingForRecoverableFollowup(turn);
     turn.hasContextMaintenanceTool = false;
@@ -7763,6 +7784,9 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     }
 
     if (runId) {
+      if (this.terminatedRunIds.has(runId)) {
+        return;
+      }
       const mappedSessionId = this.sessionIdByRunId.get(runId);
       if (mappedSessionId && mappedSessionId !== sessionId) {
         console.log('[Debug:handleAgentEvent] runId mapped to different session, dropping. mapped:', mappedSessionId, 'current:', sessionId);
@@ -7835,9 +7859,15 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     if (stream === 'lifecycle') {
       // Mark runId as terminated immediately on phase=error so that subsequent retries
       // (which reuse the same runId) are blocked from re-creating an ActiveTurn.
+      // Exception: Context overflow errors trigger auto-compaction in OpenClaw and will
+      // retry with the same runId. Do not terminate the runId prematurely.
       const lifecycleData = agentPayload.data;
       const lifecycleRunId = typeof agentPayload.runId === 'string' ? agentPayload.runId.trim() : '';
-      if (getAgentLifecyclePhase(lifecycleData) === AgentLifecyclePhase.Error && lifecycleRunId) {
+      if (
+        getAgentLifecyclePhase(lifecycleData) === AgentLifecyclePhase.Error &&
+        lifecycleRunId &&
+        !this.isLifecycleEventRecoveringOrRetrying(turn, lifecycleData)
+      ) {
         this.terminatedRunIds.add(lifecycleRunId);
       }
       this.handleAgentLifecycleEvent(sessionId, agentPayload.data, lifecycleRunId || undefined);
@@ -8295,9 +8325,14 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       // event may not arrive reliably — similar to the phase=end / chat final gap.
       // Wait for the gateway chat error or retry/compaction path to settle first;
       // if the turn is still active after that, surface the error ourselves.
+      const errorTurn = this.activeTurns.get(sessionId);
+      if (this.isLifecycleEventRecoveringOrRetrying(errorTurn, data)) {
+        console.log(`[OpenClawRuntime] lifecycle phase=error is currently undergoing recovery/retry; suppressing premature fallback for session ${sessionId}.`);
+        return;
+      }
+
       const rawErrorMessage = typeof data.error === 'string' ? data.error.trim() : 'OpenClaw run failed';
       const errorMetadata = normalizeOpenClawSafeRuntimeErrorMetadata(data);
-      const errorTurn = this.activeTurns.get(sessionId);
       const errorRunId = eventRunId
         ?? errorTurn?.runId
         ?? (typeof data.runId === 'string' ? data.runId : null);
@@ -8306,6 +8341,11 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
         if (!turn) return; // Already handled by handleChatError
         // If a different run started while the fallback was pending, leave it alone.
         if (errorRunId && !turn.knownRunIds.has(errorRunId)) return;
+        // If the turn entered a self-healing/recovery flow while waiting, do not abort.
+        if (this.isWaitingForRecoverableFollowup(turn)) {
+          console.log(`[OpenClawRuntime] lifecycle error fallback suppressed because turn entered recovery state for session ${sessionId}.`);
+          return;
+        }
         const resolved = this.resolveTurnErrorMessageWithToolLoopContext(turn, rawErrorMessage, errorMetadata);
         const resolvedError = resolved.resolvedError;
         const errorMessage = resolvedError.message;
@@ -10482,6 +10522,31 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     console.log('[OpenClawRuntime] handleChatError payload:', JSON.stringify(payload).slice(0, 1000));
     const rawErrorMessage = payload.errorMessage?.trim() || 'OpenClaw run failed';
     const errorMetadata = normalizeOpenClawSafeRuntimeErrorMetadata(payload);
+
+    // 当底层发生 Context overflow 时，OpenClaw 会自动触发 auto-compaction 并在压缩后重试。
+    // 如果在此处立即将本地会话置为 error 并清理 turn，底层的自愈重试将沦为无宿主的幽灵任务，
+    // 同时用户发送的新请求也会因为网关忙碌排队 120s 超时丢弃。
+    // 因此，遇到 context overflow 且尚未超时时，暂缓判死，挂起等待底层压缩自愈重试。
+    const rawErrorLower = (rawErrorMessage + ' ' + (payload.rawErrorPreview || '')).toLowerCase();
+    const isContextOverflow =
+      rawErrorLower.includes('context overflow') ||
+      rawErrorLower.includes('context length') ||
+      rawErrorLower.includes('token limit') ||
+      rawErrorLower.includes('maximum context');
+
+    if (isContextOverflow && !turn.stopRequested && !this.manuallyStoppedSessions.has(sessionId)) {
+      console.warn(
+        `[OpenClawRuntime] detected context overflow in handleChatError; delaying terminal failure to wait for OpenClaw auto-compaction and retry.`,
+        `sessionId=${sessionId}`,
+        `runId=${payload.runId ?? turn.runId}`,
+      );
+      this.waitForRecoverableOpenClawRetry(sessionId, turn, payload.runId ?? turn.runId, {
+        reason: 'context overflow auto-compaction in flight',
+        graceMs: 65_000,
+      });
+      return;
+    }
+
     const resolved = this.resolveTurnErrorMessageWithToolLoopContext(turn, rawErrorMessage, errorMetadata);
     const resolvedError = resolved.resolvedError;
     let errorMessage = resolvedError.message;
