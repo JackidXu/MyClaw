@@ -226,9 +226,9 @@ const Sidebar: React.FC<SidebarProps> = ({
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isBatchMode, setIsBatchMode] = useState(false);
   const isTeamGroupActive = activeView === 'experts' || activeView === 'skills' || activeView === 'mcp';
-  const [isTeamMenuExpanded, setIsTeamMenuExpanded] = useState(true);
+  const [isTeamMenuExpanded, setIsTeamMenuExpanded] = useState(false);
   const isLibraryGroupActive = activeView === 'library' || activeView === 'recordingCard';
-  const [isLibraryMenuExpanded, setIsLibraryMenuExpanded] = useState(true);
+  const [isLibraryMenuExpanded, setIsLibraryMenuExpanded] = useState(false);
   const [pendingCognitionCount, setPendingCognitionCount] = useState<number>(0);
 
   const [hasSecondBrain, setHasSecondBrain] = useState<boolean>(() => vipService.hasSecondBrainPermission());
