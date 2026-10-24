@@ -11,6 +11,7 @@ import {
   PrecheckUploadItem,
   SECOND_BRAIN_MAX_BATCH_COUNT,
   SECOND_BRAIN_SUPPORTED_EXTENSIONS,
+  UploadPresignResponse,
 } from '../../shared/secondBrain/constants';
 import { httpClient } from './httpClient';
 
@@ -147,11 +148,7 @@ export interface CognitionListResponse {
 }
 
 /** 预签名上传响应 */
-export interface UploadPresignResponse {
-  key: string;
-  upload_url: string;
-  tos_url: string;
-}
+export type { UploadPresignResponse };
 
 /** 对话列表单项 */
 export interface ChatListItem {

@@ -453,6 +453,7 @@ const MANAGED_BINARY_FILE_READ_POLICY_PROMPT = [
   '- Reading raw bytes of binary files will output corrupt/garbled characters and completely explode the conversation context window, leading to critical service errors.',
   '- If you need to read or analyze a spreadsheet (e.g. `.xlsx`, `.xls`, `.csv`), write and execute a Python script to parse it (e.g. using `pandas` or `openpyxl`) and print only the structured summary or schema.',
   '- If you need to read a `.pdf` or extract content from a compressed archive, write and execute a Python script to extract and summarize the text locally.',
+  '- **Audio & Voice Recording Files (`.mp3`, `.m4a`, `.wav`, `.ogg`, `.flac`, `.aac` etc.)**: When the user provides an audio file or requests content extraction, meeting minutes, summary, or copywriting based on a recording, ALWAYS call the `heyclaw_audio_transcribe` tool to transcribe speech into text. NEVER attempt to read binary audio files directly.',
   '- If you violate this rule and attempt to call file-reading tools on binary files directly, the tool execution will be blocked and will return an error.',
 ].join('\n');
 
@@ -1968,6 +1969,7 @@ type OpenClawConfigSyncDeps = {
   getMediaCallbackUrl?: () => string | null;
   getSecondBrainCallbackUrl?: () => string | null;
   getWebSearchCallbackUrl?: () => string | null;
+  getAudioTranscribeCallbackUrl?: () => string | null;
   getBrowserCallbackUrl?: () => string | null;
   getLobsterBrowserMcpCommand?: () => string | null;
   getLobsterBrowserMcpStdioLaunch?: () => LobsterBrowserMcpStdioLaunch | null;
@@ -2001,6 +2003,7 @@ export class OpenClawConfigSync {
   private readonly getMediaCallbackUrl?: () => string | null;
   private readonly getSecondBrainCallbackUrl?: () => string | null;
   private readonly getWebSearchCallbackUrl?: () => string | null;
+  private readonly getAudioTranscribeCallbackUrl?: () => string | null;
   private readonly getBrowserCallbackUrl?: () => string | null;
   private readonly getLobsterBrowserMcpCommand?: () => string | null;
   private readonly getLobsterBrowserMcpStdioLaunch?: () => LobsterBrowserMcpStdioLaunch | null;
@@ -2035,6 +2038,7 @@ export class OpenClawConfigSync {
     this.getMediaCallbackUrl = deps.getMediaCallbackUrl;
     this.getSecondBrainCallbackUrl = deps.getSecondBrainCallbackUrl;
     this.getWebSearchCallbackUrl = deps.getWebSearchCallbackUrl;
+    this.getAudioTranscribeCallbackUrl = deps.getAudioTranscribeCallbackUrl;
     this.getBrowserCallbackUrl = deps.getBrowserCallbackUrl;
     this.getLobsterBrowserMcpCommand = deps.getLobsterBrowserMcpCommand;
     this.getLobsterBrowserMcpStdioLaunch = deps.getLobsterBrowserMcpStdioLaunch;
@@ -2487,6 +2491,7 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
     const hasMediaGenPlugin = isBundledPluginAvailable('lobster-media-generation');
     const hasSecondBrainPlugin = isBundledPluginAvailable('second-brain');
     const hasWebSearchPlugin = isBundledPluginAvailable('web-search');
+    const hasAudioTranscribePlugin = isBundledPluginAvailable('audio-transcribe');
     const hasContextPrunePlugin = isBundledPluginAvailable('lobsterai-context-prune');
 
     // Runtime-bundled xai extension (dist/extensions/xai): provides the Grok
@@ -2742,6 +2747,7 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
           ...(hasMediaGenPlugin ? { 'lobster-media-generation': { enabled: true } } : {}),
           ...(hasSecondBrainPlugin ? { 'second-brain': { enabled: true } } : {}),
           ...(hasWebSearchPlugin ? { 'web-search': { enabled: true } } : {}),
+          ...(hasAudioTranscribePlugin ? { 'audio-transcribe': { enabled: true } } : {}),
           ...(hasContextPrunePlugin ? { 'lobsterai-context-prune': { enabled: true } } : {}),
 
           ...(hasModelCompatConfig
@@ -2794,6 +2800,7 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
           ...(hasMediaGenPlugin ? ['lobster-media-generation'] : []),
           ...(hasSecondBrainPlugin ? ['second-brain'] : []),
           ...(hasWebSearchPlugin ? ['web-search'] : []),
+          ...(hasAudioTranscribePlugin ? ['audio-transcribe'] : []),
           ...(hasContextPrunePlugin ? ['lobsterai-context-prune'] : []),
           ...(hasModelCompatConfig
             ? [OPENCLAW_MODEL_COMPAT_PLUGIN_ID]
@@ -2927,6 +2934,21 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
           callbackUrl: webSearchCallbackUrl,
           secret: '${LOBSTER_MCP_BRIDGE_SECRET}',
           requestTimeoutMs: 60000,
+        },
+      };
+    }
+
+    // Sync AudioTranscribe plugin config
+    const audioTranscribeCallbackUrl = this.getAudioTranscribeCallbackUrl?.();
+    if (hasAudioTranscribePlugin && audioTranscribeCallbackUrl && managedConfig.plugins) {
+      const plugins = managedConfig.plugins as Record<string, unknown>;
+      const entries = plugins.entries as Record<string, Record<string, unknown>>;
+      entries['audio-transcribe'] = {
+        enabled: true,
+        config: {
+          callbackUrl: audioTranscribeCallbackUrl,
+          secret: '${LOBSTER_MCP_BRIDGE_SECRET}',
+          requestTimeoutMs: 300000,
         },
       };
     }

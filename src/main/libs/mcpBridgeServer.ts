@@ -8,6 +8,7 @@ import crypto from 'crypto';
 import http from 'http';
 import net from 'net';
 
+import { executeAudioTranscribe } from '../audioTranscribe/audioTranscribeBridge';
 import {
   executeSecondBrainTool,
   fetchSecondBrainPrompt,
@@ -112,6 +113,10 @@ export class McpBridgeServer {
 
   get webSearchCallbackUrl(): string | null {
     return this._port ? `http://127.0.0.1:${this._port}/web-search/search` : null;
+  }
+
+  get audioTranscribeCallbackUrl(): string | null {
+    return this._port ? `http://127.0.0.1:${this._port}/audio-transcribe/tool` : null;
   }
 
   get browserCallbackUrl(): string | null {
@@ -286,6 +291,11 @@ export class McpBridgeServer {
 
     if (req.url?.startsWith('/web-search/search')) {
       await this.handleWebSearch(req, res);
+      return;
+    }
+
+    if (req.url?.startsWith('/audio-transcribe/tool')) {
+      await this.handleAudioTranscribe(req, res);
       return;
     }
 
@@ -524,6 +534,40 @@ export class McpBridgeServer {
       }
     }
   }
+
+  private async handleAudioTranscribe(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    const t0 = Date.now();
+    try {
+      const body = await this.readBody(req);
+      const payload = JSON.parse(body) as {
+        filePath?: string;
+        audioUrl?: string;
+        prompt?: string;
+        sessionKey?: string;
+        toolCallId?: string;
+      };
+      log('INFO', `Audio transcribe request received: filePath="${payload.filePath ?? ''}" audioUrl="${payload.audioUrl ?? ''}" toolCallId=${payload.toolCallId ?? ''}`);
+
+      const result = await executeAudioTranscribe({
+        filePath: typeof payload.filePath === 'string' ? payload.filePath : undefined,
+        audioUrl: typeof payload.audioUrl === 'string' ? payload.audioUrl : undefined,
+        prompt: typeof payload.prompt === 'string' ? payload.prompt : undefined,
+        sessionKey: typeof payload.sessionKey === 'string' ? payload.sessionKey : undefined,
+      });
+
+      log('INFO', `Audio transcribe completed in ${Date.now() - t0}ms, isError=${result.isError ?? false}`);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(result));
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      log('ERROR', `Audio transcribe request failed after ${Date.now() - t0}ms: ${errMsg}`);
+      if (!res.writableEnded) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ content: [{ type: 'text', text: `音频转写处理异常: ${errMsg}` }], isError: true }));
+      }
+    }
+  }
+
   private readBody(req: http.IncomingMessage): Promise<string> {
     return new Promise((resolve, reject) => {
       const chunks: Buffer[] = [];

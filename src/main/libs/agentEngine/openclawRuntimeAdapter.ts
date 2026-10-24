@@ -2373,6 +2373,7 @@ const buildMediaReferencePromptSection = (mediaReferences?: CoworkMediaAttachmen
     '[HeyClaw media reference mapping]',
     'The current user request contains explicit @ media tokens. Treat these mappings as authoritative and do not guess which uploaded attachment a token means.',
     'When calling heyclaw_image_generate, heyclaw_video_generate, or heyclaw_image_segment, pass mapped file paths or URLs as tool arguments. Do not pass @ media tokens as image, images, firstFrame, lastFrame, referenceImages, media.url, video, or videos values.',
+    'When calling heyclaw_audio_transcribe for audio attachments, pass mapped localPath or remoteUrl as filePath or audioUrl. Do not pass @ media tokens.',
     'For heyclaw_image_segment or heyclaw_image_generate, prefer image with the mapped path for one referenced image and images for multiple referenced images.',
   ];
 

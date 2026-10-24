@@ -115,6 +115,10 @@ export class McpRuntime {
     return this.bridgeServer?.webSearchCallbackUrl ?? null;
   }
 
+  getAudioTranscribeCallbackUrl(): string | null {
+    return this.bridgeServer?.audioTranscribeCallbackUrl ?? null;
+  }
+
   getBrowserCallbackUrl(): string | null {
     return this.bridgeServer?.browserCallbackUrl ?? null;
   }

@@ -85,3 +85,10 @@ export interface PrecheckResult {
   /** 云端查重已存在的 MD5 清单 */
   duplicateMd5s: string[];
 }
+
+/** 预签名上传通用响应结构（文档/音频等通用） */
+export interface UploadPresignResponse {
+  key: string;
+  upload_url: string;
+  tos_url: string;
+}
