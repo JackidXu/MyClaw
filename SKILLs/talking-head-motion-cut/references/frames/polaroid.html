@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+<!--
+  Frame: polaroid — 白照片框 + Caveat 手写说明 + 蓝色胶带（无倾斜）
+  ──────────────────────────────────────────────
+  何时用: 轻松/个人/温暖感；访谈、回忆、vlog 极佳；搭配 split/stack/pip；搭配 academic/whiteboard/editorial/xhs。
+  规则: overlay 全屏布局跳过（会和满屏视频打架）；竖屏 PiP 下偏挤，优先用 hairline。
+
+  ★ 本技能如何应用: 用一层包裹 div 把 #video-wrap 包进 polaroid 卡（卡自带底色+内边距，视频放内层区）。
+    视频区尺寸 = 外层 polaroid 尺寸；内层用 inset 抠出照片区。手写说明用 Caveat 字体（技能已自带）。
+
+  复制这段结构（绝对定位贴合视频区）:
+    <div class="frame-deco frame-deco--polaroid" style="left:200px;top:300px;width:680px;height:1240px;">
+      <div class="polaroid-card">
+        <div class="polaroid-photo"><div class="video-wrapper" id="video-wrap"><video ...></video></div></div>
+        <div class="polaroid-caption">speaker · 2026</div>
+      </div>
+      <div class="washi"></div>
+    </div>
+-->
+<head><meta charset="utf-8"><title>frame · polaroid (白框+胶带)</title>
+<style>html,body{margin:0;padding:0;background:#0a0c12;color:#fff;font-family:ui-sans-serif,system-ui,sans-serif}
+.stage{position:relative;width:1080px;height:1920px;transform-origin:top left;transform:scale(.42);background:#0a0c12;overflow:hidden}
+.frame-deco{position:absolute;left:200px;top:300px;width:680px;height:1240px}
+.polaroid-card{position:absolute;inset:34px;background:#fefefe;padding:20px 20px 90px;box-shadow:0 28px 60px -18px rgba(0,0,0,.55),0 4px 12px rgba(0,0,0,.12);box-sizing:border-box}
+.polaroid-photo{position:relative;width:100%;height:calc(100% - 70px);overflow:hidden;background:#000}
+.polaroid-photo .video-wrapper{position:absolute;inset:0;width:100%;height:100%;border-radius:0}
+.v-label{position:absolute;left:24px;top:24px;padding:8px 14px;border:1px solid rgba(255,255,255,.45);border-radius:3px;color:rgba(255,255,255,.7);font:600 26px/1 ui-monospace,monospace;letter-spacing:.14em}
+.polaroid-caption{position:absolute;bottom:26px;left:0;right:0;text-align:center;font:700 48px/1 "Caveat",ui-serif,cursive;color:#1d1c1a}
+.washi{position:absolute;top:16px;left:20%;width:180px;height:40px;background:rgba(180,210,235,.85);background-image:repeating-linear-gradient(90deg,transparent 0 6px,rgba(255,255,255,.3) 6px 7px);box-shadow:0 3px 8px rgba(0,0,0,.15)}
+.note{position:absolute;left:200px;bottom:120px;right:200px;text-align:center;color:rgba(255,255,255,.5);font:28px/1.4 ui-monospace,monospace;letter-spacing:.12em}</style>
+</head><body><div class="stage"><div class="frame-deco"><div class="polaroid-card"><div class="polaroid-photo"><span class="v-label">VIDEO</span></div><div class="polaroid-caption">speaker · 2026</div></div><div class="washi"></div></div>
+<div class="note">POLAROID — 白照片框 + Caveat 手写说明 + 蓝色胶带；直立不倾斜。</div></div></body></html>

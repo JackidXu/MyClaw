@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="zh-CN">
+<!--
+  ════════════════════════════════════════════════════════════════
+  composition-template.html — 口播动效剪辑 HTML composition 骨架
+  ════════════════════════════════════════════════════════════════
+  这是结构骨架，不是填空模板。照骨架搭 HTML，具体动效形式、
+  配色、字号（除字幕）、文案全部由你按 motion-thinking.md 选型
+  自己设计——不要套固定样式，每条视频按口播内容重新设计。
+
+  使用方式（4 步）：
+  1. 把本文件复制到工作目录 public/index.html
+  2. 把口播原片放到 public/input-video.mp4
+  3. 照骨架结构填你的内容（标题/字幕组/动效卡/总结卡）
+  4. 渲染：node render.js public -o output.mp4 --fps 30
+
+  ── 骨架规定的（验证过不出错的前提）──────────────────────
+  - 嵌套结构：#stage > .video-wrapper + .card-host > .card > .root
+  - GSAP timeline 机制（paused，存 window.__timelines[compId]）
+  - clip 可见性托管：用 tl.set(H(id),{visibility:"visible"/"hidden"})
+    在 data-start/data-duration 边界切换；动效进出只 tween opacity
+  - track-index 规则：字幕永远最大（10），保证盖在所有动效卡之上
+  - 三层布局分区：视频满屏 + 动效卡顶部约 25% + 字幕底部
+  - 4 种布局可混用：上下结构（竖屏）/ 左右结构（横屏）/ 画中画 / 信箱居中式（横屏源→竖屏成片）
+  - 信箱居中式：横屏源居中 object-fit:contain，上下黑边分别作动效区/字幕区，视频不裁切
+  - 字幕字号 56px（验证过合适，写死）；其他字号你按画幅自己定
+  - 主题色 CSS 变量层：换主题色只改 :root，全局生效
+
+  ── 骨架不规定的（你按 motion-thinking 自己设计）─────────
+  - 动效形式（角色卡/对比卡/累积线/时段轴/气泡/流程图…看内容选）
+  - 具体配色（用 :root 变量，可整套换主题色）
+  - 标题/动效卡内/总结卡的字号、间距、圆角
+  - GSAP 曲线参数、错峰间隔
+  - 具体文案、动效元素数量
+
+  ── track-index 分配规则 ──────────────────────────────────
+  视频=1，标题卡=2，动效卡=3-4，全屏总结卡=4，字幕 rail=10
+  字幕永远最大，全屏卡都不能盖住字幕。
+  ════════════════════════════════════════════════════════════════
+-->
+<head>
+  <meta charset="utf-8" />
+  <style>
+    /* ── 主题色变量层：换主题色只改这里，全局生效 ── */
+    :root {
+      --c-primary: #a78bfa;       /* 主色：步骤标签/重点字/CTA/圆点 */
+      --c-primary-soft: #c4b5fd;   /* 主色浅版：字幕关键词、次级高亮 */
+      --c-primary-deep: #7c6bff;   /* 主色深版：渐变末端 */
+      --c-accent: #fbbf24;        /* 强调色：数字、金色高亮 */
+      --c-text: #f5f3ff;          /* 默认浅文字 */
+      --c-text-dim: #e9d5ff;      /* 次级浅文字 */
+      --c-bg-deep: #0e0a24;       /* 深底 */
+      --c-bg-card: rgba(15,20,25,0.9); /* 动效卡底 */
+    }
+
+    /* ★ 视觉身份注入点：从 references/styles/<name>.html 顶部「:root 重映射」拷到这里，
+       覆盖上面默认主题色，全片配色即统一（每片只选 1 个风格）。详见 references/design-guide.md */
+
+    /* 字体：技能自带（assets/fonts/ → 复制到 public/fonts/ 后这里才能加载） */
+    @font-face { font-family: "LXGW WenKai TC"; src: url("fonts/LXGWWenKaiTC-400-latin.woff2") format("woff2"); font-display: block; }
+    @font-face { font-family: "Caveat";        src: url("fonts/Caveat-700-latin.woff2") format("woff2"); font-display: block; }
+    @font-face { font-family: "Inter";         src: url("fonts/Inter-400-latin.woff2") format("woff2"); font-display: block; }
+    @font-face { font-family: "Virgil";        src: url("fonts/Virgil.woff2") format("woff2"); font-display: block; }
+    /* 别名：动效卡/字幕默认用这两个名字，映射到上面的自带字体 */
+    @font-face { font-family: "BodyFont"; src: url("fonts/LXGWWenKaiTC-400-latin.woff2") format("woff2"); font-display: block; }
+    @font-face { font-family: "MonoFont"; src: url("fonts/Inter-700-latin.woff2") format("woff2"); font-display: block; }
+
+    * { box-sizing: border-box; }
+    html, body { margin:0; padding:0; width:100%; height:100%; overflow:hidden; background:#000;
+      font-family:"BodyFont",ui-sans-serif,system-ui,sans-serif; }
+    #stage { position:relative; width:100%; height:100%; overflow:hidden; }
+
+    /* 视频默认满屏——画中画模式时用 GSAP 把它缩成角落小窗（见文末画中画说明） */
+    .video-wrapper { position:absolute; left:0; top:0; width:1080px; height:1920px; overflow:hidden; }
+    .video-wrapper video { width:100%; height:100%; object-fit:cover; }
+    /* ── 信箱居中式（横屏源→竖屏成片）：视频不再满屏，居中 16:9 + object-fit:contain ──
+       .video-wrapper { position:absolute; left:0; top:656px; width:1080px; height:608px; overflow:hidden; }
+       .video-wrapper video { width:100%; height:100%; object-fit:contain; }
+       上方黑边(0–656)作动效区、下方黑边(1264–1920)作字幕区；详见 layout-zones.md 模式 4 */
+    /* 画中画小窗样式（画中画模式时给 #video-wrap 加 .pip-pill 类） */
+    .video-wrapper.pip-pill { border-radius:14px;
+      box-shadow:0 24px 60px -20px rgba(0,0,0,.45),0 0 0 4px rgba(255,255,255,.7),0 0 0 5px rgba(0,0,0,.18);
+      overflow:hidden; }
+
+    .card-host { position:absolute; pointer-events:none; overflow:hidden; }
+    .card-host .card { position:relative; width:100%; height:100%; overflow:hidden; }
+    /* 修复层级Bug：确保字幕轨（track-index=10）始终具有最高 z-index，防止全屏卡遮挡 */
+    .card-host[data-track-index="10"] { z-index:10; }
+
+    /* ── 字幕 rail（字号 56px 写死，其他你按画幅调）── */
+    /* 逐句分组、≤2 行、emphasis inline 标色、150-250ms fade */
+    .rail-root { width:100%; height:100%; display:flex; align-items:center; justify-content:center; padding:0 60px; }
+    .rail-pill { display:inline-block; padding:20px 40px; border-radius:18px;
+      background: rgba(0,0,0,0.62); backdrop-filter: blur(8px);
+      color:#fff; font:500 56px/1.45 "BodyFont",serif; text-align:center; max-width:94%; }
+    .hl-key { color:var(--c-primary-soft); font-weight:600; }   /* 关键词 */
+    .hl-num { color:var(--c-accent); font-weight:600; }         /* 数字 */
+  </style>
+</head>
+<body>
+  <!-- ★ data-duration 换成原片实际时长（秒）；data-width/height 换成画幅 -->
+  <!-- ★ data-fit-mode 视频适配模式："cover"（铺满裁剪，默认，用于9:16竖屏源）或 "contain"（信箱居中黑边，用于16:9横屏源转竖屏） -->
+  <div id="stage" data-composition-id="talking-head-motion-cut" data-start="0" data-duration="46.48" data-fps="30" data-width="1080" data-height="1920" data-fit-mode="cover">
+
+    <div class="video-wrapper" id="video-wrap">
+      <video id="bg-video" src="input-video.mp4" playsinline data-has-audio="true" data-start="0" data-duration="46.48" data-track-index="1"></video>
+    </div>
+
+    <!-- ════════ 视频标题卡（开头，track-index=2）═════════ -->
+    <!-- ★ 这是【标题卡】，是视频封面式标题，不是动效卡！ -->
+    <!-- ★ 区别：纯文字 + 顶部渐变遮罩，无圆角卡片容器、无 --c-bg-card 背景色块、无元素错峰动效 -->
+    <!-- ★ 标题文字必须是【单独提炼的短标题】，绝不能放口播第一句 / 钩子原文 -->
+    <!-- ★ 不要给 .ttl/.sub 套动效卡样式或做 scale-pop/逐字出场等动效，干净淡入淡出即可 -->
+    <!-- 字号上限：竖屏 1080 宽单行约 96px，超过裁边；横屏按画宽推算 -->
+    <div class="card-host clip" data-card-id="title" data-start="0.0" data-duration="4.5" data-track-index="2"
+      style="left:0;top:50px;width:1080px;height:340px;visibility:hidden;opacity:0;">
+      <div class="card" data-card-id="title">
+        <style>
+          /* ↓↓↓ 标题卡样式：封面式标题，刻意区别于动效卡（无圆角/无卡片背景）↓↓↓ */
+          .card[data-card-id="title"] .root { width:100%;height:100%;display:flex;flex-direction:column;
+            align-items:center;justify-content:center;gap:30px;
+            background: linear-gradient(180deg, var(--c-bg-deep) 0%, transparent 100%); }
+          .card[data-card-id="title"] .ttl { font:700 96px/1.15 "BodyFont",serif; color:var(--c-text); }
+          .card[data-card-id="title"] .sub { font:600 36px/1 "MonoFont",monospace; color:var(--c-primary-soft); }
+        </style>
+        <div class="root">
+          <!-- ↓↓↓ 换成你单独提炼的短标题（不要放口播第一句 / 钩子原文）↓↓↓ -->
+          <div class="ttl" id="t-title">视频标题</div>
+          <div class="sub" id="t-sub">副标题</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════════ 字幕 rail（逐句，track-index=10 最顶层）════════ -->
+    <!-- ★ track-index=10 保证字幕永远盖在所有动效卡之上 -->
+    <!-- 每组一句，emphasis 词用 .hl-key/.hl-num inline 标色 -->
+    <!-- data-start/duration 对应 transcript.json 时间码 -->
+    <div class="card-host clip" data-card-id="r1a" data-start="0.0" data-duration="2.5" data-track-index="10"
+      style="left:0;top:1300px;width:1080px;height:200px;visibility:hidden;opacity:0;">
+      <div class="card" data-card-id="r1a"><div class="rail-root"><div class="rail-pill">第一句字幕 <span class="hl-key">关键词</span></div></div></div>
+    </div>
+    <!-- ↓↓↓ 按你的段数继续加 r2a/r2b/.../rN，每组一句，时间码对齐 transcript ↓↓↓ -->
+
+    <!-- ════════ 动效卡（每段一个，按 motion-thinking 选型自己设计）════════ -->
+    <!-- ★ 卡内 4-8 个元素分层错峰出场（不是一次铺字） -->
+    <!-- ★ 卡内只放提取的重点信息，整句交给字幕 -->
+    <!-- ★ 区域越大内容越多（顶部 25% 约 4-8 元素，全屏更多） -->
+    <!-- ★ 这里只给空 root + 占位元素，具体动效形式你按内容选 -->
+    <div class="card-host clip" data-card-id="m1" data-start="5.4" data-duration="10.6" data-track-index="3"
+      style="left:40px;top:30px;width:1000px;height:460px;visibility:hidden;opacity:0;">
+      <div class="card" data-card-id="m1">
+        <style>
+          /* ↓↓↓ 按你的动效选型设计样式（配色用 :root 变量）↓↓↓ */
+          .card[data-card-id="m1"] .root { width:100%;height:100%;display:flex;flex-direction:column;
+            justify-content:center;gap:28px;padding:26px 44px;border-radius:22px;background:var(--c-bg-card); }
+        </style>
+        <div class="root">
+          <!-- ↓↓↓ 按你的动效选型填元素（角色卡/对比卡/累积线/时段轴/气泡/流程图…）↓↓↓ -->
+          <div id="m1-e1">元素 1</div>
+          <div id="m1-e2">元素 2</div>
+          <!-- ↑↑↑ ↑↑↑ -->
+        </div>
+      </div>
+    </div>
+    <!-- ↓↓↓ 按你的段数继续加 m2/m3/.../mN ↓↓↓ -->
+
+    <!-- ════════ 全屏总结卡（结尾，track-index=4 < 字幕 10，不盖字幕）════════ -->
+    <div class="card-host clip" data-card-id="finale" data-start="42.7" data-duration="3.78" data-track-index="4"
+      style="left:0;top:0;width:1080px;height:1920px;visibility:hidden;opacity:0;">
+      <div class="card" data-card-id="finale">
+        <style>
+          /* ↓↓↓ 按你的总结卡设计样式（配色用 :root 变量）↓↓↓ */
+          .card[data-card-id="finale"] .root { width:100%;height:100%;display:flex;flex-direction:column;
+            justify-content:center;gap:50px;padding:120px 80px;
+            background: linear-gradient(160deg, var(--c-bg-deep) 0%, #000 100%); color:var(--c-text); }
+        </style>
+        <div class="root">
+          <!-- ↓↓↓ 换成你的总结重点 + CTA ↓↓↓ -->
+          <div id="f-h">总结标题</div>
+          <div id="f-cta">CTA</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════════ 可选：视频边框 / 装饰元素 ══════════ -->
+    <!-- 边框：默认 clean（无装饰）。要加 hairline/polaroid，见 references/frames/，把 .frame-deco 作为 #video-wrap 的兄弟节点放进来。 -->
+    <!-- 装饰元素（表情/气泡/点赞）：来自所选风格本身（如 xhs 的 ❤️💬 行），或按需内联写进卡片，复用 var(--c-primary)；无独立点缀库。 -->
+    <script src="vendor/gsap.min.js"></script>
+    <script>
+      (function () {
+        const tl = window.gsap.timeline({ paused: true });
+        const Q = (id) => '.card[data-card-id="' + id + '"] ';   // 内部动画选择器 helper
+        const H = (id) => '.card-host[data-card-id="' + id + '"]';
+
+        // ── 动效卡公共进出（只用 opacity，可见性交给 data-start/data-duration）──
+        // ★ 不要 tween visibility/display/autoAlpha，会和可见性托管冲突导致黑屏
+        function motIn(id, s) { tl.set(H(id), { visibility: "visible" }, s);
+          tl.fromTo(H(id), { opacity: 0, y: -16 }, { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" }, s); }
+        function motOut(id, s, d) { tl.to(H(id), { opacity: 0, y: -16, duration: 0.25, ease: "power2.in" }, s + d - 0.25);
+          tl.set(H(id), { visibility: "hidden" }, s + d); }
+
+        // ── 标题卡（封面式标题：只做整体淡入淡出，不要做 scale-pop/逐字出场等动效）──
+        tl.set(H("title"), { visibility: "visible" }, 0);
+        tl.fromTo(H("title"), { opacity: 0, y: -20 }, { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }, 0);
+        tl.to(H("title"), { opacity: 0, y: -20, duration: 0.35, ease: "power2.in" }, 4.1);
+        tl.set(H("title"), { visibility: "hidden" }, 4.5);
+
+        // ── 字幕逐句（150-250ms fade，无 scale，emphasis inline 标色）──
+        // ★ 时间码 [id, start, duration] 从 transcript.json 取，每组一句
+        const rails = [
+          ["r1a", 0.0, 2.5]
+          // ↓↓↓ 按你的段数继续加 ↓↓↓
+        ];
+        rails.forEach(([id, s, d]) => {
+          tl.set(H(id), { visibility: "visible" }, s);
+          tl.fromTo(H(id), { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.22, ease: "power2.out" }, s);
+          tl.to(H(id), { opacity: 0, y: -8, duration: 0.2, ease: "power2.in" }, s + d - 0.2);
+          tl.set(H(id), { visibility: "hidden" }, s + d);
+        });
+
+        // ── 动效卡内元素错峰出场 ──
+        // ★ 每个元素在卡进场后 0.1-0.5s 依次出现，营造"讲到哪出现对应信息"
+        // ★ 元素要满足动效前提：kinetic-chars 包 span.char，count-up 标 from-to，draw-path 用 SVG path
+        // ★ 时间点落在口播讲到对应信息的时刻
+        motIn("m1", 5.4);
+        // tl.fromTo(Q("m1")+"#m1-e1", {opacity:0,scale:0.6}, {opacity:1,scale:1,duration:0.35,ease:"back.out(1.6)"}, 5.5);
+        // tl.fromTo(Q("m1")+"#m1-e2", {opacity:0,x:-30}, {opacity:1,x:0,duration:0.4,ease:"power2.out"}, 5.75);
+        motOut("m1", 5.4, 10.6);
+
+        // ── 全屏总结卡 ──
+        tl.set(H("finale"), { visibility: "visible" }, 42.7);
+        tl.fromTo(H("finale"), { opacity: 0 }, { opacity: 1, duration: 0.35, ease: "power2.out" }, 42.7);
+        // tl.fromTo(Q("finale")+"#f-h", {opacity:0,y:20}, {opacity:1,y:0,duration:0.5,ease:"power2.out"}, 42.85);
+        // tl.fromTo(Q("finale")+"#f-cta", {opacity:0,scale:0.8}, {opacity:1,scale:1,duration:0.45,ease:"back.out(1.6)"}, 44.1);
+
+        /*
+          ═══ 画中画模式（人物缩成角落圆角小窗）说明 ═══
+          当某段要切画中画（动效卡占满屏 + 人物缩角落），在那段的 motIn 时加：
+            tl.set('#video-wrap', { className:'+=pip-pill' }, START_SEC);
+            tl.to('#video-wrap',
+              { left:738, top:28, width:312, height:555, duration:0.6, ease:'power2.inOut' }, START_SEC);
+          （上面是竖屏 9:16 源在竖屏画布的右上角值；其他画幅见 layout-zones.md）
+          切回满屏人物时反向 tween + 去掉 pip-pill 类。
+        */
+
+        /*
+          ═══ 信箱居中式（横屏源→竖屏成片）说明 ═══
+          客户给横屏原片、要竖屏成片时，把 .video-wrapper 改成居中信箱（见上面 CSS 注释）：
+            left:0; top:656px; width:1080px; height:608px;  video { object-fit:contain }
+          上方黑边放动效卡（沿用 top:30 height:560 坐标），下方黑边放字幕 rail（top:1300）。
+          视频不裁切，黑边是设计区。其余动效/字幕写法与上下结构一致。
+        */
+
+        window.__timelines = window.__timelines || {};
+        window.__timelines["talking-head-motion-cut"] = tl;
+      })();
+    </script>
+  </div>
+</body>
+</html>

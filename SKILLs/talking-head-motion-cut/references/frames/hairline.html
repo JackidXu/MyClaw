@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-CN">
+<!--
+  Frame: hairline — 双描边 + 四角取景框刻度
+  ──────────────────────────────────────────────
+  何时用: 专业/电影感，且不抢戏；搭配 split/stack/pip 布局；搭配 academic/audit/swiss/terminal 风格。
+  规则: overlay 全屏布局跳过（会和满屏视频打架）。
+
+  ★ 本技能如何应用: 在 #video-wrap 之外加一个兄弟 div（不是子元素，避免影响视频播放/声音），
+     用绝对定位盖在视频区上方。accent 色用当前风格的 --c-primary，保证和卡片统一。
+     布局中途切换时，用 GSAP 一起移动 .frame-deco：
+       tl.to('#video-wrap, .frame-deco', {left:,top:,width:,height:}, T);
+     或过渡前把 deco 淡出。
+
+  复制这段（调 left/top/width/height 贴合视频区）:
+-->
+<head><meta charset="utf-8"><title>frame · hairline (双描边+四角刻度)</title>
+<style>html,body{margin:0;padding:0;background:#0a0c12;color:#fff;font-family:ui-sans-serif,system-ui,sans-serif}
+.stage{position:relative;width:1080px;height:1920px;transform-origin:top left;transform:scale(.42);background:#0a0c12;overflow:hidden}
+.video-wrap{position:absolute;left:160px;top:280px;width:760px;height:1356px;background:#1a1f2e;background-image:repeating-linear-gradient(45deg,transparent 0 12px,rgba(255,255,255,.05) 12px 13px)}
+.v-label{position:absolute;left:24px;top:24px;padding:8px 14px;border:1px solid rgba(255,255,255,.45);border-radius:3px;color:rgba(255,255,255,.7);font:600 26px/1 ui-monospace,monospace;letter-spacing:.14em}
+.frame-deco{position:absolute;left:160px;top:280px;width:760px;height:1356px;pointer-events:none;z-index:3;--frame-accent:#2557a7;
+  box-shadow:inset 0 0 0 3px var(--frame-accent),inset 0 0 0 9px color-mix(in srgb,var(--frame-accent) 13%,transparent),0 0 0 1px rgba(0,0,0,.1)}
+.tick{position:absolute;width:40px;height:40px}
+.tick.tl{top:-4px;left:-4px;border-top:6px solid var(--frame-accent);border-left:6px solid var(--frame-accent)}
+.tick.tr{top:-4px;right:-4px;border-top:6px solid var(--frame-accent);border-right:6px solid var(--frame-accent)}
+.tick.bl{bottom:-4px;left:-4px;border-bottom:6px solid var(--frame-accent);border-left:6px solid var(--frame-accent)}
+.tick.br{bottom:-4px;right:-4px;border-bottom:6px solid var(--frame-accent);border-right:6px solid var(--frame-accent)}
+.note{position:absolute;left:160px;bottom:120px;right:160px;text-align:center;color:rgba(255,255,255,.5);font:28px/1.4 ui-monospace,monospace;letter-spacing:.12em}</style>
+</head><body><div class="stage"><div class="video-wrap"><span class="v-label">VIDEO</span></div>
+<div class="frame-deco"><span class="tick tl"></span><span class="tick tr"></span><span class="tick bl"></span><span class="tick br"></span></div>
+<div class="note">HAIRLINE — 双描边(3px 内线 + 9px 柔halo) + 四角取景框刻度；accent 取当前风格主色。</div></div></body></html>

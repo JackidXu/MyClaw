@@ -89,4 +89,5 @@ export const BUNDLED_SKILL_DISPLAY_NAMES: Record<string, LocalizedText> = {
   'motion-video': { zh: '动效视频制作', en: 'Motion Video' },
   'video-maker': { zh: '视频制作', en: 'Video Maker' },
   'image-design': { zh: '图片设计', en: 'Image Design' },
+  'talking-head-motion-cut': { zh: '口播动效剪辑', en: 'Talking Head Motion Cut' },
 };

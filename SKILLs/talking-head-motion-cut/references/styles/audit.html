@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-CN">
+<!--
+  Style: audit — 牛皮纸 · 两端对齐衬线 · APPROVED 印章 · 砖红+藏青
+  ──────────────────────────────────────────────
+  强调色: #8b1d1d (砖红, 印章/标题) / #1c3a6b (藏青, 脚注)
+  建议字体: 衬线 ui-serif,"Songti SC",serif
+  最佳搭配: layout=split/stack · frame=hairline/clean
+  内容: 财报分析 / 调查报告 / 数据稽核 / 严肃陈述
+
+  ★ 应用方式同 academic（A 换肤 / B 签名卡）。印章用 rotate(-12deg) 斜盖，体现代签感。
+
+  :root 重映射（快速换肤用）:
+    :root{
+      --c-primary:#8b1d1d; --c-primary-soft:#c0564c; --c-primary-deep:#5e1313;
+      --c-accent:#1c3a6b; --c-text:#1d1a14; --c-text-dim:#6b5e44;
+      --c-bg-deep:#ebd9b4; --c-bg-card:rgba(235,217,180,0.94);
+    }
+-->
+<head><meta charset="utf-8"><title>style · audit</title>
+<style>html,body{margin:0;padding:0;background:#0a0c12;font-family:ui-sans-serif,system-ui,sans-serif}
+.stage{position:relative;width:1080px;height:1920px;transform-origin:top left;transform:scale(.42);overflow:hidden}
+.card-host{position:absolute;left:0;top:0;width:1080px;height:1920px}</style>
+</head><body><div class="stage"><div class="card-host"><div class="card" data-card-id="ref-audit">
+<style>
+  .card[data-card-id="ref-audit"] .root{
+    --bg:#ebd9b4; --ink:#1d1a14; --muted:#6b5e44; --accent:#8b1d1d; --accent2:#1c3a6b;
+    --font-head:ui-serif,"Songti SC","Times New Roman",serif;
+    --font-body:ui-serif,"Songti SC",serif;
+    --font-mono:ui-monospace,"SF Mono",Menlo,monospace;
+    width:100%;height:100%;position:relative;overflow:hidden;
+    background-color:var(--bg);
+    background-image:
+      repeating-linear-gradient(0deg,rgba(0,0,0,.02) 0 1px,transparent 1px 28px),
+      radial-gradient(120% 80% at 20% 0%,rgba(255,250,235,.45) 0%,transparent 60%);
+    padding:80px 96px 88px;box-sizing:border-box;display:flex;flex-direction:column;gap:26px;
+    color:var(--ink);font-family:var(--font-body);
+  }
+  .card[data-card-id="ref-audit"] .head{display:flex;justify-content:space-between;align-items:baseline;border-bottom:2px solid var(--ink);padding-bottom:14px}
+  .card[data-card-id="ref-audit"] .kicker{font:700 22px/1 var(--font-mono);letter-spacing:.3em;text-transform:uppercase;color:var(--ink)}
+  .card[data-card-id="ref-audit"] .ref{font:20px/1 var(--font-mono);color:var(--muted);letter-spacing:.14em}
+  .card[data-card-id="ref-audit"] .title{margin:0;font:700 112px/1.1 var(--font-head);color:var(--ink);letter-spacing:.005em}
+  .card[data-card-id="ref-audit"] .title .accent{color:var(--accent)}
+  .card[data-card-id="ref-audit"] .body{margin:0;font:40px/1.55 var(--font-body);color:var(--ink);text-align:justify;column-count:2;column-gap:48px;max-width:100%}
+  .card[data-card-id="ref-audit"] .body .sup{color:var(--accent2);font-weight:700}
+  .card[data-card-id="ref-audit"] .foot{border-top:1px solid var(--muted);padding-top:14px;font:italic 22px/1.4 var(--font-body);color:var(--muted)}
+  .card[data-card-id="ref-audit"] .stamp{position:absolute;right:96px;top:200px;padding:18px 32px;border:4px solid var(--accent);color:var(--accent);font:800 54px/1 var(--font-head);letter-spacing:.14em;transform:rotate(-12deg);opacity:.9;box-shadow:0 0 0 1px var(--accent) inset}
+</style>
+<div class="root">
+  <div class="head"><span class="kicker">EXHIBIT · TAKEAWAY</span><span class="ref">REF / VT-2026-014</span></div>
+  <span class="stamp">APPROVED</span>
+  <h2 class="title">第三季度<span class="accent">现金流</span>由负转正</h2>
+  <p class="body">经营性现金流首次为正<span class="sup">①</span>，主要由订阅业务驱动。自由现金流由 -2.1 亿改善至 +0.8 亿，按当前轨迹推算<span class="sup">②</span>，全年有望实现正向 1.5–2.0 亿。与此同时，应收账款周转天数从 64 天压缩至 51 天，回款效率创近两年新高。</p>
+  <div class="foot">① 含一次性税务返还 0.3 亿；② 假设 Q4 续约率不低于 91%。</div>
+</div>
+</div></div></div></body></html>

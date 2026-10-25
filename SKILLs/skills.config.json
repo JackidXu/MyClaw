@@ -305,6 +305,10 @@
     "image-design": {
       "order": 10180,
       "enabled": true
+    },
+    "talking-head-motion-cut": {
+      "order": 10190,
+      "enabled": true
     }
   }
 }

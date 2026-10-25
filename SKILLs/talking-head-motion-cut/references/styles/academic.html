@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-CN">
+<!--
+  Style: academic — 暖纸 · 衬线 · 蓝色高亮 · 珊瑚色批注
+  ──────────────────────────────────────────────
+  强调色: #2557a7 (蓝, 主) / #c14d2c (珊瑚, 批注)
+  建议字体: 衬线 ui-serif,"Songti SC",serif
+  最佳搭配: layout=split/stack/pip · frame=clean/hairline
+  内容: 访谈反思 / 学术总结 / 长视频拆解
+
+  ★ 应用方式（二选一）:
+  (A) 快速换肤: 把下方「:root 重映射」拷进 composition 顶部 <style>，覆盖默认主题色，所有默认动效卡自动用这套配色。
+  (B) 完整签名卡: 把下方 .card[data-card-id="ref-academic"] 整段（含 <style> 与 .root）粘到某张动效卡位置，作为该段「学术签名卡」。
+  入场: card-host 整体 opacity 淡入即可；如需卡内错峰，在 composition <script> 用 Q("ref-academic")+"#id" 加 fromTo。
+
+  :root 重映射（快速换肤用，拷进 composition 顶部 <style>）:
+    :root{
+      --c-primary:#2557a7; --c-primary-soft:#5b8fd6; --c-primary-deep:#1a3f7a;
+      --c-accent:#c14d2c; --c-text:#1a1d2b; --c-text-dim:#5b5749;
+      --c-bg-deep:#f1ead8; --c-bg-card:rgba(241,234,216,0.94);
+    }
+-->
+<head><meta charset="utf-8"><title>style · academic</title>
+<style>html,body{margin:0;padding:0;background:#0a0c12;font-family:ui-sans-serif,system-ui,sans-serif}
+.stage{position:relative;width:1080px;height:1920px;transform-origin:top left;transform:scale(.42);overflow:hidden}
+.card-host{position:absolute;left:0;top:0;width:1080px;height:1920px}</style>
+</head><body><div class="stage"><div class="card-host"><div class="card" data-card-id="ref-academic">
+<style>
+  .card[data-card-id="ref-academic"] .root{
+    --bg:#f1ead8; --ink:#1a1d2b; --muted:#5b5749; --accent:#2557a7; --accent2:#c14d2c;
+    --font-head:ui-serif,"Songti SC","Times New Roman",serif;
+    --font-body:ui-serif,"Songti SC",serif;
+    --font-mono:ui-monospace,"SF Mono",Menlo,monospace;
+    width:100%;height:100%;position:relative;overflow:hidden;
+    background-color:var(--bg);
+    background-image:
+      linear-gradient(rgba(91,87,73,.18) 1px,transparent 1px),
+      linear-gradient(90deg,rgba(91,87,73,.18) 1px,transparent 1px),
+      radial-gradient(120% 80% at 50% 0%,#fff8e9 0%,transparent 60%);
+    background-size:28px 28px,28px 28px,100% 100%;
+    padding:64px 80px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;gap:36px;
+    color:var(--ink);font-family:var(--font-body);
+  }
+  .card[data-card-id="ref-academic"] .meta{display:flex;align-items:baseline;gap:20px}
+  .card[data-card-id="ref-academic"] .kicker{padding:10px 20px;background:var(--accent);color:#fff;font:700 24px/1 var(--font-mono);letter-spacing:.16em}
+  .card[data-card-id="ref-academic"] .time{font:22px/1 var(--font-mono);color:var(--muted);letter-spacing:.1em}
+  .card[data-card-id="ref-academic"] .title{margin:0;font:700 132px/1.05 var(--font-head);color:var(--ink);letter-spacing:.01em;
+    background:linear-gradient(transparent 62%,rgba(37,87,167,.2) 62%,rgba(37,87,167,.2) 92%,transparent 92%);
+    -webkit-box-decoration-break:clone;box-decoration-break:clone;padding:0 12px}
+  .card[data-card-id="ref-academic"] .detail{margin:0;font:44px/1.5 var(--font-body);color:var(--muted);max-width:94%}
+  .card[data-card-id="ref-academic"] .hl{background:linear-gradient(transparent 60%,rgba(37,87,167,.25) 60%);padding:0 6px}
+  .card[data-card-id="ref-academic"] .quote{align-self:flex-start;padding:14px 26px;border:1.5px dashed var(--accent2);color:var(--accent2);font:italic 600 36px/1 var(--font-head);transform:rotate(-1deg)}
+</style>
+<div class="root">
+  <div class="meta"><span class="kicker">TAKEAWAY</span><span class="time">00:18 → 00:46</span></div>
+  <h2 class="title">少即是多</h2>
+  <p class="detail">复杂的解释往往是<span class="hl">未经压缩的思考</span>。当你能用最少的词说清最重要的点，你也就真正想明白了这件事。</p>
+  <div class="quote">"Compression is comprehension."</div>
+</div>
+</div></div></div></body></html>

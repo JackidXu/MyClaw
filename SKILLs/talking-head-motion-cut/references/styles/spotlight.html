@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN">
+<!--
+  Style: spotlight — 深紫渐变 · 紫罗兰辉光 · 戏剧感
+  ──────────────────────────────────────────────
+  强调色: #a78bfa (紫罗兰辉光) / #7c6bff (深紫外辉)
+  建议字体: 衬线 ui-serif（戏剧感）/ ui-sans-serif
+  最佳搭配: layout=overlay/pip · frame=clean（跳过 hairline/polaroid，会糊掉辉光）
+  内容: 情绪故事 / 旁白 / 角色弧线 / 黑暗时刻
+
+  ★ 应用方式同 academic（A 换肤 / B 签名卡）。辉光径向渐变是标志，kicker 用发光圆点。
+
+  :root 重映射（快速换肤用）:
+    :root{
+      --c-primary:#a78bfa; --c-primary-soft:#c9b8ff; --c-primary-deep:#7c6bff;
+      --c-accent:#a78bfa; --c-text:#f5f3ff; --c-text-dim:#b6b4d0;
+      --c-bg-deep:#0e0a24; --c-bg-card:rgba(14,10,36,0.9);
+    }
+-->
+<head><meta charset="utf-8"><title>style · spotlight</title>
+<style>html,body{margin:0;padding:0;background:#0a0c12;font-family:ui-sans-serif,system-ui,sans-serif}
+.stage{position:relative;width:1080px;height:1920px;transform-origin:top left;transform:scale(.42);overflow:hidden}
+.card-host{position:absolute;left:0;top:0;width:1080px;height:1920px}</style>
+</head><body><div class="stage"><div class="card-host"><div class="card" data-card-id="ref-spotlight">
+<style>
+  .card[data-card-id="ref-spotlight"] .root{
+    --ink:#f5f3ff; --muted:#b6b4d0; --accent:#a78bfa; --accent2:#7c6bff;
+    --font-head:ui-serif,"Songti SC",serif;
+    --font-body:ui-sans-serif,system-ui,sans-serif;
+    --font-mono:ui-monospace,monospace;
+    width:100%;height:100%;position:relative;overflow:hidden;color:var(--ink);font-family:var(--font-body);
+    background:
+      radial-gradient(70% 55% at 28% 30%,rgba(167,139,250,.35) 0%,transparent 55%),
+      radial-gradient(80% 70% at 80% 80%,rgba(124,107,255,.22) 0%,transparent 60%),
+      linear-gradient(160deg,#1b1648 0%,#0e0a24 100%);
+    padding:88px 100px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;gap:34px;
+  }
+  .card[data-card-id="ref-spotlight"] .meta{display:flex;align-items:center;gap:20px}
+  .card[data-card-id="ref-spotlight"] .kicker-dot{width:16px;height:16px;border-radius:50%;background:var(--accent);box-shadow:0 0 26px var(--accent),0 0 6px var(--accent)}
+  .card[data-card-id="ref-spotlight"] .kicker{font:600 26px/1 var(--font-mono);letter-spacing:.26em;color:var(--accent)}
+  .card[data-card-id="ref-spotlight"] .title{margin:0;font:800 170px/1.05 var(--font-head);color:var(--ink);letter-spacing:-.005em;text-shadow:0 4px 80px rgba(167,139,250,.45)}
+  .card[data-card-id="ref-spotlight"] .hl{color:var(--accent);text-shadow:0 0 34px rgba(167,139,250,.7)}
+  .card[data-card-id="ref-spotlight"] .detail{margin:0;font:44px/1.55 var(--font-body);color:var(--muted);max-width:88%}
+</style>
+<div class="root">
+  <div class="meta"><span class="kicker-dot"></span><span class="kicker">TAKEAWAY</span></div>
+  <h2 class="title">在最暗的房间里，<span class="hl">一道光</span>就够了。</h2>
+  <p class="detail">所有伟大决定都是在不确定的时候做出的。怕的不是黑，是不敢点亮那一根火柴。</p>
+</div>
+</div></div></div></body></html>

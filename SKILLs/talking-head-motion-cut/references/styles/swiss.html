@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-CN">
+<!--
+  Style: swiss — 纯白 · Helvetica · 严整双线 · 信号红块
+  ──────────────────────────────────────────────
+  强调色: #e8190f (信号红, slab+序号)
+  建议字体: Helvetica/Inter/ui-sans-serif
+  最佳搭配: layout=split/stack/overlay · frame=clean/hairline
+  内容: 严肃陈述 / 排版主导 / 文化机构 / 极简数据
+
+  ★ 应用方式同 academic（A 换肤 / B 签名卡）。网格 + 上下双线是标志，右侧红 slab 放关键数字。
+
+  :root 重映射（快速换肤用）:
+    :root{
+      --c-primary:#e8190f; --c-primary-soft:#f06a5f; --c-primary-deep:#b01209;
+      --c-accent:#e8190f; --c-text:#111111; --c-text-dim:#555555;
+      --c-bg-deep:#ffffff; --c-bg-card:rgba(255,255,255,0.96);
+    }
+-->
+<head><meta charset="utf-8"><title>style · swiss</title>
+<style>html,body{margin:0;padding:0;background:#0a0c12;font-family:ui-sans-serif,system-ui,sans-serif}
+.stage{position:relative;width:1080px;height:1920px;transform-origin:top left;transform:scale(.42);overflow:hidden}
+.card-host{position:absolute;left:0;top:0;width:1080px;height:1920px}</style>
+</head><body><div class="stage"><div class="card-host"><div class="card" data-card-id="ref-swiss">
+<style>
+  .card[data-card-id="ref-swiss"] .root{
+    --bg:#ffffff; --ink:#111111; --muted:#555555; --accent:#e8190f;
+    --font-sans:"Helvetica Neue",Helvetica,"Inter",ui-sans-serif,system-ui,sans-serif;
+    --font-mono:ui-monospace,"SF Mono",Menlo,monospace;
+    width:100%;height:100%;position:relative;overflow:hidden;background:var(--bg);color:var(--ink);font-family:var(--font-sans);
+    padding:88px 104px;box-sizing:border-box;display:grid;grid-template-rows:auto 1fr auto;gap:36px;
+  }
+  .card[data-card-id="ref-swiss"] .top-rule{height:6px;background:var(--ink)}
+  .card[data-card-id="ref-swiss"] .top-meta{display:flex;justify-content:space-between;align-items:baseline;padding-top:18px;font:700 22px/1 var(--font-mono);letter-spacing:.26em;text-transform:uppercase}
+  .card[data-card-id="ref-swiss"] .top-meta .num{color:var(--accent)}
+  .card[data-card-id="ref-swiss"] .body{display:grid;grid-template-columns:1fr 460px;gap:80px;align-items:end}
+  .card[data-card-id="ref-swiss"] .title{margin:0;font:700 180px/.95 var(--font-sans);color:var(--ink);letter-spacing:-.025em}
+  .card[data-card-id="ref-swiss"] .title .red{color:var(--accent)}
+  .card[data-card-id="ref-swiss"] .detail{margin:0;font:400 40px/1.45 var(--font-sans);color:var(--muted)}
+  .card[data-card-id="ref-swiss"] .slab{background:var(--accent);color:#fff;padding:36px 40px;font:700 96px/1 var(--font-sans);letter-spacing:-.02em;align-self:end}
+  .card[data-card-id="ref-swiss"] .slab small{display:block;font:600 22px/1 var(--font-mono);letter-spacing:.18em;margin-top:10px;color:rgba(255,255,255,.85)}
+  .card[data-card-id="ref-swiss"] .bottom-rule{height:1px;background:var(--ink)}
+  .card[data-card-id="ref-swiss"] .bottom-meta{display:flex;justify-content:space-between;align-items:baseline;padding-top:18px;font:600 20px/1 var(--font-mono);letter-spacing:.22em;color:var(--muted)}
+</style>
+<div class="root">
+  <div>
+    <div class="top-rule"></div>
+    <div class="top-meta"><span>V—TAKE / TAKEAWAY</span><span class="num">№ 09</span></div>
+  </div>
+  <div class="body">
+    <h2 class="title"><span class="red">设计</span>不是装饰，<br/>而是结构。</h2>
+    <div class="slab">92<small>STRUCTURE INDEX</small></div>
+  </div>
+  <div>
+    <div class="bottom-rule"></div>
+    <div class="bottom-meta"><span>RATIO 1 : 1.618</span><span>00:42 → 01:14</span></div>
+  </div>
+</div>
+</div></div></div></body></html>

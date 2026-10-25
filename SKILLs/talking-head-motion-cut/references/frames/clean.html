@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="zh-CN">
+<!--
+  Frame: clean — 无装饰，原片直接呈现
+  ──────────────────────────────────────────────
+  何时用: 默认、最安全；搭配任意布局与任意风格。
+  规则: overlay 全屏布局下必须用 clean（装饰边框会和满屏视频打架）。
+
+  ★ 本技能如何应用: 不需要额外 HTML。保持 #video-wrap 原样即可。
+    .video-wrapper { border-radius:0; box-shadow:none; }
+  画中画(PiP) 时 .video-wrapper.pip-pill 自带 14px 圆角+柔影，那是布局级处理，不算 frame。
+-->
+<head><meta charset="utf-8"><title>frame · clean (无装饰)</title>
+<style>html,body{margin:0;padding:0;background:#0a0c12;color:#fff;font-family:ui-sans-serif,system-ui,sans-serif}
+.stage{position:relative;width:1080px;height:1920px;transform-origin:top left;transform:scale(.42);background:#0a0c12;overflow:hidden}
+.video-wrap{position:absolute;left:160px;top:280px;width:760px;height:1356px;background:#1a1f2e;background-image:repeating-linear-gradient(45deg,transparent 0 12px,rgba(255,255,255,.05) 12px 13px)}
+.v-label{position:absolute;left:24px;top:24px;padding:8px 14px;border:1px solid rgba(255,255,255,.45);border-radius:3px;color:rgba(255,255,255,.7);font:600 26px/1 ui-monospace,monospace;letter-spacing:.14em}
+.note{position:absolute;left:160px;bottom:120px;right:160px;text-align:center;color:rgba(255,255,255,.5);font:28px/1.4 ui-monospace,monospace;letter-spacing:.12em}</style>
+</head><body><div class="stage"><div class="video-wrap"><span class="v-label">VIDEO · no chrome</span></div>
+<div class="note">CLEAN — 让视频自己说话，不加任何边框装饰。</div></div></body></html>
