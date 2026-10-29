@@ -135,7 +135,10 @@ for (const platformName of ['mac', 'win', 'linux']) {
   mergeExtraResources(platformName);
 }
 
-configureMacWebAuthnEntitlements(config, process.env.APPLE_TEAM_ID);
+// WebAuthn Passkey (keychain-access-groups) requires a specialized Apple Developer ID Provisioning Profile.
+// Without an embedded provisioning profile, AMFI kills the app immediately on launch with SIGKILL (Code=-413).
+// Keep standard hardened runtime entitlements without restricted keychain groups.
+// configureMacWebAuthnEntitlements(config, process.env.APPLE_TEAM_ID);
 
 // Sign every Windows binary electron-builder produces (LobsterAI.exe, the
 // uninstaller, the installer) through the internal Youdao signing service,
