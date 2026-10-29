@@ -721,8 +721,8 @@ async function beforePack(context) {
   if (isWindowsTarget(context)) {
     console.log('[electron-builder-hooks] Windows target detected, ensuring portable Python runtime is prepared...');
     await ensurePortablePythonRuntime({ required: true });
-    const runtimeRoot = path.join(__dirname, '..', 'resources', 'python-win');
-    const runtimeHealth = checkRuntimeHealth(runtimeRoot, { requirePip: true });
+    const pythonRuntimeRoot = path.join(__dirname, '..', 'resources', 'python-win');
+    const runtimeHealth = checkRuntimeHealth(pythonRuntimeRoot, { requirePip: true });
     if (!runtimeHealth.ok) {
       throw new Error(
         'Portable Python runtime health check failed before pack. Missing files: '

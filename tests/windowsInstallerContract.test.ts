@@ -1148,14 +1148,14 @@ describe('Windows installer hardening contracts', () => {
     for (const variant of ['MOVE_EN', 'MOVE_ZH']) {
       const text = dialogText(variant);
       expect(text).toContain('$INSTDIR\\resources\\SKILLs');
-      expect(text).toContain('%APPDATA%\\LobsterAI\\SKILLs');
+      expect(text).toContain('%APPDATA%\\HeyClaw\\SKILLs');
       expect(text).toContain('$lobsterLegacySkillNames');
       expect(text).toContain('$lobsterLegacySkillsStatus');
     }
     for (const variant of ['RETRY_EN', 'RETRY_ZH']) {
       const text = dialogText(variant);
       expect(text).not.toContain('$lobsterLegacySkillNames');
-      expect(text).toContain('$APPDATA\\LobsterAI\\install-timing.log');
+      expect(text).toContain('$APPDATA\\HeyClaw\\install-timing.log');
       expect(text).toContain('$lobsterLegacySkillsStatus');
     }
   });

@@ -1469,13 +1469,116 @@ FunctionEnd
       Goto SkillBackupResultLog
 
     SkillBackupSourceReady:
-      ; HeyClaw user skills reside strictly in %APPDATA%\HeyClaw\SKILLs (userData).
-      ; The installation directory ($INSTDIR\resources\SKILLs) contains only bundled
-      ; app resources, so there are no legacy user skills to back up.
-      ; Bypass external PowerShell inspection and copying to eliminate antivirus locks and update failures.
-      StrCpy $lobsterLegacySkillsStatus "legacy-no-user-skills"
-      StrCpy $R2 "${LOBSTER_SKILL_BACKUP_EXIT_NO_USER_SKILLS}"
-      Goto SkillBackupResultLog
+    DetailPrint "[Installer] Backing up user-created skills"
+    ClearErrors
+    FileOpen $R0 "$APPDATA\HeyClaw\skill-migrate.log" w
+    IfErrors BackupLogOpenFailed
+      !insertmacro GetTimestamp $8
+      FileWrite $R0 "$8 phase=backup-start attempt_id=$lobsterInstallerAttemptId instdir=$INSTDIR appdata=$APPDATA$\r$\n"
+      Goto BackupDoExec
+    BackupLogOpenFailed:
+      StrCpy $R0 ""
+    BackupDoExec:
+
+    ReadRegStr $4 SHELL_CONTEXT "${UNINSTALL_REGISTRY_KEY}" DisplayVersion
+    System::Call 'Kernel32::SetEnvironmentVariable(t "LOBSTERAI_SKILL_SOURCE", t "$INSTDIR\resources\SKILLs")i'
+    System::Call 'Kernel32::SetEnvironmentVariable(t "LOBSTERAI_SKILL_BACKUP_ROOT", t "$APPDATA\HeyClaw\skills-backup")i'
+    System::Call 'Kernel32::SetEnvironmentVariable(t "LOBSTERAI_INSTALL_ATTEMPT_ID", t "$lobsterInstallerAttemptId")i'
+    System::Call 'Kernel32::SetEnvironmentVariable(t "LOBSTERAI_OLD_VERSION", t "$4")i'
+    InitPluginsDir
+    System::Call 'Kernel32::SetEnvironmentVariable(t "LOBSTERAI_SKILL_NAMES_FILE", t "$PLUGINSDIR\${LOBSTER_LEGACY_SKILL_NAMES_FILE}")i'
+    Push '"$lobsterTrustedPowerShellPath" -NoProfile -NonInteractive -Command "\
+      $$ErrorActionPreference = \"Stop\";\
+      $$src       = $$env:LOBSTERAI_SKILL_SOURCE;\
+      $$root      = $$env:LOBSTERAI_SKILL_BACKUP_ROOT;\
+      $$attempt   = $$env:LOBSTERAI_INSTALL_ATTEMPT_ID;\
+      $$oldVer    = $$env:LOBSTERAI_OLD_VERSION;\
+      $$backup    = Join-Path $$root $$attempt;\
+      $$staging   = $$backup + \".new\";\
+      $$manifest  = Join-Path $$staging \"backup-manifest.json\";\
+      $$config    = Join-Path $$src \"skills.config.json\";\
+      $$phase   = \"inspect\";\
+      try {\
+        if ([string]::IsNullOrWhiteSpace($$attempt)) { throw \"attempt id missing\" };\
+        if (-not (Test-Path -LiteralPath $$src -PathType Container)) { throw \"legacy source disappeared\" };\
+        $$bundled = @(try {\
+          if (Test-Path -LiteralPath $$config -PathType Leaf) {\
+            (Get-Content -LiteralPath $$config -Raw | ConvertFrom-Json).defaults.PSObject.Properties.Name\
+          }\
+        } catch { });\
+        $$userSkills = @(Get-ChildItem -LiteralPath $$src -Directory -ErrorAction Stop | Where-Object { $$bundled -notcontains $$_.Name });\
+        if ($$userSkills.Count -eq 0) { Write-Output \"legacy-no-user-skills\"; exit ${LOBSTER_SKILL_BACKUP_EXIT_NO_USER_SKILLS} };\
+        try { [IO.File]::WriteAllText($$env:LOBSTERAI_SKILL_NAMES_FILE, (@($$userSkills.Name | Sort-Object) -join \", \"), (New-Object -TypeName Text.UnicodeEncoding -ArgumentList $$false, $$false)) } catch { };\
+        $$phase = \"backup-copy\";\
+        if (Test-Path -LiteralPath $$staging) { Remove-Item -LiteralPath $$staging -Recurse -Force -ErrorAction Stop };\
+        if (Test-Path -LiteralPath $$backup) { throw \"attempt backup already exists\" };\
+        New-Item -ItemType Directory -Path $$staging -Force -ErrorAction Stop | Out-Null;\
+        $$userSkills | ForEach-Object {\
+          Copy-Item -LiteralPath $$_.FullName -Destination (Join-Path $$staging $$_.Name) -Recurse -Force -ErrorAction Stop\
+        };\
+        Set-Content -LiteralPath (Join-Path $$staging \".attempt-id\") -Value $$attempt -NoNewline -ErrorAction Stop;\
+        $$directories = @(Get-ChildItem -LiteralPath $$staging -Directory -Recurse -Force -ErrorAction Stop | Sort-Object FullName | ForEach-Object {\
+          $$_.FullName.Substring($$staging.Length).TrimStart([IO.Path]::DirectorySeparatorChar).Replace([IO.Path]::DirectorySeparatorChar, [char]47)\
+        });\
+        $$files = @(Get-ChildItem -LiteralPath $$staging -File -Recurse -Force -ErrorAction Stop | Where-Object { $$_.Name -ne \"backup-manifest.json\" } | Sort-Object FullName | ForEach-Object {\
+          [PSCustomObject][ordered]@{\
+            path = $$_.FullName.Substring($$staging.Length).TrimStart([IO.Path]::DirectorySeparatorChar).Replace([IO.Path]::DirectorySeparatorChar, [char]47);\
+            length = $$_.Length;\
+            sha256 = (Get-FileHash -LiteralPath $$_.FullName -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant()\
+          }\
+        });\
+        $$payload = [ordered]@{\
+          schemaVersion = 1;\
+          attemptId = $$attempt;\
+          source = $$src;\
+          oldVersion = $$oldVer;\
+          createdAt = (Get-Date).ToUniversalTime().ToString(\"o\");\
+          skills = @($$userSkills.Name | Sort-Object);\
+          directories = $$directories;\
+          files = $$files;\
+          statistics = [ordered]@{\
+            skillCount = $$userSkills.Count;\
+            directoryCount = $$directories.Count;\
+            fileCount = $$files.Count;\
+            totalBytes = [long](($$files | Measure-Object -Property length -Sum).Sum)\
+          };\
+          validation = [ordered]@{ status = \"created\"; algorithm = \"SHA256\" }\
+        };\
+        $$payload | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $$manifest -Encoding UTF8 -ErrorAction Stop;\
+        Move-Item -LiteralPath $$staging -Destination $$backup -ErrorAction Stop;\
+        $$phase = \"backup-verify\";\
+        $$manifest = Join-Path $$backup \"backup-manifest.json\";\
+        $$verified = Get-Content -LiteralPath $$manifest -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop;\
+        if ($$verified.schemaVersion -ne 1) { throw \"manifest schema mismatch\" };\
+        if ($$verified.attemptId -ne $$attempt) { throw \"manifest attempt mismatch\" };\
+        if ($$verified.source -ne $$src) { throw \"manifest source mismatch\" };\
+        if (@($$verified.skills).Count -ne $$userSkills.Count) { throw \"manifest skill count mismatch\" };\
+        foreach ($$skill in @($$verified.skills)) {\
+          if (-not (Test-Path -LiteralPath (Join-Path $$backup $$skill) -PathType Container)) { throw \"manifest skill missing\" }\
+        };\
+        foreach ($$file in @($$verified.files)) {\
+          $$candidate = Join-Path $$backup ($$file.path.Replace([char]47, [IO.Path]::DirectorySeparatorChar));\
+          if (-not (Test-Path -LiteralPath $$candidate -PathType Leaf)) { throw \"manifest file missing\" };\
+          if ((Get-FileHash -LiteralPath $$candidate -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant() -ne $$file.sha256) { throw \"manifest hash mismatch\" }\
+        };\
+        $$verified.validation.status = \"verified\";\
+        $$verified.validation | Add-Member -NotePropertyName verifiedAt -NotePropertyValue ((Get-Date).ToUniversalTime().ToString(\"o\")) -Force;\
+        $$verified | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $$manifest -Encoding UTF8 -ErrorAction Stop;\
+        $$finalManifest = Get-Content -LiteralPath $$manifest -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop;\
+        if (($$finalManifest.attemptId -ne $$attempt) -or ($$finalManifest.validation.status -ne \"verified\")) { throw \"manifest final validation mismatch\" };\
+        Write-Output (\"legacy-backup-succeeded skills=\" + $$finalManifest.statistics.skillCount + \" files=\" + $$finalManifest.statistics.fileCount + \" directories=\" + $$finalManifest.statistics.directoryCount + \" bytes=\" + $$finalManifest.statistics.totalBytes);\
+        exit ${LOBSTER_SKILL_BACKUP_EXIT_VERIFIED}\
+      } catch {\
+        if (Test-Path -LiteralPath $$staging) { Remove-Item -LiteralPath $$staging -Recurse -Force -ErrorAction SilentlyContinue };\
+        if ($$phase -eq \"inspect\") { Write-Output \"legacy-inspect-failed\"; exit ${LOBSTER_SKILL_BACKUP_EXIT_INSPECT_FAILED} };\
+        if ($$phase -eq \"backup-verify\") { Write-Output \"legacy-backup-verify-failed\"; exit ${LOBSTER_SKILL_BACKUP_EXIT_VERIFY_FAILED} };\
+        Write-Output \"legacy-backup-copy-failed\";\
+        exit ${LOBSTER_SKILL_BACKUP_EXIT_COPY_FAILED}\
+      }"'
+    !insertmacro LobsterExecHiddenToStack
+    Pop $0
+    Pop $1
+    StrCpy $R2 $0
     System::Call 'Kernel32::SetEnvironmentVariable(t "LOBSTERAI_SKILL_SOURCE", t "")i'
     System::Call 'Kernel32::SetEnvironmentVariable(t "LOBSTERAI_SKILL_BACKUP_ROOT", t "")i'
     System::Call 'Kernel32::SetEnvironmentVariable(t "LOBSTERAI_INSTALL_ATTEMPT_ID", t "")i'
@@ -3023,8 +3126,8 @@ FunctionEnd
   Push '"$lobsterTrustedPowerShellPath" -NoProfile -NonInteractive -Command "\
     $$netsh = Join-Path $$env:SystemRoot \"System32\netsh.exe\";\
     $$program = \"program=\" + $$env:LOBSTERAI_FIREWALL_PROGRAM;\
-    & $$netsh advfirewall firewall delete rule \"name=HeyClaw loopback\" dir=in $$program | Out-Null; $$delete = $$LASTEXITCODE;\
-    & $$netsh advfirewall firewall add rule \"name=HeyClaw loopback\" dir=in action=allow $$program protocol=TCP localip=127.0.0.1 remoteip=127.0.0.1 profile=any | Out-Null; $$add = $$LASTEXITCODE;\
+    & $$netsh advfirewall firewall delete rule \"name=LobsterAI loopback\" dir=in $$program | Out-Null; $$delete = $$LASTEXITCODE;\
+    & $$netsh advfirewall firewall add rule \"name=LobsterAI loopback\" dir=in action=allow $$program protocol=TCP localip=127.0.0.1 remoteip=127.0.0.1 profile=any | Out-Null; $$add = $$LASTEXITCODE;\
     Write-Output (\"delete_exit=\" + $$delete + \" add_exit=\" + $$add); exit $$add"'
   !insertmacro LobsterExecHiddenToStack
   Pop $0
@@ -3146,7 +3249,7 @@ FunctionEnd
   ; run this uninstaller first; the new installer then adds the rule again.
   StrCmp $lobsterTrustedPowerShellPath "" LoopbackFirewallUninstallDone
   System::Call 'Kernel32::SetEnvironmentVariable(t "LOBSTERAI_FIREWALL_PROGRAM", t "$INSTDIR\${APP_EXECUTABLE_FILENAME}")i'
-  Push '"$lobsterTrustedPowerShellPath" -NoProfile -NonInteractive -Command "& (Join-Path $$env:SystemRoot \"System32\netsh.exe\") advfirewall firewall delete rule \"name=HeyClaw loopback\" dir=in (\"program=\" + $$env:LOBSTERAI_FIREWALL_PROGRAM) | Out-Null"'
+  Push '"$lobsterTrustedPowerShellPath" -NoProfile -NonInteractive -Command "& (Join-Path $$env:SystemRoot \"System32\netsh.exe\") advfirewall firewall delete rule \"name=LobsterAI loopback\" dir=in (\"program=\" + $$env:LOBSTERAI_FIREWALL_PROGRAM) | Out-Null"'
   !insertmacro LobsterExecHiddenToStack
   Pop $0
   Pop $1
