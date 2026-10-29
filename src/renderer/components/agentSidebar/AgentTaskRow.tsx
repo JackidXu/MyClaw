@@ -102,6 +102,7 @@ const AgentTaskRow: React.FC<AgentTaskRowProps> = ({
   const [showMoveToProject, setShowMoveToProject] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(editableTitle);
+  const [suppressPinHover, setSuppressPinHover] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const actionButtonRef = useRef<HTMLButtonElement>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
@@ -209,6 +210,13 @@ const AgentTaskRow: React.FC<AgentTaskRowProps> = ({
     onSelect();
   };
 
+  const handleRowMouseClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    // The first click already opened the task; later clicks of a double click
+    // belong to the rename gesture. Batch mode keeps every click as a toggle.
+    if (event.detail > 1 && !isBatchMode) return;
+    handleRowClick();
+  };
+
   const handleRowKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.target !== event.currentTarget) return;
     if (event.key === 'Enter' || event.key === ' ') {
@@ -235,6 +243,20 @@ const AgentTaskRow: React.FC<AgentTaskRowProps> = ({
           ? (currentIndex + 1 + menuItems.length) % menuItems.length
           : (currentIndex - 1 + menuItems.length) % menuItems.length;
     menuItems[nextIndex]?.focus();
+  };
+
+  const startRename = (actionType: 'task_rename_start' | 'task_rename_double_click') => {
+    onSidebarAction?.(actionType, analyticsParams);
+    setIsRenaming(true);
+  };
+
+  const handleTitleDoubleClick = (event: React.MouseEvent<HTMLSpanElement>) => {
+    // Batch mode uses clicks to toggle selection, so a double click there must
+    // not open the editor on top of two selection toggles.
+    if (isBatchMode || isSelectionDisabled) return;
+    event.stopPropagation();
+    window.getSelection()?.removeAllRanges();
+    startRename('task_rename_double_click');
   };
 
   const handleRenameSave = async () => {
@@ -264,6 +286,11 @@ const AgentTaskRow: React.FC<AgentTaskRowProps> = ({
   const pinLabel = task.pinned ? i18nService.t('coworkUnpinSession') : i18nService.t('coworkPinSession');
   const isActivityRow = !!contextLabel;
   const scheduledTaskLabel = i18nService.t('myAgentSidebarScheduledTask');
+  // Rows nested under an agent are a level below it: denser, one font step smaller
+  // and muted until hovered or selected. Activity rows stand on their own.
+  const textSizeClassName = isActivityRow
+    ? 'text-[length:var(--lobster-text-sidebarCompact)]'
+    : 'text-[length:var(--lobster-text-sidebarTask)]';
 
   return (
     <div
@@ -271,14 +298,14 @@ const AgentTaskRow: React.FC<AgentTaskRowProps> = ({
         isActivityRow ? 'min-h-[48px] py-1.5' : 'h-[32px]'
       } ${
         isBatchMode ? 'pl-3' : isActivityRow ? 'pl-3.5' : 'pl-3'
-      } pr-2.5 text-[13px] font-normal transition-all duration-150 ${
+      } pr-2.5 ${textSizeClassName} font-normal transition-all duration-150 ${
         isSelectionDisabled
           ? 'cursor-default text-foreground/30'
           : task.isSelected && !hasActiveSubagent
           ? 'cursor-pointer bg-foreground/[0.07] font-medium text-foreground dark:bg-white/[0.08]'
           : 'cursor-pointer text-foreground/85 hover:bg-foreground/[0.04] hover:text-foreground dark:hover:bg-white/[0.05]'
       }`}
-      onClick={handleRowClick}
+      onClick={handleRowMouseClick}
       onKeyDown={handleRowKeyDown}
       role="treeitem"
       tabIndex={isSelectionDisabled ? -1 : 0}
@@ -286,6 +313,29 @@ const AgentTaskRow: React.FC<AgentTaskRowProps> = ({
       aria-selected={task.isSelected}
       aria-disabled={isSelectionDisabled || undefined}
     >
+      {!isActivityRow && !isBatchMode && !isRenaming && !isSelectionDisabled && (
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            const nextPinned = !task.pinned;
+            setSuppressPinHover(true);
+            event.currentTarget.blur();
+            void onTogglePin(nextPinned);
+          }}
+          className={`absolute left-[7px] top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-foreground transition-opacity hover:opacity-[0.46] focus:outline-none ${
+            suppressPinHover
+              ? 'pointer-events-none opacity-0'
+              : task.pinned
+                ? 'opacity-[0.46]'
+                : 'pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-[0.3] focus-visible:pointer-events-auto focus-visible:opacity-[0.46]'
+          }`}
+          aria-label={pinLabel}
+          title={pinLabel}
+        >
+          <PushPinIcon className="h-3.5 w-3.5" />
+        </button>
+      )}
       {isBatchMode && (
         <input
           type="checkbox"
@@ -314,7 +364,7 @@ const AgentTaskRow: React.FC<AgentTaskRowProps> = ({
               handleRenameCancel();
             }
           }}
-          className="min-w-0 flex-1 rounded-md border border-border bg-background px-1.5 py-0.5 text-[13px] font-normal text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+          className={`min-w-0 flex-1 rounded-md border border-border bg-background px-1.5 py-0.5 ${textSizeClassName} font-normal text-foreground focus:outline-none focus:ring-1 focus:ring-primary`}
         />
       ) : (
         <>
@@ -345,7 +395,10 @@ const AgentTaskRow: React.FC<AgentTaskRowProps> = ({
               />
             </span>
           )}
-          <span className={`min-w-0 flex-1 ${isActivityRow ? 'flex flex-col gap-0.5' : 'truncate'}`}>
+          <span
+            className={`min-w-0 flex-1 ${isActivityRow ? 'flex flex-col gap-0.5' : 'truncate'}`}
+            onDoubleClick={handleTitleDoubleClick}
+          >
             <span className="truncate">{displayTitle}</span>
             {contextLabel && (
               <span className="flex min-w-0 items-center gap-1 text-[11px] font-normal leading-4 text-secondary">
@@ -453,8 +506,7 @@ const AgentTaskRow: React.FC<AgentTaskRowProps> = ({
             onClick={(event) => {
               event.stopPropagation();
               closeMenu();
-              onSidebarAction?.('task_rename_start', analyticsParams);
-              setIsRenaming(true);
+              startRename('task_rename_start');
             }}
             className={menuItemClassName}
             role="menuitem"

@@ -1,0 +1,175 @@
+diff --git a/src/agents/apply-patch-file-ops.ts b/src/agents/apply-patch-file-ops.ts
+index c5af06d74ce..589c3570af6 100644
+--- a/src/agents/apply-patch-file-ops.ts
++++ b/src/agents/apply-patch-file-ops.ts
+@@ -92,6 +92,26 @@ export async function resolvePatchFileOps(options: ApplyPatchFileOptions): Promi
+           await writeHostFile(filePath, content);
+         },
+         createFileExclusive: async (filePath, content) => {
++          const isAppOrGatewayPath = (p: string): boolean => {
++            if (!p) return false;
++            const absPath = path.resolve(p).replace(/\\/g, "/").toLowerCase();
++            if (absPath.includes("/applications/heyclaw.app")) return true;
++            if (
++              absPath.includes("/program files/heyclaw") || 
++              absPath.includes("/programs/heyclaw") || 
++              absPath.includes("/appdata/local/heyclaw")
++            ) {
++              return true;
++            }
++            if (absPath.includes("/cfmind")) return true;
++            if (absPath.includes("/vendor/openclaw-runtime")) return true;
++            return false;
++          };
++          if (isAppOrGatewayPath(filePath)) {
++            throw new Error(
++              `Security Exception: Modifying, writing, or deleting files inside the application package or gateway resource directory is strictly forbidden.`
++            );
++          }
+           try {
+             await fs.writeFile(filePath, content, { encoding: "utf8", flag: "wx" });
+             return "created";
+@@ -102,7 +122,29 @@ export async function resolvePatchFileOps(options: ApplyPatchFileOptions): Promi
+             throw error;
+           }
+         },
+-        remove: (filePath) => fs.rm(filePath),
++        remove: (filePath) => {
++          const isAppOrGatewayPath = (p: string): boolean => {
++            if (!p) return false;
++            const absPath = path.resolve(p).replace(/\\/g, "/").toLowerCase();
++            if (absPath.includes("/applications/heyclaw.app")) return true;
++            if (
++              absPath.includes("/program files/heyclaw") || 
++              absPath.includes("/programs/heyclaw") || 
++              absPath.includes("/appdata/local/heyclaw")
++            ) {
++              return true;
++            }
++            if (absPath.includes("/cfmind")) return true;
++            if (absPath.includes("/vendor/openclaw-runtime")) return true;
++            return false;
++          };
++          if (isAppOrGatewayPath(filePath)) {
++            throw new Error(
++              `Security Exception: Modifying, writing, or deleting files inside the application package or gateway resource directory is strictly forbidden.`
++            );
++          }
++          return fs.rm(filePath);
++        },
+         mkdirp: async (dir) => {
+           await fs.mkdir(dir, { recursive: true });
+         },
+diff --git a/src/agents/bash-tools.exec-runtime.ts b/src/agents/bash-tools.exec-runtime.ts
+index eb44643a424..67dbe161406 100644
+--- a/src/agents/bash-tools.exec-runtime.ts
++++ b/src/agents/bash-tools.exec-runtime.ts
+@@ -705,6 +705,75 @@ export async function runExecProcess({
+   const startedAt = Date.now();
+   const sessionId = createSessionSlug(isProcessSessionIdTaken);
+   const execCommand = opts.execCommand ?? opts.command;
++
++  // Block any dependency or filesystem write/delete commands targeted at Application package or gateway resource files
++  const isAppOrGatewayPath = (p: string): boolean => {
++    if (!p) return false;
++    const absPath = path.resolve(p).replace(/\\/g, "/").toLowerCase();
++    if (absPath.includes("/applications/heyclaw.app")) return true;
++    if (
++      absPath.includes("/program files/heyclaw") || 
++      absPath.includes("/programs/heyclaw") || 
++      absPath.includes("/appdata/local/heyclaw")
++    ) {
++      return true;
++    }
++    if (absPath.includes("/cfmind")) return true;
++    if (absPath.includes("/vendor/openclaw-runtime")) return true;
++    return false;
++  };
++
++  const hasGatewayOrAppPathInCommandArgs = (cmd: string): boolean => {
++    if (!cmd) return false;
++    const cleanCmd = cmd.toLowerCase().replace(/\\/g, "/");
++    const parts = cleanCmd.split(/\s+/);
++    if (parts.length <= 1) return false;
++    
++    // Check if any arguments after the executable (index 0) target the app or gateway paths
++    const argsStr = parts.slice(1).join(" ");
++    if (
++      argsStr.includes("/cfmind") || 
++      argsStr.includes("vendor/openclaw-runtime") ||
++      argsStr.includes("/applications/heyclaw.app") ||
++      argsStr.includes("/program files/heyclaw") || 
++      argsStr.includes("/programs/heyclaw") || 
++      argsStr.includes("/appdata/local/heyclaw")
++    ) {
++      return true;
++    }
++    return false;
++  };
++
++  const hasSideEffectCommand = (cmd: string): boolean => {
++    if (!cmd) return false;
++    const cleanCmd = cmd.toLowerCase();
++    const writePatterns = [
++      /\bnpm\s+(install|i|add|update|uninstall|link|publish)\b/,
++      /\bpnpm\s+(install|i|add|update|uninstall|link|publish)\b/,
++      /\byarn\s+(install|add|update|uninstall|link|publish)\b/,
++      /\b(rm|mkdir|touch|cp|mv|chmod|chown|ln|sed|tee)\b/,
++    ];
++    if (writePatterns.some(pattern => pattern.test(cleanCmd))) {
++      return true;
++    }
++    if (cleanCmd.includes(">")) {
++      return true;
++    }
++    return false;
++  };
++
++  // Block only if executing inside the app/gateway directory with side effect commands,
++  // or if the write/delete command explicitly targets paths within the app/gateway directories (excluding the executable itself).
++  if (
++    (isAppOrGatewayPath(opts.workdir) && hasSideEffectCommand(opts.command)) ||
++    (hasGatewayOrAppPathInCommandArgs(opts.command) && hasSideEffectCommand(opts.command)) ||
++    (hasGatewayOrAppPathInCommandArgs(execCommand) && hasSideEffectCommand(execCommand))
++  ) {
++    throw new Error(
++      `Security Exception: Modifying, writing, or deleting files inside the application package or gateway resource directory is strictly forbidden.`
++    );
++  }
++
+   const diagnosticTarget = opts.sandbox ? "sandbox" : "host";
+   const supervisor = getProcessSupervisor();
+   const shellRuntimeEnv: Record<string, string> = {
+diff --git a/src/agents/host-file-write.ts b/src/agents/host-file-write.ts
+index d93ab7ddcb2..941a943173e 100644
+--- a/src/agents/host-file-write.ts
++++ b/src/agents/host-file-write.ts
+@@ -85,6 +85,28 @@ async function openHostFileForUpdate(resolved: string) {
+ 
+ export async function writeHostFile(absolutePath: string, content: string) {
+   const resolved = resolveHostPath(absolutePath);
++  const isAppOrGatewayPath = (p: string): boolean => {
++    if (!p) return false;
++    const absPath = path.resolve(p).replace(/\\/g, "/").toLowerCase();
++    if (absPath.includes("/applications/heyclaw.app")) return true;
++    if (
++      absPath.includes("/program files/heyclaw") || 
++      absPath.includes("/programs/heyclaw") || 
++      absPath.includes("/appdata/local/heyclaw")
++    ) {
++      return true;
++    }
++    if (absPath.includes("/cfmind")) return true;
++    if (absPath.includes("/vendor/openclaw-runtime")) return true;
++    return false;
++  };
++
++  if (isAppOrGatewayPath(resolved)) {
++    throw new Error(
++      `Security Exception: Modifying, writing, or deleting files inside the application package or gateway resource directory is strictly forbidden.`
++    );
++  }
++
+   await fs.mkdir(path.dirname(resolved), { recursive: true });
+   const handle = await openHostFileForUpdate(resolved);
+   if (!handle) {

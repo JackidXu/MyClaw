@@ -1,5 +1,7 @@
 import { AgentId, DefaultAgentProfile } from '@shared/agent';
 
+export { usesManagedPresetAvatar } from '@shared/agent/presetAvatar';
+
 interface AgentDisplaySource {
   id: string;
   name?: string;

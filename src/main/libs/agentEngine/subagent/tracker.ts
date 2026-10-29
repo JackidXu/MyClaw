@@ -6,6 +6,7 @@ import {
   parseSubagentGatewayHistoryMessages,
   type SubagentCoworkMessage,
 } from './historyParser';
+import { parseAgentIdFromSubagentSessionKey } from './sessionKeys';
 
 const resolveSpawnDisplayLabel = (...sources: Array<Record<string, unknown> | null | undefined>): string | null => {
   for (const source of sources) {
@@ -531,6 +532,17 @@ export class SubagentTracker {
     }
     const pending = this.pendingSpawnInfo.get(toolCallId);
     if (pending) {
+      // The accepted session identifies the actual target even when the model
+      // omitted agentId and the pending display identity came from its label.
+      const resolvedAgentId = parseAgentIdFromSubagentSessionKey(childSessionKey);
+      if (resolvedAgentId && pending.agentId !== resolvedAgentId) {
+        this.agentIdToToolCallIds.get(pending.agentId)?.delete(toolCallId);
+        pending.agentId = resolvedAgentId;
+        this.subagentToolCallIdToAgentId.set(toolCallId, resolvedAgentId);
+        const calls = this.agentIdToToolCallIds.get(resolvedAgentId) ?? new Set<string>();
+        calls.add(toolCallId);
+        this.agentIdToToolCallIds.set(resolvedAgentId, calls);
+      }
       const displayLabel = pending.label ?? resolveSpawnDisplayLabel(parsed);
       const candidate = {
         runId: toolCallId,
@@ -632,10 +644,8 @@ export class SubagentTracker {
     if (typeof args?.agentId === 'string' && args.agentId.trim()) {
       return args.agentId.trim();
     }
-    const match = childSessionKey.match(/^agent:([^:]+):subagent:/);
-    if (match?.[1]) {
-      return match[1];
-    }
+    const childAgentId = parseAgentIdFromSubagentSessionKey(childSessionKey);
+    if (childAgentId) return childAgentId;
     if (typeof args?.taskName === 'string' && args.taskName.trim()) {
       return args.taskName.trim();
     }

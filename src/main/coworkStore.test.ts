@@ -22,14 +22,19 @@ import BetterSqlite3 from 'better-sqlite3';
 
 import { CoworkSystemMessageKind } from '../common/coworkSystemMessages';
 import { AgentAvatarSvg, DefaultAgentAvatarIcon, encodeAgentAvatarIcon } from '../shared/agent/avatar';
+import { AgentId, AgentSource } from '../shared/agent/constants';
 import {
+  COWORK_MESSAGE_PAGE_SIZE,
   COWORK_SEARCH_HISTORY_MAX_MESSAGE_CONTENT_CODE_UNITS,
   COWORK_SEARCH_MESSAGE_PAGE_MAX_CONTENT_BYTES,
   CoworkForkMode,
 } from '../shared/cowork/constants';
+import { buildCoworkTurnUsage, CoworkTurnUsageStatus } from '../shared/cowork/llmTurnUsage';
 import { OpenClawCronRunMetadataKey } from '../shared/cowork/openclawCronSessionKey';
+import { ModelPresetId } from '../shared/modelPresets/constants';
 import { CoworkStore } from './coworkStore';
 import { ContinuityCapsuleSource } from './libs/agentEngine/coworkContinuityCapsule';
+import type { SessionProjectionChanges } from './libs/sessionProjectionNotifications';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -48,12 +53,14 @@ function setupDb(): void {
       title TEXT NOT NULL,
       claude_session_id TEXT,
       scheduled_task_id TEXT,
+      project_id TEXT,
       status TEXT NOT NULL DEFAULT 'idle',
       pinned INTEGER NOT NULL DEFAULT 0,
       pin_order INTEGER,
       cwd TEXT NOT NULL,
       system_prompt TEXT NOT NULL DEFAULT '',
       model_override TEXT NOT NULL DEFAULT '',
+      model_preset_id TEXT,
       thinking_level TEXT NOT NULL DEFAULT '',
       execution_mode TEXT NOT NULL DEFAULT 'local',
       active_skill_ids TEXT,
@@ -73,6 +80,12 @@ function setupDb(): void {
   `);
 
   db.exec(`
+    CREATE TABLE IF NOT EXISTS subagent_runs (
+      id TEXT PRIMARY KEY,
+      parent_session_id TEXT,
+      child_cowork_session_id TEXT
+    );
+
     CREATE TABLE IF NOT EXISTS cowork_messages (
       id TEXT PRIMARY KEY,
       session_id TEXT NOT NULL,
@@ -96,7 +109,8 @@ function setupDb(): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS cowork_config (
       key TEXT PRIMARY KEY,
-      value TEXT
+      value TEXT,
+      updated_at INTEGER NOT NULL DEFAULT 0
     );
   `);
 
@@ -124,6 +138,7 @@ function setupDb(): void {
       thinking_level TEXT NOT NULL DEFAULT '',
       working_directory TEXT NOT NULL DEFAULT '',
       icon TEXT NOT NULL DEFAULT '',
+      icon_customized INTEGER,
       skill_ids TEXT NOT NULL DEFAULT '[]',
       subagent_allow_agent_ids TEXT NOT NULL DEFAULT '[]',
       level TEXT NOT NULL DEFAULT '高级',
@@ -794,6 +809,103 @@ test('getRecentConversationMessages reads beyond the session page and excludes n
   expect(store.getRecentConversationMessages(sid, Number.POSITIVE_INFINITY)).toEqual([]);
 });
 
+test('getTurnStartTimestampAt finds where the turn of a paged window began', () => {
+  const sid = 'sess-turn-start';
+  insertSession(sid);
+  insertMessage('user-1', sid, 'user', 'long task', null, 1, 1000);
+  for (let index = 2; index <= 40; index += 1) {
+    insertMessage(`tool-${index}`, sid, index % 2 === 0 ? 'tool_use' : 'tool_result', 'step', null, index, index * 1000);
+  }
+  insertMessage('user-2', sid, 'user', 'follow up', null, 41, 50_000);
+  insertMessage('assistant-2', sid, 'assistant', 'answer', null, 42, 51_000);
+
+  // The default page starts mid-way through the first turn.
+  const firstPage = store.getSession(sid, 30);
+  expect(firstPage?.messagesOffset).toBe(12);
+  expect(firstPage?.messages[0]?.type).not.toBe('user');
+  expect(store.getTurnStartTimestampAt(sid, 12)).toBe(1000);
+
+  expect(store.getTurnStartTimestampAt(sid, 40)).toBe(50_000);
+  expect(store.getTurnStartTimestampAt(sid, 41)).toBe(50_000);
+  expect(store.getTurnStartTimestampAt(sid, -1)).toBeNull();
+  expect(store.getTurnStartTimestampAt('missing-session', 3)).toBeNull();
+});
+
+test('getTurnStartTimestampAt uses the earliest time when a channel user message is stamped late', () => {
+  const sid = 'sess-turn-start-channel';
+  insertSession(sid);
+  insertMessage('assistant-0', sid, 'assistant', 'before any request', null, 1, 500);
+  insertMessage('user-1', sid, 'user', 'from IM', null, 2, 3000);
+  insertMessage('assistant-1', sid, 'assistant', 'streamed first', null, 3, 2000);
+  insertMessage('tool-1', sid, 'tool_use', 'exec', null, 4, 4000);
+
+  expect(store.getTurnStartTimestampAt(sid, 3)).toBe(2000);
+  // Without an earlier user message the turn starts at its first message.
+  expect(store.getTurnStartTimestampAt(sid, 0)).toBe(500);
+});
+
+test.each([null, ModelPresetId.Balanced, ModelPresetId.Ultimate])(
+  'getSession retains paged turn usage after a model-change notice (%s)',
+  (presetId) => {
+    const sid = 'sess-model-change-usage';
+    insertSession(sid);
+    const turnUsage = buildCoworkTurnUsage({
+      requestCount: 1,
+      failedRequestCount: 0,
+      models: ['deepseek-v4.1-flash'],
+      creditsUsed: 1.25,
+      uncachedInputTokens: 100,
+      outputTokens: 50,
+    }, { traceId: '4bf92f3577b34da6a3ce929d0e0e4736', now: 40_000 });
+    expect(turnUsage?.status).toBe(CoworkTurnUsageStatus.Settled);
+    insertMessage('user-1', sid, 'user', 'long task', JSON.stringify({ turnUsage }), 1, 1000);
+    for (let index = 2; index <= COWORK_MESSAGE_PAGE_SIZE; index += 1) {
+      insertMessage(`reply-${index}`, sid, 'assistant', 'reply', null, index, index * 1000);
+    }
+    expect(store.getSession(sid)?.messages[0]?.metadata?.turnUsage).toEqual(turnUsage);
+
+    store.updateSession(sid, { modelOverride: 'next-model', modelPresetId: presetId });
+    store.addMessage(sid, {
+      type: 'system',
+      content: '',
+      metadata: {
+        kind: CoworkSystemMessageKind.ModelChanged,
+        modelChange: { previousModelRef: 'deepseek-v4.1-flash', nextModelRef: 'next-model', nextPresetId: presetId },
+      },
+    });
+
+    // The notice pushes the user message, which owns the usage, outside the page.
+    const session = store.getSession(sid);
+    expect(session?.messagesOffset).toBe(1);
+    expect(session?.messages).toHaveLength(COWORK_MESSAGE_PAGE_SIZE);
+    expect(session?.messages.some(message => message.id === 'user-1')).toBe(false);
+    expect(session?.leadingTurnUsage).toEqual({ userMessageId: 'user-1', turnUsage });
+    expect(session?.leadingTurnStartTimestamp).toBe(1000);
+    expect(store.getMessage(sid, 'user-1')?.metadata?.turnUsage).toEqual(turnUsage);
+
+    // Once the user message is loaded, usage comes from its metadata directly.
+    expect(store.getSession(sid, COWORK_MESSAGE_PAGE_SIZE + 1)?.leadingTurnUsage).toBeNull();
+  },
+);
+
+test('getSession does not inherit usage when the page starts with a new user message', () => {
+  const sid = 'sess-usage-new-turn';
+  insertSession(sid);
+  insertMessage('user-1', sid, 'user', 'first task', null, 1, 1000);
+  insertMessage('assistant-1', sid, 'assistant', 'first reply', null, 2, 2000);
+  insertMessage('user-2', sid, 'user', 'next task', null, 3, 3000);
+  insertMessage('assistant-2', sid, 'assistant', 'next reply', null, 4, 4000);
+
+  const session = store.getSession(sid, 2);
+  expect(session?.messagesOffset).toBe(2);
+  expect(session?.leadingTurnUsage).toBeNull();
+  expect(session?.leadingTurnStartTimestamp).toBe(3000);
+
+  const contextSpy = vi.spyOn(store, 'getTurnContextAt');
+  expect(store.getSession(sid, 0)?.messages).toEqual([]);
+  expect(contextSpy).not.toHaveBeenCalled();
+});
+
 test('getSession returns all messages when ALL have corrupt metadata', () => {
   const sid = 'sess-2';
   insertSession(sid);
@@ -1293,6 +1405,41 @@ test('agent CRUD normalizes legacy icons to the default svg avatar', () => {
   expect(updated?.avatar).toBe(DefaultAgentAvatarIcon);
 });
 
+test('preset avatar refresh respects persisted user ownership and leaves other settings unchanged', () => {
+  const agent = store.createAgent({ id: 'office-expert', name: 'My expert', source: AgentSource.Preset,
+    presetId: 'office-expert', systemPrompt: 'Custom instructions' });
+  expect(agent.iconCustomized).toBe(false);
+  const icon = 'https://ydhardwarecommon.nosdn.127.net/category-office.webp';
+  expect(store.updatePresetAgentAvatar(agent.id, icon)).toMatchObject({
+    icon, iconCustomized: false, name: 'My expert', systemPrompt: 'Custom instructions',
+  });
+  expect(store.updateAgent(agent.id, { name: 'Renamed', icon })?.iconCustomized).toBe(false);
+  const chosen = encodeAgentAvatarIcon({ svg: AgentAvatarSvg.Heart });
+  expect(store.updateAgent(agent.id, { icon: chosen })?.iconCustomized).toBe(true);
+  expect(store.updatePresetAgentAvatar(agent.id, icon)).toMatchObject({ icon: chosen, iconCustomized: true });
+  store.updateAgent(agent.id, { icon: DefaultAgentAvatarIcon });
+  expect(store.updatePresetAgentAvatar(agent.id, icon)?.icon).toBe(DefaultAgentAvatarIcon);
+});
+
+test('legacy defaults migrate conservatively and main/custom agents never receive catalog avatars', () => {
+  const original = encodeAgentAvatarIcon({ svg: AgentAvatarSvg.Data });
+  const agent = store.createAgent({ id: 'renamed-preset', name: 'Old expert', source: AgentSource.Preset,
+    presetId: 'data-advisor', icon: original });
+  db.prepare('UPDATE agents SET icon_customized = NULL WHERE id = ?').run(agent.id);
+  expect(store.getAgent(agent.id)?.iconCustomized).toBe(false);
+  const edited = encodeAgentAvatarIcon({ svg: AgentAvatarSvg.Creation });
+  db.prepare('UPDATE agents SET icon = ? WHERE id = ?').run(edited, agent.id);
+  expect(store.getAgent(agent.id)?.iconCustomized).toBe(true);
+  const icon = 'https://ydhardwarecommon.nosdn.127.net/category-research.webp';
+  expect(store.updatePresetAgentAvatar(agent.id, icon)?.icon).toBe(edited);
+  for (const protectedAgent of [
+    store.createAgent({ id: AgentId.Main, name: 'Main', source: AgentSource.Preset }),
+    store.createAgent({ id: 'user-agent', name: 'User agent', icon: original }),
+  ]) {
+    expect(store.updatePresetAgentAvatar(protectedAgent.id, icon)?.icon).toBe(protectedAgent.icon);
+  }
+});
+
 test('agent pinning stores first-pinned-first order', () => {
   const first = store.createAgent({ name: 'First Agent' });
   const second = store.createAgent({ name: 'Second Agent' });
@@ -1341,6 +1488,54 @@ test('getConfig defaults OpenClaw heartbeat to disabled when config is missing',
   expect(config.openClawHeartbeatEnabled).toBe(false);
 });
 
+test('defaults automatic skill review to disabled for users without the setting', () => {
+  store.setConfig({ openClawHeartbeatEnabled: true });
+
+  expect(store.getConfig().openClawSkillReviewEnabled).toBe(false);
+});
+
+test('persists skill review opt-in and opt-out independently of other settings', () => {
+  store.setConfig({ openClawSkillReviewEnabled: true });
+  store.setConfig({ openClawHeartbeatEnabled: true });
+  const reloadedStore = new CoworkStore(db);
+
+  expect(reloadedStore.getConfig()).toMatchObject({
+    openClawSkillReviewEnabled: true,
+    openClawHeartbeatEnabled: true,
+  });
+
+  reloadedStore.setConfig({ openClawSkillReviewEnabled: false });
+  expect(new CoworkStore(db).getConfig()).toMatchObject({
+    openClawSkillReviewEnabled: false,
+    openClawHeartbeatEnabled: true,
+  });
+});
+
+test('defaults memory flush to disabled for users without the setting', () => {
+  store.setConfig({ openClawHeartbeatEnabled: true, openClawSkillReviewEnabled: true });
+
+  expect(store.getConfig().openClawMemoryFlushEnabled).toBe(false);
+});
+
+test('persists memory flush opt-in and opt-out independently of other maintenance settings', () => {
+  store.setConfig({ openClawMemoryFlushEnabled: true });
+  store.setConfig({ openClawHeartbeatEnabled: true, openClawSkillReviewEnabled: true });
+  const reloadedStore = new CoworkStore(db);
+
+  expect(reloadedStore.getConfig()).toMatchObject({
+    openClawMemoryFlushEnabled: true,
+    openClawHeartbeatEnabled: true,
+    openClawSkillReviewEnabled: true,
+  });
+
+  reloadedStore.setConfig({ openClawMemoryFlushEnabled: false });
+  expect(new CoworkStore(db).getConfig()).toMatchObject({
+    openClawMemoryFlushEnabled: false,
+    openClawHeartbeatEnabled: true,
+    openClawSkillReviewEnabled: true,
+  });
+});
+
 test('backfillEmptyAgentModels assigns the current default model to empty agents only', () => {
   const now = Date.now();
   db.prepare(
@@ -1359,4 +1554,183 @@ test('backfillEmptyAgentModels assigns the current default model to empty agents
     ['stockexpert', 'qwen3.5-plus'],
     ['writer', 'deepseek-v3.2'],
   ]);
+});
+
+test('session projection notifications cover creation, fork and listener disposal after commit', () => {
+  const events: SessionProjectionChanges[] = [];
+  const unsubscribe = store.onSessionProjectionChanges(changes => {
+    expect(db.inTransaction).toBe(false);
+    events.push(changes);
+  });
+  const source = store.createSession('Source', '/tmp');
+  const fork = store.forkSession({ sourceSessionId: source.id });
+  expect(events.map(event => event.changedSessionIds)).toEqual([[source.id], [fork.id]]);
+  unsubscribe();
+  store.updateSession(source.id, { title: 'After unsubscribe' });
+  expect(events).toHaveLength(2);
+});
+
+test('projection notifications follow actual changes, including forced touches and backward user times', () => {
+  insertSession('projection', 'main', 'Original', 1000);
+  const events: SessionProjectionChanges[] = [];
+  store.onSessionProjectionChanges(changes => events.push(changes));
+  store.updateSession('projection', { status: 'idle' });
+  store.updateSession('projection', { modelOverride: 'other' });
+  store.addMessage('projection', { type: 'assistant', content: 'stream' });
+  store.addMessage('projection', { type: 'tool_use', content: 'tool' });
+  store.setSessionPinned('projection', true);
+  expect(events).toHaveLength(0);
+  store.updateSession('projection', { title: 'Renamed' });
+  expect(store.getSession('projection')?.updatedAt).toBe(1000);
+  store.updateSession('projection', {}, { touchUpdatedAt: true });
+  store.addMessage('projection', { type: 'user', content: 'backwards' }, 500.25);
+  expect(store.getSession('projection')?.updatedAt).toBe(500.25);
+  store.updateSession('projection', { status: 'completed' });
+  expect(events.map(event => event.changedSessionIds)).toEqual(
+    Array.from({ length: 4 }, () => ['projection']),
+  );
+});
+
+test.each([true, false])('insertMessageBeforeId notifies once with existing target=%s', existing => {
+  insertSession('insert-projection', 'main', 'Original', 1000);
+  if (existing) insertMessage('target', 'insert-projection', 'assistant', 'reply', null, 1);
+  const listener = vi.fn();
+  store.onSessionProjectionChanges(listener);
+  store.insertMessageBeforeId('insert-projection', 'target', { type: 'user', content: 'prompt' });
+  expect(listener).toHaveBeenCalledTimes(1);
+  expect(listener.mock.calls[0][0].changedSessionIds).toEqual(['insert-projection']);
+});
+
+test.each([true, false])('history replacement only notifies newer fractional user times (conversation=%s)', conversation => {
+  insertSession('history-projection', 'main', 'Original', 5000);
+  const listener = vi.fn();
+  store.onSessionProjectionChanges(listener);
+  const replace = (timestamp: number) => {
+    if (conversation) {
+      store.replaceConversationMessages('history-projection', [{ role: 'user', text: 'prompt', timestamp }]);
+    } else {
+      store.replaceSessionMessages('history-projection', [{ type: 'user', content: 'prompt', timestamp }]);
+    }
+  };
+  replace(3000.25);
+  expect(listener).not.toHaveBeenCalled();
+  replace(6000.75);
+  expect(store.getSession('history-projection')?.updatedAt).toBe(6000.75);
+  expect(listener).toHaveBeenCalledTimes(1);
+});
+
+test('resetRunningSessions batches changed projections and leaves no-op reset silent', () => {
+  insertSession('reset-a', 'main', 'A', 1);
+  insertSession('reset-b', 'main', 'B', 1);
+  db.prepare("UPDATE cowork_sessions SET status = 'running'").run();
+  const listener = vi.fn();
+  store.onSessionProjectionChanges(listener);
+  expect(store.resetRunningSessions()).toBe(2);
+  expect(listener).toHaveBeenCalledTimes(1);
+  expect(listener.mock.calls[0][0].changedSessionIds.sort()).toEqual(['reset-a', 'reset-b']);
+  expect(store.resetRunningSessions()).toBe(0);
+  expect(listener).toHaveBeenCalledTimes(1);
+});
+
+test('subagent upsert notifies creation and actual repeated running timestamp writes', () => {
+  insertSession('parent-projection');
+  const listener = vi.fn();
+  store.onSessionProjectionChanges(listener);
+  const options = {
+    id: 'child-projection',
+    parentSessionId: 'parent-projection',
+    childSessionKey: 'child-key',
+    title: 'Child',
+    agentId: 'main',
+  };
+  store.upsertSubagentChildSession(options);
+  db.prepare('UPDATE cowork_sessions SET updated_at = 1 WHERE id = ?').run(options.id);
+  store.upsertSubagentChildSession(options);
+  expect(listener).toHaveBeenCalledTimes(2);
+  expect(listener.mock.calls.map(call => call[0].changedSessionIds)).toEqual([[options.id], [options.id]]);
+});
+
+test('outer session transaction publishes final values once and drops rollback or reverted writes', () => {
+  insertSession('transaction-projection', 'main', 'Original', 1000);
+  const listener = vi.fn();
+  store.onSessionProjectionChanges(listener);
+  store.runSessionTransaction(() => {
+    store.updateSession('transaction-projection', { title: 'Temporary' });
+    store.runSessionTransaction(() => store.updateSession('transaction-projection', { title: 'Original' }));
+    expect(listener).not.toHaveBeenCalled();
+  });
+  expect(listener).not.toHaveBeenCalled();
+  expect(() => store.runSessionTransaction(() => {
+    store.updateSession('transaction-projection', { title: 'Rolled back' });
+    throw new Error('rollback');
+  })).toThrow('rollback');
+  expect(store.getSession('transaction-projection')?.title).toBe('Original');
+  expect(listener).not.toHaveBeenCalled();
+  store.runSessionTransaction(() => {
+    store.updateSession('transaction-projection', { title: 'Committed' });
+    store.addMessage('transaction-projection', { type: 'user', content: 'New' }, 2000);
+    expect(listener).not.toHaveBeenCalled();
+  });
+  expect(listener).toHaveBeenCalledTimes(1);
+});
+
+test.each([false, true])('single and batch deletions publish unique artifact/session IDs once (batch=%s)', batch => {
+  insertSession('delete-a');
+  insertSession('delete-b');
+  db.prepare('INSERT INTO library_artifact_sessions (artifact_id, session_id) VALUES (?, ?)').run('shared-file', 'delete-a');
+  db.prepare('INSERT INTO library_artifact_sessions (artifact_id, session_id) VALUES (?, ?)').run('shared-file', 'delete-b');
+  const listener = vi.fn();
+  store.onSessionProjectionChanges(listener);
+  if (batch) store.deleteSessions(['delete-a', 'delete-a', 'delete-b']);
+  else store.deleteSession('delete-a');
+  expect(listener).toHaveBeenCalledTimes(1);
+  expect(listener.mock.calls[0][0]).toEqual({
+    changedSessionIds: [],
+    deletedSessionIds: batch ? ['delete-a', 'delete-b'] : ['delete-a'],
+    affectedArtifactIds: ['shared-file'],
+  });
+});
+
+test.each([false, true])('agent transaction preserves deleted artifact IDs (orphan cleanup=%s)', orphanCleanup => {
+  if (!orphanCleanup) store.createAgent({ id: 'projection-agent', name: 'Agent' });
+  insertSession('agent-session', 'projection-agent');
+  db.prepare('INSERT INTO library_artifact_sessions (artifact_id, session_id) VALUES (?, ?)').run('agent-file', 'agent-session');
+  const listener = vi.fn(changes => {
+    expect(db.inTransaction).toBe(false);
+    expect(store.getSession('agent-session')).toBeNull();
+    expect(Boolean(store.getAgent('projection-agent'))).toBe(orphanCleanup);
+    return changes;
+  });
+  store.onSessionProjectionChanges(listener);
+  if (orphanCleanup) store.createAgent({ id: 'projection-agent', name: 'Agent' });
+  else expect(store.deleteAgent('projection-agent')).toBe(true);
+  expect(listener).toHaveBeenCalledTimes(1);
+  expect(listener.mock.calls[0][0]).toEqual({
+    changedSessionIds: [],
+    deletedSessionIds: ['agent-session'],
+    affectedArtifactIds: ['agent-file'],
+  });
+});
+
+
+test('sidebar hides historical self-spawns while preserving expert work, forks and direct access', () => {
+  const parent = store.createSession('parent', '/tmp', '', 'local', [], 'main');
+  const self = store.createSession('child self', '/tmp', '', 'local', [], 'main');
+  const expert = store.createSession('child expert', '/tmp', '', 'local', [], 'writer');
+  const fork = store.createSession('child fork', '/tmp', '', 'local', [], 'main');
+  for (const child of [self, expert, fork]) {
+    db.prepare('UPDATE cowork_sessions SET parent_session_id = ? WHERE id = ?').run(parent.id, child.id);
+  }
+  for (const child of [self, expert]) {
+    db.prepare('INSERT INTO subagent_runs VALUES (?, ?, ?)').run(child.id, parent.id, child.id);
+  }
+  expect(store.listSessions(100).map(session => session.id)).toEqual(expect.arrayContaining([parent.id, expert.id, fork.id]));
+  expect(store.listSessions(100).map(session => session.id)).not.toContain(self.id);
+  expect(store.countSessions()).toBe(3);
+  expect(store.countSessions('main')).toBe(2);
+  expect(store.searchSessions({ query: 'child' }).map(session => session.id)).not.toContain(self.id);
+  expect(store.searchSessions({ query: 'child', agentId: 'main' }).map(session => session.id)).toEqual([fork.id]);
+  expect(store.countSearchSessions({ query: 'child' })).toBe(2);
+  expect(store.countSearchSessions({ query: 'child', agentId: 'main' })).toBe(1);
+  expect(store.getSession(self.id)?.id).toBe(self.id);
 });

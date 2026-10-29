@@ -1,6 +1,5 @@
 import path from 'node:path';
 
-import { isDesignedAgentAvatarIcon } from '../../shared/agent/avatar';
 import { OpenClawProviderId } from '../../shared/providers/constants';
 import type { Agent } from '../coworkStore';
 import { AUTO_MODEL_REF, isAutoModelRef } from './modelResolver';
@@ -13,6 +12,10 @@ type BuildManagedAgentEntriesInput = {
 };
 
 export type ProviderModelCatalog = Record<string, { models: Array<{ id: string }> }>;
+
+export const OpenClawAgentOwnership = {
+  Explicit: 'explicit',
+} as const;
 
 export type ManagedSessionModelTarget = {
   providerId: string;
@@ -354,27 +357,18 @@ export function buildAgentEntry(
   let primaryModel = fallbackPrimaryModel;
   if (agent.model && isAutoModelRef(agent.model)) {
     primaryModel = AUTO_MODEL_REF;
-  } else if (agent.model?.trim()) {
+  } else {
     const qualified = resolveQualifiedAgentModelRef({
       agentModel: agent.model,
       availableProviders: options?.availableProviders ?? {},
     });
     primaryModel = qualified.status === 'qualified' ? qualified.primaryModel : fallbackPrimaryModel;
   }
-
-  const legacyIcon = isDesignedAgentAvatarIcon(agent.avatar || '') ? '' : (agent.avatar || '');
   const subagentConfig = buildSubagentConfig(agent);
 
   return {
     id: agent.id,
-    ...(agent.isDefault ? { default: true } : {}),
-    ...(agent.name ? { name: agent.name } : {}),
-    ...(agent.name || legacyIcon ? {
-      identity: {
-        ...(agent.name ? { name: agent.name } : {}),
-        ...(legacyIcon ? { emoji: legacyIcon } : {}),
-      },
-    } : {}),
+    ...(agent.name ? { name: agent.name, identity: { name: agent.name } } : {}),
     ...(agent.skillIds && agent.skillIds.length > 0 ? { skills: agent.skillIds } : {}),
     ...(subagentConfig ? { subagents: subagentConfig } : {}),
     ...(options?.workspace ? { workspace: options.workspace } : {}),

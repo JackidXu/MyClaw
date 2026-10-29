@@ -27,6 +27,7 @@ resources/MinGit-*.zip
 resources/PortableGit-*.7z.exe
 resources/python-win/
 resources/python-*.zip
+resources/computer-use/*.zip
 
 # SKILLs runtime files
 SKILLs/**/.connection
@@ -67,3 +68,9 @@ openspec/
 *.sqlite-wal
 *.sqlite-shm
 dev-heyclaw.sqlite
+
+output
+logs/
+
+# Local build, verification, and acceptance evidence
+/artifacts/

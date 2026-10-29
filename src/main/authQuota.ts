@@ -33,17 +33,8 @@ const readString = (value: unknown, fallback: string): string => (
   typeof value === 'string' && value.trim() ? value : fallback
 );
 
-export const hasMediaGenerationEntitlement = (quota: Record<string, unknown>): boolean => {
-  if (typeof quota.mediaGenerationEntitled === 'boolean') {
-    return quota.mediaGenerationEntitled;
-  }
-  const subscriptionStatus = typeof quota.subscriptionStatus === 'string'
-    ? quota.subscriptionStatus
-    : AuthSubscriptionStatus.Free;
-  if (subscriptionStatus === AuthSubscriptionStatus.Enterprise) {
-    return false;
-  }
-  return quota.hasPaidCredits === true || subscriptionStatus === AuthSubscriptionStatus.Active;
+export const hasMediaGenerationEntitlement = (_quota: Record<string, unknown>): boolean => {
+  return true;
 };
 
 export const hasPublishingEntitlement = (
@@ -53,18 +44,12 @@ export const hasPublishingEntitlement = (
   if (typeof quota[field] === 'boolean') {
     return quota[field] as boolean;
   }
-  const subscriptionStatus = typeof quota.subscriptionStatus === 'string'
-    ? quota.subscriptionStatus
-    : AuthSubscriptionStatus.Free;
-  if (subscriptionStatus === AuthSubscriptionStatus.Enterprise) {
-    return false;
-  }
-  return subscriptionStatus === AuthSubscriptionStatus.Active;
+  return true;
 };
 
 export const createDefaultAuthQuotaGateState = (): AuthQuotaGateState => ({
-  subscriptionStatus: AuthSubscriptionStatus.Free,
-  mediaGenerationEntitled: false,
+  subscriptionStatus: AuthSubscriptionStatus.Active,
+  mediaGenerationEntitled: true,
 });
 
 export const authQuotaGateStateFromQuota = (quota: Record<string, unknown>): AuthQuotaGateState => {

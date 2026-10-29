@@ -46,9 +46,21 @@ describe('MainLogReporter', () => {
     expect(result.searchParams.get('uuid')).toBe('installation-1');
     expect(result.searchParams.get('firstKeyfrom')).toBe('official');
     expect(result.searchParams.get('latestKeyfrom')).toBe('campaign');
+    expect(result.searchParams.get('keyfrom')).toBe('campaign');
     expect(result.searchParams.get('is_logged_in')).toBe('true');
     expect(result.searchParams.get('log_Usid')).toBe('user-1');
+    expect(result.searchParams.get('user_id')).toBe('user-1');
     expect(result.searchParams.get('uts')).toBe('1234');
+    expect(result.searchParams.get('eventId')).toMatch(/^[\da-f-]{36}$/i);
+    expect(result.searchParams.get('environment')).toBe('production');
+  });
+
+  test('classifies test-mode events independently of the installed build environment', async () => {
+    const store = createStore({ [LogReporterStoreKey.AppConfig]: { app: { testMode: true } } });
+    const fetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+    const reporter = new MainLogReporter({ store, fetch, appVersion: 'test-version', environment: 'production' });
+    await reporter.report({ action: LogReporterAction.TaskLifecycle, environment: 'production' });
+    expect(new URL(fetch.mock.calls[0][0]).searchParams.get('environment')).toBe('test');
   });
 
   test('skips sending without creating an installation id when analytics is disabled', async () => {
@@ -101,7 +113,9 @@ describe('MainLogReporter', () => {
     expect(url.searchParams.get('platform')).toBe('feishu');
     expect(url.searchParams.get('uuid')).toBe('installation-2');
     expect(url.searchParams.get('log_Usid')).toBe('user-2');
+    expect(url.searchParams.get('user_id')).toBe('user-2');
     expect(url.searchParams.get('latestKeyfrom')).toBe('partner');
+    expect(url.searchParams.get('keyfrom')).toBe('partner');
   });
 
   test('returns false when the analyzer request fails', async () => {

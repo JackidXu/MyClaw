@@ -2,18 +2,21 @@ import { ArrowPathIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
+import type { ScheduledTask, ScheduledTaskRun } from '../../../scheduledTask/types';
 import { collectSessionArtifacts, loadDetectedFileArtifact } from '../../services/artifactDetection';
 import { i18nService } from '../../services/i18n';
 import { type Artifact, PREVIEWABLE_ARTIFACT_TYPES } from '../../types/artifact';
 import type { CoworkMessage, CoworkSession } from '../../types/cowork';
 import { showShellFailureToast } from '../../utils/localFileActions';
 import AssistantTurnBlock from '../cowork/AssistantTurnBlock';
+import { buildMediaTaskPresentations } from '../cowork/mediaTaskPresentation';
 import {
   buildConversationTurns,
   buildDisplayItems,
   getTurnMessageIds,
 } from '../cowork/messageDisplayUtils';
 import UserMessageItem from '../cowork/UserMessageItem';
+import RunDeliveryNotice from './RunDeliveryNotice';
 import { formatDateTime, stripCronMetadataPrefix } from './utils';
 
 interface RunSessionModalProps {
@@ -25,6 +28,8 @@ interface RunSessionModalProps {
   sessionKey?: string | null;
   runSummary?: string | null;
   runError?: string | null;
+  run?: ScheduledTaskRun;
+  task?: ScheduledTask;
   onClose: () => void;
 }
 
@@ -63,6 +68,8 @@ const RunSessionModal: React.FC<RunSessionModalProps> = ({
   sessionKey,
   runSummary,
   runError,
+  run,
+  task,
   onClose,
 }) => {
   const [session, setSession] = useState<CoworkSession | null>(null);
@@ -200,7 +207,12 @@ const RunSessionModal: React.FC<RunSessionModalProps> = ({
     [session?.messages],
   );
   const displayItems = useMemo(() => buildDisplayItems(cleanedMessages), [cleanedMessages]);
-  const turns = useMemo(() => buildConversationTurns(displayItems), [displayItems]);
+  const leadingTurnStartTimestamp = session?.leadingTurnStartTimestamp ?? null;
+  const turns = useMemo(
+    () => buildConversationTurns(displayItems, { leadingTurnStartTimestamp }),
+    [displayItems, leadingTurnStartTimestamp],
+  );
+  const mediaTaskPresentations = useMemo(() => buildMediaTaskPresentations(turns), [turns]);
 
   // Detect deliverable file artifacts from the run transcript so the modal
   // shows the same end-of-turn file cards as the main session view.
@@ -291,6 +303,7 @@ const RunSessionModal: React.FC<RunSessionModalProps> = ({
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto">
+          {run && <RunDeliveryNotice key={run.id} run={run} task={task} />}
           {loading && (
             <div className="flex flex-col items-center justify-center py-16 gap-3">
               <svg className="w-5 h-5 animate-spin text-secondary" viewBox="0 0 24 24" fill="none">
@@ -311,7 +324,7 @@ const RunSessionModal: React.FC<RunSessionModalProps> = ({
               <button
                 type="button"
                 onClick={handleManualRetry}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg text-primary hover:bg-surface-raised transition-colors"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg text-foreground hover:bg-surface-raised transition-colors"
               >
                 <ArrowPathIcon className="w-3.5 h-3.5" />
                 {i18nService.t('scheduledTasksSessionRetry')}
@@ -352,6 +365,7 @@ const RunSessionModal: React.FC<RunSessionModalProps> = ({
                     {showAssistantBlock && (
                       <AssistantTurnBlock
                         turn={turn}
+                        mediaTaskPresentations={mediaTaskPresentations}
                         artifacts={turnArtifacts}
                         localServiceDirectory={sessionCwd}
                         onOpenArtifactPreview={handleOpenArtifactPreview}

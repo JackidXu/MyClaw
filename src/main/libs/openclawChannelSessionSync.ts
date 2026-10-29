@@ -235,6 +235,9 @@ export function resolveAgentBinding(
   return bindings[platform] || 'main';
 }
 
+/** Match OpenClaw main agent session keys like "agent:main:main" or "agent:secondary:main". */
+const MAIN_AGENT_SESSION_RE = /^agent:[^:]+:main$/;
+
 export function isCronSessionKey(sessionKey: string): boolean {
   return isOpenClawCronSessionKey(sessionKey);
 }
@@ -757,8 +760,32 @@ export class OpenClawChannelSessionSync {
   isChannelSessionKey(sessionKey: string): boolean {
     if (!sessionKey || isManagedSessionKey(sessionKey)) return false;
     if (parseChannelSessionKey(sessionKey) !== null) return true;
+    if (MAIN_AGENT_SESSION_RE.test(sessionKey)) return true;
     if (isCronSessionKey(sessionKey)) return true;
     return false;
+  }
+
+  /**
+   * Resolve or create a local Cowork session for the OpenClaw main agent session
+   * (e.g. "agent:main:main"). This handles events that flow through the main session
+   * rather than per-channel sessions.
+   */
+  resolveOrCreateMainAgentSession(sessionKey: string): string | null {
+    if (isManagedSessionKey(sessionKey)) return null;
+    if (!MAIN_AGENT_SESSION_RE.test(sessionKey)) return null;
+
+    const cached = this.syncedSessionKeys.get(sessionKey);
+    if (cached) {
+      return cached;
+    }
+
+    const cwd = this.getDefaultCwd('main');
+    console.log('[ChannelSessionSync] creating main agent session: key=', sessionKey, 'cwd=', cwd);
+    const session = this.coworkStore.createSession('[OpenClaw]', cwd, '', 'local');
+    console.log('[ChannelSessionSync] created main agent session:', session.id);
+
+    this.syncedSessionKeys.set(sessionKey, session.id);
+    return session.id;
   }
 
   /**

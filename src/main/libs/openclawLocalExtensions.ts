@@ -2,6 +2,8 @@ import { app } from 'electron';
 import fs from 'fs';
 import path from 'path';
 
+import { removeTreeNoFollowSync } from './removeTreeNoFollow';
+
 const LOCAL_EXTENSIONS_DIR = 'openclaw-extensions';
 const THIRD_PARTY_EXTENSIONS_DIR = 'third-party-extensions';
 
@@ -122,6 +124,66 @@ export const hasRuntimeBundledOpenClawExtension = (extensionId: string): boolean
   return fs.existsSync(path.join(dir, extensionId, 'openclaw.plugin.json'));
 };
 
+/**
+ * Copy only files whose bytes differ and return their relative paths. OpenClaw
+ * folds each plugin manifest's size, mtime and ctime into the fingerprint of
+ * its startup-migration checkpoint, so rewriting identical files would rerun
+ * its migrations on every dev launch.
+ */
+const copyChangedFiles = (sourceDir: string, targetDir: string, relativeDir = ''): string[] => {
+  const changed: string[] = [];
+  fs.mkdirSync(targetDir, { recursive: true });
+  for (const entry of fs.readdirSync(sourceDir, { withFileTypes: true })) {
+    const source = path.join(sourceDir, entry.name);
+    const target = path.join(targetDir, entry.name);
+    const relativePath = path.join(relativeDir, entry.name);
+    if (entry.isDirectory()) {
+      changed.push(...copyChangedFiles(source, target, relativePath));
+      continue;
+    }
+    if (!entry.isFile()) {
+      fs.cpSync(source, target, { recursive: true, force: true });
+      changed.push(relativePath);
+      continue;
+    }
+    let current: Buffer | null = null;
+    try {
+      current = fs.readFileSync(target);
+    } catch {
+      current = null;
+    }
+    if (!current || !current.equals(fs.readFileSync(source))) {
+      fs.copyFileSync(source, target);
+      changed.push(relativePath);
+    }
+  }
+  return changed;
+};
+
+const TYPESCRIPT_SOURCE_RE = /(?<!\.d)\.tsx?$/;
+
+/**
+ * `openclaw:precompile` bundles each extension into a .js file next to its
+ * TypeScript entry, and OpenClaw prefers that file. After a source change the
+ * bundle is stale; remove it so OpenClaw loads the synced sources instead.
+ */
+const removeStalePrecompiledEntries = (sourceDir: string, targetDir: string, relativeDir = ''): string[] => {
+  const removed: string[] = [];
+  for (const entry of fs.readdirSync(path.join(sourceDir, relativeDir), { withFileTypes: true })) {
+    const relativePath = path.join(relativeDir, entry.name);
+    if (entry.isDirectory()) {
+      removed.push(...removeStalePrecompiledEntries(sourceDir, targetDir, relativePath));
+      continue;
+    }
+    if (!entry.isFile() || !TYPESCRIPT_SOURCE_RE.test(entry.name)) continue;
+    const bundle = relativePath.replace(TYPESCRIPT_SOURCE_RE, '.js');
+    if (fs.existsSync(path.join(sourceDir, bundle)) || !fs.existsSync(path.join(targetDir, bundle))) continue;
+    fs.rmSync(path.join(targetDir, bundle), { force: true });
+    removed.push(bundle);
+  }
+  return removed;
+};
+
 export const syncLocalOpenClawExtensionsIntoRuntime = (
   runtimeRoot: string,
 ): { sourceDir: string | null; copied: string[] } => {
@@ -144,12 +206,20 @@ export const syncLocalOpenClawExtensionsIntoRuntime = (
     if (!entry.isDirectory()) {
       continue;
     }
-    fs.cpSync(
-      path.join(sourceDir, entry.name),
-      path.join(targetExtensionsDir, entry.name),
-      { recursive: true, force: true },
-    );
+    const extensionSourceDir = path.join(sourceDir, entry.name);
+    const extensionTargetDir = path.join(targetExtensionsDir, entry.name);
+    const changedFiles = copyChangedFiles(extensionSourceDir, extensionTargetDir);
+    if (changedFiles.length === 0) {
+      continue;
+    }
     copied.push(entry.name);
+    // package.json alone differs after every precompile run; only code changes stale the bundle.
+    if (changedFiles.some(file => TYPESCRIPT_SOURCE_RE.test(file))) {
+      const removed = removeStalePrecompiledEntries(extensionSourceDir, extensionTargetDir);
+      if (removed.length > 0) {
+        console.log(`[OpenClaw] removed stale precompiled ${entry.name} entries: ${removed.join(', ')}`);
+      }
+    }
   }
 
   return { sourceDir, copied };
@@ -175,25 +245,36 @@ export const listLocalOpenClawExtensionManifests = (): OpenClawExtensionManifest
   listExtensionManifests(findLocalExtensionsSourceDir(), 'local')
 );
 
-export const listBundledOpenClawExtensionIds = (): string[] => {
-  const extensionsDir = findBundledExtensionsDir();
-  if (!extensionsDir) {
-    return [];
-  }
-
+const listRuntimeBundledPreinstallIds = (): string[] => {
   try {
-    return fs.readdirSync(extensionsDir, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory())
-      .filter((entry) => fs.existsSync(path.join(extensionsDir, entry.name, 'openclaw.plugin.json')))
-      .map((entry) => entry.name);
+    const pkg = JSON.parse(fs.readFileSync(path.join(app.getAppPath(), 'package.json'), 'utf8'));
+    if (!Array.isArray(pkg.openclaw?.plugins)) return [];
+    return pkg.openclaw.plugins
+      .filter((plugin: { id?: string; npm?: string; runtimeBundled?: boolean }) => (
+        plugin.runtimeBundled === true
+        && typeof plugin.id === 'string'
+        && /^[a-z0-9][a-z0-9._-]*$/i.test(plugin.id)
+        && plugin.npm === `@openclaw/${plugin.id}`
+      ))
+      .map((plugin: { id: string }) => plugin.id);
   } catch {
     return [];
   }
 };
 
-export const listBundledOpenClawExtensionManifests = (): OpenClawExtensionManifest[] => (
-  listExtensionManifests(findBundledExtensionsDir(), 'bundled')
+export const listBundledOpenClawExtensionIds = (): string[] => (
+  listBundledOpenClawExtensionManifests().map(manifest => manifest.directoryId)
 );
+
+export const listBundledOpenClawExtensionManifests = (): OpenClawExtensionManifest[] => {
+  const runtimeBundledIds = new Set(listRuntimeBundledPreinstallIds());
+  return [
+    ...listExtensionManifests(findRuntimeBundledExtensionsDir(), 'bundled')
+      .filter(manifest => runtimeBundledIds.has(manifest.directoryId)),
+    ...listExtensionManifests(findBundledExtensionsDir(), 'bundled')
+      .filter(manifest => !runtimeBundledIds.has(manifest.directoryId)),
+  ];
+};
 
 export const listAvailableOpenClawExtensionManifests = (): OpenClawExtensionManifest[] => [
   ...listBundledOpenClawExtensionManifests(),
@@ -251,22 +332,30 @@ export const cleanupStaleThirdPartyPluginsFromBundledDir = (
   runtimeRoot: string,
   thirdPartyPluginIds: readonly string[],
 ): string[] => {
+  const runtimeBundledDir = path.join(runtimeRoot, 'dist', 'extensions');
   const staleDirs = [
-    path.join(runtimeRoot, 'dist', 'extensions'),
+    runtimeBundledDir,
     path.join(runtimeRoot, 'extensions'),
   ];
   const removed: string[] = [];
+  const runtimeBundledIds = new Set(listRuntimeBundledPreinstallIds());
 
   for (const id of thirdPartyPluginIds) {
     for (const baseDir of staleDirs) {
+      // Explicitly shipped official plugins (Discord) now belong in this root.
+      // Still remove their legacy source-root copy under extensions/.
+      if (baseDir === runtimeBundledDir && runtimeBundledIds.has(id)) continue;
       const staleDir = path.join(baseDir, id);
       try {
-        if (fs.statSync(staleDir).isDirectory()) {
-          fs.rmSync(staleDir, { recursive: true, force: true });
+        const stats = fs.lstatSync(staleDir);
+        if (stats.isDirectory() || stats.isSymbolicLink()) {
+          removeTreeNoFollowSync(staleDir);
           removed.push(id);
         }
-      } catch {
-        // Directory doesn't exist or can't be accessed — nothing to clean up.
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+          console.warn(`[OpenClaw] Failed to clean stale plugin directory: ${staleDir}`, error);
+        }
       }
     }
   }

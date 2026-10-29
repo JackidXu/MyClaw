@@ -9,7 +9,9 @@ import {
   CoworkBtwStatus,
   type CoworkBtwThread,
 } from '../../../shared/cowork/btw';
+import { COWORK_TEMP_SESSION_ID_PREFIX } from '../../../shared/cowork/constants';
 import type { CoworkGoal } from '../../../shared/cowork/goal';
+import type { CoworkTurnUsage, CoworkTurnUsageAnchor } from '../../../shared/cowork/llmTurnUsage';
 import {
   COWORK_RAIL_TOOLTIP_PREVIEW_MAX_LENGTH,
   type CoworkMessageRailIndexItem,
@@ -25,6 +27,7 @@ import {
   type CoworkSteerStatus as CoworkSteerStatusType,
 } from '../../../shared/cowork/steer';
 import { stripNullChars } from '../../../shared/cowork/text';
+import { readMediaConfirmationState } from '../../../shared/media/confirmation';
 import {
   CoworkCollaborationMode,
   type CoworkCollaborationMode as CoworkCollaborationModeType,
@@ -42,6 +45,7 @@ import type { MediaGenerationSelection, MediaModel } from '../../types/mediaGene
 import { removeSessionFromState, removeSessionsFromState } from './coworkDeleteState';
 
 export interface DraftAttachment {
+  imageEdit?: import('../../../shared/imageEditing/types').ImageEditRequest;
   path: string;
   name: string;
   isImage?: boolean;
@@ -83,6 +87,8 @@ interface CoworkState {
   draftKitIds: Record<string, string[]>;
   /** Keyed by draftKey, stores active skill IDs per draft so they survive view switches */
   draftSkillIds: Record<string, string[]>;
+  /** Expert-provided selections are availability, not a manual override of media defaults. */
+  draftInheritedSkillIds: Record<string, string[]>;
   /** Keyed by draftKey, stores the active collaboration mode for the draft/session. */
   draftCollaborationModes: Record<string, CoworkCollaborationModeType>;
   /** Keyed by draftKey, stores the second brain enabled preference for the draft/session. */
@@ -114,6 +120,7 @@ interface CoworkState {
   /** Live session-tail messages kept outside a detached, contiguous history window. */
   detachedTailMessagesBySessionId: Record<string, CoworkMessage[]>;
   remoteManaged: boolean;
+  isRepairingOpenClaw: boolean;
   pendingPermissions: CoworkPermissionRequest[];
   config: CoworkConfig;
   /** Media generation models fetched from server */
@@ -138,6 +145,7 @@ const initialState: CoworkState = {
   draftBrowserAnnotationBatches: {},
   draftKitIds: {},
   draftSkillIds: {},
+  draftInheritedSkillIds: {},
   draftCollaborationModes: {},
   draftSecondBrainEnabled: {},
   draftProjectId: null,
@@ -158,6 +166,7 @@ const initialState: CoworkState = {
   messageRailIndexLoadingBySessionId: {},
   detachedTailMessagesBySessionId: {},
   remoteManaged: false,
+  isRepairingOpenClaw: false,
   pendingPermissions: [],
   config: {
     workingDirectory: '',
@@ -171,6 +180,8 @@ const initialState: CoworkState = {
     memoryUserMemoriesMaxItems: 12,
     skipMissedJobs: true,
     openClawHeartbeatEnabled: false,
+    openClawSkillReviewEnabled: false,
+    openClawMemoryFlushEnabled: false,
     embeddingEnabled: false,
     embeddingProvider: 'openai',
     embeddingModel: '',
@@ -575,7 +586,7 @@ const coworkSlice = createSlice({
       }
       if (action.payload) {
         state.currentSessionId = action.payload.id;
-        if (!action.payload.id.startsWith('temp-')) {
+        if (!action.payload.id.startsWith(COWORK_TEMP_SESSION_ID_PREFIX)) {
           const summary = toSessionSummary(action.payload);
           const sessionIndex = state.sessions.findIndex((session) => session.id === summary.id);
           if (sessionIndex !== -1) {
@@ -766,6 +777,23 @@ const coworkSlice = createSlice({
       } else {
         clearCompletedSessionUnread(state, sessionId);
       }
+    },
+
+    setMessageTurnUsage(
+      state,
+      action: PayloadAction<{ sessionId: string; messageId: string; turnUsage: CoworkTurnUsage }>,
+    ) {
+      const { sessionId, messageId, turnUsage } = action.payload;
+      if (state.currentSession?.id !== sessionId) return;
+      const message = state.currentSession.messages.find(item => item.id === messageId)
+        ?? state.detachedTailMessagesBySessionId[sessionId]?.find(item => item.id === messageId);
+      if (!message) {
+        if (state.currentSession.leadingTurnUsage?.userMessageId === messageId) {
+          state.currentSession.leadingTurnUsage.turnUsage = turnUsage;
+        }
+        return;
+      }
+      message.metadata = { ...message.metadata, turnUsage };
     },
 
     updateSessionGoal(state, action: PayloadAction<{ sessionId: string; goal: CoworkGoal | null }>) {
@@ -1011,6 +1039,8 @@ const coworkSlice = createSlice({
         messages: CoworkMessage[];
         messagesOffset: number;
         totalMessages: number;
+        leadingTurnStartTimestamp?: number | null;
+        leadingTurnUsage?: CoworkTurnUsageAnchor | null;
         /** Keep a newer live total when this window request started before it changed. */
         preserveCurrentTotal?: boolean;
       }>,
@@ -1020,6 +1050,8 @@ const coworkSlice = createSlice({
         messages,
         messagesOffset,
         totalMessages,
+        leadingTurnStartTimestamp = null,
+        leadingTurnUsage = null,
         preserveCurrentTotal = false,
       } = action.payload;
       if (state.currentSession?.id !== sessionId) return;
@@ -1043,6 +1075,8 @@ const coworkSlice = createSlice({
       state.currentSession.messages = messages;
       state.currentSession.messagesOffset = messagesOffset;
       state.currentSession.totalMessages = nextTotalMessages;
+      state.currentSession.leadingTurnStartTimestamp = leadingTurnStartTimestamp;
+      state.currentSession.leadingTurnUsage = leadingTurnUsage;
       removeLoadedDetachedTailMessages(state, sessionId, messages);
       for (const message of state.currentSession.messages) {
         applyPendingMediaStatusUpdates(state, sessionId, message);
@@ -1116,14 +1150,22 @@ const coworkSlice = createSlice({
     },
 
     /** Prepend older messages when user scrolls up to load more history. */
-    prependMessages(state, action: PayloadAction<{ sessionId: string; messages: CoworkMessage[]; newOffset: number }>) {
-      const { sessionId, messages, newOffset } = action.payload;
+    prependMessages(state, action: PayloadAction<{
+      sessionId: string;
+      messages: CoworkMessage[];
+      newOffset: number;
+      leadingTurnStartTimestamp?: number | null;
+      leadingTurnUsage?: CoworkTurnUsageAnchor | null;
+    }>) {
+      const { sessionId, messages, newOffset, leadingTurnStartTimestamp = null, leadingTurnUsage = null } = action.payload;
       if (state.currentSession?.id !== sessionId) return;
       if (messages.length === 0) return;
       const existingIds = new Set(state.currentSession.messages.map(m => m.id));
       const toInsert = messages.filter(m => !existingIds.has(m.id));
       state.currentSession.messages = [...toInsert, ...state.currentSession.messages];
       state.currentSession.messagesOffset = newOffset;
+      state.currentSession.leadingTurnStartTimestamp = leadingTurnStartTimestamp;
+      state.currentSession.leadingTurnUsage = leadingTurnUsage;
       for (const message of toInsert) {
         applyPendingMediaStatusUpdates(state, sessionId, message);
       }
@@ -1252,6 +1294,10 @@ const coworkSlice = createSlice({
       state.remoteManaged = action.payload;
     },
 
+    setOpenClawRepairing(state, action: PayloadAction<boolean>) {
+      state.isRepairingOpenClaw = action.payload;
+    },
+
     updateSessionPinned(state, action: PayloadAction<{ sessionId: string; pinned: boolean; pinOrder?: number | null }>) {
       const { sessionId, pinned, pinOrder } = action.payload;
       const sessionIndex = state.sessions.findIndex(s => s.id === sessionId);
@@ -1290,10 +1336,16 @@ const coworkSlice = createSlice({
     },
 
     enqueuePendingPermission(state, action: PayloadAction<CoworkPermissionRequest>) {
-      const alreadyQueued = state.pendingPermissions.some(
-        (permission) => permission.requestId === action.payload.requestId
+      const index = state.pendingPermissions.findIndex(
+        permission => permission.requestId === action.payload.requestId
       );
-      if (alreadyQueued) return;
+      if (index >= 0) {
+        const incoming = readMediaConfirmationState(action.payload.toolInput?.mediaConfirmation);
+        const existing = readMediaConfirmationState(state.pendingPermissions[index].toolInput?.mediaConfirmation);
+        // A reload snapshot must not replace a newer confirmation state.
+        if (incoming && (!existing || incoming.sequence > existing.sequence)) state.pendingPermissions[index] = action.payload;
+        return;
+      }
       state.pendingPermissions.push(action.payload);
     },
 
@@ -1531,8 +1583,15 @@ const coworkSlice = createSlice({
       }
     },
 
-    setDraftSkillIds(state, action: PayloadAction<{ draftKey: string; skillIds: string[] }>) {
-      const { draftKey, skillIds } = action.payload;
+    setDraftSkillIds(state, action: PayloadAction<{ draftKey: string; skillIds: string[]; inheritedSkillIds?: string[] }>) {
+      const { draftKey, skillIds, inheritedSkillIds } = action.payload;
+      const inherited = (inheritedSkillIds ?? state.draftInheritedSkillIds[draftKey] ?? [])
+        .filter(id => skillIds.includes(id));
+      if (inherited.length > 0) {
+        state.draftInheritedSkillIds[draftKey] = inherited;
+      } else {
+        delete state.draftInheritedSkillIds[draftKey];
+      }
       if (skillIds.length === 0) {
         delete state.draftSkillIds[draftKey];
       } else {
@@ -1575,11 +1634,7 @@ const coworkSlice = createSlice({
 
     setMediaSelection(state, action: PayloadAction<{ draftKey: string; selection: MediaGenerationSelection }>) {
       const { draftKey, selection } = action.payload;
-      if (selection.mode === 'none') {
-        delete state.mediaSelection[draftKey];
-      } else {
-        state.mediaSelection[draftKey] = selection;
-      }
+      state.mediaSelection[draftKey] = selection;
     },
 
     clearMediaAccountState(state) {
@@ -1622,6 +1677,7 @@ export const {
   clearDraftBrowserAnnotationBatches,
   addSession,
   updateSessionStatus,
+  setMessageTurnUsage,
   updateSessionGoal,
   openBtwThread,
   closeBtwThread,
@@ -1648,6 +1704,7 @@ export const {
   setContextMaintenance,
   markCompactionNotified,
   setRemoteManaged,
+  setOpenClawRepairing,
   updateSessionPinned,
   updateSessionTitle,
   updateCurrentSessionModelOverride,

@@ -1,3 +1,4 @@
+import type { UsageContext } from '../../shared/analytics/usage';
 import type { CoworkBrowserAnnotationMessageBatch } from '../../shared/cowork/browserAnnotations';
 import type {
   CoworkContextUsageFailureReason,
@@ -10,16 +11,28 @@ import type {
   CoworkImageAttachmentPayload,
   CoworkImageAttachmentPreview,
 } from '../../shared/cowork/imageAttachments';
+import type {
+  CoworkLlmTrace,
+  CoworkTurnUsage,
+  CoworkTurnUsageAnchor,
+} from '../../shared/cowork/llmTurnUsage';
+import type { CoworkModelChange } from '../../shared/cowork/modelChange';
 import type { CoworkSelectedTextSnippet } from '../../shared/cowork/selectedText';
 import type {
   KitReference,
   ResolvedKitCapabilities,
 } from '../../shared/kit/constants';
+import type { MediaSelection } from '../../shared/media/defaultPolicy';
+import { type ModelPresetId } from '../../shared/modelPresets/constants';
 import type {
+  OpenClawConfigApplyPendingReason,
   OpenClawEngineErrorCode,
   OpenClawEnginePhase as SharedOpenClawEnginePhase,
   OpenClawGatewayRepairErrorCode,
+  OpenClawLoopbackRepairOutcome,
 } from '../../shared/openclawEngine/constants';
+import type { OpenClawDreamingRecoverySummary } from '../../shared/openclawEngine/dreamingRecovery';
+import type { OpenClawRepairStage } from '../../shared/openclawEngine/repair';
 import type { Platform } from '../../shared/platform';
 import type { ModelThinkingLevel } from '../../shared/providers/modelThinking';
 
@@ -67,7 +80,17 @@ export interface OpenClawSessionPolicyConfig {
 }
 
 // Cowork message metadata
+/** Live +N/-M line counts streamed while a file tool call's arguments are generated. */
+export interface CoworkLiveEditDiff {
+  added: number;
+  removed: number;
+}
+
 export interface CoworkMessageMetadata {
+  imageEdits?: import('../../shared/imageEditing/types').ImageEditMessageSnapshot[];
+  modelChange?: CoworkModelChange;
+  modelPresetId?: ModelPresetId;
+  resolvedModelId?: string;
   toolName?: string;
   toolInput?: Record<string, unknown>;
   toolResult?: string;
@@ -78,6 +101,9 @@ export interface CoworkMessageMetadata {
   isStreaming?: boolean;
   isFinal?: boolean;
   isThinking?: boolean;
+  /** True while the model is still streaming this tool call's arguments. */
+  isGenerating?: boolean;
+  liveEditDiff?: CoworkLiveEditDiff;
   skillIds?: string[];
   kitIds?: string[];
   kitReferences?: KitReference[];
@@ -93,6 +119,12 @@ export interface CoworkMessageMetadata {
   contextPercent?: number;
   model?: string;
   agentName?: string;
+  /** User messages: trace carried by every model request of the turn. */
+  llmTrace?: CoworkLlmTrace;
+  /** User messages: credits and tokens the turn consumed on LobsterAI models. */
+  turnUsage?: CoworkTurnUsage;
+  /** Server media task IDs created by this turn; prices are read from the server. */
+  turnMediaTaskIds?: string[];
   selectedTextSnippets?: CoworkSelectedTextSnippet[];
   browserAnnotations?: CoworkBrowserAnnotationMessageBatch[];
   goalSetting?: {
@@ -155,6 +187,7 @@ export interface CoworkSession {
   cwd: string;
   systemPrompt: string;
   modelOverride: string;
+  modelPresetId?: ModelPresetId | null;
   thinkingLevel?: ModelThinkingLevel | '';
   executionMode: CoworkExecutionMode;
   activeSkillIds: string[];
@@ -167,6 +200,12 @@ export interface CoworkSession {
   messagesOffset: number;
   /** Total number of messages stored for this session. */
   totalMessages: number;
+  /**
+   * Start of the turn the first loaded message belongs to, when that turn
+   * began before `messagesOffset`; anchors its elapsed time.
+   */
+  leadingTurnStartTimestamp?: number | null;
+  leadingTurnUsage?: CoworkTurnUsageAnchor | null;
   parentSessionId?: string | null;
   forkedFromMessageId?: string | null;
   forkedAt?: number | null;
@@ -192,6 +231,8 @@ export interface CoworkConfig {
   memoryUserMemoriesMaxItems: number;
   skipMissedJobs: boolean;
   openClawHeartbeatEnabled: boolean;
+  openClawSkillReviewEnabled: boolean;
+  openClawMemoryFlushEnabled: boolean;
   embeddingEnabled: boolean;
   embeddingProvider: string;
   embeddingModel: string;
@@ -230,6 +271,8 @@ export type CoworkConfigUpdate = Partial<Pick<
   | 'memoryUserMemoriesMaxItems'
   | 'skipMissedJobs'
   | 'openClawHeartbeatEnabled'
+  | 'openClawSkillReviewEnabled'
+  | 'openClawMemoryFlushEnabled'
   | 'embeddingEnabled'
   | 'embeddingProvider'
   | 'embeddingModel'
@@ -243,13 +286,6 @@ export type CoworkConfigUpdate = Partial<Pick<
   | 'dreamingTimezone'
 >>;
 
-export interface CoworkApiConfig {
-  apiKey: string;
-  baseURL: string;
-  model: string;
-  apiType?: 'anthropic' | 'openai';
-}
-
 export type OpenClawEnginePhase = SharedOpenClawEnginePhase;
 
 export interface OpenClawEngineStatus {
@@ -258,9 +294,31 @@ export interface OpenClawEngineStatus {
   progressPercent?: number;
   message?: string;
   errorCode?: OpenClawEngineErrorCode;
+  dreamingRecovery?: OpenClawDreamingRecoverySummary;
   gatewayPort?: number | null;
   gatewayHttpUrl?: string | null;
   canRetry: boolean;
+  /**
+   * Set on a task-admission reply while a config change is still unapplied.
+   * The gateway process keeps running, so this is not an engine lifecycle state.
+   */
+  configApplyPending?: boolean;
+  /** Why that admission reply refused the task. */
+  configApplyPendingReason?: OpenClawConfigApplyPendingReason;
+  /**
+   * Set while automatic recovery has given up on applying the latest config.
+   * Tasks keep running on the config the gateway already applied; Quick Repair
+   * can clear what blocked the change.
+   */
+  configApplyStalled?: { detail: string };
+}
+
+export interface OpenClawLoopbackRepairResult {
+  outcome: OpenClawLoopbackRepairOutcome;
+  status?: OpenClawEngineStatus;
+  detail?: string;
+  /** For an administrator to run when the app could not add the rule. */
+  manualCommand?: string;
 }
 
 export interface OpenClawGatewayRepairResult {
@@ -268,9 +326,12 @@ export interface OpenClawGatewayRepairResult {
   status?: OpenClawEngineStatus;
   originalPath?: string;
   backupPath?: string;
+  quarantinedSessionStoreCount?: number;
   error?: string;
   errorCode?: OpenClawGatewayRepairErrorCode;
   recoverable?: boolean;
+  failedStage?: OpenClawRepairStage;
+  failurePath?: string;
 }
 
 export interface CoworkUserMemoryEntry {
@@ -352,6 +413,13 @@ export interface CoworkForkSessionOptions {
 }
 
 // Subagent session summary for sidebar display
+export const SubagentSessionStatus = {
+  Running: 'running',
+  Done: 'done',
+  Error: 'error',
+} as const;
+export type SubagentSessionStatus = typeof SubagentSessionStatus[keyof typeof SubagentSessionStatus];
+
 export interface SubagentSessionSummary {
   id: string;
   agentId: string | null;
@@ -363,7 +431,7 @@ export interface SubagentSessionSummary {
   parentAgentId?: string | null;
   parentTitle?: string | null;
   parentUpdatedAt?: number | null;
-  status: 'running' | 'done' | 'error';
+  status: SubagentSessionStatus;
   createdAt: number;
   endedAt: number | null;
   error?: string | null;
@@ -371,22 +439,25 @@ export interface SubagentSessionSummary {
 
 // Start session options
 export interface CoworkStartOptions {
+  analytics?: UsageContext;
   prompt: string;
   cwd?: string;
   systemPrompt?: string;
   title?: string;
   activeSkillIds?: string[];
+  inheritedSkillIds?: string[];
   runtimeSkillIds?: string[];
   kitIds?: string[];
   kitReferences?: KitReference[];
   resolvedKitCapabilities?: ResolvedKitCapabilities;
   agentId?: string;
   modelOverride?: string;
+  modelPresetId?: ModelPresetId;
   thinkingLevel?: ModelThinkingLevel;
   secondBrainEnabled?: boolean;
   projectId?: string;
   imageAttachments?: CoworkImageAttachment[];
-  mediaSelection?: { mode: string; modelId?: string; modelName?: string; imageModelId?: string; videoModelId?: string };
+  mediaSelection?: MediaSelection;
   mediaReferences?: import('./mediaGeneration').MediaAttachmentRef[];
   selectedTextSnippets?: CoworkSelectedTextSnippet[];
   browserAnnotations?: CoworkBrowserAnnotationMessageBatch[];
@@ -395,16 +466,18 @@ export interface CoworkStartOptions {
 
 // Continue session options
 export interface CoworkContinueOptions {
+  analytics?: UsageContext;
   sessionId: string;
   prompt: string;
   systemPrompt?: string;
   activeSkillIds?: string[];
+  inheritedSkillIds?: string[];
   runtimeSkillIds?: string[];
   kitIds?: string[];
   kitReferences?: KitReference[];
   resolvedKitCapabilities?: ResolvedKitCapabilities;
   imageAttachments?: CoworkImageAttachment[];
-  mediaSelection?: { mode: string; modelId?: string; modelName?: string; imageModelId?: string; videoModelId?: string };
+  mediaSelection?: MediaSelection;
   mediaReferences?: import('./mediaGeneration').MediaAttachmentRef[];
   selectedTextSnippets?: CoworkSelectedTextSnippet[];
   browserAnnotations?: CoworkBrowserAnnotationMessageBatch[];

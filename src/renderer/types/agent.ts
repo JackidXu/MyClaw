@@ -1,6 +1,7 @@
+import type { AgentSource } from '@shared/agent/constants';
 import type { ModelThinkingLevel } from '@shared/providers/modelThinking';
 
-export type AgentSource = 'custom' | 'preset';
+export type { AgentSource } from '@shared/agent/constants';
 
 export interface Agent {
   id: string;
@@ -12,6 +13,8 @@ export interface Agent {
   thinkingLevel: ModelThinkingLevel | '';
   workingDirectory: string;
   avatar?: string;
+  icon?: string;
+  iconCustomized?: boolean;
   skillIds: string[];
   subagentAllowAgentIds: string[];
   level?: '高级' | '中级' | '初级';
@@ -32,6 +35,7 @@ export interface PresetAgent {
   name: string;
   nameEn: string;
   avatar?: string;
+  icon?: string;
   description: string;
   descriptionEn: string;
   identity: string;
@@ -41,6 +45,7 @@ export interface PresetAgent {
   skillIds: string[];
   level?: '高级' | '中级' | '初级';
   department?: string;
+  category?: string;
   installed?: boolean;
 }
 

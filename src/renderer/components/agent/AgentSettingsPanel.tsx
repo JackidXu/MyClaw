@@ -17,7 +17,7 @@ import type { Model } from '../../store/slices/modelSlice';
 import type { Agent } from '../../types/agent';
 import type { DingTalkInstanceConfig, DiscordInstanceConfig, FeishuInstanceConfig, IMGatewayConfig, NimInstanceConfig, PopoInstanceConfig, QQInstanceConfig, TelegramInstanceConfig, WecomInstanceConfig } from '../../types/im';
 import type { Skill } from '../../types/skill';
-import { getAgentDisplayName, getAgentDisplayNameById, isDefaultAgentId } from '../../utils/agentDisplay';
+import { getAgentDisplayName, getAgentDisplayNameById, isDefaultAgentId, usesManagedPresetAvatar } from '../../utils/agentDisplay';
 import { resolveOpenClawModelRef, toOpenClawModelRef } from '../../utils/openclawModelRef';
 import { getVisibleIMPlatforms } from '../../utils/regionFilter';
 import Modal from '../common/Modal';
@@ -26,6 +26,10 @@ import AgentAvatarIcon from './AgentAvatarIcon';
 import AgentAvatarPicker from './AgentAvatarPicker';
 import AgentConfirmDialog from './AgentConfirmDialog';
 import AgentDetailToolbar from './AgentDetailToolbar';
+import {
+  AGENT_DESCRIPTION_INPUT_CLASS,
+  AGENT_NAME_INPUT_CLASS,
+} from './agentHeaderStyles';
 import AgentSkillSelector from './AgentSkillSelector';
 import { AgentConfirmDialogVariant, AgentDetailTab } from './constants';
 
@@ -408,6 +412,7 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
           : {}),
         workingDirectory: workingDirectory.trim(),
         avatar: icon,
+        ...(icon.trim() !== initialValuesRef.current.icon ? { icon: icon.trim() } : {}),
         skillIds,
         subagentAllowAgentIds,
         level,
@@ -810,10 +815,18 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
           <div className="flex min-w-0 flex-1 items-start gap-3">
             {isPresetAgent ? (
               <div className="w-11 h-11 rounded-full overflow-hidden shrink-0 flex items-center justify-center bg-slate-100 dark:bg-zinc-800">
-                <AgentAvatarIcon avatar={icon} className="w-full h-full object-cover" />
+                <AgentAvatarIcon
+                  value={icon}
+                  expertFallback={usesManagedPresetAvatar(currentAgent) && icon === currentAgent?.icon}
+                  className="w-full h-full object-cover"
+                />
               </div>
             ) : (
-              <AgentAvatarPicker value={icon} onChange={setIcon} />
+              <AgentAvatarPicker
+                value={icon}
+                onChange={setIcon}
+                expertFallback={usesManagedPresetAvatar(currentAgent) && icon === currentAgent?.icon}
+              />
             )}
             <div className="min-w-0 flex-1 pt-0.5">
               {isPresetAgent ? (
@@ -838,7 +851,7 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
                     }}
                     placeholder={i18nService.t('agentNamePlaceholder')}
                     aria-label={i18nService.t('agentName')}
-                    className="w-full bg-transparent text-lg font-semibold leading-6 text-foreground placeholder:text-secondary/40 focus:outline-none"
+                    className={AGENT_NAME_INPUT_CLASS}
                   />
                   <input
                     type="text"
@@ -846,7 +859,7 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
                     onChange={(e) => setDescription(e.target.value)}
                     placeholder={i18nService.t('agentDescriptionPlaceholder')}
                     aria-label={i18nService.t('agentDescription')}
-                    className="mt-0.5 w-full bg-transparent text-sm leading-5 text-secondary placeholder:text-secondary/50 focus:outline-none"
+                    className={AGENT_DESCRIPTION_INPUT_CLASS}
                   />
                 </>
               )}

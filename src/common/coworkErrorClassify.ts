@@ -5,6 +5,7 @@
 
 import { OpenClawGatewayFailureKind } from '../shared/openclawEngine/constants';
 import { OpenClawTranscriptSafetyErrorCode } from '../shared/openclawTranscript/constants';
+import { ProviderName } from '../shared/providers/constants';
 
 export const CoworkErrorI18nKey = {
   AuthInvalid: 'coworkErrorAuthInvalid',
@@ -14,16 +15,20 @@ export const CoworkErrorI18nKey = {
   QuotaExhausted: 'coworkErrorQuotaExhausted',
   FreeQuotaExhausted: 'coworkErrorFreeQuotaExhausted',
   InsufficientBalance: 'coworkErrorInsufficientBalance',
+  ModelServiceUnavailable: 'coworkErrorModelServiceUnavailable',
+  ProviderCooldown: 'coworkErrorProviderCooldown',
   RateLimit: 'coworkErrorRateLimit',
   RateLimitTpm: 'coworkErrorRateLimitTpm',
   ModelOverloaded: 'coworkErrorModelOverloaded',
   ModelResponseTimeout: 'coworkErrorModelResponseTimeout',
   NetworkError: 'coworkErrorNetworkError',
+  NetworkErrorViaSystemProxy: 'coworkErrorNetworkErrorViaSystemProxy',
   ServerError: 'coworkErrorServerError',
   TranscriptOversized: 'coworkErrorTranscriptOversized',
   GatewayHeapOutOfMemory: 'coworkErrorGatewayHeapOutOfMemory',
   IncompleteTurnWithTools: 'coworkErrorIncompleteTurnWithTools',
   IncompleteTurn: 'coworkErrorIncompleteTurn',
+  WorkspaceAliasRepointed: 'coworkErrorWorkspaceAliasRepointed',
 } as const;
 
 const LOBSTERAI_QUOTA_EXHAUSTED_PATTERN =
@@ -34,15 +39,21 @@ const MODEL_CAPACITY_OVERLOAD_PATTERN =
 
 const API_KEY_PATTERN = String.raw`(?:api\s*key|api[_-]?key|apikey)`;
 const UNAVAILABLE_NETWORK_CODE_PATTERN = String.raw`(?:ECONNREFUSED|ECONNRESET|ECONNABORTED|ENOTFOUND|ETIMEDOUT|ENETUNREACH|EHOSTUNREACH|EAI_AGAIN|UND_ERR_[A-Z_]+)`;
+// Chromium network errors from Electron net.fetch, e.g. relayed by the LobsterAI token proxy.
+const CHROMIUM_NET_ERROR_PATTERN = String.raw`net::ERR_[A-Z0-9_]+`;
 
 const ERROR_RULES: Array<[RegExp, string]> = [
   // Incomplete agent turn (e.g. context limit reached or model ended with empty output after tool executions)
   [/Agent couldn't generate a response.*some tool actions may have already been executed/i, CoworkErrorI18nKey.IncompleteTurnWithTools],
   [/Agent couldn't generate a response/i, CoworkErrorI18nKey.IncompleteTurn],
+  // A persisted local cooldown is not a new provider billing/auth failure.
+  [/Inline API key for provider "[^"]+" is temporarily disabled after a provider auth\/billing failure/i, CoworkErrorI18nKey.ProviderCooldown],
   // OAuth / token refresh failures. Must precede generic auth handling.
   [/oauth.*(invalid|expired|failed|error|scope|token|callback|authorization|not completed)|auth[_ ]refresh|refresh[_ ]timeout|callback[_ ](timeout|validation)|token.*(expired|invalid)|invalid.*token|authorization method/i, CoworkErrorI18nKey.OAuthInvalid],
   // LobsterAI plan/free quota. Must precede generic auth/billing handling.
   [LOBSTERAI_QUOTA_EXHAUSTED_PATTERN, CoworkErrorI18nKey.QuotaExhausted],
+  // LobsterAI's UPSTREAM_BALANCE_INSUFFICIENT code belongs to the model service.
+  [/\b50203\b/, CoworkErrorI18nKey.ModelServiceUnavailable],
   // Provider/model capacity failures. Must precede rate-limit matching because
   // capacity errors may also contain phrases such as "too many requests".
   [MODEL_CAPACITY_OVERLOAD_PATTERN, CoworkErrorI18nKey.ModelOverloaded],
@@ -69,6 +80,8 @@ const ERROR_RULES: Array<[RegExp, string]> = [
   // Gateway / connection issues
   [new RegExp(OpenClawTranscriptSafetyErrorCode.ActiveTranscriptOversized, 'i'), CoworkErrorI18nKey.TranscriptOversized],
   [new RegExp(`gatewayFailureKind=${OpenClawGatewayFailureKind.HeapOutOfMemory}|JavaScript heap out of memory`, 'i'), CoworkErrorI18nKey.GatewayHeapOutOfMemory],
+  // OpenClaw refuses a workspace path that now resolves to another folder than recorded.
+  [/workspace path alias(?:es)? (?:points to a different current target|resolve to conflicting state|conflicts with canonical state)/i, CoworkErrorI18nKey.WorkspaceAliasRepointed],
   [/gateway request timeout for sessions\.patch/i, 'coworkGatewaySessionSyncTimeout'],
   [/gateway.*disconnect|client disconnected/i, 'coworkErrorGatewayDisconnected'],
   [/service restart/i, 'coworkErrorServiceRestart'],
@@ -77,8 +90,9 @@ const ERROR_RULES: Array<[RegExp, string]> = [
   [/DataInspectionFailed|content.*(review|filter)|审核未通过|未通过.*审核|inappropriate.*content|\b451\b|flagged.*input/i, 'coworkErrorContentFiltered'],
   // Model/provider response timeouts. Must precede generic request/network timeouts.
   [/(?:LLM\s+)?(?:request\s+timed?\s*out|idle\s+timeout)|model.*idle\s+timeout|no\s+response\s+from\s+model|model\s+response\s+(?:timeout|timed?\s*out)/i, CoworkErrorI18nKey.ModelResponseTimeout],
-  // Network errors
-  [new RegExp(`${UNAVAILABLE_NETWORK_CODE_PATTERN}|fetch failed|ConnectTimeoutError|network request failed|socket (?:hang up|closed|reset)|connection.*(?:refused|reset|aborted|closed|timeout|timed out)|could not connect|network.*error|request.*timed out`, 'i'), CoworkErrorI18nKey.NetworkError],
+  // Network errors. Must precede server errors: a proxy-relayed connection failure
+  // arrives as HTTP 502 but never reached the server.
+  [new RegExp(`${UNAVAILABLE_NETWORK_CODE_PATTERN}|${CHROMIUM_NET_ERROR_PATTERN}|fetch failed|ConnectTimeoutError|network request failed|socket (?:hang up|closed|reset)|connection.*(?:refused|reset|aborted|closed|timeout|timed out)|could not connect|network.*error|request.*timed out`, 'i'), CoworkErrorI18nKey.NetworkError],
   // Server errors: HTTP 500/502/503
   [/internal.server.error|bad.gateway|service.unavailable|\b50[023]\b/i, CoworkErrorI18nKey.ServerError],
   // Unknown / unclassified errors from upstream (OpenClaw wraps unrecognized errors)
@@ -89,9 +103,15 @@ const ERROR_RULES: Array<[RegExp, string]> = [
  * Classify an error string and return the matching i18n key.
  * Returns null if no rule matches (caller should fall back to the original error).
  */
-export function classifyErrorKey(error: string): string | null {
+export function classifyErrorKey(error: string, provider?: string): string | null {
   for (const [pattern, key] of ERROR_RULES) {
-    if (pattern.test(error)) return key;
+    if (pattern.test(error)) {
+      // LobsterAI owns the upstream keys; its user quota has separate codes above.
+      return key === CoworkErrorI18nKey.InsufficientBalance
+        && provider?.trim() === ProviderName.LobsteraiServer
+        ? CoworkErrorI18nKey.ModelServiceUnavailable
+        : key;
+    }
   }
   return null;
 }

@@ -45,6 +45,16 @@
   ],
   "extraResources": [
     {
+      "from": "resources/word-licenses",
+      "to": "licenses/word",
+      "filter": ["NOTICE.txt", "manifest.json"]
+    },
+    {
+      "from": "resources/sheet-licenses",
+      "to": "licenses/sheet",
+      "filter": ["NOTICE.txt", "manifest.json"]
+    },
+    {
       "from": ".keyfrom-build",
       "to": "keyfrom",
       "filter": [
@@ -90,7 +100,27 @@
       "NSMicrophoneUsageDescription": "HeyClaw 需要访问您的麦克风来录制语音输入并进行语音识别。",
       "NSCalendarsUsageDescription": "HeyClaw 需要访问您的日历来帮助您查看和管理日程安排，例如查找事件、创建会议等。",
       "NSRemindersUsageDescription": "HeyClaw 需要访问您的提醒事项来帮助您管理待办事项。",
-      "NSAppleEventsUsageDescription": "HeyClaw 需要使用 Apple Events 来控制 Calendar 应用执行自动化操作。"
+      "NSAppleEventsUsageDescription": "HeyClaw 需要使用 Apple Events 来控制 Calendar 应用执行自动化操作。",
+      "CFBundleDocumentTypes": [
+        {
+          "CFBundleTypeName": "Document",
+          "CFBundleTypeRole": "Viewer",
+          "LSHandlerRank": "Alternate",
+          "LSItemContentTypes": ["public.content", "public.archive"]
+        },
+        {
+          "CFBundleTypeName": "Folder",
+          "CFBundleTypeRole": "Viewer",
+          "LSHandlerRank": "Alternate",
+          "LSItemContentTypes": ["public.folder"]
+        },
+        {
+          "CFBundleTypeName": "File",
+          "CFBundleTypeRole": "Viewer",
+          "LSHandlerRank": "Alternate",
+          "LSItemContentTypes": ["public.data"]
+        }
+      ]
     },
     "extraResources": [
       {
@@ -155,6 +185,13 @@
           "!**/tests/**",
           "!**/test/**",
           "!**/__tests__/**"
+        ]
+      },
+      {
+        "from": "resources/computer-use",
+        "to": "computer-use",
+        "filter": [
+          "*.zip"
         ]
       }
     ]
@@ -267,12 +304,15 @@
     "deleteAppDataOnUninstall": false,
     "include": "scripts/nsis-installer.nsh"
   },
-  "electronVersion": "40.2.1",
+  "electronVersion": "43.5.0",
+  "npmRebuild": false,
   "asarUnpack": [
     "node_modules/@img/**",
+    "node_modules/@koromix/**",
     "node_modules/better-sqlite3/**",
-    "node_modules/node-nim/**",
-    "node_modules/npm/**"
+    "node_modules/koffi/**",
+    "node_modules/npm/**",
+    "node_modules/selection-hook/**"
   ],
   "asar": true
 }

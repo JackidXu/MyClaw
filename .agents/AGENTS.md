@@ -1,468 +1,156 @@
 # Project Guidelines & HeyClaw Architecture
 
-## 1. 项目定位与架构概述
+## 1. 项目定位与核心资产
 
-HeyClaw 基于网易有道龙虾（LobsterAI）二次开发，定位是垂直领域（老板 IP）的 Desktop Claw 产品。
-
-### 1.1 模型与网关体系
-- **模型中转站**：统一使用 **NewAPI**（代码中历史命名的 `oneapi` 变量及配置均指代 NewAPI 中转服务）。
-- **底层模型提供商**：底层大模型接入来自**字节火山方舟**（Volcano Engine / Doubao 等）。
+### 1.1 项目定位与模型网关
+- **产品定位**：HeyClaw 基于网易有道龙虾（LobsterAI）二次开发，定位垂直领域（老板 IP）的 Desktop Claw 产品。
+- **模型中转站**：统一使用 **NewAPI**（代码中历史命名的 `oneapi` 变量及配置均指代 NewAPI 中转服务）。底层接入来自字节火山方舟（Volcano Engine / Doubao 等）。
 - **【核心安全铁律】NewAPI / OneAPI 数据库绝对纯只读**：
-  - 代码中**绝对禁止、也严禁对 `oneapi` 数据库执行任何 `INSERT`、`UPDATE`、`DELETE` 或 `ALTER` 等写操作**，只能进行 `SELECT` 纯只读查询（如跨库查询注册用户列表）；
-  - 所有的权限、订阅、设备绑定及自定义业务数据，必须且只能持久化写入我们自己的业务数据库（如 `heyclaw.vip_subscriptions`、`heyclaw.vip_devices` 等）。
+  - 严禁对 `oneapi` 数据库执行任何 `INSERT`、`UPDATE`、`DELETE` 或 `ALTER` 等写操作，仅限 `SELECT` 纯只读查询（如跨库查询注册用户列表）；
+  - 权限、订阅、设备绑定及自定义业务数据必须且只能持久化写入业务库（如 `heyclaw.vip_subscriptions`、`heyclaw.vip_devices`）。
 
-### 1.2 应用数据目录（UserData）
-- **正式环境（Packaged 打包后）**：目录名为 `HeyClaw`
-  - **macOS**: `~/Library/Application Support/HeyClaw`
-  - **Windows**: `%APPDATA%\HeyClaw`（即 `C:\Users\<username>\AppData\Roaming\HeyClaw`）
-  - **Linux**: `~/.config/HeyClaw`
-- **开发/测试环境（Dev / 本地运行）**：目录名为 `HeyClawDev`（防止与打包后的正式版数据冲突）
-  - **macOS**: `~/Library/Application Support/HeyClawDev`
-  - **Windows**: `%APPDATA%\HeyClawDev`（即 `C:\Users\<username>\AppData\Roaming\HeyClawDev`）
-  - **Linux**: `~/.config/HeyClawDev`
+### 1.2 媒体与模型服务网关规范 (NewAPI Gateway & Media Gen)
+- **多模态与媒体生成中转站**：底层媒体（图片/视频生成如 **Seedance、Seedream、HappyHorse** 等）、大模型推理聚合中转站统一基于 **NewAPI**。
+- **开发与调试认知**：在涉及多模态生成任务分发、状态轮询或模型中转接口的开发、排查、接口改造与协议适配时，直接基于 NewAPI 的接口协议与中转透传规范进行设计与对接，严禁反复向用户询问中转站类型。
 
-### 1.3 日志目录
-- **主进程应用日志（electron-log）**：
-  - **macOS**: `~/Library/Logs/HeyClaw/main-YYYY-MM-DD.log`
-  - **Windows**: `%USERPROFILE%\AppData\Roaming\HeyClaw\logs\main-YYYY-MM-DD.log`
-  - **Linux**: `~/.config/HeyClaw/logs/main-YYYY-MM-DD.log`
-- **OpenClaw 网关日志**：
-  - **macOS**: `~/Library/Application Support/HeyClaw[Dev]/openclaw/logs/gateway-YYYY-MM-DD.log`
-  - **Windows**: `%APPDATA%\HeyClaw[Dev]\openclaw\logs\gateway-YYYY-MM-DD.log`
+### 1.3 应用数据与日志目录
+- **UserData 目录**：
+  - 正式环境（Packaged 打包后）：macOS `~/Library/Application Support/HeyClaw` | Windows `%APPDATA%\HeyClaw` | Linux `~/.config/HeyClaw`
+  - 开发环境（Dev 本地运行）：macOS `~/Library/Application Support/HeyClawDev` | Windows `%APPDATA%\HeyClawDev` | Linux `~/.config/HeyClawDev`
+- **日志目录**：
+  - 主进程应用日志（electron-log）：macOS `~/Library/Logs/HeyClaw/main-YYYY-MM-DD.log` | Windows `%APPDATA%\HeyClaw\logs\main-YYYY-MM-DD.log` | Linux `~/.config/HeyClaw/logs/main-YYYY-MM-DD.log`
+  - OpenClaw 网关日志：macOS `~/Library/Application Support/HeyClaw[Dev]/openclaw/logs/gateway-YYYY-MM-DD.log` | Windows `%APPDATA%\HeyClaw[Dev]\openclaw\logs\gateway-YYYY-MM-DD.log`
 
-### 1.4 管理后台与双后端架构
-HeyClaw 采用双后端支撑体系：
-1. **Node.js 管理后台与共用后端（`admin-claw`）**：
-   - **物理位置**：位于当前项目目录的同级目录 `../admin-claw`。
-   - **核心入口**：`server.js`。
-   - **主要职责**：专家（Experts）、技能（Skills）等后台管理与编辑；客户端登录鉴权（Auth/Session 验证）、VIP 计费与权限（Billing/Subscription）等。
-   - **服务地址**：
-     - 开发/测试环境：`http://localhost:8082`
-     - 生产环境：`https://admin.claw.chaohui.ai`
-2. **PHP 后端（业务后端）**：
-   - **物理位置**：位于当前项目目录的同级目录 `../scrm`。
-   - **维护团队**：由专门的后端开发人员维护。
-   - **主要职责**：充值业务、第二大脑（SecondBrain / 认知提取、学习数据沉淀与人设注入）等。
-   - **服务地址**：
-     - 开发环境：`https://dev-zhike.banchengyun.com`
-     - 生产环境：`https://zhike.banchengyun.com`
+### 1.4 双后端架构与服务地址
+1. **Node.js 管理后台与共用后端 (`admin-claw`)**：
+   - 位于同级目录 `../admin-claw`，核心入口 `server.js`。负责专家/技能后台管理、客户端登录鉴权（Auth/Session 验证）、VIP 计费与权限。
+   - 开发环境：`http://localhost:8082` | 生产环境：`https://admin.claw.chaohui.ai`
+2. **PHP 业务后端 (`scrm`)**：
+   - 位于同级目录 `../scrm`。负责充值业务、第二大脑（SecondBrain / 认知提取、学习数据沉淀与人设注入）。
+   - 开发环境：`https://dev-zhike.banchengyun.com` | 生产环境：`https://zhike.banchengyun.com`
+
+### 1.5 NewAPI 运维只读铁律与 Workbench 诊断工具箱 (Server Diagnostics)
+- **服务器资产**：公网域名 `token.chaohui.ai` | 公网 IP `43.99.44.42` | 阿里云香港 ECS `i-j6cc6ew2bqkj0fn4ioer` | 核心容器：`traefik`（网关路由）、`newapi`（中转服务 3000）、`claw-admin`。
+- **NewAPI 数据库只读查询**：Host: `pc-bp14g47881fwu0z42pub.rwlb.rds.aliyuncs.com:3306`，DB: `oneapi`（仅限 `SELECT` 查询 `logs`、`channels` 等表排查调用明细）。
+- **【核心安全铁律】**：永远只能查，仅用于排查定位问题！绝对严禁擅自修改服务器配置（如 `/config/traefik.yml`、`/config/http.yml`）；绝对严禁擅自重启容器、停止容器或写数据库。
+- **免交互远程诊断指令**：`workbench exec -r cn-hongkong -i i-j6cc6ew2bqkj0fn4ioer -c "<linux命令>"`
+- **常用排查命令工具箱**：
+  - 检查容器状态：`workbench exec -r cn-hongkong -i i-j6cc6ew2bqkj0fn4ioer -c "docker ps"`
+  - 查看 Traefik 访问日志（含耗时、状态码、体大小等）：`workbench exec -r cn-hongkong -i i-j6cc6ew2bqkj0fn4ioer -c "docker logs --tail 200 traefik"`
+  - 过滤 Traefik 异常请求（如 499 / 504 / 500）：
+    `workbench exec -r cn-hongkong -i i-j6cc6ew2bqkj0fn4ioer -c "docker logs traefik 2>&1 | grep '\"DownstreamStatus\":499' | tail -n 20"`
+  - 查看 NewAPI 容器日志：`workbench exec -r cn-hongkong -i i-j6cc6ew2bqkj0fn4ioer -c "docker logs --tail 200 newapi"`
+  - 检索 NewAPI 异常请求（按 requestId 或错误关键词）：
+    `workbench exec -r cn-hongkong -i i-j6cc6ew2bqkj0fn4ioer -c "docker logs newapi 2>&1 | grep '<requestId或关键词>'"`
+  - 查看 Traefik 配置：
+    - 静态配置：`workbench exec -r cn-hongkong -i i-j6cc6ew2bqkj0fn4ioer -c "docker exec traefik cat /config/traefik.yml"`
+    - 动态路由：`workbench exec -r cn-hongkong -i i-j6cc6ew2bqkj0fn4ioer -c "docker exec traefik cat /config/http.yml"`
+  - 交互式终端直连（极端复杂场景）：`workbench connect -r cn-hongkong -i i-j6cc6ew2bqkj0fn4ioer`
 
 ---
 
-## 2. 核心规则与规范
+## 2. 核心行为禁令与流程红线
 
-### 2.1 OpenClaw 架构分工与扩展铁律：网关走补丁，运行时走 Hook (Gateway via Patches, Runner via Hooks)
+### 2.1 Git 规范与上游同步
+- **【核心行为禁令】绝对禁止主动 Commit 与 Push**：没有收到用户在当前对话中发送的明确文字指令前，绝对禁止调用、推荐或生成 `git commit`、`git push` 命令。指令单次有效。
+- **提交质量要求**：git 提交信息必须使用中文，严格遵循单一功能提交原则；严禁使用宽泛的 `git add .`，必须且只能暂存本次任务明确相关的改动文件；提交前必须执行 `git diff` 严格审查，彻底清理所有本地临时调试硬编码（如 `// TODO: 本地调试`、临时 console、敏感密钥等）。
+- **上游分支同步与品牌必检**：上游分支为 `upstream/main`。每次拉取同步上游代码并解冲突后，必须第一时间全局排查 `LobsterAI`、`lobster` 关键词，严格将用户可见文案（弹窗、退出提示、引导说明、多语言字典 `src/main/i18n.ts` 与 `src/renderer/services/i18n.ts`）、UI 组件标签、窗口标题及测试断言彻底替换为 `HeyClaw`。
 
-- **核心架构分工原则（一句话总纲）**：
-  **“外层网关（Gateway）修改走补丁体系，内层运行时（Agent Runner）扩展走 Hook / 插件机制。”**
-  坚决摒弃“任何改动都硬去魔改 OpenClaw 闭包源码并试图强行全量打包”的反模式行为！
+### 2.2 开发与启动禁令
+- **【核心行为禁令】严禁擅自启动应用与开发服务**：
+  在没有收到用户明确许可的情况下，绝对禁止调用命令自行启动应用或常驻开发服务进程（包括但不限于桌面端 `npm run electron:dev`、`npm run electron:dev:openclaw` 及服务端 `npm run dev:server` 等），必须由用户在终端自行启动或经明确授权。
 
-- **两层体系的精准职责边界**：
-  1. **网关通信层（Gateway）—— 补丁体系（`scripts/patches/`）**：
-     - **适用场景**：WebSocket/HTTP 协议、IM 消息渠道适配、外部鉴权拦截、全局取消/Abort 通道、SSRF 防护等；
-     - **生效机制**：直接参与 `npm run openclaw:bundle` 秒级打包生成 `gateway-bundle.mjs`，改完 2~4 秒即刻生效；
-     - **红线禁令**：严禁运行 `pnpm build` 或 `openclaw:runtime:host` 全量重编译，必须且只能通过秒级 Bundle 更新。
-  2. **模型与工具执行层（Agent Runner）—— Hook / 插件 / 适配器体系**：
-     - **适用场景**：上下文折叠修剪（Context Pruning）、模型输入前后拦截（`llm_input` / `before_prompt`）、工具结果监控（`tool_result`）、子智能体配额保护等；
-     - **生效机制**：依托 OpenClaw 官方原生支持的 Hook、ContextEngine 扩展插件或上层适配器（`openclawRuntimeAdapter.ts`）。
-     - **绝对优势**：随主应用热加载，**100% 确定性实时生效**，完全规避底包缓存、动态 import 闭包混淆与打包割裂问题！
+### 2.3 改完代码必须离线验证
+- **改完代码必须验证**：任何代码修改完成后，必须第一时间主动运行离线检查：
+  - 主进程类型校验：`npx tsc --project electron-tsconfig.json --noEmit`（避免触发 `precompile:electron` 误装依赖）；
+  - 代码精准 Lint 检查：`npx eslint --ext ts,tsx --report-unused-disable-directives --max-warnings 0 <改动文件路径>`；
+  - 严禁未经验证直接向用户交付。
 
-- **标准轻量打包流程 (仅限 Gateway 补丁更新)**：
-  ```bash
-  # 步骤 1：应用网关补丁
-  npm run openclaw:patch
+### 2.4 严谨调试、求真合伙人与防盲猜
+- **严禁凭空盲猜与伪解决**：严禁在未拿到真实日志/堆栈前盲猜病因；遇到不确定接口字段必须查文档、查源码或向用户确认，严禁多重自嗨式链式兜底；同一个问题尝试修复最多 3 次未果必须立刻停止并调试求证真实病因。
+- **平等协作与求真合伙人**：与用户保持平等的研发与产品合伙人关系；当发现构想或设计存在潜在暗坑、性能隐患、反模式或边界缺陷时，必须第一时间提出异议与更优替代方案，严禁盲目附和。
+- **严禁自嗨式盲目运行与遇阻隐瞒**：严禁未经授权自顾自执行耗时冗长的复杂脚本；遇到不可抗力或意图不明确时，必须即时沟通，全过程保持透明。
 
-  # 步骤 2：秒级构建增量 Bundle (耗时约 2~4 秒)
-  rm -f vendor/openclaw-runtime/mac-x64/gateway-bundle.mjs vendor/openclaw-runtime/current/gateway-bundle.mjs
-  npm run openclaw:bundle vendor/openclaw-runtime/mac-x64
-  ```
+### 2.5 极致减负与商业级交付 (Product-First)
+- **商业客户第一，摒弃极客自嗨思维**：HeyClaw 是面向商业客户与最终用户的消费级产品，严禁向终端用户转嫁技术认知（如要求用户在提示词中提供内部模型参数、框架代号等）。
+- **极简输入下的超预期交付**：用户只需输入最简短直白的大白话意图，系统和能力必须具备在内部自动解析、智能丰满商业细节与成熟版式的能力，交付开箱即用的高质感作品。
 
+### 2.6 严禁针对单次 Case 搞硬编码与严禁篡改用户意图
+- **严禁针对单个实体搞硬编码**：系统公共层、网关或拦截器严禁针对某一特定商品或局部 Case 写死狭隘逻辑，必须保持 100% 通用自适应。
+- **严禁篡改用户核心业务意图**：用户输入的主题、色调与核心文案是第一优先级输入，系统底层的职责是“在忠实于用户意图的前提下提升细节与专业美感”，绝对禁止粗暴替换或塞入私货偏好强行违背用户明确指示。
 
+---
 
-### 2.2 Git 操作规则
-- **绝对禁止自动 Commit 与 Push**：任何 Bug 修复或功能实现后，只可将修改保留在本地工作区，绝对禁止调用 `git commit` 或 `git push`，必须等待用户在对话中发送明确的指令（用户指令仅单次有效）。
-- **Git Commit 信息规范**：git 提交信息必须使用中文，严格遵循单一功能提交的原则（每次提交只聚焦解决一个明确问题或单一功能）。
-- **仅提交本次任务相关代码（严禁提交无关代码）**：执行 `git add` 和 `git commit` 时，**必须且只能暂存与提交当前会话/本次任务明确相关的改动文件**。严禁使用宽泛的 `git add .`、`git add -A` 或将工作区中用户正在进行的其它修改、未交代或非本次任务范围内的文件一并提交。
-- **提交前严密审查（杜绝无脑提交）**：在获得用户明确指令执行单次 Commit 之前，必须执行 `git diff` 严格逐行审查改动，完成多维度自检：
-  1. **任务关联度检查**：确保所有暂存的文件 100% 属于本次任务，彻底剔除任何无关文件或未商定改动；
-  2. **逻辑自洽性检查**：改动是否真正彻底解决问题，边界情况是否闭环；
-  3. **代码质量检查**：模块职责是否单一，是否存在冗余废代码或无效兜底；
-  4. **安全隐患与硬编码清理**：彻底清理所有本地临时调试硬编码（如 `// TODO: 本地调试`、`return true`、临时 console、敏感密钥等），严禁带入仓库历史。
-- **上游分支同步与品牌标识检查（Upstream & Branding）**：
-  1. 网易有道上游仓库分支为 `upstream/main`。在需要比对上游改动、同步上游新特性或排查与上游实现差异时，以此分支作为参照与同步基准；
-  2. **同步与解冲突后品牌标识必检（强制规范）**：每次拉取同步有道上游（`upstream/main`）代码并解决冲突后，**必须第一时间使用检索工具对本次合并引入的改动进行全面排查**（重点检索 `LobsterAI`、`lobster` 等关键词），严格将所有面向用户的文案（如各种系统级确认弹窗、退出提示、引导页说明、多语言字典 `src/main/i18n.ts` 与 `src/renderer/services/i18n.ts` 等）、UI 组件标签、窗口标题及对应的测试断言彻底替换为 `HeyClaw`，杜绝遗漏任何上游产品标识。同时必须运行相关受影响测试与类型检查予以验证。
+## 3. 架构分工与工程哲学
 
-### 2.3 管理类/功能独立页面视觉规范 (Management Page Visual Specification)
-编写或重构管理/配置/独立功能页面（如定时任务 ScheduledTasks、技能管理 Skills、MCP、第二大脑 SecondBrain 等）时，**必须严格遵循统一的视觉规范**：
-- **容器与布局**：
-  - 外层容器：`<div data-skin-management-page="true" className="relative z-10 flex-1 flex flex-col bg-background h-full overflow-hidden">`
-  - 顶部 Header：`<div className="draggable flex h-12 items-center justify-between px-4 border-b border-border shrink-0">`
-  - 主标题：引入 `src/renderer/components/common/managementTypography.ts` 中的 `MANAGEMENT_PAGE_TITLE_TEXT`，格式为 `<h1 className={`${MANAGEMENT_PAGE_TITLE_TEXT} font-semibold text-foreground`}>页面标题</h1>`
-  - 内容滚动区：`<div className="flex-1 min-h-0 overflow-y-auto [scrollbar-gutter:stable]"><div className="mx-auto w-full max-w-[1120px] px-8 py-6 space-y-6">`（必须带 `max-w-[1120px]` 居中限制）
-- **文字与排版阶梯**（使用 `managementTypography` 导出变量）：
-  - 页面副标题/说明：`${MANAGEMENT_BODY_TEXT} text-secondary`
-  - 区块标题：`${MANAGEMENT_TITLE_TEXT} font-semibold text-foreground`
-  - 小标签/徽章/统计标签：`${MANAGEMENT_META_TEXT} text-secondary`
-- **卡片规范**：
-  - 背景为 `bg-surface`，边框 `border border-border`，圆角 `rounded-xl`，阴影 `shadow-subtle`，交互态带 `hover:border-primary/50 hover:shadow-card transition`
-- **Tab 栏规范**：
-  - 统一使用底部横线高亮指示条风格（`border-b border-border`，激活项为 `text-foreground font-semibold` 且底部带有 `bg-primary h-0.5 rounded-full` 指示线）。
+### 3.1 OpenClaw 扩展原则：优先插件与 Hook，补丁仅作最后兜底
+- **第一优先级（首选推荐：非侵入式扩展）**：
+  - 凡是业务增强、生命周期拦截、上下文修剪（Context Pruning）、模型输入前后介入（`llm_input` / `before_prompt`）、工具结果监控（`tool_result`）等，**必须优先使用 OpenClaw 原生 Hook、ContextEngine 扩展插件或上层适配器（`openclawRuntimeAdapter.ts`）**；
+  - 优势：随主应用热加载，100% 确定性实时生效，不污染底包源码，升级上游版本零冲突。
+- **第二优先级（兜底手段：迫不得已才用补丁）**：
+  - 仅当所需行为深埋在 OpenClaw 核心通信层或网关内部闭包，且**官方完全没有提供 Hook 或插件切入点**时，才允许编写版本作用域的补丁（`scripts/patches/<version>/`）；
+  - 补丁生效必须且只能通过秒级增量打包：`rm -f vendor/openclaw-runtime/mac-x64/gateway-bundle.mjs vendor/openclaw-runtime/current/gateway-bundle.mjs && npm run openclaw:bundle vendor/openclaw-runtime/mac-x64`（耗时仅 2~4 秒）。
+- **绝对红线禁令**：
+  - 严禁在有 Hook/插件可选的情况下滥用补丁；
+  - 严禁擅自运行 `pnpm build` 或 `npm run openclaw:runtime:host` 等高消耗全量重构建脚本。
 
-### 2.4 媒体与模型服务网关规范 (NewAPI Gateway Specification)
-- **中转站架构**：本项目底层媒体（图片/视频生成）、模型调用聚合中转站统一基于 **NewAPI**（代码中历史命名的 `oneapi` 相关变量和配置均指代 NewAPI 中转服务）。
-- **开发与调试认知**：在涉及多模态生成（如 Seedance、Seedream、HappyHorse 等）或模型中转接口的开发、排查、接口改造与协议适配时，直接基于 NewAPI 的接口协议与中转透传规范进行设计与对接，严禁反复向用户询问中转站类型。
-
-### 2.5 客户端长效鉴权与后端请求规范 (Auth & Request Headers)
-- **核心凭证存储规范**：
-  - **长效用户访问令牌 (User Access Token)**：`localStorage.getItem('heyclaw_session')`（由登录时向 PHP 换票接口 `POST /api/chaohuixie/claw/token/accessToken` 置换得到，作为客户端与 **Node 后端（admin-claw）** 及 **PHP 业务后端（第二大脑 / 充值）** 全业务接口的**全局唯一长期鉴权凭证**）。
-  - **大模型对话令牌 (Model API Key)**：`localStorage.getItem('heyclaw_api_key')`（即 `sk-xxxx`，专供 OpenClaw 与底层 NewAPI `/v1` 大模型对话推理）。
-  - **用户 ID**：`localStorage.getItem('heyclaw_user_id')`。
-- **全站统一鉴权传参约定**：
-  - **Node 后端（admin-claw）**：所有业务接口请求头统一携带 `Authorization: Bearer <user_access_token>`（从 `heyclaw_session` 获取）。由 Node 后端原生直连 NewAPI `/api/user/self` 实时校验用户身份，天然防 IDOR 越权与过期失效。
-  - **PHP 业务后端**：
-    - **第二大脑全量接口 (`/api/chaohuixie/claw/fmp/***` 等)**：请求头统一携带 `Authorization: Bearer <user_access_token>`（由 PHP 维护表进行持久校验，彻底杜绝 15 分钟掉线问题）。
-    - **换票接口 (`/api/chaohuixie/claw/token/accessToken`)**：由 Node 服务端在登录时调用换取长效访问令牌。
-
-### 2.6 本地数据存储与迁移规范 (SQLite & Data Persistence)
-- **数据库路径**：位于 `userData/lobsterai.sqlite`。
-- **历史命名字段认知**：如 `cowork_sessions` 表中的 `claude_session_id` 实际等同于 `session_id`，底层已全面切换为 OpenClaw。
-- **平滑迁移原则**：新增字段/表时，遵循现有代码模式使用 `PRAGMA table_info()` 动态检查并补充，严禁破坏性重构或随意丢弃老数据。
-
-### 2.7 进程通信与架构边界 (IPC & Context Isolation)
-- **安全沙箱隔离**：渲染进程严格开启 `contextIsolation`、关闭 `nodeIntegration`。
-- **禁止在 Renderer 乱用 Node 原生模块**：渲染层禁止直接 import `fs`、`path`、`electron-log` 等，必须通过 `src/main/preload.ts` 暴露的 `window.electron.*` 进行桥接。
-- **IPC 通道常量化**：新增或修改 IPC 接口时，必须在 `src/shared/*/constants.ts` 统一声明常量，禁止在组件或主进程中使用散落的魔法字符串（Magic Strings）。
-
-### 2.8 国际化与文案规范 (i18n)
-- **严禁 UI 硬编码**：组件中的可见文案必须走 `t('xxx')`。
-- **双端多语言字典**：
-  - 渲染进程：`src/renderer/services/i18n.ts`（需同步维护 `zh` 与 `en`）。
-  - 主进程（菜单/系统通知）：`src/main/i18n.ts`（需同步维护 `zh` 与 `en`）。
-
-### 2.9 常用开发与质量检查指令与启动禁令 (Daily Development Commands & Launch Constraints)
-- **【核心行为禁令】严禁未经明确许可擅自启动应用与开发服务**：
-  在没有收到用户明确许可的情况下，**绝对禁止调用命令自行启动应用或长驻开发服务器进程**，包括但不限于：
-  - 桌面客户端开发与启动命令（如 `npm run electron:dev`、`npm run electron:dev:openclaw`、`npm run start:electron` 等）；
-  - 服务端/Node 端开发服务（如 `../admin-claw` 下的 `npm run dev:server`、`npm start` 等）。
-  凡涉及启动桌面端或后端服务的操作，在完成代码改动和离线类型检查后，只可文字告知用户，由用户自行在终端启动或经用户在当前对话中给出明确文字授权后方可执行。
-- **日常热更新开发**：`npm run electron:dev`（前端 Vite 跑在 5175 端口 + Electron 启动，仅限用户自行启动或明确授权后执行）。
-- **主进程 TypeScript 类型校验**：`npx tsc --project electron-tsconfig.json --noEmit`（优先使用 `tsc --noEmit` 进行离线校验，避免触发 `precompile:electron` 误装 x64 架构的 native 依赖）。
-- **精准 Lint 检查（规避老旧历史包袱）**：
-  `npx eslint --ext ts,tsx --report-unused-disable-directives --max-warnings 0 <改动文件路径>`。
-
-### 2.10 改完代码必须验证原则 (Mandatory Verification Post-Edit)
-- **改完代码必须验证**：任何代码修改完成后，必须第一时间主动运行编译/类型检查（如主进程改动必须运行 `npm run compile:electron`，触碰代码必须运行指定文件的 eslint 检查），**严禁未验证直接向用户交付**。
-
-### 2.11 统一网络请求与全局鉴权拦截规范 (Unified HTTP & Auth Error Interception)
-- **禁止在 UI 组件散落裸写请求**：严禁在 React 组件内部裸写 `window.electron.api.fetch` 或手拼 `Authorization` 请求头。所有业务请求必须统一收敛至 `httpClient` 或对应的业务 Service 模块。
-- **全局唯一未授权拦截**：由 `httpClient.ts` 的全局响应拦截器统一识别 HTTP 401/403、PHP 业务状态码 `code: 10001` 及包体中的 `未授权 / 未登录 / 认证失败`，自动触发 3 秒防抖 Toast + 清理本地与主进程凭证 + 派发 `app:unauthorized` 唤起登录弹窗。严禁在各个业务组件中重复手写碎片化的未授权处理代码。
-
-### 2.12 全局视角与长期迭代工程质量准则 (Global Perspective & Long-Term Engineering Standards)
-- **立足全局，拒绝单次应付（打磨产品 vs 应付式编程铁律）**：
-  - **核心宗旨**：HeyClaw 是一个长期演进的商业级工程，绝非临时代码拼凑。我们是在打磨一款经得起市场与商业检验的严肃产品，绝不是搞短期凑效果、自欺欺人的“应付式编程”；
-  - **坚决摒弃“应付式编程”反模式**：严禁只盯眼前局部单次 Case 搞狭隘硬套。这种投机取巧的局部硬编码表面上单次看似符合预期，实则给系统埋下了致命暗坑（场景一换立刻穿帮），破坏了模块边界与契约完整性；
-  - **坚定践行“打磨产品”思维**：每一个方案与改动，必须从**底层原理、全局通用自适应、用户真实意图忠实度、代码干净度与可扩展性**出发。宁可下慢功夫做系统级抽象与深层机制优化，杜绝为了“凑出单次效果”写无效意淫兜底，也绝不用任何反模式硬编码糊弄过去。
-- **保持代码优雅、干净、模块化**：
-  - **职责单一**：业务逻辑、网络请求、状态管理与 UI 渲染必须层次分明，UI 组件只消费数据，底层通信和鉴权拦截统一收敛。
-  - **方案更替彻底清理**：方案迭代或更换时，必须第一时间彻底清理上一个方案留下的所有非相关废代码与临时字段，不留历史债。
-  - **真实严谨解决问题**：所有的功能设计与 Bug 修复必须基于确定性规范与确凿证据，严禁在未排查真实病因前凭空盲猜或采用硬编码/篡改产物等反模式手段。
-
-### 2.13 现成公共封装优先复用与公用逻辑下沉准则 (Reusability & Common Module Priority)
+### 3.2 现成公共封装优先复用与公用逻辑下沉
 - **公共能力优先检索与复用**：
-  在编写任何新功能或修复问题前，**必须先检索项目中是否已有现成的公共封装与工具层**，严禁在业务组件中重新手写底层逻辑或重复造轮子：
-  - **网络与文件上传**：优先复用 `src/renderer/services/httpClient.ts`（统一支持通用请求、文件上传与全局 401/10001 拦截）；
-  - **业务 API 端点**：优先在 `src/renderer/services/endpoints.ts` 与 `src/main/libs/endpoints.ts` 统一声明与获取；
-  - **应用配置读写**：优先复用 `src/renderer/services/config.ts` 中的 `configService`；
-  - **管理与独立页面排版规范**：优先复用 `src/renderer/components/common/managementTypography.ts`（`MANAGEMENT_PAGE_TITLE_TEXT`、`MANAGEMENT_BODY_TEXT` 等）；
-  - **弹窗与通用 UI 部件**：优先复用 `src/renderer/components/common/Modal.tsx` 等通用组件。
-- **公用逻辑及时抽取与下沉（Extract Once, Reuse Everywhere）**：
-  - 当在不同业务组件、页面或服务中发现存在 **2 处及以上相似的逻辑**（如同一类业务的 API 请求、数据格式化、轮询定时器、弹窗模版等），**必须第一时间将其抽取下沉至对应的 Service / Helper / Component 公共层**，禁止多处复制粘贴；
-  - 遇到需要新增领域能力时，严格遵循 `UI Component -> Domain Service (如 billingService / tradeService) -> httpClient` 的分层架构，保持每一层纯粹透明。
+  编写新功能或修复问题前，必须先检索项目中是否已有现成公共封装，严禁在业务组件中重新手写底层逻辑：
+  - 网络与文件上传：优先复用 `src/renderer/services/httpClient.ts`；
+  - 业务 API 端点：优先在 `src/renderer/services/endpoints.ts` 与 `src/main/libs/endpoints.ts` 声明与获取；
+  - 应用配置读写：优先复用 `src/renderer/services/config.ts` 中的 `configService`；
+  - 管理页面排版：优先复用 `src/renderer/components/common/managementTypography.ts`；
+  - 弹窗通用部件：优先复用 `src/renderer/components/common/Modal.tsx` 等。
+- **公用逻辑及时抽取下沉**：存在 2 处及以上相似的逻辑（请求、数据格式化、轮询、弹窗等），必须抽取下沉至 Service/Helper/Component 公共层，禁止复制代码。
 
-### 2.14 严禁无效兜底与自嗨兼容准则 (Strict Anti-Fallback & Zero-Dead-Compat Principle)
-- **字段不确定时严禁靠猜与丑陋多重兜底（必须确定性验证或向用户确认）**：
-  - 遇到接口字段名、参数结构或数据类型不确定时，**严禁凭空盲猜，严禁写多重无意义链式兜底代码**；
-  - **必须第一时间通过查阅后端源码、接口定义/文档排查确定**；若依然存在歧义或不确定，**必须在第一时间主动向用户提问求证由用户决策**，字段契约必须是百分之百确定的。
-- **严禁写毫无意义的自欺欺人兜底代码**：
-  - 在“完全由后端动态下发”或“具备明确业务契约”的场景下，**严禁在前端或消费层预埋私自意淫的默认假数据**。若后端未下发有效数据，必须直接拦截报错或跳过注册，绝不允许使用假默认值强行往下走；
-  - **严禁主观假定动态扩展行为**：外部或动态下发的类型是开放的，系统提示词或提示信息中**严禁狭隘地写死假定其为某种具体固定行为**，必须采用通用的抽象契约驱动描述；
-  - **严禁写毫无作用的防御代码**：如在底层机制根本不支持动态注销/清理的场景下，在上层写自嗨式的假清空代码；
-- **重构即彻底替换，严禁残留历史兼容包袱**：
-  - 当对函数、方法、变量或接口进行规范化重命名与重构时，**必须对全仓库范围内的调用方进行彻底同步重命名与清理**；
-  - **严禁保留无用的别名导出（如 `export const oldName = newName;`）**，方案更替必须干干净净，绝不留任何历史垃圾与认知负担。
+### 3.3 严禁无效兜底与自嗨兼容 (Strict Anti-Fallback)
+- **字段不确定严禁盲猜与链式兜底**：必须查阅后端源码或向用户确认，契约必须百分之百确定。
+- **严禁写毫无意义的自欺欺人兜底**：完全由后端动态下发的场景下，严禁在前端预埋私自意淫的默认假数据；外部开放类型严禁狭隘假定为某种具体固定行为。
+- **重构即彻底替换，严禁保留历史别名**：重命名或重构方法/接口时，必须全仓库同步重命名与清理，**严禁保留无用的别名导出（如 `export const oldName = newName;`）**。
 
-### 2.15 坚决践行产品思维与极致减负准则 (Product-First & Zero User-Friction Principle)
-- **核心定位与受众意识（商业客户第一，彻底摒弃极客自嗨思维）**：
-  - HeyClaw 是面向广大商业客户、企业家与普通用户的消费级/生产力桌面产品，**绝不是开发者自己玩的玩具或极客工具**；
-  - 真实客户完全没有、也绝对不应该有关于系统内部底层架构、模型内部参数等技术认知。任何需要用户具备技术心智、记住特定代码/ID 才能跑出好效果的设计，都是**彻底失败的产品设计**。
-- **严禁向用户转嫁技术认知与甩锅复杂度（Never Offload Complexity to End Users）**：
-  - 严禁向用户提出“请在输入中指定内部模型参数/特定框架代号”、“请提醒模型不要省略细节”、“请手动补充复杂技术参数”等极客式的应对建议；
-  - 遇到效果欠佳、生成偷懒或产物单调时，必须第一时间在**产品架构、Prompt 工程约束、调度算法或底层网关**中从根源解决，把所有实现复杂度在系统内部彻底消化，绝不允许向用户甩锅。
-- **极端轻量输入下的超预期交付（Zero-Effort Input, Commercial-Grade Output）**：
-  - 用户只需输入最简短直白的大白话意图，系统和能力就必须具备自动解析、智能丰满、补全专业版式与商业级细节的能力；
-  - 必须保证用户心智负担降至最低（Zero-Friction），即使在用户完全不提供专业参数的场景下，输出的结果也必须是开箱即用、质感拉满的成熟作品。
+### 3.4 单一真理来源（SSOT）与业务内核与触发机制彻底解耦
+- **业务内核彻底下沉**：校验、去重算法、状态流转、实体处理、存储入库、记账计费、配额扣减等业务逻辑，必须且只能有一套纯粹、原子、闭环的底层领域服务。
+- **触发源（Triggers）纯粹薄适配**：UI 点击、Cron 定时任务、文件/事件监听、IPC 通信、命令行脚本等仅仅是触发管道（Thin Adapters）。其职责仅限在何时以何参数唤起业务内核并呈现结果，**绝对严禁在触发源中私自夹带业务规则或写两套平行割裂的业务逻辑**。
 
-### 2.16 严禁针对单次 Case 搞硬编码与篡改用户意图准则 (Universal Generalization & Zero-Hardcoding Rule)
-- **【严禁针对单个实体或局部 Case 搞硬编码】**：
-  - 严禁在系统公共层、网关或拦截器中针对某一特定商品、实体或输入场景写死狭隘的局部逻辑；
-  - 系统公共层必须保持 100% 通用自适应与全品类兼容，绝不能因为针对某一特定输入优化而导致其他业务场景出现穿帮破绽；
-- **【严禁篡改用户核心业务意图】**：
-  - 用户的输入、指定的主题、色调与核心文案是第一优先级的业务输入，系统底层的职责是**“在百分之百忠实于用户意图的前提下，提升细节真实度、专业美感与安全边界”**；
-  - 绝对禁止使用粗暴替换或私货偏好强行篡改用户的明确指示；提升高级感必须通过专业工程机制完成，严禁违背用户意志。
+### 3.5 立足成熟基础设施，严禁层次倒错
+- **上层编排 vs 底层基底**：应用层与业务脚本只负责轻量意图表达与任务编排（Orchestration）。
+- **严禁在高级胶水代码中重新发明轮子**：绝对严禁在应用层徒手实现底层已完美解决的大吞吐网络重试、大文件分片乱序拼装、原子锁竞争与 ACID 事务；遇到高频超时、竞态或假死，严禁顺着局部缺陷缝缝补补，必须后退一步依托成熟工业级基础设施/原生工具降维打击。
 
-### 2.17 平等协作与求真合伙人准则 (Partner-Mindset & Intellectual Honesty)
-- **【核心关系定位：工程与产品合作伙伴】**：
-  - 用户与 AI Agent 之间是平等、严谨、求真的**长期研发与产品合伙人**关系，绝不是上下级或唯命是从的从属关系；
-  - 严禁为了迎合用户而盲目附和、满口答应或做表面应付；
-- **【直面问题，敢于提出异议与更优解】**：
-  - 当用户提出的构想、业务逻辑、接口设计或 UI 交互存在**潜在暗坑、性能隐患、反模式、边界缺陷或体验瑕疵**时，**严禁闭着眼睛照抄照做**，必须在第一时间秉持专业求真态度直言不讳，摆事实、讲逻辑、析利弊，主动提出异议与用户深入讨论；
-  - 当存在更干净、更优雅、更具扩展性或更符合商业级产品规范的替代方案时，必须主动贡献专业见解并提供方案对比，与用户共同推演，寻找兼顾工程健壮性与极致体验的最优解。
+### 3.6 关键链路原子化与极速反馈思维
+- **严禁长链路黑盒探错**：严禁将耗时长、依赖复杂的完整流水线（如全量 CI/CD、全量打包构建）直接作为排查单点问题的调试工具。
+- **长链路解耦与近地验证优先**：将长流程切割为独立的原子单元（鉴权、网络传输、协议解析等），优先使用极简脚本或离线数据在秒级内完成近地确定性验证，单点闭环后再行链路集成。
 
-### 2.18 企业级严谨工程思维与一次做对准则 (Enterprise Engineering Rigor & Do It Right First)
-- **【严禁把严肃生产工程当做玩具折腾 (Never Treat Production as a Toy)】**：
-  - 每一个架构选型、CI/CD 流水线设计、签名分发与环境配置，必须严格立足于**行业公认的标准工业级最佳实践（Industry Best Practices）**；
-  - 严禁抱有“随便试试看、不行再打补丁”的业余玩具思维。CI 跑一次往往需要十几甚至几十分钟，任何未经深思熟虑、靠运气碰运气的改动，都是在**极其严重地挥霍用户的时间与算力资源**。
-- **【严禁在缺陷路径上缝缝补补，首选直接规范方案 (Prefer Standard Industrial Solutions)】**：
-  - 遇到报错或瓶颈时，严禁顺着局部缺陷的路径一路打补丁；
-  - **必须第一时间后退一步审视全局**：业界成熟商业项目在此类场景的标准规范解法是什么？优先采用经过全球海量项目验证的、最简洁直接的工业级规范解法，做到**一次做对、一次闭环**。
-- **【根因确定与验证前绝不轻举妄动】**：
-  - 提出方案前必须有确凿的代码、官方文档或实机调试证据作为支撑，先确定绝对的“真病因”，再开“精准药方”；
-  - 坚决杜绝让用户当测试员、陪跑重复无效验证的反模式。
+### 3.7 根治调用源头，拒绝过度工程掩盖
+- **严禁制造多余调用再去下游加并发锁/防抖**：遇到重复触发或竞态，绝对禁止通过增加并发锁、防抖节流或下游层层防御判断去掩盖问题。
+- **确立唯一调用源（Single Caller）**：
+  - 主进程冷启动是冷启动阶段的唯一网络请求源；
+  - 渲染进程冷启动只读权威缓存，绝不越权发起网络拉取；
+  - 凭据同步（如 `SyncUserSession`）只负责凭证存储，严禁偷偷掺杂副作用与网络请求；
+  - 显式网络刷新只保留在用户真正完成操作的单一入口（如登录成功、签到完成）。
 
-### 2.19 关键链路原子化与极速反馈工程思维 (Atomization & Fast Local Feedback Loop)
-- **【严禁长链路黑盒探错 (Never Debug via Monolithic Long-Running Pipelines)】**：
-  - 严禁将耗时长、依赖复杂的完整端到端流程（如触发动辄二三十分钟的全量 CI/CD、全量打包构建、跨服务长事务）直接作为排查单点问题的调试工具；
-  - 这种“改一行代码推一次流水线看运气”的做法，本质上是缺乏工程拆解能力的玩具思维，是对计算资源与研发时间极不负责的挥霍。
-- **【长链路解耦与原子级闭环思维 (Deconstruct into Isolated Atomic Units)】**：
-  - 遇到长流程中的任何故障或新增节点，第一动作必须是“解耦降维”：将整条长链条切割为独立的原子单元（如身份鉴权、底层网络传输、协议解析、核心可执行工具链调用等）；
-  - 遵循“近地验证优先（Local-First Verification）”与“最小成本闭环（Minimal-Cost Loop）”：优先使用极简脚本、离线数据、已有制品或脱壳命令，在秒级时间内完成对各个单点原子能力的确定性验证；
-  - 只有当每一个底层原子单元都在近地完成确定性闭环后，方可进行链路组合集成，杜绝任何未经验证的暗坑流入全流程。
+### 3.8 契约驱动，坚决摒弃“Bug 掩盖师”反模式
+- **通用契约驱动 vs 报错字符串特判**：状态流转与生命周期判定必须 100% 依托协议层结构化枚举与权威标志位，绝对严禁看日志抓取特定报错文本写死 `if (error.includes('xxx')) return;` 的掩耳盗铃式假修复。
+- **终态裁决权归属权威源**：谁拥有物理生命周期，谁才拥有终态裁决权。只要底层仍在重试（Retry）、退避（Backoff）、历史压缩自愈（Compaction）或等待恢复中，上层必须维持接收态，绝对严禁越权提前 abort 或拉黑 runId。
 
-### 2.20 杜绝掩盖问题的伪解决与把简单问题搞复杂准则 (Root-Cause Resolution & Anti-Overengineering Principle)
-- **【核心禁令：严禁制造多余调用再去搞兜底防并发】**：
-  - 遇到接口被多次请求、状态被反复更新、竞态或重复调用时，**绝对禁止使用增加并发锁（In-flight Lock / Promise Deduplication）、防抖节流（Debounce）、加缓存或在下游写死多重防御判断去掩盖问题**；
-  - 这种“人为制造了多余并发与重复调用，却在底层写一堆丑陋锁机制去防并发”的做法，是极具欺骗性的**掩耳盗铃式伪解决**。它不仅把极其简单清晰的调用链路搞得极其臃肿复杂，还掩盖了系统上游真正存在的架构职责混乱与失控隐患。
-- **【根治源头，确立唯一调用源（Single Source of Truth / Single Caller）】**：
-  - 遇到任何重复请求或多余触发，第一动作必须是**全链路回溯排查所有调用方**，严格审视每一个调用点的职责边界：
-    1. 到底谁是该操作**唯一的、合法的权威触发源**？
-    2. 哪些地方是越俎代庖的越权调用？哪些是多写手写的冗余调用？
-  - **从调用源头上彻底拔除多余触发方**，严格保持：
-    - 主进程冷启动是冷启动阶段的唯一网络请求源；
-    - 渲染进程冷启动只读权威缓存，绝不越权发起网络拉取；
-    - 凭据同步（如 `SyncUserSession`）只负责凭证存储，严禁偷偷掺杂副作用与网络请求；
-    - 显式网络刷新只保留在用户真正完成操作的单一入口（如登录成功、签到完成）。
-- **【保持极简，拒绝过度工程化】**：
-  - 优秀的代码架构是**把复杂的事情变简单**，而不是把简单的事情变复杂；
-  - 能够从源头一行代码删除解决的事情，绝不用几十行状态机、互斥锁或复杂调度器去打补丁。
-
-### 2.21 严禁自嗨式盲目运行与遇阻隐瞒，坚决落实即时透明沟通 (Zero Self-Indulgence & Transparent Communication Rule)
-- **【严禁自嗨式盲目运行 (Zero Self-Indulgent Execution)】**：
-  - 严禁在用户不知情、未明确授权或脱离用户真实需求的情况下，自顾自地在后台频繁发起未经推演的漫长脚本、复杂处理、过度下载或非预期的试探性操作；
-  - 严禁把清晰轻量的指令擅自扩大化、过度复杂化，陷入自我感动与偏离目标的无谓消耗。
-- **【遇阻即报，不清楚第一时间沟通决策 (Immediate Escalation & Zero Concealment)】**：
-  - **遇到工具异常、资源受限、配额耗尽或外部不可抗力时**，必须在第一时间立即中止动作，如实向用户报告现状与瓶颈，严禁在后台私自寻找不可控的绕路手段试图掩盖或找补；
-  - **遇到意图不明确、业务边界模糊或方案存在分歧时**，严禁自作主张、凭空盲猜乱做，必须第一时间主动向用户提问沟通，由用户做最终决策；
-  - 始终保持全过程透明，绝不剥夺用户的知情权与决策权。
-
-### 2.22 NewAPI / 模型网关服务器排查规范与权限安全铁律 (Server Diagnostics & Read-Only Iron Rule)
-- **【核心安全铁律（强制执行）】**：
-  - **永远只能查，仅用于排查定位问题，绝对不可以擅自增删改任何配置或数据，除非得到用户的明确当次文字许可！**
-  - **禁止项包括**：绝对严禁擅自修改服务器配置（如 `/config/traefik.yml`、`/config/http.yml` 等）；绝对严禁擅自执行容器重启（`docker restart`）、停止（`docker stop`）或更新镜像；绝对严禁对数据库执行写操作；
-  - 任何涉及修改配置、重载服务或变更线上状态的操作，**必须先形成明确方案向用户汇报，并在拿到用户明确许可后方可执行**。
-- **服务器基本资产信息**：
-  - **公网服务域名**：`token.chaohui.ai`
-  - **公网 IP**：`43.99.44.42`
-  - **阿里云地域 (Region)**：`cn-hongkong`（中国香港）
-  - **ECS 实例 ID**：`i-j6cc6ew2bqkj0fn4ioer`
-  - **核心容器拓扑**：
-    - `traefik`：七层反向代理与 TLS 网关（静态配置 `/config/traefik.yml`，动态路由 `/config/http.yml`）；
-    - `newapi`：NewAPI 中转服务容器（映射端口 3000，核心二进制 `/new-api`）；
-    - `claw-admin`：后台管理服务容器。
-  - **NewAPI 数据库只读查询**：
-    - Host: `pc-bp14g47881fwu0z42pub.rwlb.rds.aliyuncs.com:3306`，DB: `oneapi`（仅限 `SELECT` 查询 `logs`、`channels` 等表排查调用明细）。
-- **常用排查指令工具箱（免交互 Workbench 快速诊断）**：
-  - **通用远程执行语法**：
-    ```bash
-    workbench exec -r cn-hongkong -i i-j6cc6ew2bqkj0fn4ioer -c "<linux命令>"
-    ```
-  - **常用排查命令合集**：
-    - 检查容器运行状态：`workbench exec -r cn-hongkong -i i-j6cc6ew2bqkj0fn4ioer -c "docker ps"`
-    - 查看 Traefik 访问日志（含时间戳、IP、耗时 Duration、状态码 DownstreamStatus/OriginStatus、请求体大小 RequestContentSize 等）：
-      `workbench exec -r cn-hongkong -i i-j6cc6ew2bqkj0fn4ioer -c "docker logs --tail 200 traefik"`
-    - 快速定位 Traefik 异常请求（如过滤 499 / 504 / 500）：
-      `workbench exec -r cn-hongkong -i i-j6cc6ew2bqkj0fn4ioer -c "docker logs traefik 2>&1 | grep '\"DownstreamStatus\":499' | tail -n 20"`
-    - 查看 NewAPI 容器业务日志与路由报错（GIN 日志、预扣费、渠道转发）：
-      `workbench exec -r cn-hongkong -i i-j6cc6ew2bqkj0fn4ioer -c "docker logs --tail 200 newapi"`
-    - 检索 NewAPI 异常请求（按请求 ID 或错误关键字 grep）：
-      `workbench exec -r cn-hongkong -i i-j6cc6ew2bqkj0fn4ioer -c "docker logs newapi 2>&1 | grep '<requestId或关键词>'"`
-    - 查看 Traefik 静态超时配置：
-      `workbench exec -r cn-hongkong -i i-j6cc6ew2bqkj0fn4ioer -c "docker exec traefik cat /config/traefik.yml"`
-    - 查看 Traefik 动态路由与服务映射配置：
-      `workbench exec -r cn-hongkong -i i-j6cc6ew2bqkj0fn4ioer -c "docker exec traefik cat /config/http.yml"`
-  - **交互式终端直连**（仅供极端复杂场景）：
-    `workbench connect -r cn-hongkong -i i-j6cc6ew2bqkj0fn4ioer`
+### 3.9 鉴权、通信与边界契约
+- **凭证存储规范**：长效用户访问令牌为 `heyclaw_session`（全局唯一长期鉴权凭证）；模型 API Key 为 `heyclaw_api_key`；用户 ID 为 `heyclaw_user_id`。所有后端业务接口请求头统一携带 `Authorization: Bearer <heyclaw_session>`。
+- **统一 HTTP 与 401 全局拦截**：严禁在 UI 组件中散落裸写请求，所有业务请求统一收敛至 `httpClient.ts`。全局拦截器自动识别 401/403 及 PHP `code: 10001`，触发 3 秒防抖 Toast、清理本地与主进程凭证并派发 `app:unauthorized` 唤起登录弹窗。
+- **进程隔离与数据迁移**：渲染层严格开启沙箱，禁止直接 import Node 原生模块，必须通过 `src/main/preload.ts` 暴露的 `window.electron.*` 桥接；新增或修改 IPC 接口必须在 `src/shared/*/constants.ts` 统一声明常量；SQLite 数据库表变更遵循现有 `PRAGMA table_info()` 动态平滑迁移；可见文案严格维护双端 i18n 字典。
 
 ---
 
-### 2.23 核心编程思想：单一真理来源（SSOT）与业务内核与触发机制彻底解耦铁律 (Core Philosophy: Single Source of Truth & Trigger-Agnostic Domain Logic)
+## 4. 专项规范与检查清单
 
-#### 1. 思想精髓：业务内核与触发机制彻底解耦 (Domain Core vs. Triggers)
-- **业务内核（Domain Logic）是唯一的真理中心（Single Source of Truth, SSOT）**：
-  任何业务领域的核心能力——包括但不限于**数据校验、去重算法、状态流转、实体处理、存储入库、记账计费、配额扣减、异常处理、降级沉底**等——**必须且只能有一套纯粹、原子、自闭环的底层公共服务**。系统中有且仅有一处地方定义“这件事情应该怎么做”以及“做完之后产生什么状态副作用”；
-- **触发机制（Triggers / Callers）仅仅是轻量的适配通道（Thin Adapters）**：
-  无论是**用户界面点击（UI Interaction）、定时调度任务（Cron / Timer）、文件/事件监听（Watcher / Event）、消息队列消费（MQ Consumer）、进程间通信（IPC / RPC）、还是命令行脚本（CLI）**，它们在架构层面的本质**全部只是外部触发源**！
-  触发源的唯一职责是：**在什么时候、以什么参数唤起核心业务内核，并如何呈现或传递执行结果**；
-- **核心禁令**：**绝对严禁在触发源中私自夹带任何业务逻辑、校验规则或存储记账！** 触发源绝对不能越俎代庖！
+### 4.1 内置技能新增与更新双配置闭环
+HeyClaw 所有真实用户技能 100% 保存在 `userData/SKILLs`，NSIS 安装程序已彻底解绑历史扫描包袱，新增或更新内置技能无需修改任何 NSIS 代码。
+凡在 `SKILLs/<skill-name>` 新增或更新内置技能，必须且只需在同一次提交中完整同步以下 2 处配置：
+1. `SKILLs/skills.config.json`：在 `defaults` 字典中登记白名单条目（包含 `order` 与 `enabled: true`），作为主进程同步至 `userData/SKILLs` 的放行凭证；
+2. `src/renderer/components/skills/bundledSkillNames.ts`：在 `BUNDLED_SKILL_DISPLAY_NAMES` 中添加对应中英文对照 `{ zh: '...', en: '...' }`。
 
----
-
-#### 2. 深度病因剖析：为什么会写出低质量割裂代码？（严禁犯“这样这样”的错误）
-- **反模式病因：按入口编程（Caller-Oriented Programming）与无脑面条堆砌**：
-  缺乏领域抽象思维与全局架构视角的典型表现，就是“来一个入口写一段代码，加一种调用抄一套逻辑”：
-  - 看到需求提了“后台定时”，就在定时逻辑里从头手写一套查重、处理、入库；
-  - 看到界面有个“按钮操作”，又在 UI 组件内裸写一套 API 请求与状态流转；
-  - 导致：两个入口各自为政，同一个业务产生两套互不相通的数据流动、两套不一致的校验规则、两套各自分裂的记账统计！
-- **严重后果**：
-  1. **规则漂移与分叉**：一旦底层业务规则变更，改了入口 A 漏了入口 B，系统立刻出现暗坑与穿帮；
-  2. **状态严重割裂**：A 入口操作的数据 B 入口感知不到，B 入口记账的数据 A 入口视而不见；
-  3. **代码极其肮脏臃肿**：到处充斥着高度相似却又存在隐蔽差异的垃圾代码，破坏模块边界与系统稳定性。
-
----
-
-#### 3. 核心红线三遍警告（强制执行，字字见血，刻入骨髓）
-
-> [!CAUTION]
-> **【编程思想红线第 1 遍】**
-> **核心业务逻辑必须有且仅有单一真理来源（Single Source of Truth, SSOT）！业务内核（校验、去重、处理、入库、记账、状态流转）必须彻底下沉为独立闭环的原子服务，与外部触发机制彻底解耦！严禁因调用入口、前后台环境、交互方式或触发机制的不同而写出两套平行割裂的业务逻辑！绝不准犯各走各路、两张皮的愚蠢错误！**
-
-> [!CAUTION]
-> **【编程思想红线第 2 遍】**
-> **核心业务逻辑必须有且仅有单一真理来源（Single Source of Truth, SSOT）！业务内核（校验、去重、处理、入库、记账、状态流转）必须彻底下沉为独立闭环的原子服务，与外部触发机制彻底解耦！严禁因调用入口、前后台环境、交互方式或触发机制的不同而写出两套平行割裂的业务逻辑！绝不准犯各走各路、两张皮的愚蠢错误！**
-
-> [!CAUTION]
-> **【编程思想红线第 3 遍】**
-> **核心业务逻辑必须有且仅有单一真理来源（Single Source of Truth, SSOT）！业务内核（校验、去重、处理、入库、记账、状态流转）必须彻底下沉为独立闭环的原子服务，与外部触发机制彻底解耦！严禁因调用入口、前后台环境、交互方式或触发机制的不同而写出两套平行割裂的业务逻辑！绝不准犯各走各路、两张皮的愚蠢错误！**
-
----
-
-#### 4. 通用场景全景映射 (Universal Scenarios)
-这种编程思想贯穿软件开发的每一个维度，适用于所有业务场景：
-1. **交互操作 vs 后台任务**：
-   - 界面手动操作与后台定时/监听任务，仅仅是“人肉触发”与“时钟/事件触发”的区别；
-   - 两者必须共同调用底层同一个业务服务，底层的数据查重、物理执行、本地落库、配额扣减、失败置底规则完全 100% 复用；
-2. **单项操作 vs 批量调度**：
-   - 批量处理仅仅是对“单个原子操作”的并发控制、配额预算与队列编排；
-   - 严禁在批量调度器内重新编写一套单项处理逻辑；
-3. **本地执行 vs 进程间/远程调用（IPC / RPC / HTTP）**：
-   - IPC、HTTP、RPC 仅仅是跨进程、跨网络的数据传输管道；
-   - 接收端仅仅反序列化参数并调用核心业务服务，严禁在 IPC Handler 或 Controller 路由层私写业务规则；
-4. **主流程 vs 补偿/重试流程**：
-   - 补偿任务和失败重试仅仅是“延迟发生的再次触发”，其调用的依然是同一个原子内核，绝不允许专门为重试写一套私有处理链路。
-
----
-
-#### 5. 架构自检清单（Architectural Checklist - 写代码前必须强制自问）
-在编写任何功能或修改任何代码前，必须对照以下三条铁律完成自检：
-- **自检 1（单一归宿）**：我当前写的这段逻辑，是否代表了该业务领域**唯一的真实规则**？如果系统要增加一个完全不同的触发渠道（例如 CLI 脚本或快捷键），能否**直接一行调用该底层服务**而无需重写任何业务判断？
-- **自检 2（管道极薄）**：当前的控制器、组件、事件监听器或定时器中，是否仅仅充当了**纯粹的触发管道（Thin Adapter）**？是否存在任何越权编写的校验、去重、状态修改或存储操作？如果有，**立即提取并下沉到公共领域层**！
-- **自检 3（副作用闭环）**：数据持久化（SQLite/云端）、状态机流转、额度扣减等副作用，是否**完全被封装在原子服务内部**？是否做到了“只要业务发生，副作用必定被完整一致执行；任何入口都无法跳过或遗漏”？
-
----
-
-### 2.24 核心编程思想：立足成熟基础设施，严禁在错误层次上重新发明轮子 (Core Philosophy: Infrastructure-First & Zero Level-Inversion Rule)
-
-#### 1. 思想精髓：分层治理与站在巨人的肩膀上 (Layered Governance & Standing on Proven Giants)
-- **软件工程的分层治理哲学（Layered Architecture）**：
-  软件工程演进的根本动力，是**“通用复杂性持续下沉为成熟基础设施”**。底层基础设施（操作系统内核、系统级原生工具链、成熟数据引擎、官方专用驱动/客户端）的核心使命，就是彻底解决大吞吐物理 IO、并发竞争、原子状态一致性、物理网络重试与拥塞控制等重型底层复杂性；
-- **上层编排与下层基础设施各司其职**：
-  应用层与业务脚本的唯一职责是**“轻量表达业务意图与任务编排（Orchestration）”**，绝对不是越俎代庖去硬扛物理世界与网络栈的粗粝复杂性；
-- **核心禁令：严禁层次倒错（Level Inversion Anti-Pattern）**：
-  **绝对严禁在高级/解释型胶水代码中，徒手去重新实现底层基础设施早已完美解决的通用重型机制**（如分布式弱网重试、大文件分片乱序拼装、线程级原子持久化、锁竞争仲裁与应用层看门狗）！在上层用脆弱的面条代码硬扛底层复杂性，不仅性能低下、故障百出，更是对工程边界的严重践踏。
-
----
-
-#### 2. 深度病因剖析：为什么会写出自我感动的愚蠢代码？（严禁犯“这样这样”的错误）
-- **反模式病因 1：盲目狭隘的局部视角与“手里有锤子看什么都是钉子”（The Golden Hammer & Tunnel Vision）**：
-  在面对高可靠、大数据量或跨系统级交互的挑战时，缺乏全局架构视界，习惯性地局限在眼前最熟悉的单一语言/运行时沙箱内找解法（例如“我负责写上层脚本，我就一定要在上层找个库手写一套调度”）；
-  - **严重后果**：完全无视系统同层、相邻链路或官方生态中早已存在、经受过千锤百炼的标准工业级底座，视而不见、弃优就劣、舍近求远！
-- **反模式病因 2：在错误层次上打补丁与陷入“缝缝补补的虚假勤奋”**：
-  当一个方案底层基石（如单线程模型、内存易失快照、不可靠连接）与当前物理场景存在结构性代差时，开发者往往被沉没成本绑架，顺着错误的路径一路打补丁（调大/调小切片大小、加自制超时监控、调高/降级并发、加层层互斥防御）。
-  - **严重后果**：每加一个局部补丁，系统的脆弱性与隐性复杂度就上升一个数量级，最终必然引发更诡异的竞态故障（如状态踩踏、进度倒退、幽灵假死）；**在腐烂的地基上做微调，纯粹是自欺欺人的虚假勤奋**。
-
----
-
-#### 3. 核心红线三遍警告（强制执行，字字见血，刻入骨髓）
-
-> [!CAUTION]
-> **【编程思想红线第 1 遍】**
-> **重型工程与底层系统级复杂性必须坚决立足于成熟的工业级基础设施！绝对严禁在应用层脚本中自我感动式地重新发明轮子，去肉身硬扛网络、并发与原子状态一致性！当遇到反复超时、竞态或脆弱假死时，严禁顺着局部缺陷缝缝补补，必须第一时间跳出局部视角，以后退一步的全局架构视界选用最成熟的工业级基石实现降维打击！**
-
-> [!CAUTION]
-> **【编程思想红线第 2 遍】**
-> **重型工程与底层系统级复杂性必须坚决立足于成熟的工业级基础设施！绝对严禁在应用层脚本中自我感动式地重新发明轮子，去肉身硬扛网络、并发与原子状态一致性！当遇到反复超时、竞态或脆弱假死时，严禁顺着局部缺陷缝缝补补，必须第一时间跳出局部视角，以后退一步的全局架构视界选用最成熟的工业级基石实现降维打击！**
-
-> [!CAUTION]
-> **【编程思想红线第 3 遍】**
-> **重型工程与底层系统级复杂性必须坚决立足于成熟的工业级基础设施！绝对严禁在应用层脚本中自我感动式地重新发明轮子，去肉身硬扛网络、并发与原子状态一致性！当遇到反复超时、竞态或脆弱假死时，严禁顺着局部缺陷缝缝补补，必须第一时间跳出局部视角，以后退一步的全局架构视界选用最成熟的工业级基石实现降维打击！**
-
----
-
-#### 4. 通用场景全景映射 (Universal Scenarios)
-这种思维贯穿于软件系统工程的每一个关键选型：
-1. **网络通信与大规模数据传输**：
-   - 绝不在解释型单线程脚本中手写大吞吐分片断点续传与重试调度，强制优先选用官方系统级原生编译工具或经过海量验证的基础设施底座；
-2. **并发控制与分布式状态仲裁**：
-   - 绝不在应用层内存中用闭包、Promise 链或全局变量去伪造锁机制，强制依赖系统级原子指令、数据库强约束或成熟状态引擎；
-3. **状态持久化与事务流转**：
-   - 绝不在上层手写脆弱的文本并发覆盖或自制快照，强制依赖具备完整 ACID 保障的成熟持久化基石；
-4. **底层安全、解密与证书验签**：
-   - 绝不在应用层用松散脚本拼凑安全验证，强制调用操作系统级权威工具链或硬件安全抽象层。
-
----
-
-#### 5. 架构自检清单（Architectural Checklist - 写代码前必须强制自问）
-在技术选型、重型链路设计或疑难排查时，必须对照以下三条铁律完成自检：
-- **自检 1（视界广度）**：当前要解决的重型难题，业界和当前系统其它链路中是否**早已存在稳定成熟的标准工业级基础设施/原生工具**？我是否因为狭隘的语言或局部思维而陷入了在应用层“重新造轮子”的自嗨？
-- **自检 2（层次正确）**：当前编写的代码，是属于轻量的**业务意图编排（Orchestration）**，还是越权去硬扛了**底层的重型网络、IO 或锁竞争机制**？是否存在层次倒错？
-- **自检 3（根基审视）**：当一个模块出现频繁超时、竞态死锁或偶发假死时，我是不是在**顺着错误的基石不断打无意义的参数微调和看门狗补丁**？地基是否已经腐烂？能否直接换用成熟底座彻底掀翻重来？
-
----
-
-### 2.25 内置技能更新与新增全流程规范 (Built-in Skills Update & Packaging Specification)
-
-#### 1. 深度病因剖析与血泪教训（历史真实痛点）
-- **现象回顾**：
-  在 Windows 客户端在线更新时，大量用户频繁遭遇弹窗报错中止安装：
-  `The HeyClaw update stopped because legacy user skills could not be safely inspected or backed up (status=legacy-backup-copy-failed).`
-- **故障根因闭环**：
-  1. **上游保护机制**：NSIS 安装程序在更新覆盖前，为了避免丢失用户曾经直接放在安装目录下的自建技能，会读取旧安装目录的 `skills.config.json` 中的 `defaults` 字典作为官方内置技能白名单。如果旧目录中存在任何不在白名单内的文件夹，安装程序就会将其判定为“用户遗留自定义技能（Legacy User Skills）”，并强制启动 PowerShell 脚本（`backup-copy` 阶段）把这些目录完整复制到 `%PROGRAMDATA%\HeyClaw\skills-backup\`，计算所有文件 SHA256 哈希后再重命名移动。若所有目录都在白名单内，则会输出 `legacy-no-user-skills` 直接快速放行。
-  2. **配置遗漏导致的连锁灾难**：此前在陆续引入 `ffmpeg-tool`、小红书运营专属系列、视频制作链路技能等内置技能时，**仅将技能目录添加到了 `SKILLs/`，未同步在 `SKILLs/skills.config.json` 的 `defaults` 中登记**；
-  3. **存量机器误判与文件占用崩溃**：存量用户电脑上已安装的旧客户端中的 `skills.config.json` 依然残缺。当用户更新时，新安装程序读取旧配置，误将包含高达 79MB 可执行文件 `ffmpeg.exe` 的 `ffmpeg-tool` 等目录误判为用户自建技能，强行触发备份。复制大量文件与 `.exe` 时，触发 Windows Defender 实时扫描独占锁定，随后的 `Move-Item` 遭遇共享冲突直接抛出 `IOException`，导致整个在线更新失败回滚！
-
----
-
-#### 2. 彻底解绑安装包历史包袱与新增/更新双配置闭环清单
-
-- **安装程序底层解绑事实**：
-  HeyClaw 所有真实用户技能 100% 保存在 `%APPDATA%\HeyClaw\SKILLs`（`userData`）中，安装目录内 100% 均为随包发布的官方只读资源。NSIS 安装程序（`scripts/nsis-installer.nsh`）已彻底解除对安装目录遗留技能的历史扫描与备份包袱，**统一判定无用户技能并直接 0 毫秒放行**。
-  因此，开发者未来新增或更新内置技能，**绝对无需修改任何 NSIS 安装脚本代码**！
-
-- **应用层双配置闭环清单（强制同次提交，缺一不可）**：
-  凡是在 `SKILLs/<skill-name>` 新增或更新内置技能，**必须且只需在同一次提交中完整同步以下 2 处应用层配置**：
-
-| 配置项 | 涉及文件路径 | 核心作用与说明 |
-|---|---|---|
-| **配置 1：官方白名单与同步凭证** | `SKILLs/skills.config.json` | **核心配置**。必须在 `defaults` 中增加对应技能条目（包含 `order` 与 `enabled: true`）。<br>主进程 `syncBundledSkillsToUserData()` 严格以此作为放行凭证，决定启动时是否将内置技能同步至用户的 `userData/SKILLs`。 |
-| **配置 2：中英文展示名称字典** | `src/renderer/components/skills/bundledSkillNames.ts` | 必须在 `BUNDLED_SKILL_DISPLAY_NAMES` 中添加对应中英文对照 `{ zh: '...', en: '...' }`。<br>单元测试 `bundledSkillNames.test.ts` 会强制校验其与 `skills.config.json` 的双向完全对齐，确保前端展示不漏项。 |
-
----
-
-#### 3. 必须通过的提交前自检验证（Pre-commit Verification Checklist）
-
-每次完成内置技能的增删改后，必须在终端依次执行以下命令确保全链路闭环，严禁未经验证直接提交：
-
+**提交前必须通过的 3 道验证命令**：
 ```bash
-# 1. 验证内置技能目录与 skills.config.json 严格一一对应（无多余、无遗漏）
+# 1. 验证技能目录与 skills.config.json 100% 一一对应（无多余、无遗漏）
 node -e "const fs=require('fs');const path=require('path');const cfg=JSON.parse(fs.readFileSync('SKILLs/skills.config.json','utf8')).defaults;const dirs=fs.readdirSync('SKILLs').filter(f=>fs.statSync(path.join('SKILLs',f)).isDirectory());const diff=dirs.filter(d=>!cfg[d]);if(diff.length)throw new Error('存在未在skills.config.json中配置的目录: '+diff.join(','));console.log('✅ skills.config.json 与 SKILLs 目录 100% 对应（共 ' + dirs.length + ' 个技能）');"
 
 # 2. 验证前端展示名称与 skills.config.json 完全同步
@@ -472,79 +160,17 @@ npx vitest run src/renderer/components/skills/bundledSkillNames.test.ts
 npx vitest run tests/windowsInstallerContract.test.ts -t "Skills|manifest|degraded restore"
 ```
 
----
-
-#### 4. 核心红线警示
-
-> [!CAUTION]
-> **【内置技能配置红线】**
-> **严禁在 `SKILLs/` 下只丢文件夹而不修改配置！任何新增或更新内置技能，必须严格遵循上述应用层双配置闭环清单（`skills.config.json` + `bundledSkillNames.ts`）。**
-
----
-
-### 2.26 核心编程思想：把自己定义为架构师纵览全局，坚决摒弃“Bug 掩盖师”反模式 (Core Philosophy: Architect with Global Vision vs. Bug Concealer)
-
-#### 0. 核心角色认知：做纵览全局的架构师，绝不做欺上瞒下的“Bug 掩盖师”
-- **【灵魂拷问与身份定位】**：
-  - **“Bug 掩盖师”的下等行径**：眼里只有当前单次会话里的一行报错文本，满脑子想的是怎么用最偷懒、最狭隘的 `if (error.includes('xxx')) return;` 把报错盖住，急于交差，不管之后其他场景会不会暴毙，更不管系统架构的完整性；
-  - **“架构师”的高等担当**：后退一步审视全局，深挖系统底层契约、状态机闭环与生命周期的权威裁决权。宁可推倒错误的单点假设做深层抽象，也绝不为了凑表面效果往代码里塞一行业余的遮羞布代码。任何改动必须经历全场景通用性推演，经得起长期商业化实战的考验。
-
-#### 1. 思想精髓：通用契约驱动 vs 局部抓瞎硬编码 (Contract-Driven vs. Literal Patching)
-- **软件系统必须由确定性的“状态机与抽象契约”驱动**：
-  任何业务流转、生命周期判断、重试与自愈仲裁、错误分类，**必须且只能依托协议层的结构化枚举、权威标志位（如 `willRetry`、`phase`、`status`）或领域已有统一自愈能力（如 `isWaitingForRecoverableFollowup`）**；
-- **终态裁决权（Termination Authority）严格归属权威源**：
-  谁拥有任务/会话执行的真实物理生命周期（如底层 OpenClaw 引擎），谁才有权最终宣判任务彻底终结。上层适配器与消费层**严禁越俎代庖抢先下达死刑判决**；
-  只要底层仍处于重试（Retry）、限流退避（Backoff）、历史压缩自愈（Compaction）、故障转移（Failover）或等待跟随（Recoverable Followup）等任何形式的自救阶段中，**上层必须保持接收态与等待态，绝对严禁擅自提前拉黑连接、清空状态或单方面触发 abort 硬杀**！
-
----
-
-#### 2. 深度病因剖析：为什么会写出掩盖式假修复？（严禁犯“看日志抓字符串、搞狭隘特判”的低级错误）
-- **反模式病因 1：被局部日志绑架的贪心模式匹配（Log-Anchored Literal Matching）**：
-  看到日志中出现某一句具体报错（如 `context overflow`），不去做任何系统级抽象与全局推演，第一反应竟然是在业务流程里写死 `if (error.includes('context overflow')) return;`。
-  - **严重后果**：这纯粹是自欺欺人的“应付式编程”反模式！表面上掩盖了当前单次日志报错，实则破坏了系统的通用性契约；一旦遇到同类的网络抖动重试、429 限流自愈、模型故障转移，这套逻辑立刻穿帮，甚至直接误杀后台正常的自救流程。
-- **反模式病因 2：上层越权抢杀与提前宣判死刑（Premature Abortion & Kill-Switch Abuse）**：
-  仅仅因为收到了一个阶段性 `error` 事件，就主观认定“任务已死”，在第 0 秒无脑把 `runId` 写入终结黑名单（导致后续推回的自愈成功数据被当成幽灵全部丢弃），并在第 N 秒单方面派发超时硬杀。
-  - **严重后果**：底层的自愈流程（如压缩历史、重新调度）往往需要数十秒，上层缺乏耐心的盲目抢杀，直接生生扼杀了系统自带的自愈能力，将原本可自动恢复的瞬态故障演变为不可逆的用户可见崩溃。
-
----
-
-#### 3. 核心红线三遍警告（强制执行，字字见血，刻入骨髓）
-
-> [!CAUTION]
-> **【反假修复红线第 1 遍】**
-> **严禁任何形式的掩盖式假修复与报错字符串硬编码特判！状态流转与生命周期判定必须 100% 走通用抽象契约！后台只要处于任何自救、重试、压缩或等待恢复中，上层严禁越权提前 abort，严禁提前拉黑 runId！**
-
-> [!CAUTION]
-> **【反假修复红线第 2 遍】**
-> **严禁任何形式的掩盖式假修复与报错字符串硬编码特判！状态流转与生命周期判定必须 100% 走通用抽象契约！后台只要处于任何自救、重试、压缩或等待恢复中，上层严禁越权提前 abort，严禁提前拉黑 runId！**
-
-> [!CAUTION]
-> **【反假修复红线第 3 遍】**
-> **严禁任何形式的掩盖式假修复与报错字符串硬编码特判！状态流转与生命周期判定必须 100% 走通用抽象契约！后台只要处于任何自救、重试、压缩或等待恢复中，上层严禁越权提前 abort，严禁提前拉黑 runId！**
-
----
-
-#### 4. 通用场景全景映射 (Universal Scenarios)
-本准则适用于系统所有涉及异常处理、生命周期、状态机和网络通信的模块：
-1. **网络请求与长连接（HTTP / WebSocket / Gateway）**：
-   - 遭遇断线或超时，严禁凭报错文本单点放行，必须依赖统一的重试策略和退避机制；
-2. **大模型推理与 Agent 循环（LLM Runner / Tool Loop）**：
-   - 面对上下文超限、超长工具调用、或思考阶段性报错，必须依靠自适应修剪与统一自愈契约，严禁写死特定模型厂商返回的私有错误文案；
-3. **任务调度与异步作业（Scheduled Tasks / Workers）**：
-   - 作业失败重试期间，调度器必须维持在“重试中”状态，严禁中途向外广播终结事件，严禁丢弃重试产物；
-4. **前后台状态同步与 IPC（Electron Main vs. Renderer）**：
-   - 主进程状态变化必须保持事务闭环，状态判定与错误码统一由底层枚举映射，禁止散落裸字符串比较。
-
----
-
-#### 5. 提交前三道强制审查门禁（Mandatory Pre-Commit Review Gates - 动代码前必须强制自问）
-在向用户交付任何涉及错误处理、生命周期判断或重试机制的代码前，必须逐一通过以下三道审查门禁：
-- **门禁 1（通用契约审查）**：判断逻辑中是否存在任何具体的错误字面量（如 `error.includes(...)`）？如果将场景换成其他同类异常（如网络闪断、429 限流、模型 failover），这套逻辑能否 100% 通用自适应？
-- **门禁 2（权威契约审查）**：判断依据是系统已有的权威状态机方法/协议枚举，还是私自意淫发明的局部变量？是否存在重复造轮子？
-- **门禁 3（自愈兼容审查）**：当底层正在执行漫长的自救恢复（如耗时数十秒的上下文压缩或重试）时，当前代码会不会在第 0 秒误将其标记为死刑？会不会在超时定时器里越权将其强杀？是否存在双重防御？
-
-
-
-
-
-
+### 4.2 管理类独立页面视觉规范
+编写或重构管理/配置/独立功能页面（如定时任务 ScheduledTasks、技能管理 Skills、MCP、第二大脑 SecondBrain 等）时，必须严格遵循统一视觉规范：
+- **布局容器**：
+  - 外层容器：`<div data-skin-management-page="true" className="relative z-10 flex-1 flex flex-col bg-background h-full overflow-hidden">`；
+  - 顶部 Header：`<div className="draggable flex h-12 items-center justify-between px-4 border-b border-border shrink-0">`；
+  - 内容滚动区：`<div className="flex-1 min-h-0 overflow-y-auto [scrollbar-gutter:stable]"><div className="mx-auto w-full max-w-[1120px] px-8 py-6 space-y-6">`（必须带 `max-w-[1120px]` 居中限制）。
+- **文字与排版阶梯**：统一使用 `src/renderer/components/common/managementTypography.ts` 导出变量：
+  - 主标题：`<h1 className={`${MANAGEMENT_PAGE_TITLE_TEXT} font-semibold text-foreground`}>页面标题</h1>`；
+  - 页面副标题/说明：`${MANAGEMENT_BODY_TEXT} text-secondary`；
+  - 区块标题：`${MANAGEMENT_TITLE_TEXT} font-semibold text-foreground`；
+  - 小标签/徽章/统计标签：`${MANAGEMENT_META_TEXT} text-secondary`。
+- **卡片与 Tab 规范**：
+  - 卡片：`bg-surface border border-border rounded-xl shadow-subtle hover:border-primary/50 hover:shadow-card transition`；
+  - Tab 栏：统一使用底部横线高亮指示条风格（激活项为 `text-foreground font-semibold` 且底部带有 `bg-primary h-0.5 rounded-full` 指示线）。

@@ -11,6 +11,7 @@ import {
   LIBRARY_INDEX_POLICY_VERSION,
   LibraryArtifactType,
   LibraryAvailability,
+  LibraryChangeReason,
   LibraryIndexPhase,
   LibraryLimits,
   LibraryOrigin,
@@ -28,6 +29,7 @@ import {
   buildArtifactFileClientSourceKey,
   buildHtmlShareClientSourceKey,
 } from '../libs/htmlShare/htmlShareSourceKey';
+import type { SessionProjectionChanges } from '../libs/sessionProjectionNotifications';
 import {
   type LibraryIndexedFile,
   LibraryLocalStore,
@@ -52,6 +54,13 @@ const LibraryIndexMetadataKey = {
   PolicyVersion: 'library.index.policyVersion',
   LastReconcileAt: 'library.index.lastReconcileAt',
 } as const;
+
+const DirectoryWatchResult = {
+  Watching: 'watching',
+  DirectoryMissing: 'directory_missing',
+  Unavailable: 'unavailable',
+} as const;
+type DirectoryWatchResult = typeof DirectoryWatchResult[keyof typeof DirectoryWatchResult];
 
 const RETRY_DELAYS_MS = [250, 1_000, 3_000, 10_000, 15_000] as const;
 const RECONCILE_CONCURRENCY = 8;
@@ -130,6 +139,7 @@ export class LibraryIndexService {
 
   start(): void {
     this.stopped = false;
+    this.cleanupExpiredMissing();
     this.rebuildWatchers();
     this.scheduleReconcile(2_000);
   }
@@ -288,6 +298,20 @@ export class LibraryIndexService {
     this.onChanged(payload);
   }
 
+  notifySessionProjectionChanges(changes: SessionProjectionChanges): void {
+    const sessionIds = this.store.listSessionIdsWithArtifactRelations(changes.changedSessionIds);
+    if (sessionIds.length > 0) {
+      this.notifyChange({ reason: LibraryChangeReason.SessionProjectionChanged, sessionIds });
+    }
+    if (changes.affectedArtifactIds.length > 0) {
+      this.notifyChange({
+        reason: LibraryChangeReason.SessionDeleted,
+        sessionIds: changes.deletedSessionIds,
+        itemIds: changes.affectedArtifactIds,
+      });
+    }
+  }
+
   private async indexCandidate(candidate: LibraryArtifactCandidate): Promise<LocalArtifactItem | null> {
     const cwd = this.store.getSessionCwd(candidate.sessionId);
     if (!cwd) return null;
@@ -374,18 +398,32 @@ export class LibraryIndexService {
     this.watchers.clear();
     this.itemPaths.clear();
     this.watcherDegraded = false;
-    for (const item of this.store.listTracked()) this.addWatch(item.itemId, item.filePath);
+    const unwatchedDirectories = new Set<string>();
+    let missingDirectoryCount = 0;
+    for (const item of this.store.listTracked()) {
+      const directory = path.dirname(item.filePath);
+      if (unwatchedDirectories.has(directory)) continue;
+      const result = this.addWatch(item.itemId, item.filePath);
+      if (result === DirectoryWatchResult.Watching) continue;
+      unwatchedDirectories.add(directory);
+      if (result === DirectoryWatchResult.DirectoryMissing) missingDirectoryCount += 1;
+    }
+    if (missingDirectoryCount > 0) {
+      console.debug(
+        `[Library] Skipped watching ${missingDirectoryCount} missing artifact dir(s); stat reconciliation covers their items.`,
+      );
+    }
   }
 
-  private addWatch(itemId: string, filePath: string): void {
-    if (this.stopped) return;
+  private addWatch(itemId: string, filePath: string): DirectoryWatchResult {
+    if (this.stopped) return DirectoryWatchResult.Unavailable;
     const directory = path.dirname(filePath);
     const baseName = path.basename(filePath);
     let entry = this.watchers.get(directory);
     if (!entry) {
       if (this.watchers.size >= LibraryLimits.WatchDirectoryLimit) {
         this.watcherDegraded = true;
-        return;
+        return DirectoryWatchResult.Unavailable;
       }
       try {
         const itemsByBaseName = new Map<string, Set<string>>();
@@ -416,18 +454,22 @@ export class LibraryIndexService {
         entry = { watcher, itemsByBaseName };
         this.watchers.set(directory, entry);
       } catch (error) {
+        // A deleted directory is not a watcher fault, so it does not degrade watching;
+        // the periodic stat reconcile already marks its items missing.
+        if (isMissingError(error)) return DirectoryWatchResult.DirectoryMissing;
         console.warn(
           '[Library] Unable to watch an indexed artifact directory.',
           getSanitizedFsError('Directory watcher setup failed', error),
         );
         this.watcherDegraded = true;
-        return;
+        return DirectoryWatchResult.Unavailable;
       }
     }
     const ids = entry.itemsByBaseName.get(baseName) ?? new Set<string>();
     ids.add(itemId);
     entry.itemsByBaseName.set(baseName, ids);
     this.itemPaths.set(itemId, filePath);
+    return DirectoryWatchResult.Watching;
   }
 
   private scheduleWatchRefresh(itemId: string): void {
@@ -505,6 +547,19 @@ export class LibraryIndexService {
     this.onChanged({ reason: 'file_changed', itemIds: [candidate.itemId] });
   }
 
+  private cleanupExpiredMissing(): void {
+    if (this.stopped) return;
+    try {
+      const purgedItemIds = this.store.cleanupExpiredMissing(LibraryLimits.MissingRetentionMs);
+      for (const itemId of purgedItemIds) this.unwatchItem(itemId);
+      if (purgedItemIds.length > 0) {
+        console.debug(`[Library] Purged ${purgedItemIds.length} artifact(s) missing past the retention period.`);
+      }
+    } catch (error) {
+      console.warn('[Library] Failed to purge expired missing artifacts.', error);
+    }
+  }
+
   private scheduleReconcile(delayMs: number): void {
     if (this.stopped) return;
     if (this.reconcileTimer) clearTimeout(this.reconcileTimer);
@@ -514,7 +569,10 @@ export class LibraryIndexService {
         limit: LibraryLimits.ReconcileBatchSize,
         notify: false,
         verifiedBefore: Date.now() - LibraryLimits.RecentVerificationWindowMs,
-      }).finally(() => this.scheduleReconcile(LibraryLimits.ReconcileIntervalMs));
+      }).finally(() => {
+        this.cleanupExpiredMissing();
+        this.scheduleReconcile(LibraryLimits.ReconcileIntervalMs);
+      });
     }, delayMs);
   }
 

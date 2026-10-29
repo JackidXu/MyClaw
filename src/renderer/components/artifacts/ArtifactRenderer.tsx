@@ -1,42 +1,53 @@
 import React from 'react';
 
-import type { Artifact } from '@/types/artifact';
+import { type Artifact, ArtifactTypeValue } from '@/types/artifact';
 
+import { isWorkspaceDiffArtifact } from '../../../shared/artifactPreview/workspaceChanges';
 import type { ArtifactSelectedTextContext } from './artifactSelectedText';
+import ImageEditor from './imageEditor/ImageEditor';
 import CodeRenderer from './renderers/CodeRenderer';
 import DocumentRenderer from './renderers/DocumentRenderer';
 import HtmlRenderer from './renderers/HtmlRenderer';
-import ImageRenderer from './renderers/ImageRenderer';
 import MarkdownRenderer from './renderers/MarkdownRenderer';
 import MermaidRenderer from './renderers/MermaidRenderer';
 import SvgRenderer from './renderers/SvgRenderer';
 import TextRenderer from './renderers/TextRenderer';
 import VideoRenderer from './renderers/VideoRenderer';
+import WorkspaceDiffRenderer from './renderers/WorkspaceDiffRenderer';
 
 interface ArtifactRendererProps {
   artifact: Artifact;
   sessionArtifacts?: Artifact[];
   selectedTextContext?: ArtifactSelectedTextContext;
+  sourceView?: boolean;
 }
 
-const ArtifactRenderer: React.FC<ArtifactRendererProps> = ({ artifact, selectedTextContext }) => {
+const ArtifactRenderer: React.FC<ArtifactRendererProps> = ({ artifact, selectedTextContext, sourceView = false }) => {
+  if (isWorkspaceDiffArtifact(artifact) && !sourceView) {
+    return <WorkspaceDiffRenderer artifact={artifact} selectedTextContext={selectedTextContext} />;
+  }
+  if (sourceView && !(artifact.type === ArtifactTypeValue.Markdown && artifact.filePath && window.electron?.artifact?.markdown)) {
+    return <CodeRenderer artifact={artifact} />;
+  }
+  // Zoomable renderers are keyed by artifact so switching to another artifact opens it
+  // at 100%, while a refresh of the same artifact keeps the current zoom.
   switch (artifact.type) {
     case 'html':
       return <HtmlRenderer artifact={artifact} />;
     case 'svg':
-      return <SvgRenderer artifact={artifact} />;
+      return <SvgRenderer key={artifact.id} artifact={artifact} />;
     case 'image':
-      return <ImageRenderer artifact={artifact} />;
+      return <ImageEditor key={artifact.id} artifact={artifact} />;
     case 'video':
       return <VideoRenderer artifact={artifact} />;
     case 'mermaid':
-      return <MermaidRenderer artifact={artifact} />;
-    case 'markdown':
-      return <MarkdownRenderer artifact={artifact} selectedTextContext={selectedTextContext} />;
+      return <MermaidRenderer key={artifact.id} artifact={artifact} />;
+    case ArtifactTypeValue.Markdown:
+      return <MarkdownRenderer artifact={artifact} selectedTextContext={selectedTextContext} sourceView={sourceView} />;
     case 'text':
       return <TextRenderer artifact={artifact} selectedTextContext={selectedTextContext} />;
     case 'document':
-      return <DocumentRenderer artifact={artifact} />;
+      return <DocumentRenderer artifact={artifact} selectedTextContext={selectedTextContext} />;
     case 'code':
       return <CodeRenderer artifact={artifact} />;
     case 'local-service':

@@ -1,3 +1,5 @@
+import type { SkillLoadIssue } from '../../shared/skills/constants';
+
 // Skill type definition
 export interface Skill {
   id: string;
@@ -11,6 +13,7 @@ export interface Skill {
   skillPath: string;      // Absolute path to SKILL.md
   version?: string;       // Skill version from SKILL.md frontmatter
   requiredExpert?: string[]; // Required VIP expert subscription to enable/view
+  loadIssue?: SkillLoadIssue; // Why OpenClaw will not auto-load this skill
 }
 
 export type LocalizedText = { en: string; zh: string };

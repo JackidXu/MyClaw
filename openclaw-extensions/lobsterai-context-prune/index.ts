@@ -8,7 +8,7 @@ import type {
   IngestResult,
   OpenClawPluginApi,
 } from 'openclaw/plugin-sdk';
-import { delegateCompactionToRuntime } from 'openclaw/plugin-sdk';
+import { delegateCompactionToRuntime } from 'openclaw/plugin-sdk/core';
 
 export const HISTORICAL_TOOL_RESULT_KEEP_CHARS = 300;
 export const HISTORICAL_TOOL_RESULT_PRUNED_MARKER = '[历史工具步骤已折叠';

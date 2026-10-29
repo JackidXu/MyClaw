@@ -1,27 +1,18 @@
-import { ArrowPathIcon, ChevronDownIcon, ExclamationTriangleIcon, WrenchScrewdriverIcon } from '@heroicons/react/24/outline';
+import { ArrowPathIcon, ChevronDownIcon, ExclamationTriangleIcon, ShieldCheckIcon, WrenchScrewdriverIcon } from '@heroicons/react/24/outline';
 import React, { useEffect, useState } from 'react';
 
-import { OpenClawEngineErrorCode, OpenClawGatewayRepairErrorCode } from '../../../shared/openclawEngine/constants';
+import { OpenClawEngineErrorCode, OpenClawEnginePhase, OpenClawLoopbackRepairOutcome } from '../../../shared/openclawEngine/constants';
 import { coworkService } from '../../services/cowork';
 import { i18nService } from '../../services/i18n';
 import { LogReporterAction, reportYdAnalyzer } from '../../services/logReporter';
-import type { OpenClawEngineStatus, OpenClawGatewayRepairResult } from '../../types/cowork';
+import { resolveOpenClawLoopbackRepairMessage, resolveOpenClawRepairError } from '../../services/openclawRepair';
+import type { OpenClawEngineStatus } from '../../types/cowork';
 import type { SettingsOpenOptions } from '../Settings';
 
 interface EngineFailureOverlayProps {
   onRequestAppSettings?: (options?: SettingsOpenOptions) => void;
   suspended?: boolean;
 }
-
-const resolveGatewayRepairErrorText = (result: OpenClawGatewayRepairResult): string => {
-  if (result.errorCode === OpenClawGatewayRepairErrorCode.Busy) {
-    return i18nService.t('openClawRepairBusyError');
-  }
-  if (result.errorCode === OpenClawGatewayRepairErrorCode.ConfigApplyPending) {
-    return i18nService.t('openClawRepairConfigApplyPendingError');
-  }
-  return result.error?.trim() || i18nService.t('openClawRepairFailed');
-};
 
 const EngineFailureOverlay: React.FC<EngineFailureOverlayProps> = ({
   onRequestAppSettings,
@@ -32,8 +23,10 @@ const EngineFailureOverlay: React.FC<EngineFailureOverlayProps> = ({
   );
   const [isRestartingGateway, setIsRestartingGateway] = useState(false);
   const [isRepairingGateway, setIsRepairingGateway] = useState(false);
+  const [isAllowingLoopback, setIsAllowingLoopback] = useState(false);
   const [gatewayRepairError, setGatewayRepairError] = useState<string | null>(null);
   const [isDeferred, setIsDeferred] = useState(false);
+  const [isStallExpanded, setIsStallExpanded] = useState(false);
 
   useEffect(() => {
     coworkService.getOpenClawEngineStatus()
@@ -48,16 +41,24 @@ const EngineFailureOverlay: React.FC<EngineFailureOverlayProps> = ({
   }, []);
 
   useEffect(() => {
-    if (status?.phase === 'running') {
+    if (status?.phase === OpenClawEnginePhase.Running) {
       setGatewayRepairError(null);
     }
-    if (status?.phase !== 'error') {
+    if (status?.phase !== OpenClawEnginePhase.Error) {
       setIsDeferred(false);
     }
   }, [status?.phase]);
 
+  // The gateway still runs and tasks proceed, so a stalled config is a notice, not a failure.
+  const isConfigStalled = Boolean(status?.configApplyStalled) && status?.phase !== OpenClawEnginePhase.Error;
+  useEffect(() => {
+    if (!isConfigStalled) setIsStallExpanded(false);
+  }, [isConfigStalled]);
+
+  const isActionRunning = isRestartingGateway || isRepairingGateway || isAllowingLoopback;
+
   const handleRestartGateway = async () => {
-    if (isRestartingGateway || isRepairingGateway) return;
+    if (isActionRunning) return;
     setIsRestartingGateway(true);
     setGatewayRepairError(null);
     try {
@@ -69,10 +70,9 @@ const EngineFailureOverlay: React.FC<EngineFailureOverlayProps> = ({
     }
   };
 
-  // Same repair flow as Settings > Agent Engine > Repair Startup: back up
-  // openclaw.json, regenerate config, restart the gateway.
+  // Same backed-up Doctor and compatibility repair flow as Settings.
   const handleQuickRepairGateway = async () => {
-    if (isRepairingGateway || isRestartingGateway) return;
+    if (isActionRunning) return;
     setIsRepairingGateway(true);
     setGatewayRepairError(null);
     try {
@@ -85,7 +85,7 @@ const EngineFailureOverlay: React.FC<EngineFailureOverlayProps> = ({
         source: 'cowork_engine_failure_overlay',
       });
       if (!result.success) {
-        setGatewayRepairError(resolveGatewayRepairErrorText(result));
+        setGatewayRepairError(resolveOpenClawRepairError(result));
       }
     } catch (error) {
       console.error('[EngineFailureOverlay] Failed to repair gateway state:', error);
@@ -103,7 +103,32 @@ const EngineFailureOverlay: React.FC<EngineFailureOverlayProps> = ({
     }
   };
 
-  if (suspended || status?.phase !== 'error') {
+  // Adds the loopback firewall rule behind a UAC prompt; once the self-test
+  // passes, the main process restarts the gateway.
+  const handleAllowLoopback = async () => {
+    if (isActionRunning) return;
+    setIsAllowingLoopback(true);
+    setGatewayRepairError(null);
+    try {
+      const result = await coworkService.repairOpenClawLoopbackFirewall();
+      const repaired = result.outcome === OpenClawLoopbackRepairOutcome.Repaired;
+      void reportYdAnalyzer({
+        action: LogReporterAction.AgentEngineMaintenanceAction,
+        actionType: 'allow_loopback_firewall',
+        result: repaired ? 'success' : 'failed',
+        errorCode: repaired ? undefined : result.outcome,
+        source: 'cowork_engine_failure_overlay',
+      });
+      setGatewayRepairError(resolveOpenClawLoopbackRepairMessage(result) ?? null);
+    } catch (error) {
+      console.error('[EngineFailureOverlay] Failed to allow loopback connections:', error);
+      setGatewayRepairError(i18nService.t('coworkOpenClawAllowLoopbackFailed'));
+    } finally {
+      setIsAllowingLoopback(false);
+    }
+  };
+
+  if (suspended || !status || (status.phase !== OpenClawEnginePhase.Error && !isRepairingGateway && !isConfigStalled)) {
     return null;
   }
 
@@ -111,33 +136,66 @@ const EngineFailureOverlay: React.FC<EngineFailureOverlayProps> = ({
   // config cannot help. Quick repair still retries recovery from leftover
   // installer resources, but the honest fix is allowlist + reinstall.
   const isRuntimeMissing = status.errorCode === OpenClawEngineErrorCode.RuntimeEntryMissing;
+  const isRuntimeDamaged = status.errorCode === OpenClawEngineErrorCode.RuntimeFilesMissing;
+  const needsMediaMigration = status.errorCode === OpenClawEngineErrorCode.AgentMediaMigrationRequired;
+  const migrationRefused = status.errorCode === OpenClawEngineErrorCode.StartupMigrationRefused;
+  // Config repair cannot help a firewall block; the primary action adds the
+  // loopback rule instead, and restarting re-runs the self-test.
+  const isLoopbackBlocked = status.errorCode === OpenClawEngineErrorCode.LoopbackBlocked;
+  const titleKey = isRepairingGateway ? 'openClawRepairRunning' : isLoopbackBlocked ? 'coworkOpenClawLoopbackBlockedTitle'
+    : isRuntimeDamaged ? 'coworkOpenClawRuntimeDamagedError'
+      : isRuntimeMissing ? 'coworkOpenClawRuntimeMissingError' : needsMediaMigration ? 'openClawAgentMediaMigrationTitle'
+        : isConfigStalled ? 'coworkOpenClawConfigStalledTitle' : 'coworkOpenClawError';
+  const hintKey = isLoopbackBlocked ? 'coworkOpenClawLoopbackBlockedHint' : isRuntimeDamaged ? 'coworkOpenClawRuntimeDamagedRepairHint'
+    : isRuntimeMissing ? 'coworkOpenClawRuntimeMissingRepairHint' : needsMediaMigration ? 'openClawAgentMediaMigrationHint'
+      : migrationRefused ? 'openClawStartupMigrationRefusedHint'
+        : isConfigStalled ? 'coworkOpenClawConfigStalledHint' : 'coworkOpenClawErrorRepairHint';
+  const primaryAction = isLoopbackBlocked
+    ? {
+      onClick: handleAllowLoopback,
+      running: isAllowingLoopback,
+      Icon: ShieldCheckIcon,
+      labelKey: isAllowingLoopback ? 'coworkOpenClawAllowLoopbackRunning' : 'coworkOpenClawAllowLoopback',
+    }
+    : {
+      onClick: handleQuickRepairGateway,
+      running: isRepairingGateway,
+      Icon: WrenchScrewdriverIcon,
+      labelKey: isRepairingGateway ? 'openClawRepairRunning' : 'coworkOpenClawQuickRepair',
+    };
 
-  if (isDeferred) {
+  // A stall starts collapsed because it blocks nothing; a failed repair opens it to show why.
+  const isCollapsed = isConfigStalled ? !isStallExpanded && !gatewayRepairError : isDeferred;
+  const shortLabelKey = isConfigStalled ? 'coworkOpenClawConfigStalledShort'
+    : isLoopbackBlocked ? 'coworkOpenClawLoopbackBlockedShort' : 'coworkOpenClawErrorShort';
+  const detail = gatewayRepairError || (isConfigStalled ? status.configApplyStalled?.detail : status.message);
+
+  if (isCollapsed) {
     return (
       <div className="pointer-events-none fixed inset-x-0 top-4 z-[90] flex justify-center px-4">
-        <div className="pointer-events-auto flex max-w-[calc(100vw-2rem)] items-center gap-1.5 rounded-full border border-red-200 bg-surface py-1 pl-3 pr-1 shadow-lg animate-fade-in-down dark:border-red-900/60">
+        <div className="non-draggable pointer-events-auto flex max-w-[calc(100vw-2rem)] items-center gap-1.5 rounded-full border border-red-200 bg-surface py-1 pl-3 pr-1 shadow-lg animate-fade-in-down dark:border-red-900/60">
           <button
             type="button"
-            onClick={() => setIsDeferred(false)}
+            onClick={() => (isConfigStalled ? setIsStallExpanded(true) : setIsDeferred(false))}
             className="inline-flex min-w-0 items-center gap-1.5 text-xs font-medium text-foreground transition-colors hover:text-red-600 dark:hover:text-red-400"
           >
             <ExclamationTriangleIcon className="h-3.5 w-3.5 shrink-0 text-red-600 dark:text-red-400" />
-            <span className="truncate">{i18nService.t('coworkOpenClawErrorShort')}</span>
+            <span className="truncate">
+              {i18nService.t(shortLabelKey)}
+            </span>
             <ChevronDownIcon className="h-3 w-3 shrink-0 text-secondary" />
           </button>
-          <button
+          {!isRuntimeDamaged && <button
             type="button"
-            onClick={handleQuickRepairGateway}
-            disabled={isRepairingGateway || isRestartingGateway}
+            onClick={primaryAction.onClick}
+            disabled={isActionRunning}
             className="inline-flex h-6 shrink-0 items-center justify-center gap-1 rounded-full bg-primary px-2.5 text-xs font-medium text-white transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-60 active:scale-[0.98]"
           >
-            {isRepairingGateway
+            {primaryAction.running
               ? <ArrowPathIcon className="h-3 w-3 animate-spin" />
-              : <WrenchScrewdriverIcon className="h-3 w-3" />}
-            {isRepairingGateway
-              ? i18nService.t('openClawRepairRunning')
-              : i18nService.t('coworkOpenClawQuickRepair')}
-          </button>
+              : <primaryAction.Icon className="h-3 w-3" />}
+            {i18nService.t(primaryAction.labelKey)}
+          </button>}
         </div>
       </div>
     );
@@ -156,48 +214,41 @@ const EngineFailureOverlay: React.FC<EngineFailureOverlayProps> = ({
             <ExclamationTriangleIcon className="h-6 w-6" />
           </span>
           <h3 id="openclaw-gateway-failure-title" className="mt-3 text-base font-semibold text-foreground">
-            {i18nService.t(isRuntimeMissing ? 'coworkOpenClawRuntimeMissingError' : 'coworkOpenClawError')}
+            {i18nService.t(titleKey)}
           </h3>
           <p className="mt-2 text-[13px] leading-5 text-secondary">
-            {i18nService.t(isRuntimeMissing ? 'coworkOpenClawRuntimeMissingRepairHint' : 'coworkOpenClawErrorRepairHint')}
+            {i18nService.t(hintKey)}
           </p>
-          {isRuntimeMissing && status.message && (
-            <p className="mt-2 max-w-full break-all text-xs leading-4 text-secondary/80">
-              {status.message}
-            </p>
-          )}
-          {gatewayRepairError && (
-            <p className="mt-2 text-[13px] leading-5 text-red-600 dark:text-red-400">
-              {gatewayRepairError}
+          {!isRepairingGateway && detail && (
+            <p className="mt-2 max-h-36 max-w-full overflow-y-auto whitespace-pre-wrap break-words text-left text-xs leading-5 text-red-600 dark:text-red-400 [overflow-wrap:anywhere]">
+              {detail}
             </p>
           )}
         </div>
-        <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+        {!isRuntimeDamaged && <div className="mt-5 flex flex-col gap-2 sm:flex-row">
           <button
             type="button"
             onClick={handleRestartGateway}
-            disabled={isRestartingGateway || isRepairingGateway}
+            disabled={isActionRunning}
             className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl border border-border bg-surface px-3 text-sm font-medium text-foreground transition-colors hover:bg-surface-raised disabled:cursor-not-allowed disabled:opacity-60 active:scale-[0.98]"
           >
             {isRestartingGateway && (
               <ArrowPathIcon className="h-4 w-4 animate-spin" />
             )}
-            {i18nService.t('coworkOpenClawRestartGateway')}
+            {i18nService.t(isLoopbackBlocked ? 'coworkOpenClawLoopbackRecheck' : 'coworkOpenClawRestartGateway')}
           </button>
           <button
             type="button"
-            onClick={handleQuickRepairGateway}
-            disabled={isRepairingGateway || isRestartingGateway}
+            onClick={primaryAction.onClick}
+            disabled={isActionRunning}
             className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary px-3 text-sm font-medium text-white transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-60 active:scale-[0.98]"
           >
-            {isRepairingGateway
+            {primaryAction.running
               ? <ArrowPathIcon className="h-4 w-4 animate-spin" />
-              : <WrenchScrewdriverIcon className="h-4 w-4" />}
-            {isRepairingGateway
-              ? i18nService.t('openClawRepairRunning')
-              : i18nService.t('coworkOpenClawQuickRepair')}
+              : <primaryAction.Icon className="h-4 w-4" />}
+            {i18nService.t(primaryAction.labelKey)}
           </button>
-        </div>
+        </div>}
         <div className="mt-4 flex items-center justify-between gap-4">
           {onRequestAppSettings ? (
             <button
@@ -212,7 +263,14 @@ const EngineFailureOverlay: React.FC<EngineFailureOverlayProps> = ({
           )}
           <button
             type="button"
-            onClick={() => setIsDeferred(true)}
+            onClick={() => {
+              if (isConfigStalled) {
+                setIsStallExpanded(false);
+                setGatewayRepairError(null);
+              } else {
+                setIsDeferred(true);
+              }
+            }}
             className="text-xs text-secondary underline-offset-2 transition-colors hover:text-foreground hover:underline"
           >
             {i18nService.t('coworkOpenClawErrorDefer')}

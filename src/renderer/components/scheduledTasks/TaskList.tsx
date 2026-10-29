@@ -214,7 +214,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onRequestDelete }) => {
     <div
       role="button"
       tabIndex={0}
-      className="group flex cursor-pointer flex-col rounded-xl border border-border bg-surface p-4 shadow-subtle transition hover:border-primary/50 hover:shadow-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+      className="group flex cursor-pointer flex-col rounded-xl border border-border bg-surface p-4 shadow-subtle transition hover:border-secondary/40 hover:shadow-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-500/40"
       onClick={handleSelectTask}
       onKeyDown={handleCardKeyDown}
     >
@@ -450,6 +450,7 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
           </div>
         );
       })}
+
     </div>
 
     {onCreateBlank && (
@@ -567,8 +568,8 @@ const TaskList: React.FC<TaskListProps> = ({
       <div className="space-y-5">
         {/* First-run funnel: a compact intro, then templates as the primary creation path. */}
         <div className="flex flex-col items-center pt-4 text-center">
-          <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-            <ClockIcon className="h-6 w-6 text-primary" />
+          <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-surface-raised">
+            <ClockIcon className="h-6 w-6 text-foreground" />
           </div>
           <p className="text-base font-semibold text-foreground">
             {i18nService.t('scheduledTasksEmptyState')}
@@ -596,7 +597,7 @@ const TaskList: React.FC<TaskListProps> = ({
           <button
             type="button"
             onClick={onClearSearch}
-            className="mt-3 text-sm text-primary transition-colors hover:text-primary-hover"
+            className="mt-3 text-sm text-foreground transition-colors hover:underline underline-offset-4"
           >
             {i18nService.t('scheduledTasksClearSearch')}
           </button>

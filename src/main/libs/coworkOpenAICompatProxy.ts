@@ -2626,10 +2626,6 @@ async function handleRequest(
   // the lobster provider. Transparently proxy these requests to the upstream with
   // IDE headers injected (needed for GitHub Copilot).
   if (method === 'POST' && (url.pathname === '/v1/chat/completions' || url.pathname === '/chat/completions')) {
-    if (!upstreamConfig) {
-      writeJSON(res, 503, createAnthropicErrorBody('Proxy not configured', 'service_unavailable'));
-      return;
-    }
     let body = '';
     try {
       body = await readRequestBody(req);
@@ -2639,18 +2635,24 @@ async function handleRequest(
       return;
     }
     let effectiveUpstream = upstreamConfig;
+    let isAuto = false;
     try {
       const parsed = JSON.parse(body);
       if (isAutoModelRef(parsed.model)) {
+        isAuto = true;
         const hasImages = detectMultimodalImages(parsed);
         const promptText = extractLastUserMessageText(parsed) || '';
-        effectiveUpstream = resolveAutoUpstreamConfig(hasImages, upstreamConfig, promptText);
+        effectiveUpstream = resolveAutoUpstreamConfig(hasImages, upstreamConfig ?? ({} as OpenAICompatUpstreamConfig), promptText);
         parsed.model = effectiveUpstream.model;
         body = JSON.stringify(parsed);
         console.info(`[CoworkProxy] Remapped passthrough model: system/auto -> ${effectiveUpstream.model} (hasImages: ${hasImages}, provider: ${effectiveUpstream.provider})`);
       }
     } catch {
       // Ignore
+    }
+    if (!effectiveUpstream || (!effectiveUpstream.baseURL && !isAuto)) {
+      writeJSON(res, 503, createAnthropicErrorBody('Proxy not configured', 'service_unavailable'));
+      return;
     }
     const upstreamHeaders: Record<string, string> = {
       'Content-Type': 'application/json',

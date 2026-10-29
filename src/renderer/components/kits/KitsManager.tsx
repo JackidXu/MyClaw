@@ -1,14 +1,23 @@
-import { ArrowDownTrayIcon, ArrowLeftIcon, ArrowPathIcon, XMarkIcon } from '@heroicons/react/24/outline';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { ArrowPathIcon } from '@heroicons/react/20/solid';
+import {
+  ArrowLeftIcon,
+  ChevronRightIcon,
+  ExclamationTriangleIcon,
+  TrashIcon,
+  XMarkIcon,
+} from '@heroicons/react/24/outline';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useDispatch } from 'react-redux';
 
 import { i18nService } from '../../services/i18n';
 import { kitService } from '../../services/kit';
 import { compareVersions, resolveLocalizedText } from '../../services/skill';
 import { setInstalledKits as setInstalledKitsAction, setMarketplaceKits } from '../../store/slices/kitSlice';
-import type { InstalledKit, KitCategory, MarketplaceKit } from '../../types/kit';
-import { MANAGEMENT_BODY_TEXT } from '../common/managementTypography';
+import type { InstalledKit, KitSkillRef, MarketplaceKit } from '../../types/kit';
+import ManagementSearchHeader from '../common/ManagementSearchHeader';
+import { MANAGEMENT_BODY_TEXT, MANAGEMENT_META_TEXT, MANAGEMENT_TITLE_TEXT } from '../common/managementTypography';
 import Modal from '../common/Modal';
+import ErrorMessage from '../ErrorMessage';
 import SearchIcon from '../icons/SearchIcon';
 import { getKitAnalyticsParams, reportKitAction } from './analytics';
 import KitIcon from './KitIcon';
@@ -32,69 +41,190 @@ interface KitsManagerProps {
   onUseKit?: (kitId: string) => void;
 }
 
+interface TooltipPosition {
+  left: number;
+  top: number;
+  width: number;
+}
+
 interface KitUpdateInfo {
   installedVersion: string;
   currentVersion: string;
 }
 
-const KitsManager: React.FC<KitsManagerProps> = ({ onTryAsking }) => {
+const SKILL_TOOLTIP_WIDTH = 288;
+const SKILL_TOOLTIP_MIN_WIDTH = 180;
+const SKILL_TOOLTIP_VIEWPORT_MARGIN = 12;
+const SKILL_TOOLTIP_GAP = 8;
+
+const KIT_ACTION_BUTTON_CLASS = 'inline-flex flex-shrink-0 items-center justify-center gap-1.5 rounded-lg bg-neutral-900 font-semibold text-white transition-colors hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-500 focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:cursor-not-allowed disabled:opacity-50';
+const KIT_CARD_ACTION_CLASS = `${KIT_ACTION_BUTTON_CLASS} h-7 px-3 ${MANAGEMENT_META_TEXT}`;
+const KIT_DETAIL_ACTION_CLASS = `${KIT_ACTION_BUTTON_CLASS} h-8 px-5 ${MANAGEMENT_BODY_TEXT}`;
+
+const clamp = (value: number, min: number, max: number) => (
+  Math.min(Math.max(value, min), Math.max(min, max))
+);
+
+const formatKitReinstallRequiredDetail = (info: KitUpdateInfo): string => (
+  i18nService.t('kitReinstallRequiredDetail')
+    .replace('{installedVersion}', info.installedVersion)
+    .replace('{currentVersion}', info.currentVersion)
+);
+
+const KitSkillPill: React.FC<{ skill: KitSkillRef }> = ({ skill }) => {
+  const name = resolveLocalizedText(skill.name).replace(/^\//, '');
+  const description = skill.description ? resolveLocalizedText(skill.description) : '';
+  const triggerRef = useRef<HTMLSpanElement>(null);
+  const tooltipRef = useRef<HTMLSpanElement>(null);
+  const [tooltipVisible, setTooltipVisible] = useState(false);
+  const [tooltipPosition, setTooltipPosition] = useState<TooltipPosition | null>(null);
+
+  const updateTooltipPosition = useCallback(() => {
+    const trigger = triggerRef.current;
+    if (!trigger || !description) return;
+
+    const triggerRect = trigger.getBoundingClientRect();
+    const tooltipHeight = tooltipRef.current?.getBoundingClientRect().height ?? 0;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const maxWidth = Math.max(SKILL_TOOLTIP_MIN_WIDTH, viewportWidth - SKILL_TOOLTIP_VIEWPORT_MARGIN * 2);
+    const width = Math.min(SKILL_TOOLTIP_WIDTH, maxWidth);
+    const left = clamp(
+      triggerRect.left,
+      SKILL_TOOLTIP_VIEWPORT_MARGIN,
+      viewportWidth - width - SKILL_TOOLTIP_VIEWPORT_MARGIN,
+    );
+    const hasRoomAbove = triggerRect.top >= tooltipHeight + SKILL_TOOLTIP_GAP + SKILL_TOOLTIP_VIEWPORT_MARGIN;
+    const rawTop = hasRoomAbove
+      ? triggerRect.top - tooltipHeight - SKILL_TOOLTIP_GAP
+      : triggerRect.bottom + SKILL_TOOLTIP_GAP;
+    const top = clamp(
+      rawTop,
+      SKILL_TOOLTIP_VIEWPORT_MARGIN,
+      viewportHeight - tooltipHeight - SKILL_TOOLTIP_VIEWPORT_MARGIN,
+    );
+
+    setTooltipPosition({
+      left,
+      top,
+      width,
+    });
+  }, [description]);
+
+  useLayoutEffect(() => {
+    if (!tooltipVisible || !description) return undefined;
+
+    updateTooltipPosition();
+    window.addEventListener('resize', updateTooltipPosition);
+    window.addEventListener('scroll', updateTooltipPosition, true);
+    return () => {
+      window.removeEventListener('resize', updateTooltipPosition);
+      window.removeEventListener('scroll', updateTooltipPosition, true);
+    };
+  }, [description, tooltipVisible, updateTooltipPosition]);
+
+  const showTooltip = () => {
+    if (!description) return;
+    setTooltipVisible(true);
+  };
+
+  const hideTooltip = () => {
+    setTooltipVisible(false);
+    setTooltipPosition(null);
+  };
+
+  return (
+    <span
+      ref={triggerRef}
+      className="relative inline-flex"
+      onBlur={hideTooltip}
+      onFocus={showTooltip}
+      onMouseEnter={showTooltip}
+      onMouseLeave={hideTooltip}
+    >
+      <span
+        className="inline-flex items-center rounded-lg border border-border bg-surface-raised px-2.5 py-1 text-xs font-medium text-secondary"
+      >
+        {name}
+      </span>
+      {description && tooltipVisible && (
+        <span
+          ref={tooltipRef}
+          className="pointer-events-none fixed z-50 rounded-lg border border-border bg-surface px-3 py-2 text-left text-xs font-normal leading-5 text-foreground shadow-card"
+          style={{
+            left: tooltipPosition?.left ?? 0,
+            top: tooltipPosition?.top ?? 0,
+            visibility: tooltipPosition ? 'visible' : 'hidden',
+            width: tooltipPosition?.width ?? SKILL_TOOLTIP_WIDTH,
+          }}
+        >
+          {description}
+        </span>
+      )}
+    </span>
+  );
+};
+
+const KitsManager: React.FC<KitsManagerProps> = ({ onTryAsking, onUseKit }) => {
   const dispatch = useDispatch();
   const [kits, setKits] = useState<MarketplaceKit[]>([]);
   const [installedKits, setInstalledKits] = useState<Record<string, InstalledKit>>({});
   const [isLoading, setIsLoading] = useState(false);
+  const [hasCatalogError, setHasCatalogError] = useState(false);
+  const loadRequestId = useRef(0);
   const [searchQuery, setSearchQuery] = useState('');
-  const [mainTab, setMainTab] = useState<'installed' | 'marketplace'>('installed');
-  const [activeTab, setActiveTab] = useState<string>('all');
-  const [categories, setCategories] = useState<KitCategory[]>([]);
+  const [activeTab, setActiveTab] = useState<KitTab>(KitTab.Marketplace);
   const [selectedKit, setSelectedKit] = useState<MarketplaceKit | null>(null);
   const [operatingKitId, setOperatingKitId] = useState<string | null>(null);
   const [operationType, setOperationType] = useState<KitOperationType | null>(null);
+  const [actionError, setActionError] = useState('');
   const [installPrompt, setInstallPrompt] = useState<{ kitId: string; text: string } | null>(null);
   const [kitPendingUninstall, setKitPendingUninstall] = useState<MarketplaceKit | null>(null);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (forceRefresh = false) => {
+    const requestId = ++loadRequestId.current;
     setIsLoading(true);
-    const [marketKits, installed, marketCategories] = await Promise.all([
-      kitService.fetchMarketplaceKits(),
-      kitService.getInstalledKits(),
-      kitService.fetchMarketplaceCategories(),
-    ]);
-    setKits(marketKits);
-    setInstalledKits(installed);
-    setCategories(marketCategories);
-
-    if (marketCategories.length > 0) {
-      setActiveTab((prev) => {
-        if (prev === 'all') return 'all';
-        const exists = marketCategories.some((cat) => cat.id === prev);
-        return exists ? prev : 'all';
-      });
+    try {
+      const [catalog, installed] = await Promise.all([
+        kitService.fetchMarketplaceCatalog({ forceRefresh }),
+        kitService.getInstalledKits(),
+      ]);
+      if (requestId !== loadRequestId.current) return;
+      setKits(catalog.kits);
+      setHasCatalogError(Boolean(catalog.error));
+      setInstalledKits(installed);
+      dispatch(setMarketplaceKits(catalog.kits));
+      dispatch(setInstalledKitsAction(installed));
+    } catch (error) {
+      console.error('[KitsManager] Failed to load kit data:', error);
+      if (requestId === loadRequestId.current) setHasCatalogError(true);
+    } finally {
+      if (requestId === loadRequestId.current) setIsLoading(false);
     }
-
-    dispatch(setMarketplaceKits(marketKits));
-    dispatch(setInstalledKitsAction(installed));
-    setIsLoading(false);
   }, [dispatch]);
 
   useEffect(() => {
-    loadData();
+    void loadData();
+    const handleOnline = () => { void loadData(true); };
+    window.addEventListener('online', handleOnline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      loadRequestId.current += 1;
+    };
   }, [loadData]);
 
+  const installedCount = useMemo(
+    () => kits.filter(kit => !!installedKits[kit.id]).length,
+    [kits, installedKits],
+  );
+
   const filteredKits = useMemo(() => {
-    // 1. 首先依据主 Tab 大类过滤
     let results = kits;
-    if (mainTab === 'installed') {
-      results = kits.filter((kit) => !!installedKits[kit.id]);
+    // Tab filtering
+    if (activeTab === KitTab.Installed) {
+      results = results.filter(kit => !!installedKits[kit.id]);
     }
-
-    // 2. 如果是市场大类，则应用子分类过滤
-    if (mainTab === 'marketplace') {
-      if (activeTab !== 'all') {
-        results = results.filter((kit) => kit.category === activeTab);
-      }
-    }
-
-    // 3. 最后应用搜索词过滤
+    // Search filtering
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       results = results.filter((kit) => {
@@ -104,7 +234,7 @@ const KitsManager: React.FC<KitsManagerProps> = ({ onTryAsking }) => {
       });
     }
     return results;
-  }, [kits, installedKits, mainTab, activeTab, searchQuery]);
+  }, [kits, installedKits, activeTab, searchQuery]);
 
   useEffect(() => {
     const query = searchQuery.trim();
@@ -130,9 +260,14 @@ const KitsManager: React.FC<KitsManagerProps> = ({ onTryAsking }) => {
     setActiveTab(targetTab);
   };
 
+  const formatKitActionError = (key: 'kitInstallFailed' | 'kitUninstallFailed', kit: MarketplaceKit) => (
+    i18nService.t(key).replace('{name}', resolveLocalizedText(kit.name))
+  );
+
   const handleInstall = async (kit: MarketplaceKit) => {
     setOperatingKitId(kit.id);
     setOperationType(KitOperationType.Install);
+    setActionError('');
     reportKitAction('install_submit', {
       source: 'kits_manager',
       ...getKitAnalyticsParams(kit, installedKits[kit.id]),
@@ -150,6 +285,7 @@ const KitsManager: React.FC<KitsManagerProps> = ({ onTryAsking }) => {
         });
       } else {
         console.error('[KitsManager] Install failed:', result.error);
+        setActionError(formatKitActionError('kitInstallFailed', kit));
         reportKitAction('install_failed', {
           source: 'kits_manager',
           result: 'failed',
@@ -159,6 +295,7 @@ const KitsManager: React.FC<KitsManagerProps> = ({ onTryAsking }) => {
       }
     } catch (error) {
       console.error('[KitsManager] Install failed:', error);
+      setActionError(formatKitActionError('kitInstallFailed', kit));
       reportKitAction('install_failed', {
         source: 'kits_manager',
         result: 'failed',
@@ -194,6 +331,7 @@ const KitsManager: React.FC<KitsManagerProps> = ({ onTryAsking }) => {
     const kit = kits.find(item => item.id === kitId);
     setOperatingKitId(kitId);
     setOperationType(KitOperationType.Uninstall);
+    setActionError('');
     if (kit) {
       reportKitAction('uninstall_submit', {
         source: 'kits_manager',
@@ -216,6 +354,7 @@ const KitsManager: React.FC<KitsManagerProps> = ({ onTryAsking }) => {
       } else {
         console.error('[KitsManager] Uninstall failed:', result.error);
         if (kit) {
+          setActionError(formatKitActionError('kitUninstallFailed', kit));
           reportKitAction('uninstall_failed', {
             source: 'kits_manager',
             result: 'failed',
@@ -227,6 +366,7 @@ const KitsManager: React.FC<KitsManagerProps> = ({ onTryAsking }) => {
     } catch (error) {
       console.error('[KitsManager] Uninstall failed:', error);
       if (kit) {
+        setActionError(formatKitActionError('kitUninstallFailed', kit));
         reportKitAction('uninstall_failed', {
           source: 'kits_manager',
           result: 'failed',
@@ -251,6 +391,22 @@ const KitsManager: React.FC<KitsManagerProps> = ({ onTryAsking }) => {
   const isKitInstalled = (kitId: string) => !!installedKits[kitId];
   const isOperating = (kitId: string) => operatingKitId === kitId;
 
+  const openKitDetail = (kit: MarketplaceKit) => {
+    reportKitAction('open_detail', {
+      source: 'kits_manager',
+      resultCount: filteredKits.length,
+      ...getKitAnalyticsParams(kit, installedKits[kit.id]),
+    });
+    setSelectedKit(kit);
+  };
+
+  const handleUseKit = (kit: MarketplaceKit) => {
+    reportKitAction('use_kit', {
+      source: 'kits_manager',
+      ...getKitAnalyticsParams(kit, installedKits[kit.id]),
+    });
+    onUseKit?.(kit.id);
+  };
   const getSkillCount = (kit: MarketplaceKit) => kit.skills?.list.length ?? 0;
   const getKitUpdateInfo = (kit: MarketplaceKit): KitUpdateInfo | null => {
     const installedKit = installedKits[kit.id];
@@ -340,219 +496,258 @@ const KitsManager: React.FC<KitsManagerProps> = ({ onTryAsking }) => {
     </Modal>
   ) : null;
 
-  const handleDirectChat = () => {
-    if (!selectedKit) return;
-    const kitId = selectedKit.id;
-    if (isKitInstalled(kitId)) {
-      onTryAsking?.('', kitId);
-      setSelectedKit(null);
-    }
-  };
+  const catalogWarning = hasCatalogError ? (
+    <div role="status" className="flex items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3">
+      <ExclamationTriangleIcon className="h-5 w-5 shrink-0 text-warning" aria-hidden="true" />
+      <p className="flex-1 text-sm text-secondary">{i18nService.t('kitStoreLoadFailed')}</p>
+      <button
+        type="button"
+        onClick={() => { void loadData(true); }}
+        disabled={isLoading}
+        className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-primary hover:bg-primary-muted disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        <ArrowPathIcon className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} aria-hidden="true" />
+        {i18nService.t(isLoading ? 'kitLoading' : 'retry')}
+      </button>
+    </div>
+  ) : null;
 
-  const getAvatarBgClass = (bg?: string) => {
-    switch (bg) {
-      case 'rose':
-        return 'from-rose-50 to-rose-100 dark:from-rose-950/20 dark:to-rose-900/10 hover:from-rose-100 hover:to-rose-200 dark:hover:from-rose-900/30';
-      case 'amber':
-        return 'from-amber-50 to-amber-100 dark:from-amber-950/20 dark:to-amber-900/10 hover:from-amber-100 hover:to-amber-200 dark:hover:from-amber-900/30';
-      case 'sky':
-        return 'from-sky-50 to-sky-100 dark:from-sky-950/20 dark:to-sky-900/10 hover:from-sky-100 hover:to-sky-200 dark:hover:from-sky-900/30';
-      case 'mint':
-        return 'from-emerald-50 to-emerald-100 dark:from-emerald-950/20 dark:to-emerald-900/10 hover:from-emerald-100 hover:to-emerald-200 dark:hover:from-emerald-900/30';
-      case 'lavender':
-        return 'from-violet-50 to-violet-100 dark:from-violet-950/20 dark:to-violet-900/10 hover:from-violet-100 hover:to-violet-200 dark:hover:from-violet-900/30';
-      case 'coral':
-        return 'from-orange-50 to-orange-100 dark:from-orange-950/20 dark:to-orange-900/10 hover:from-orange-100 hover:to-orange-200 dark:hover:from-orange-900/30';
-      case 'slate':
-      default:
-        return 'from-slate-50 to-slate-100 dark:from-slate-800/40 dark:to-slate-800/20 hover:from-slate-100 hover:to-slate-200 dark:hover:from-slate-700/40';
-    }
-  };
-
-  const getDetailHeroBgClass = (bg?: string) => {
-    switch (bg) {
-      case 'rose':
-        return 'bg-gradient-to-br from-rose-50 via-rose-100/60 to-pink-50/20 dark:from-rose-950/40 dark:via-rose-950/20 dark:to-transparent';
-      case 'amber':
-        return 'bg-gradient-to-br from-amber-50 via-amber-100/60 to-orange-50/20 dark:from-amber-950/40 dark:via-amber-950/20 dark:to-transparent';
-      case 'sky':
-        return 'bg-gradient-to-br from-sky-50 via-sky-100/60 to-blue-50/20 dark:from-sky-950/40 dark:via-sky-950/20 dark:to-transparent';
-      case 'mint':
-        return 'bg-gradient-to-br from-emerald-50 via-emerald-100/60 to-teal-50/20 dark:from-emerald-950/40 dark:via-emerald-950/20 dark:to-transparent';
-      case 'lavender':
-        return 'bg-gradient-to-br from-violet-50 via-violet-100/60 to-fuchsia-50/20 dark:from-violet-950/40 dark:via-violet-950/20 dark:to-transparent';
-      case 'coral':
-        return 'bg-gradient-to-br from-orange-50 via-orange-100/60 to-red-50/20 dark:from-orange-950/40 dark:via-orange-950/20 dark:to-transparent';
-      case 'slate':
-      default:
-        return 'bg-gradient-to-br from-slate-50 via-slate-100/60 to-zinc-50/20 dark:from-slate-800/40 dark:via-slate-800/20 dark:to-transparent';
-    }
-  };
-
-  const getTagClass = (color?: string) => {
-    switch (color) {
-      case 'purple':
-        return 'bg-purple-50 text-purple-600 dark:bg-purple-950/20 dark:text-purple-400 border border-purple-100 dark:border-purple-900/10';
-      case 'amber':
-        return 'bg-amber-50 text-amber-700 dark:bg-amber-950/20 dark:text-amber-400 border border-amber-100 dark:border-amber-900/10';
-      case 'rose':
-        return 'bg-rose-50 text-rose-600 dark:bg-rose-950/20 dark:text-rose-400 border border-rose-100 dark:border-rose-900/10';
-      case 'sky':
-        return 'bg-sky-50 text-sky-600 dark:bg-sky-950/20 dark:text-sky-400 border border-sky-100 dark:border-sky-900/10';
-      case 'mint':
-        return 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/10';
-      case 'coral':
-        return 'bg-orange-50 text-orange-700 dark:bg-orange-950/20 dark:text-orange-400 border border-orange-100 dark:border-orange-900/10';
-      case 'slate':
-      default:
-        return 'bg-slate-50 text-slate-600 dark:bg-slate-800/40 dark:text-slate-400 border border-slate-100 dark:border-slate-800/20';
-    }
-  };
-
-  const installedList = useMemo(() => (
-    filteredKits.filter(kit => !!installedKits[kit.id])
-  ), [filteredKits, installedKits]);
-
-  const recruitableList = useMemo(() => (
-    filteredKits.filter(kit => !installedKits[kit.id])
-  ), [filteredKits, installedKits]);
-
-  const renderKitCard = (kit: MarketplaceKit, index: number) => {
-    const installed = isKitInstalled(kit.id);
-    const operating = isOperating(kit.id);
-    const skillCount = getSkillCount(kit);
-    const updateInfo = getKitUpdateInfo(kit);
+  // Detail view
+  if (selectedKit) {
+    const installed = isKitInstalled(selectedKit.id);
+    const operating = isOperating(selectedKit.id);
+    const updateInfo = getKitUpdateInfo(selectedKit);
 
     return (
-      <div
-        key={kit.id}
-        className="group relative flex cursor-pointer rounded-xl border border-border bg-surface shadow-subtle transition-all hover:border-primary/40 hover:shadow-card overflow-hidden"
-        onClick={() => {
-          reportKitAction('open_detail', {
-            source: 'kits_manager',
-            resultCount: filteredKits.length,
-            ...getKitAnalyticsParams(kit, installedKits[kit.id]),
-          });
-          setSelectedKit(kit)
-        }}
-      >
-        {/* 左侧头像区 */}
-        <div className={`w-[100px] flex-shrink-0 flex flex-col items-center justify-center py-4 px-2 bg-gradient-to-b ${getAvatarBgClass(kit.avatarBg)} relative overflow-hidden rounded-l-xl border-r border-border/40`}>
-          <KitIcon 
-            icon={kit.icon} 
-            className="h-[72px] w-[72px]" 
-            style={{ animationDelay: `${[0, 0.5, 1.2, 1.8][index % 4]}s` }} 
-          />
-          {kit.motto && (
-            <div className="text-[10px] text-secondary text-center line-clamp-2 leading-tight opacity-75 select-none font-normal z-1 px-1 italic">
-              “{resolveLocalizedText(kit.motto)}”
+      <div className="space-y-6">
+        {/* Back button */}
+        <button
+          type="button"
+          onClick={() => {
+            reportKitAction('back_to_list', {
+              source: 'kits_manager',
+              ...getKitAnalyticsParams(selectedKit, installedKits[selectedKit.id]),
+            });
+            setSelectedKit(null);
+          }}
+          className="non-draggable relative z-30 inline-flex items-center gap-1.5 text-sm text-secondary hover:text-foreground transition-colors"
+        >
+          <ArrowLeftIcon className="h-4 w-4" />
+          {i18nService.t('kitBack')}
+        </button>
+
+        {actionError && (
+          <ErrorMessage message={actionError} onClose={() => setActionError('')} />
+        )}
+
+        {catalogWarning}
+
+        {/* Kit header */}
+        <div className="rounded-xl border border-border bg-surface p-4 shadow-card">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex min-w-0 items-center gap-4">
+              <KitIcon icon={selectedKit.icon} className="h-20 w-20" />
+              <div className="min-w-0">
+                <h2 className="text-base font-semibold text-foreground">{resolveLocalizedText(selectedKit.name)}</h2>
+                <p className={`mt-1.5 max-w-2xl ${MANAGEMENT_BODY_TEXT} leading-5 text-secondary`}>
+                  {resolveLocalizedText(selectedKit.description)}
+                </p>
+                <div className={`mt-3 flex items-center gap-1.5 ${MANAGEMENT_META_TEXT} text-secondary`}>
+                  {selectedKit.author && (
+                    <>
+                      <span className="rounded-md bg-surface-raised px-1.5 py-0.5 font-medium">
+                        {i18nService.t('kitOfficial')}
+                      </span>
+                      <span className="text-secondary/50">·</span>
+                    </>
+                  )}
+                  {selectedKit.version && (
+                    <>
+                      <span className="rounded-md bg-surface-raised px-1.5 py-0.5 font-medium">
+                        v{selectedKit.version}
+                      </span>
+                      <span className="text-secondary/50">·</span>
+                    </>
+                  )}
+                  {getSkillCount(selectedKit) > 0 && (
+                    <span>{i18nService.t('kitSkillCount').replace('{count}', String(getSkillCount(selectedKit)))}</span>
+                  )}
+                </div>
+                {updateInfo && (
+                  <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs leading-5 text-amber-700 dark:text-amber-300">
+                    <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                    <span>{formatKitReinstallRequiredDetail(updateInfo)}</span>
+                  </div>
+                )}
+              </div>
             </div>
-          )}
+            {/* Keep the primary action visible in the detail header. */}
+            {installed ? (
+              onUseKit && (
+                <button
+                  type="button"
+                  disabled={operating}
+                  onClick={() => handleUseKit(selectedKit)}
+                  className={KIT_DETAIL_ACTION_CLASS}
+                >
+                  {i18nService.t('kitUseNow')}
+                </button>
+              )
+            ) : (
+              <button
+                type="button"
+                disabled={operating}
+                onClick={() => handleInstall(selectedKit)}
+                className={KIT_DETAIL_ACTION_CLASS}
+              >
+                {operating && operationType === KitOperationType.Install ? (
+                  <>
+                    <ArrowPathIcon className="h-3.5 w-3.5 animate-spin" />
+                    {i18nService.t('kitInstalling')}
+                  </>
+                ) : i18nService.t('kitInstall')}
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* 右侧主体区 */}
-        <div className="flex-1 p-4 flex flex-col justify-between min-w-0">
+        {/* Try asking */}
+        {selectedKit.tryAsking && selectedKit.tryAsking.length > 0 && (
           <div>
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <h3 className="truncate text-sm font-semibold text-foreground">
-                  {resolveLocalizedText(kit.name)}
-                </h3>
-                {kit.tagline && (
-                  <p className="mt-0.5 text-xs text-secondary truncate">
-                    {resolveLocalizedText(kit.tagline)}
-                  </p>
-                )}
-              </div>
-              
-              {/* 召唤/召回按钮 */}
-              <div onClick={(e) => e.stopPropagation()} className="shrink-0">
-                {installed ? (
-                  <button
-                    type="button"
-                    disabled={operating}
-                    onClick={() => handleRequestUninstall(kit)}
-                    className="inline-flex h-6 items-center gap-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/20 text-[10px] font-semibold text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-900/30 px-2 py-0.5 transition-colors hover:bg-amber-100/50"
-                  >
-                    <ArrowPathIcon className="h-3 w-3" />
-                    召回
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    disabled={operating}
-                    onClick={() => handleInstall(kit)}
-                    className="inline-flex h-6 items-center gap-1.5 rounded-lg bg-primary text-[10px] font-semibold text-white px-2.5 py-0.5 transition-colors hover:bg-primary-hover shadow-sm"
-                  >
-                    <ArrowDownTrayIcon className="h-3 w-3" />
-                    {operating && operationType === KitOperationType.Install
-                      ? i18nService.t('kitInstalling')
-                      : i18nService.t('kitInstall')}
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <p className="mt-2 text-[12px] leading-[18px] text-secondary line-clamp-2">
-              {resolveLocalizedText(kit.description)}
-            </p>
-          </div>
-
-          <div className="mt-3 flex items-center justify-between gap-2">
-            <div className="flex flex-wrap gap-1 min-w-0">
-              {kit.tags?.map((tag, idx) => (
-                <span key={idx} className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[9px] font-medium leading-none shrink-0 ${getTagClass(tag.color)}`}>
-                  {resolveLocalizedText(tag.text)}
-                </span>
+            <h3 className="text-sm font-medium text-foreground mb-3">
+              {i18nService.t('kitTryAsking')}
+            </h3>
+            <div className="space-y-2">
+              {selectedKit.tryAsking.map((prompt, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => handleTryAskingClick(resolveLocalizedText(prompt), selectedKit.id)}
+                  className="group flex w-full items-center justify-between gap-3 rounded-lg border border-border bg-surface px-3 py-2.5 text-left transition-colors hover:border-primary/50 hover:bg-surface-raised/50"
+                >
+                  <span className="text-sm text-foreground">{resolveLocalizedText(prompt)}</span>
+                  <ChevronRightIcon className="h-3.5 w-3.5 flex-shrink-0 text-secondary transition-all group-hover:translate-x-0.5 group-hover:text-primary" />
+                </button>
               ))}
             </div>
-            
-            <div className="flex items-center gap-1.5 shrink-0 text-[10px] text-secondary">
-              {skillCount > 0 && (
-                <span className="rounded-full bg-surface-raised border border-border/40 px-2 py-0.5">
-                  {i18nService.t('kitSkillCount').replace('{count}', String(skillCount))}
-                </span>
-              )}
-              {updateInfo && (
-                <span className="rounded-md bg-amber-500/10 px-1.5 py-0.5 font-medium text-amber-600 dark:text-amber-400">
-                  {i18nService.t('kitReinstallRequiredBadge')}
-                </span>
-              )}
+          </div>
+        )}
+
+        {/* Skills list */}
+        {selectedKit.skills && selectedKit.skills.list.length > 0 && (
+          <div>
+            <h3 className="mb-3 flex items-center gap-1.5 text-sm font-medium text-foreground">
+              {i18nService.t('kitSkills')}
+              <span className={`rounded-full bg-surface-raised px-1.5 py-0.5 ${MANAGEMENT_META_TEXT} font-medium text-secondary`}>
+                {selectedKit.skills.list.length}
+              </span>
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {selectedKit.skills.list.map((skill) => (
+                <KitSkillPill key={skill.id} skill={skill} />
+              ))}
             </div>
           </div>
-        </div>
+        )}
+
+        {/* Management strip: quiet until you reach for it. */}
+        {installed && (
+          <div className="flex items-center border-t border-border pt-4">
+            <button
+              type="button"
+              disabled={operating}
+              onClick={() => handleRequestUninstall(selectedKit)}
+              className={`inline-flex items-center gap-1.5 rounded-xl px-2.5 py-2 ${MANAGEMENT_BODY_TEXT} text-secondary transition-colors hover:bg-red-500/10 hover:text-red-500 dark:hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-50`}
+            >
+              <TrashIcon className="h-4 w-4" />
+              {operating && operationType === KitOperationType.Uninstall
+                ? i18nService.t('kitUninstalling')
+                : i18nService.t('kitUninstall')}
+            </button>
+          </div>
+        )}
+
+        {/* Install confirmation dialog */}
+        {installPrompt && (
+          <Modal
+            onClose={() => {
+              reportKitAction('install_prompt_cancel', {
+                source: 'kits_manager',
+                ...getKitAnalyticsParams(selectedKit, installedKits[selectedKit.id]),
+              });
+              setInstallPrompt(null);
+            }}
+            overlayClassName="fixed inset-0 z-[9999] flex items-center justify-center modal-backdrop px-4"
+            className="modal-content w-full max-w-sm rounded-2xl border border-border bg-surface shadow-modal overflow-hidden"
+          >
+            <div className="px-5 py-4">
+              <h2 className="text-base font-semibold text-foreground">
+                {i18nService.t('kitInstallRequired')}
+              </h2>
+              <p className="mt-1.5 text-sm leading-5 text-secondary">
+                {i18nService.t('kitInstallRequiredDesc')}
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-4">
+              <button
+                type="button"
+                onClick={() => {
+                  reportKitAction('install_prompt_cancel', {
+                    source: 'kits_manager',
+                    ...getKitAnalyticsParams(selectedKit, installedKits[selectedKit.id]),
+                  });
+                  setInstallPrompt(null);
+                }}
+                className="px-4 py-2 text-sm font-medium rounded-lg text-secondary hover:bg-surface-raised transition-colors"
+              >
+                {i18nService.t('cancel')}
+              </button>
+              <button
+                type="button"
+                onClick={handleInstallAndTry}
+                className={KIT_DETAIL_ACTION_CLASS}
+              >
+                {i18nService.t('kitInstall')}
+              </button>
+            </div>
+          </Modal>
+        )}
 
         {uninstallConfirmModal}
       </div>
     );
-  };
+  }
 
   // List view
   return (
     <div className="space-y-4">
-      <p className={`${MANAGEMENT_BODY_TEXT} pb-2 text-secondary`}>
-        {i18nService.t('kitDescription')}
-      </p>
+      {catalogWarning}
 
-      {/* Sticky toolbar: Search + tabs */}
+      {/* Sticky toolbar: Description + Search + tabs */}
       <div
         data-skin-management-toolbar="true"
-        className="sticky top-0 z-10 space-y-4 bg-background pb-2"
+        className="sticky top-0 z-10 space-y-3 bg-background pb-2"
       >
+        {actionError && (
+          <ErrorMessage message={actionError} onClose={() => setActionError('')} />
+        )}
+
         {/* Search */}
-        <div className="flex items-center gap-3">
-          <div className="relative flex-1">
+        <ManagementSearchHeader description={i18nService.t('kitDescription')}>
+          <div className="management-search-header__search relative min-w-0">
             <SearchIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-secondary" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={i18nService.t('kitSearchPlaceholder')}
-              className="w-full rounded-xl border border-border bg-surface py-2 pl-9 pr-8 text-sm text-foreground placeholder-secondary focus:outline-none focus:ring-2 focus:ring-primary"
+              aria-label={i18nService.t('kitSearchPlaceholder')}
+              className="h-9 w-full rounded-xl border border-border bg-surface pl-9 pr-8 text-sm text-foreground placeholder-secondary focus:outline-none focus:ring-2 focus:ring-primary"
             />
             {searchQuery && (
               <button
                 type="button"
+                aria-label={i18nService.t('kitClearSearch')}
                 onClick={() => {
                   reportKitAction('clear_search', {
                     source: 'kits_manager',
@@ -567,79 +762,44 @@ const KitsManager: React.FC<KitsManagerProps> = ({ onTryAsking }) => {
               </button>
             )}
           </div>
-        </div>
+        </ManagementSearchHeader>
 
-        {/* 2. 专家大类主 Tab 切换 */}
-        <div className="flex items-center border-b border-border/60 select-none">
+        {/* Marketplace / Installed tabs */}
+        <div className="flex items-center border-b border-border">
           <button
             type="button"
-            onClick={() => setMainTab('installed')}
-            className={`px-4 py-2 text-sm font-semibold transition-colors relative focus:outline-none ${
-              mainTab === 'installed'
-                ? 'text-foreground font-semibold'
-                : 'text-secondary hover:text-foreground font-medium'
+            onClick={() => handleTabChange(KitTab.Marketplace)}
+            className={`relative px-2.5 pb-2.5 pt-0.5 ${MANAGEMENT_TITLE_TEXT} font-semibold transition-colors ${
+              activeTab === KitTab.Marketplace ? 'text-foreground' : 'text-secondary hover:text-foreground'
             }`}
           >
-            已安装
-            {Object.keys(installedKits).length > 0 && (
-              <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-surface-raised">
-                {Object.keys(installedKits).length}
+            {i18nService.t('kitMarketplace')}
+            <div className={`absolute bottom-[-1px] left-0 right-0 h-0.5 rounded-full transition-colors ${
+              activeTab === KitTab.Marketplace ? 'bg-primary' : 'bg-transparent'
+            }`} />
+          </button>
+          <button
+            type="button"
+            onClick={() => handleTabChange(KitTab.Installed)}
+            className={`relative px-2.5 pb-2.5 pt-0.5 ${MANAGEMENT_TITLE_TEXT} font-semibold transition-colors ${
+              activeTab === KitTab.Installed ? 'text-foreground' : 'text-secondary hover:text-foreground'
+            }`}
+          >
+            {i18nService.t('kitInstalledTab')}
+            {installedCount > 0 && (
+              <span className={`ml-1.5 rounded-full bg-surface-raised px-1.5 py-0.5 ${MANAGEMENT_META_TEXT} font-medium text-secondary`}>
+                {installedCount}
               </span>
             )}
-            <div className={`absolute bottom-0 left-0 right-0 h-0.5 rounded-full transition-colors ${
-              mainTab === 'installed' ? 'bg-primary' : 'bg-transparent'
-            }`} />
-          </button>
-          <button
-            type="button"
-            onClick={() => setMainTab('marketplace')}
-            className={`px-4 py-2 text-sm font-semibold transition-colors relative focus:outline-none ${
-              mainTab === 'marketplace'
-                ? 'text-foreground font-semibold'
-                : 'text-secondary hover:text-foreground font-medium'
-            }`}
-          >
-            专家市场
-            <div className={`absolute bottom-0 left-0 right-0 h-0.5 rounded-full transition-colors ${
-              mainTab === 'marketplace' ? 'bg-primary' : 'bg-transparent'
+            <div className={`absolute bottom-[-1px] left-0 right-0 h-0.5 rounded-full transition-colors ${
+              activeTab === KitTab.Installed ? 'bg-primary' : 'bg-transparent'
             }`} />
           </button>
         </div>
-
-        {/* 3. 市场分类药丸小 Tag 筛选，包含“全部” */}
-        {mainTab === 'marketplace' && categories.length > 0 && (
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <button
-              type="button"
-              onClick={() => setActiveTab('all')}
-              className={`px-2.5 py-1 text-xs rounded-lg transition-colors focus:outline-none ${
-                activeTab === 'all'
-                  ? 'bg-primary text-white'
-                  : 'bg-surface text-secondary hover:bg-surface-raised border border-border'
-              }`}
-            >
-              全部
-            </button>
-            {categories.map((cat) => (
-              <button
-                key={cat.id}
-                type="button"
-                onClick={() => setActiveTab(cat.id)}
-                className={`px-2.5 py-1 text-xs rounded-lg transition-colors focus:outline-none ${
-                  activeTab === cat.id
-                    ? 'bg-primary text-white'
-                    : 'bg-surface text-secondary hover:bg-surface-raised border border-border'
-                }`}
-              >
-                {resolveLocalizedText(cat.name)}
-              </button>
-            ))}
-          </div>
-        )}
       </div>
 
       {/* Kit grid */}
-      {isLoading ? (
+      {isLoading && kits.length === 0 ? (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2" aria-hidden="true">
           {Array.from({ length: 4 }).map((_, idx) => (
             <div key={idx} className="min-h-[116px] animate-pulse rounded-xl border border-border bg-surface p-4">
@@ -654,7 +814,7 @@ const KitsManager: React.FC<KitsManagerProps> = ({ onTryAsking }) => {
             </div>
           ))}
         </div>
-      ) : filteredKits.length === 0 ? (
+      ) : hasCatalogError && kits.length === 0 ? null : filteredKits.length === 0 ? (
         <div className="py-12 text-center">
           <p className="text-sm text-secondary">
             {searchQuery.trim()
@@ -689,197 +849,100 @@ const KitsManager: React.FC<KitsManagerProps> = ({ onTryAsking }) => {
           ) : null}
         </div>
       ) : (
-        <div className="space-y-6">
-          {/* 已召唤专家 */}
-          {installedList.length > 0 && (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <h4 className="text-xs font-semibold text-secondary tracking-wider uppercase">
-                  已召唤的专家
-                </h4>
-                <span className="text-[10px] text-secondary bg-surface-raised px-2 py-0.5 rounded-full border border-border/40">
-                  {installedList.length} 人在岗
-                </span>
-              </div>
-              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                {installedList.map((kit, index) => renderKitCard(kit, index))}
-              </div>
-            </div>
-          )}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          {filteredKits.map((kit) => {
+            const installed = isKitInstalled(kit.id);
+            const operating = isOperating(kit.id);
+            const skillCount = getSkillCount(kit);
+            const updateInfo = getKitUpdateInfo(kit);
 
-          {/* 可召唤专家 */}
-          {recruitableList.length > 0 && (
-            <div className="space-y-3">
-              <h4 className="text-xs font-semibold text-secondary tracking-wider uppercase">
-                可召唤的专家
-              </h4>
-              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                {recruitableList.map((kit, index) => renderKitCard(kit, index))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+            return (
+              <div
+                key={kit.id}
+                role="button"
+                tabIndex={0}
+                className="group min-h-[116px] cursor-pointer rounded-xl border border-border bg-surface p-4 shadow-subtle transition-colors hover:bg-surface-raised/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-500"
+                onClick={() => openKitDetail(kit)}
+                onKeyDown={(e) => {
+                  if (e.target !== e.currentTarget) return;
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    openKitDetail(kit);
+                  }
+                }}
+              >
+                <div className="flex gap-3.5">
+                  <KitIcon icon={kit.icon} className="h-16 w-16" />
 
-      {/* Install confirmation dialog */}
-      {installPrompt && (
-        <Modal
-          onClose={() => setInstallPrompt(null)}
-          overlayClassName="fixed inset-0 z-[9999] flex items-center justify-center modal-backdrop px-4"
-          className="modal-content w-full max-w-sm rounded-2xl border border-border bg-surface shadow-modal overflow-hidden"
-        >
-          <div className="px-5 py-4">
-            <h2 className="text-base font-semibold text-foreground">
-              {i18nService.t('kitInstallRequired')}
-            </h2>
-            <p className="mt-1.5 text-sm leading-5 text-secondary">
-              {i18nService.t('kitInstallRequiredDesc')}
-            </p>
-          </div>
-          <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-4">
-            <button
-              type="button"
-              onClick={() => setInstallPrompt(null)}
-              className="px-4 py-2 text-sm font-medium rounded-lg text-secondary hover:bg-surface-raised transition-colors"
-            >
-              {i18nService.t('cancel')}
-            </button>
-            <button
-              type="button"
-              onClick={handleInstallAndTry}
-              className="px-4 py-2 text-sm font-medium rounded-lg bg-primary text-white hover:bg-primary-hover transition-colors"
-            >
-              {i18nService.t('kitInstall')}
-            </button>
-          </div>
-        </Modal>
-      )}
-
-
-      {/* 专家详情弹窗 */}
-      {selectedKit && (
-        <Modal
-          onClose={() => setSelectedKit(null)}
-          overlayClassName="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-fade-in"
-          className="modal-content w-full max-w-[540px] rounded-2xl border border-border bg-surface shadow-modal overflow-hidden flex flex-col max-h-[85vh] relative animate-slide-up"
-        >
-          {/* 渐变头部 Hero */}
-          <div className={`px-6 py-6 flex items-start gap-4 border-b border-border/30 relative overflow-hidden ${getDetailHeroBgClass(selectedKit.avatarBg)}`}>
-            <KitIcon icon={selectedKit.icon} className="h-20 w-20 shrink-0 relative z-10" />
-            <div className="min-w-0 flex-1 relative z-10 pr-6">
-              <h2 className="text-lg font-bold text-foreground flex items-center gap-1.5">
-                {resolveLocalizedText(selectedKit.name)}
-              </h2>
-              {selectedKit.tagline && (
-                <p className="text-xs text-secondary mt-0.5">
-                  {resolveLocalizedText(selectedKit.tagline)}
-                </p>
-              )}
-              {selectedKit.motto && (
-                <div className="mt-2.5 px-3 py-1.5 bg-white/70 dark:bg-white/5 rounded-lg border-l-2 border-primary text-xs leading-relaxed text-secondary italic select-none relative">
-                  “{resolveLocalizedText(selectedKit.motto)}”
-                </div>
-              )}
-            </div>
-            {/* 关闭按钮 */}
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); setSelectedKit(null); }}
-              className="absolute top-4 right-4 z-50 w-8 h-8 rounded-full bg-black/5 hover:bg-black/10 dark:bg-white/10 dark:hover:bg-white/20 flex items-center justify-center text-secondary transition-all cursor-pointer pointer-events-auto"
-            >
-              <XMarkIcon className="h-4 w-4" />
-            </button>
-          </div>
-
-          {/* 滚动主体 */}
-          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
-            {/* 擅长技能 */}
-            {selectedKit.skills?.list && selectedKit.skills.list.length > 0 && (
-              <div>
-                <h4 className="text-xs font-semibold text-secondary mb-2.5 flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-primary" />
-                  擅长技能
-                </h4>
-                <div className="flex flex-wrap gap-2">
-                  {selectedKit.skills.list.map((skillRef) => (
-                    <span
-                      key={skillRef.id || resolveLocalizedText(skillRef.name)}
-                      className="inline-flex items-center rounded-lg border border-border bg-surface-raised px-2.5 py-1 text-xs font-medium text-secondary"
-                    >
-                      {resolveLocalizedText(skillRef.name).replace(/^\//, '')}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* 试试这样问 */}
-            {selectedKit.tryAsking && selectedKit.tryAsking.length > 0 && (
-              <div>
-                <h4 className="text-xs font-semibold text-secondary mb-2.5 flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-primary" />
-                  试试这样问 {resolveLocalizedText(selectedKit.name)}
-                </h4>
-                <div className="space-y-2">
-                  {selectedKit.tryAsking.map((promptText, idx) => (
-                    <div
-                      key={idx}
-                      onClick={() => handleTryAskingClick(resolveLocalizedText(promptText), selectedKit.id)}
-                      className="flex items-center justify-between px-3.5 py-2.5 rounded-xl border border-border bg-surface-raised hover:border-primary/40 hover:bg-surface transition-all cursor-pointer group"
-                    >
-                      <span className="text-xs text-secondary group-hover:text-foreground">
-                        {resolveLocalizedText(promptText)}
-                      </span>
-                      <ArrowLeftIcon className="h-3 w-3 text-secondary group-hover:text-primary group-hover:translate-x-0.5 transition-all rotate-180 shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    {/* Reveal actions on hover or keyboard focus; keep progress visible. */}
+                    <div className="flex items-center gap-2">
+                      <h3 className={`min-w-0 flex-1 truncate ${MANAGEMENT_TITLE_TEXT} font-semibold text-foreground`}>
+                        {resolveLocalizedText(kit.name)}
+                      </h3>
+                      {installed ? (
+                        onUseKit && (
+                          <button
+                            type="button"
+                            disabled={operating}
+                            onClick={(e) => { e.stopPropagation(); handleUseKit(kit); }}
+                            className={`${KIT_CARD_ACTION_CLASS} ${operating ? '' : 'invisible group-hover:visible group-focus-within:visible'}`}
+                          >
+                            {i18nService.t('kitUse')}
+                          </button>
+                        )
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={operating}
+                          onClick={(e) => { e.stopPropagation(); handleInstall(kit); }}
+                          className={`${KIT_CARD_ACTION_CLASS} ${operating ? '' : 'invisible group-hover:visible group-focus-within:visible'}`}
+                        >
+                          {operating && operationType === KitOperationType.Install ? (
+                            <>
+                              <ArrowPathIcon className="h-3 w-3 animate-spin" />
+                              {i18nService.t('kitInstalling')}
+                            </>
+                          ) : i18nService.t('kitInstall')}
+                        </button>
+                      )}
                     </div>
-                  ))}
+                    <p className="mt-1.5 line-clamp-2 text-xs leading-[18px] text-secondary">
+                      {resolveLocalizedText(kit.description)}
+                    </p>
+
+                    <div className={`mt-3 flex flex-wrap items-center gap-1.5 ${MANAGEMENT_META_TEXT} text-secondary`}>
+                      {kit.author && (
+                        <>
+                          <span className="rounded-md bg-surface-raised px-1.5 py-0.5 font-medium">
+                            {i18nService.t('kitOfficial')}
+                          </span>
+                          <span className="text-secondary/50">·</span>
+                        </>
+                      )}
+                      {kit.version && (
+                        <>
+                          <span className="rounded-md bg-surface-raised px-1.5 py-0.5 font-medium">
+                            v{kit.version}
+                          </span>
+                          <span className="text-secondary/50">·</span>
+                        </>
+                      )}
+                      {skillCount > 0 && (
+                        <span>{i18nService.t('kitSkillCount').replace('{count}', String(skillCount))}</span>
+                      )}
+                      {updateInfo && (
+                        <span className="rounded-md bg-amber-500/10 px-1.5 py-0.5 font-medium text-amber-600 dark:text-amber-400">
+                          {i18nService.t('kitReinstallRequiredBadge')}
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
-            )}
-          </div>
-
-          {/* 底部操作栏 */}
-          <div className="border-t border-border/60 px-6 py-4 flex gap-3 bg-surface">
-            {/* 召唤/召回按钮 */}
-            {isKitInstalled(selectedKit.id) ? (
-              <button
-                type="button"
-                disabled={isOperating(selectedKit.id)}
-                onClick={() => handleRequestUninstall(selectedKit)}
-                className="flex-1 h-10 rounded-xl bg-amber-50 dark:bg-amber-950/20 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-900/30 flex items-center justify-center gap-1.5 text-xs font-semibold hover:bg-amber-100/50 transition-colors disabled:opacity-50"
-              >
-                <ArrowPathIcon className="h-3.5 w-3.5" />
-                召回
-              </button>
-            ) : (
-              <button
-                type="button"
-                disabled={isOperating(selectedKit.id)}
-                onClick={() => handleInstall(selectedKit)}
-                className="flex-1 h-10 rounded-xl bg-primary text-white flex items-center justify-center gap-1.5 text-xs font-semibold hover:bg-primary-hover transition-colors shadow-sm disabled:opacity-50"
-              >
-                <ArrowDownTrayIcon className="h-3.5 w-3.5" />
-                {isOperating(selectedKit.id) && operationType === KitOperationType.Install
-                  ? i18nService.t('kitInstalling')
-                  : i18nService.t('kitInstall')}
-              </button>
-            )}
-
-            {/* 直接对话按钮 */}
-            <button
-              type="button"
-              disabled={isOperating(selectedKit.id) || !isKitInstalled(selectedKit.id)}
-              title={!isKitInstalled(selectedKit.id) ? i18nService.t('kitDirectChatDisabledTooltip') : undefined}
-              onClick={handleDirectChat}
-              className="h-10 rounded-xl bg-surface border border-border hover:bg-surface-raised px-4 text-xs font-medium text-foreground flex items-center gap-1.5 transition-colors shrink-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-surface"
-            >
-              <svg className="w-3.5 h-3.5 opacity-70" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-              </svg>
-              直接对话
-            </button>
-          </div>
-        </Modal>
+            );
+          })}
+        </div>
       )}
 
       {uninstallConfirmModal}

@@ -43,6 +43,7 @@ Var lobsterHiddenExecLaunchError
   Var lobsterLauncherFallback
   Var lobsterLegacySkillsStatus
   Var lobsterLegacySkillsRestoreStatus
+  Var lobsterLegacySkillNames
   Var lobsterOldAppRelaunchStatus
   Var lobsterOldAppRelaunchError
   Var lobsterOldAppExecutablePath
@@ -101,6 +102,26 @@ Var lobsterHiddenExecLaunchError
 !define LOBSTER_SKILL_BACKUP_EXIT_COPY_FAILED "11"
 !define LOBSTER_SKILL_BACKUP_EXIT_VERIFY_FAILED "12"
 !define LOBSTER_SKILL_BACKUP_EXIT_NO_USER_SKILLS "13"
+
+; Before copying anything, the backup helper writes the user skill folder names
+; it found to this $PLUGINSDIR file (one line, UTF-16LE without BOM). The file
+; feeds the abort dialog only and never drives control flow.
+!define LOBSTER_LEGACY_SKILL_NAMES_FILE "lobster-legacy-skill-names.txt"
+
+; Skills backup abort dialog. Users hit it on in-app updates, so it has to say,
+; in their language, that nothing was lost and what to do next. The concrete
+; fix is to move the listed folders out of the install tree into the per-user
+; skills root (%APPDATA%\LobsterAI\SKILLs, the root OpenClaw actually loads):
+; the skills keep working and later updates no longer need the legacy backup.
+; Without the folder list (the helper failed before it could enumerate them)
+; the user cannot tell which folders are theirs, so only retry/support advice
+; is given. The status code stays in every variant for support.
+!define LOBSTER_LANGID_SIMPCHINESE "2052"
+!define LOBSTER_LANGID_TRADCHINESE "1028"
+!define LOBSTER_SKILL_BACKUP_ABORT_MOVE_ZH "HeyClaw 这次没有升级成功，但当前版本和数据都没有受影响，可以继续正常使用。$\r$\n$\r$\n原因：安装目录里有你自己添加的技能。升级前要先把它们备份好，这次备份没有成功，为了不丢失这些技能，升级已自动停止。$\r$\n$\r$\n请按下面的步骤处理后再升级：$\r$\n1. 打开这个文件夹：$\r$\n    $INSTDIR\resources\SKILLs$\r$\n2. 把下面这些文件夹剪切（不是复制）到 %APPDATA%\HeyClaw\SKILLs 里：$\r$\n    $lobsterLegacySkillNames$\r$\n3. 回到 HeyClaw，重新升级。$\r$\n$\r$\n小提示：$\r$\n• 在文件资源管理器顶部的地址栏粘贴 %APPDATA%\HeyClaw\SKILLs 并回车，就能打开第 2 步的文件夹。$\r$\n• 如果那里已经有同名文件夹，把安装目录里的这一份移到桌面即可。$\r$\n• 按 Ctrl+C 可以复制这段提示，方便粘贴路径。$\r$\n$\r$\n移动后这些技能照常可用，以后升级也不会再因为这个原因停止。$\r$\n错误代码：$lobsterLegacySkillsStatus"
+!define LOBSTER_SKILL_BACKUP_ABORT_RETRY_ZH "HeyClaw 这次没有升级成功，但当前版本和数据都没有受影响，可以继续正常使用。$\r$\n$\r$\n原因：升级前需要检查并备份安装目录里你自己添加的技能，这一步没有完成，为了不丢失数据，升级已自动停止。$\r$\n$\r$\n请重启电脑后再升级一次。如果还是出现这个提示，请截图本窗口联系客服，并提供这个文件：$\r$\n    $APPDATA\HeyClaw\install-timing.log$\r$\n$\r$\n错误代码：$lobsterLegacySkillsStatus"
+!define LOBSTER_SKILL_BACKUP_ABORT_MOVE_EN "HeyClaw was not updated. Your current version and data are unchanged, and you can keep using it.$\r$\n$\r$\nWhy: some skills you added yourself are stored in the HeyClaw installation folder. They have to be backed up before an update, the backup did not succeed, and the update stopped so those skills are not lost.$\r$\n$\r$\nTo update, move them out first:$\r$\n1. Open this folder:$\r$\n    $INSTDIR\resources\SKILLs$\r$\n2. Cut (not copy) these folders into %APPDATA%\HeyClaw\SKILLs:$\r$\n    $lobsterLegacySkillNames$\r$\n3. Go back to HeyClaw and update again.$\r$\n$\r$\nTips:$\r$\n• To open the folder in step 2, paste %APPDATA%\HeyClaw\SKILLs into the File Explorer address bar and press Enter.$\r$\n• If a folder with the same name is already there, move the one from the installation folder to your desktop instead.$\r$\n• Press Ctrl+C to copy this message, paths included.$\r$\n$\r$\nYour skills keep working after the move, and future updates will not stop for this reason again.$\r$\nError code: $lobsterLegacySkillsStatus"
+!define LOBSTER_SKILL_BACKUP_ABORT_RETRY_EN "HeyClaw was not updated. Your current version and data are unchanged, and you can keep using it.$\r$\n$\r$\nWhy: before an update, HeyClaw has to check for and back up skills you added to its installation folder. That step did not complete, so the update stopped to keep your data safe.$\r$\n$\r$\nRestart your computer and update again. If you still see this message, take a screenshot of it and contact support with this file:$\r$\n    $APPDATA\HeyClaw\install-timing.log$\r$\n$\r$\nError code: $lobsterLegacySkillsStatus"
 
 ; -- Design invariant --
 ; Nothing destructive may run before the user confirms the wizard (or the
@@ -470,6 +491,34 @@ FunctionEnd
   ; build/icons/win/icon.ico (16/24/32/48/64/128/256). MUI2 stretches the
   ; welcome/finish sidebar bitmap to the scaled control, so layout is kept.
   ManifestDPIAware true
+
+  ; NSIS ships its CJK language files with the dialog font pinned to the
+  ; Windows XP-era UI fonts: SimpChinese.nlf = SimSun 9pt, TradChinese.nlf =
+  ; PMingLiU 9pt, Japanese.nlf = MS PGothic 9pt, Korean.nlf = Gulim 9pt. Those
+  ; fonts carry embedded bitmap strikes for 12-16 px, which GDI draws as-is
+  ; with no anti-aliasing, so at 9pt every label, button, the branding text
+  ; and the bold MUI header (CreateFont from $(^Font)) come out jagged --
+  ; and with the installer DPI-aware the pixels are no longer even blurred
+  ; away by bitmap scaling. English and the other Latin languages keep the
+  ; language-file default ("-" = MS Shell Dlg), an outline font that is
+  ; unaffected. Override each CJK language with the font Windows 10+ itself
+  ; uses for that locale's UI. SetFont /LANG replaces the language file's
+  ; font for the per-language dialog templates and for $(^Font)/$(^FontSize),
+  ; and LANG_* is only defined once addLangs has run, which is why this lives
+  ; in customHeader (inserted after addLangs). Guarded so a narrowed
+  ; installerLanguages list still compiles.
+  !ifdef LANG_SIMPCHINESE
+    SetFont /LANG=${LANG_SIMPCHINESE} "Microsoft YaHei UI" 9
+  !endif
+  !ifdef LANG_TRADCHINESE
+    SetFont /LANG=${LANG_TRADCHINESE} "Microsoft JhengHei UI" 9
+  !endif
+  !ifdef LANG_JAPANESE
+    SetFont /LANG=${LANG_JAPANESE} "Yu Gothic UI" 9
+  !endif
+  !ifdef LANG_KOREAN
+    SetFont /LANG=${LANG_KOREAN} "Malgun Gothic" 9
+  !endif
 
   ; Keep only the progress bar visible. The details box stays hidden and
   ; NSIS/electron-builder retains the default status text behavior.
@@ -1427,118 +1476,11 @@ FunctionEnd
       StrCpy $lobsterLegacySkillsStatus "legacy-no-user-skills"
       StrCpy $R2 "${LOBSTER_SKILL_BACKUP_EXIT_NO_USER_SKILLS}"
       Goto SkillBackupResultLog
-
-      DetailPrint "[Installer] Backing up user-created skills"
-      ClearErrors
-      FileOpen $R0 "$APPDATA\HeyClaw\skill-migrate.log" w
-      IfErrors BackupLogOpenFailed
-        !insertmacro GetTimestamp $8
-        FileWrite $R0 "$8 phase=backup-start attempt_id=$lobsterInstallerAttemptId instdir=$INSTDIR appdata=$APPDATA$\r$\n"
-        Goto BackupDoExec
-      BackupLogOpenFailed:
-        StrCpy $R0 ""
-      BackupDoExec:
-
-      ReadRegStr $4 SHELL_CONTEXT "${UNINSTALL_REGISTRY_KEY}" DisplayVersion
-      System::Call 'Kernel32::SetEnvironmentVariable(t "LOBSTERAI_SKILL_SOURCE", t "$INSTDIR\resources\SKILLs")i'
-      System::Call 'Kernel32::SetEnvironmentVariable(t "LOBSTERAI_SKILL_BACKUP_ROOT", t "$APPDATA\HeyClaw\skills-backup")i'
-      System::Call 'Kernel32::SetEnvironmentVariable(t "LOBSTERAI_INSTALL_ATTEMPT_ID", t "$lobsterInstallerAttemptId")i'
-      System::Call 'Kernel32::SetEnvironmentVariable(t "LOBSTERAI_OLD_VERSION", t "$4")i'
-      Push '"$lobsterTrustedPowerShellPath" -NoProfile -NonInteractive -Command "\
-        $$ErrorActionPreference = \"Stop\";\
-        $$src       = $$env:LOBSTERAI_SKILL_SOURCE;\
-        $$root      = $$env:LOBSTERAI_SKILL_BACKUP_ROOT;\
-        $$attempt   = $$env:LOBSTERAI_INSTALL_ATTEMPT_ID;\
-        $$oldVer    = $$env:LOBSTERAI_OLD_VERSION;\
-        $$backup    = Join-Path $$root $$attempt;\
-        $$staging   = $$backup + \".new\";\
-        $$manifest  = Join-Path $$staging \"backup-manifest.json\";\
-        $$config    = Join-Path $$src \"skills.config.json\";\
-        $$phase   = \"inspect\";\
-        try {\
-          if ([string]::IsNullOrWhiteSpace($$attempt)) { throw \"attempt id missing\" };\
-          if (-not (Test-Path -LiteralPath $$src -PathType Container)) { throw \"legacy source disappeared\" };\
-          $$bundled = @(try {\
-            if (Test-Path -LiteralPath $$config -PathType Leaf) {\
-              (Get-Content -LiteralPath $$config -Raw | ConvertFrom-Json).defaults.PSObject.Properties.Name\
-            }\
-          } catch { });\
-          $$userSkills = @(Get-ChildItem -LiteralPath $$src -Directory -ErrorAction Stop | Where-Object { $$bundled -notcontains $$_.Name });\
-          if ($$userSkills.Count -eq 0) { Write-Output \"legacy-no-user-skills\"; exit ${LOBSTER_SKILL_BACKUP_EXIT_NO_USER_SKILLS} };\
-          $$phase = \"backup-copy\";\
-          if (Test-Path -LiteralPath $$staging) { Remove-Item -LiteralPath $$staging -Recurse -Force -ErrorAction Stop };\
-          if (Test-Path -LiteralPath $$backup) { throw \"attempt backup already exists\" };\
-          New-Item -ItemType Directory -Path $$staging -Force -ErrorAction Stop | Out-Null;\
-          $$userSkills | ForEach-Object {\
-            Copy-Item -LiteralPath $$_.FullName -Destination (Join-Path $$staging $$_.Name) -Recurse -Force -ErrorAction Stop\
-          };\
-          Set-Content -LiteralPath (Join-Path $$staging \".attempt-id\") -Value $$attempt -NoNewline -ErrorAction Stop;\
-          $$directories = @(Get-ChildItem -LiteralPath $$staging -Directory -Recurse -Force -ErrorAction Stop | Sort-Object FullName | ForEach-Object {\
-            $$_.FullName.Substring($$staging.Length).TrimStart([IO.Path]::DirectorySeparatorChar).Replace([IO.Path]::DirectorySeparatorChar, [char]47)\
-          });\
-          $$files = @(Get-ChildItem -LiteralPath $$staging -File -Recurse -Force -ErrorAction Stop | Where-Object { $$_.Name -ne \"backup-manifest.json\" } | Sort-Object FullName | ForEach-Object {\
-            [ordered]@{\
-              path = $$_.FullName.Substring($$staging.Length).TrimStart([IO.Path]::DirectorySeparatorChar).Replace([IO.Path]::DirectorySeparatorChar, [char]47);\
-              length = $$_.Length;\
-              sha256 = (Get-FileHash -LiteralPath $$_.FullName -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant()\
-            }\
-          });\
-          $$payload = [ordered]@{\
-            schemaVersion = 1;\
-            attemptId = $$attempt;\
-            source = $$src;\
-            oldVersion = $$oldVer;\
-            createdAt = (Get-Date).ToUniversalTime().ToString(\"o\");\
-            skills = @($$userSkills.Name | Sort-Object);\
-            directories = $$directories;\
-            files = $$files;\
-            statistics = [ordered]@{\
-              skillCount = $$userSkills.Count;\
-              directoryCount = $$directories.Count;\
-              fileCount = $$files.Count;\
-              totalBytes = [long](($$files | Measure-Object -Property length -Sum).Sum)\
-            };\
-            validation = [ordered]@{ status = \"created\"; algorithm = \"SHA256\" }\
-          };\
-          $$payload | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $$manifest -Encoding UTF8 -ErrorAction Stop;\
-          Move-Item -LiteralPath $$staging -Destination $$backup -ErrorAction Stop;\
-          $$phase = \"backup-verify\";\
-        $$manifest = Join-Path $$backup \"backup-manifest.json\";\
-        $$verified = Get-Content -LiteralPath $$manifest -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop;\
-        if ($$verified.schemaVersion -ne 1) { throw \"manifest schema mismatch\" };\
-        if ($$verified.attemptId -ne $$attempt) { throw \"manifest attempt mismatch\" };\
-        if ($$verified.source -ne $$src) { throw \"manifest source mismatch\" };\
-        if (@($$verified.skills).Count -ne $$userSkills.Count) { throw \"manifest skill count mismatch\" };\
-        foreach ($$skill in @($$verified.skills)) {\
-          if (-not (Test-Path -LiteralPath (Join-Path $$backup $$skill) -PathType Container)) { throw \"manifest skill missing\" }\
-        };\
-        foreach ($$file in @($$verified.files)) {\
-          $$candidate = Join-Path $$backup ($$file.path.Replace([char]47, [IO.Path]::DirectorySeparatorChar));\
-          if (-not (Test-Path -LiteralPath $$candidate -PathType Leaf)) { throw \"manifest file missing\" };\
-          if ((Get-FileHash -LiteralPath $$candidate -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant() -ne $$file.sha256) { throw \"manifest hash mismatch\" }\
-        };\
-        $$verified.validation.status = \"verified\";\
-        $$verified.validation | Add-Member -NotePropertyName verifiedAt -NotePropertyValue ((Get-Date).ToUniversalTime().ToString(\"o\")) -Force;\
-        $$verified | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $$manifest -Encoding UTF8 -ErrorAction Stop;\
-        $$finalManifest = Get-Content -LiteralPath $$manifest -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop;\
-        if (($$finalManifest.attemptId -ne $$attempt) -or ($$finalManifest.validation.status -ne \"verified\")) { throw \"manifest final validation mismatch\" };\
-        Write-Output (\"legacy-backup-succeeded skills=\" + $$finalManifest.statistics.skillCount + \" files=\" + $$finalManifest.statistics.fileCount + \" directories=\" + $$finalManifest.statistics.directoryCount + \" bytes=\" + $$finalManifest.statistics.totalBytes);\
-        exit ${LOBSTER_SKILL_BACKUP_EXIT_VERIFIED}\
-      } catch {\
-        if (Test-Path -LiteralPath $$staging) { Remove-Item -LiteralPath $$staging -Recurse -Force -ErrorAction SilentlyContinue };\
-        if ($$phase -eq \"inspect\") { Write-Output \"legacy-inspect-failed\"; exit ${LOBSTER_SKILL_BACKUP_EXIT_INSPECT_FAILED} };\
-        if ($$phase -eq \"backup-verify\") { Write-Output \"legacy-backup-verify-failed\"; exit ${LOBSTER_SKILL_BACKUP_EXIT_VERIFY_FAILED} };\
-        Write-Output \"legacy-backup-copy-failed\";\
-        exit ${LOBSTER_SKILL_BACKUP_EXIT_COPY_FAILED}\
-      }"'
-    !insertmacro LobsterExecHiddenToStack
-    Pop $0
-    Pop $1
-    StrCpy $R2 $0
     System::Call 'Kernel32::SetEnvironmentVariable(t "LOBSTERAI_SKILL_SOURCE", t "")i'
     System::Call 'Kernel32::SetEnvironmentVariable(t "LOBSTERAI_SKILL_BACKUP_ROOT", t "")i'
     System::Call 'Kernel32::SetEnvironmentVariable(t "LOBSTERAI_INSTALL_ATTEMPT_ID", t "")i'
     System::Call 'Kernel32::SetEnvironmentVariable(t "LOBSTERAI_OLD_VERSION", t "")i'
+    System::Call 'Kernel32::SetEnvironmentVariable(t "LOBSTERAI_SKILL_NAMES_FILE", t "")i'
     System::Call 'kernel32::GetTickCount()i .r6'
     IntOp $5 $6 - $7
 
@@ -1603,7 +1545,31 @@ FunctionEnd
       FileWrite $9 "$8 phase=skill-backup-failed-abort attempt_id=$lobsterInstallerAttemptId status=$lobsterLegacySkillsStatus exit=$R2 action=old-install-preserved$\r$\n"
       FileClose $9
       Call lobsterTryRelaunchOldApp
-      MessageBox MB_OK|MB_ICONEXCLAMATION "The HeyClaw update stopped because legacy user skills could not be safely inspected or backed up (status=$lobsterLegacySkillsStatus). The previous installation was not replaced. Please retry the update. Details: $APPDATA\HeyClaw\install-timing.log" /SD IDOK
+      ; InitPluginsDir first: on the paths that never launched the helper,
+      ; $PLUGINSDIR would otherwise still be empty.
+      StrCpy $lobsterLegacySkillNames ""
+      InitPluginsDir
+      ClearErrors
+      FileOpen $9 "$PLUGINSDIR\${LOBSTER_LEGACY_SKILL_NAMES_FILE}" r
+      IfErrors SkillBackupAbortNamesRead
+        FileReadUTF16LE $9 $lobsterLegacySkillNames
+        FileClose $9
+      SkillBackupAbortNamesRead:
+      StrCmp $LANGUAGE "${LOBSTER_LANGID_SIMPCHINESE}" SkillBackupAbortDialogZh
+      StrCmp $LANGUAGE "${LOBSTER_LANGID_TRADCHINESE}" SkillBackupAbortDialogZh
+      StrCmp $lobsterLegacySkillNames "" SkillBackupAbortDialogRetryEn
+        MessageBox MB_OK|MB_ICONEXCLAMATION "${LOBSTER_SKILL_BACKUP_ABORT_MOVE_EN}" /SD IDOK
+        Goto SkillBackupAbortDialogDone
+      SkillBackupAbortDialogRetryEn:
+        MessageBox MB_OK|MB_ICONEXCLAMATION "${LOBSTER_SKILL_BACKUP_ABORT_RETRY_EN}" /SD IDOK
+        Goto SkillBackupAbortDialogDone
+      SkillBackupAbortDialogZh:
+      StrCmp $lobsterLegacySkillNames "" SkillBackupAbortDialogRetryZh
+        MessageBox MB_OK|MB_ICONEXCLAMATION "${LOBSTER_SKILL_BACKUP_ABORT_MOVE_ZH}" /SD IDOK
+        Goto SkillBackupAbortDialogDone
+      SkillBackupAbortDialogRetryZh:
+        MessageBox MB_OK|MB_ICONEXCLAMATION "${LOBSTER_SKILL_BACKUP_ABORT_RETRY_ZH}" /SD IDOK
+      SkillBackupAbortDialogDone:
       SetErrorLevel 2
       Quit
     SkillBackupValidated:
@@ -2492,9 +2458,14 @@ FunctionEnd
   TarExtractVerify:
   ; Success requires every large bundled resource to be usable -- an exit code
   ; alone must never trigger deletion of the only recovery source.
-  IfFileExists "$INSTDIR\resources\cfmind\gateway-bundle.mjs" TarExtractVerifySkills
+  IfFileExists "$INSTDIR\resources\cfmind\gateway-bundle.mjs" TarExtractVerifyBundleAssets
   IfFileExists "$INSTDIR\resources\cfmind\openclaw.mjs" TarExtractVerifySkills
   StrCpy $R5 "runtime-entry-missing"
+  Goto TarExtractRequiredResourceMissing
+
+  TarExtractVerifyBundleAssets:
+  IfFileExists "$INSTDIR\resources\cfmind\web-tree-sitter.wasm" TarExtractVerifySkills
+  StrCpy $R5 "runtime-bundle-assets-missing"
   Goto TarExtractRequiredResourceMissing
 
   TarExtractVerifySkills:
@@ -2870,10 +2841,15 @@ FunctionEnd
   StrCpy $lobsterNewInstallValidationReason "app-asar-missing"
   IfFileExists "$INSTDIR\resources\app.asar" 0 NewInstallPrevalidateFailed
 
-  IfFileExists "$INSTDIR\resources\cfmind\gateway-bundle.mjs" NewInstallPrevalidateSkills
+  IfFileExists "$INSTDIR\resources\cfmind\gateway-bundle.mjs" NewInstallPrevalidateBundleAssets
   IfFileExists "$INSTDIR\resources\cfmind\openclaw.mjs" NewInstallPrevalidateSkills
   StrCpy $lobsterNewInstallValidationReason "runtime-entry-missing"
   Goto NewInstallPrevalidateFailed
+
+  NewInstallPrevalidateBundleAssets:
+    StrCpy $lobsterNewInstallValidationReason "runtime-bundle-assets-missing"
+    IfFileExists "$INSTDIR\resources\cfmind\web-tree-sitter.wasm" NewInstallPrevalidateSkills
+    Goto NewInstallPrevalidateFailed
 
   NewInstallPrevalidateSkills:
     StrCpy $lobsterNewInstallValidationReason "skills-content-missing"
@@ -2919,10 +2895,163 @@ FunctionEnd
   NewInstallPrevalidateDone:
 !macroend
 
+; -- Explorer "Open with" --
+; Windows lists an app under "Open with" per extension only; no supported key
+; covers every file. Each listed extension gets a
+; Software\Classes\.<ext>\OpenWithList\<exe> key, which Explorer resolves
+; through Applications\<exe>. OpenWithProgids is avoided on purpose: Windows
+; treats a ProgID listed there as a default candidate, so it becomes the default
+; app of a type that has none, and Explorer asks "How do you want to open this
+; file?" again for a type whose default the user never picked. An OpenWithList
+; entry only adds the menu item. The app receives the path as a command-line
+; argument (see src/main/libs/openWithPathQueue.ts).
+
+; The one list of extensions, expanded once to register and once to remove.
+!macro LobsterOpenWithExtensions OP
+  ; Documents
+  !insertmacro ${OP} "pdf"
+  !insertmacro ${OP} "doc"
+  !insertmacro ${OP} "docx"
+  !insertmacro ${OP} "docm"
+  !insertmacro ${OP} "dot"
+  !insertmacro ${OP} "dotx"
+  !insertmacro ${OP} "dotm"
+  !insertmacro ${OP} "wps"
+  !insertmacro ${OP} "wpt"
+  ; Spreadsheets
+  !insertmacro ${OP} "xls"
+  !insertmacro ${OP} "xlsx"
+  !insertmacro ${OP} "xlsm"
+  !insertmacro ${OP} "xlt"
+  !insertmacro ${OP} "xltx"
+  !insertmacro ${OP} "xltm"
+  !insertmacro ${OP} "csv"
+  ; Presentations
+  !insertmacro ${OP} "ppt"
+  !insertmacro ${OP} "pptx"
+  !insertmacro ${OP} "pptm"
+  !insertmacro ${OP} "pps"
+  !insertmacro ${OP} "ppsx"
+  !insertmacro ${OP} "ppsm"
+  !insertmacro ${OP} "pot"
+  !insertmacro ${OP} "potx"
+  !insertmacro ${OP} "potm"
+  ; Text and web pages
+  !insertmacro ${OP} "txt"
+  !insertmacro ${OP} "md"
+  !insertmacro ${OP} "markdown"
+  !insertmacro ${OP} "htm"
+  !insertmacro ${OP} "html"
+  ; Images
+  !insertmacro ${OP} "png"
+  !insertmacro ${OP} "jpg"
+  !insertmacro ${OP} "jpeg"
+  !insertmacro ${OP} "gif"
+  !insertmacro ${OP} "webp"
+  !insertmacro ${OP} "bmp"
+  !insertmacro ${OP} "ico"
+  !insertmacro ${OP} "svg"
+  !insertmacro ${OP} "avif"
+  ; Audio
+  !insertmacro ${OP} "mp3"
+  !insertmacro ${OP} "wav"
+  !insertmacro ${OP} "m4a"
+  !insertmacro ${OP} "aac"
+  !insertmacro ${OP} "flac"
+  !insertmacro ${OP} "ogg"
+  !insertmacro ${OP} "wma"
+!macroend
+
+!macro LobsterOpenWithAddExtension EXT
+  WriteRegStr SHELL_CONTEXT "Software\Classes\.${EXT}\OpenWithList\${APP_EXECUTABLE_FILENAME}" "" ""
+!macroend
+
+; Removes only LobsterAI's entry; the extension key and the other apps listed
+; under it stay.
+!macro LobsterOpenWithRemoveExtension EXT
+  DeleteRegKey SHELL_CONTEXT "Software\Classes\.${EXT}\OpenWithList\${APP_EXECUTABLE_FILENAME}"
+!macroend
+
+; Installer only ($appExe). SHELL_CONTEXT follows the install mode: HKCU for a
+; per-user install, HKLM for all users.
+!macro LobsterRegisterOpenWith
+  ClearErrors
+  ; The OpenWithList entries resolve to this key; it also backs "Choose another
+  ; app" for types outside the list.
+  WriteRegStr SHELL_CONTEXT "Software\Classes\Applications\${APP_EXECUTABLE_FILENAME}" "FriendlyAppName" "${PRODUCT_NAME}"
+  WriteRegStr SHELL_CONTEXT "Software\Classes\Applications\${APP_EXECUTABLE_FILENAME}\shell\open\command" "" '"$appExe" "%1"'
+  !insertmacro LobsterOpenWithExtensions LobsterOpenWithAddExtension
+  StrCpy $0 "registered"
+  IfErrors 0 +2
+    StrCpy $0 "write-failed"
+  ; SHCNE_ASSOCCHANGED: Explorer re-reads the associations.
+  System::Call 'shell32::SHChangeNotify(i, i, i, i) v (0x08000000, 0, 0, 0)'
+  FileOpen $2 "$APPDATA\HeyClaw\install-timing.log" a
+  FileSeek $2 0 END
+  !insertmacro GetTimestamp $8
+  FileWrite $2 "$8 phase=open-with-registration attempt_id=$lobsterInstallerAttemptId status=$0 app=${APP_EXECUTABLE_FILENAME}$\r$\n"
+  FileClose $2
+!macroend
+
+; Runs for real uninstalls. An update usually skips the old version's
+; uninstaller (its install directory is renamed away instead), so
+; customInstall rewrites the entries in place: they name the exe, and
+; Applications\<exe> gets the current $appExe.
+!macro LobsterUnregisterOpenWith
+  !insertmacro LobsterOpenWithExtensions LobsterOpenWithRemoveExtension
+  DeleteRegKey SHELL_CONTEXT "Software\Classes\Applications\${APP_EXECUTABLE_FILENAME}"
+  System::Call 'shell32::SHChangeNotify(i, i, i, i) v (0x08000000, 0, 0, 0)'
+!macroend
+
+; -- Let LobsterAI.exe accept its own loopback connections --
+; Windows Defender Firewall's "Query user" default drops inbound connections,
+; 127.0.0.1 included, to programs without an inbound allow rule. The engine
+; gateway is LobsterAI.exe listening on 127.0.0.1, so the app could not reach
+; it after a reboot (field case 2026-10). The rule allows TCP only between
+; 127.0.0.1 addresses (netsh rejects ::1 and would fail the whole add), for
+; this install's executable, so nothing becomes reachable from the network.
+; It is replaced by name and program: reinstalls stay idempotent, and
+; per-user installs of other accounts keep their rule.
+; The app adds the same rule (src/main/libs/windowsLoopbackFirewall.ts) when
+; its startup self-test finds loopback dropped. A failure here is logged and
+; never fails the install.
+!macro LobsterApplyLoopbackFirewallRule
+  !insertmacro ResolveTrustedPowerShell
+  System::Call 'kernel32::GetTickCount()i .r7'
+  StrCmp $lobsterTrustedPowerShellPath "" LoopbackFirewallHelperMissing
+  System::Call 'Kernel32::SetEnvironmentVariable(t "LOBSTERAI_FIREWALL_PROGRAM", t "$INSTDIR\${APP_EXECUTABLE_FILENAME}")i'
+  Push '"$lobsterTrustedPowerShellPath" -NoProfile -NonInteractive -Command "\
+    $$netsh = Join-Path $$env:SystemRoot \"System32\netsh.exe\";\
+    $$program = \"program=\" + $$env:LOBSTERAI_FIREWALL_PROGRAM;\
+    & $$netsh advfirewall firewall delete rule \"name=HeyClaw loopback\" dir=in $$program | Out-Null; $$delete = $$LASTEXITCODE;\
+    & $$netsh advfirewall firewall add rule \"name=HeyClaw loopback\" dir=in action=allow $$program protocol=TCP localip=127.0.0.1 remoteip=127.0.0.1 profile=any | Out-Null; $$add = $$LASTEXITCODE;\
+    Write-Output (\"delete_exit=\" + $$delete + \" add_exit=\" + $$add); exit $$add"'
+  !insertmacro LobsterExecHiddenToStack
+  Pop $0
+  Pop $1
+  System::Call 'Kernel32::SetEnvironmentVariable(t "LOBSTERAI_FIREWALL_PROGRAM", t "")i'
+  Goto LoopbackFirewallLog
+
+  LoopbackFirewallHelperMissing:
+  StrCpy $0 "helper-not-found"
+  StrCpy $1 "skipped:trusted-powershell-unavailable"
+
+  LoopbackFirewallLog:
+  System::Call 'kernel32::GetTickCount()i .r6'
+  IntOp $5 $6 - $7
+  FileOpen $9 "$APPDATA\HeyClaw\install-timing.log" a
+  FileSeek $9 0 END
+  !insertmacro GetTimestamp $8
+  FileWrite $9 "$8 phase=loopback-firewall-rule-complete attempt_id=$lobsterInstallerAttemptId exit=$0 elapsed_ms=$5 output=$1$\r$\n"
+  FileClose $9
+!macroend
+
 ; Standard post-registry electron-builder hook. All fallible extraction,
 ; restoration, Defender rebalancing and validation completed in
 ; customBeforeRegistryAddInstallInfo. This hook only commits the already
-; prevalidated directory swap and schedules exact-current-backup cleanup.
+; prevalidated directory swap, schedules exact-current-backup cleanup,
+; registers the Open With entries and adds the loopback firewall rule for the
+; committed install.
 !macro customInstall
   StrCmp $lobsterNewInstallValidationStatus "success" 0 InstallFinalizeInvariantFailed
   StrCmp $lobsterOldInstallRenameStatus "prevalidated" 0 InstallFinalizeNoRename
@@ -2976,6 +3105,9 @@ FunctionEnd
     Quit
 
   InstallFinalizeComplete:
+  !insertmacro LobsterRegisterOpenWith
+  ; After the old uninstallers, which remove the rule, and after the files exist.
+  !insertmacro LobsterApplyLoopbackFirewallRule
   FileOpen $2 "$APPDATA\HeyClaw\install-timing.log" a
   FileSeek $2 0 END
   !insertmacro GetTimestamp $8
@@ -2991,6 +3123,8 @@ FunctionEnd
 ; uninstalls. Merely opening the uninstaller no longer kills the running app.
 
 !macro customUnInstall
+  !insertmacro LobsterUnregisterOpenWith
+
   ; -- Remove Windows Defender Exclusion on uninstall --
   ; Clean up every exclusion any installer version may have added: the
   ; current permanent set, the SKILLs entry from older versions, the
@@ -3006,4 +3140,16 @@ FunctionEnd
   Pop $1
   System::Call 'Kernel32::SetEnvironmentVariable(t "LOBSTERAI_INSTALL_ROOT", t "")i'
   DefenderUninstallCleanupDone:
+
+  ; -- Remove this install's loopback firewall rule --
+  ; Matches name and program, like LobsterApplyLoopbackFirewallRule. Updates
+  ; run this uninstaller first; the new installer then adds the rule again.
+  StrCmp $lobsterTrustedPowerShellPath "" LoopbackFirewallUninstallDone
+  System::Call 'Kernel32::SetEnvironmentVariable(t "LOBSTERAI_FIREWALL_PROGRAM", t "$INSTDIR\${APP_EXECUTABLE_FILENAME}")i'
+  Push '"$lobsterTrustedPowerShellPath" -NoProfile -NonInteractive -Command "& (Join-Path $$env:SystemRoot \"System32\netsh.exe\") advfirewall firewall delete rule \"name=HeyClaw loopback\" dir=in (\"program=\" + $$env:LOBSTERAI_FIREWALL_PROGRAM) | Out-Null"'
+  !insertmacro LobsterExecHiddenToStack
+  Pop $0
+  Pop $1
+  System::Call 'Kernel32::SetEnvironmentVariable(t "LOBSTERAI_FIREWALL_PROGRAM", t "")i'
+  LoopbackFirewallUninstallDone:
 !macroend

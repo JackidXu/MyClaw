@@ -62,6 +62,9 @@ export const OpenClawProviderId = {
   Qwen: 'qwen',
   Zai: 'zai', // OpenClaw official provider ID for Zhipu/GLM
   Volcengine: 'volcengine',
+  // OpenClaw catalog provider for Volcengine Coding Plan models. Used for
+  // catalog lookups only; HeyClaw writes plan models under `volcengine`.
+  VolcenginePlan: 'volcengine-plan',
   Minimax: 'minimax',
   MinimaxPortal: 'minimax-portal',
   Youdaozhiyun: 'youdaozhiyun',
@@ -94,6 +97,16 @@ export const ApiFormat = {
   Gemini: 'gemini',
 } as const;
 export type ApiFormat = typeof ApiFormat[keyof typeof ApiFormat];
+
+// ─── OpenAI API Mode (endpoint family under ApiFormat.OpenAI) ───────────
+// Kept separate from ApiFormat so older builds that only know
+// 'anthropic' | 'openai' fall back to Chat Completions instead of
+// misreading an unknown format.
+export const OpenAIApiMode = {
+  ChatCompletions: 'chat-completions',
+  Responses: 'responses',
+} as const;
+export type OpenAIApiMode = typeof OpenAIApiMode[keyof typeof OpenAIApiMode];
 
 // ─── Auth Type ──────────────────────────────────────────────────────────
 export const AuthType = {

@@ -1,0 +1,27 @@
+diff --git a/src/agents/sessions/session-manager-core.ts b/src/agents/sessions/session-manager-core.ts
+index 1e8353c2fbb..c66029d2ffc 100644
+--- a/src/agents/sessions/session-manager-core.ts
++++ b/src/agents/sessions/session-manager-core.ts
+@@ -121,9 +121,19 @@ export class SessionManagerCore {
+     }
+     const header = partitioned.fileEntries.find((entry) => entry.type === "session");
+     if (target && (header?.version ?? 1) < CURRENT_SESSION_VERSION) {
+-      throw new Error(
+-        "Persisted legacy session transcripts require doctor/import migration before runtime use",
+-      );
++      if (!header) {
++        const repairedHeader: SessionHeader = {
++          type: "session",
++          version: CURRENT_SESSION_VERSION,
++          id: target.sessionId ?? createManagedSessionId(),
++          timestamp: new Date().toISOString(),
++          cwd: this.cwd,
++        };
++        partitioned.fileEntries.unshift(repairedHeader);
++        partitioned.fileEntriesByOriginalIndex.unshift(repairedHeader);
++      } else {
++        header.version = CURRENT_SESSION_VERSION;
++      }
+     }
+     this.persistenceHeaderPending = false;
+     this.persistenceTarget = target ? { ...target } : undefined;

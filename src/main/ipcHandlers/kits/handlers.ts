@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, net } from 'electron';
 import extractZip from 'extract-zip';
 import fs from 'fs';
 import http from 'http';
@@ -7,30 +7,33 @@ import https from 'https';
 import path from 'path';
 
 import {
-  ComputerUseKitBundle,
-  ComputerUseKitBundleIntegrity,
   ComputerUseKitId,
 } from '../../../shared/computerUse/constants';
 import type {
   InstalledKitRecord,
   KitSkillMetadata,
   KitStoreKey,
+  KitStoreResponse,
   LocalizedText,
 } from '../../../shared/kit/constants';
-import { KitStoreKey as KitStoreKeyValue } from '../../../shared/kit/constants';
+import { KitIpcChannel, KitStoreKey as KitStoreKeyValue } from '../../../shared/kit/constants';
 import {
   buildComputerUseMarketplaceKit,
   buildInstalledComputerUseKitRecord,
+  type ComputerUseKitBundleDescriptor,
+  getCurrentComputerUseKitBundleDescriptor,
   getInstalledKitsMap,
   isComputerUseKitSupportedPlatform,
+  promptComputerUseAccessibilityPermission,
   removeComputerUseSkillArtifacts,
+  resolveBundledComputerUseKitArchivePath,
 } from '../../computerUse/computerUseKit';
 import {
+  getComputerUseSupportedPlatformLabel,
   installComputerUseRuntime,
   uninstallComputerUseRuntime,
 } from '../../computerUse/computerUseRuntime';
 import { cpRecursiveSync } from '../../fsCompat';
-import { mainHttpClient } from '../../libs/mainHttpClient';
 import { OpenClawConfigImpact } from '../../libs/openclawConfigImpact';
 import type { SkillManager } from '../../skills/skillManager';
 import { createSkinPackKitLifecycle } from '../../skins/skinPackKitLifecycle';
@@ -39,11 +42,12 @@ import type { SqliteStore } from '../../sqliteStore';
 const KITS_INSTALLED_KEY: KitStoreKey = KitStoreKeyValue.Installed;
 const SKILLS_DIR_NAME = 'SKILLs';
 const SKILL_FILE_NAME = 'SKILL.md';
+const KIT_STORE_REQUEST_TIMEOUT_MS = 10_000;
 
 function downloadBuffer(url: string): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const mod = url.startsWith('https') ? https : http;
-    const req = mod.get(url, { timeout: 60000 }, res => {
+    const req = mod.get(url, { timeout: 60000 }, (res) => {
       // Follow redirects
       if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
         downloadBuffer(res.headers.location).then(resolve, reject);
@@ -61,15 +65,26 @@ function downloadBuffer(url: string): Promise<Buffer> {
       res.on('error', reject);
     });
     req.on('error', reject);
-    req.on('timeout', () => {
-      req.destroy();
-      reject(new Error('Download timeout'));
-    });
+    req.on('timeout', () => { req.destroy(); reject(new Error('Download timeout')); });
   });
+}
+
+async function loadComputerUseKitBundle(
+  descriptor: ComputerUseKitBundleDescriptor,
+): Promise<Buffer> {
+  const bundledArchivePath = resolveBundledComputerUseKitArchivePath(descriptor);
+  if (bundledArchivePath) {
+    return fs.promises.readFile(bundledArchivePath);
+  }
+  if (descriptor.archiveName) {
+    throw new Error(`Computer Use kit bundle archive is not bundled: ${descriptor.archiveName}`);
+  }
+  return downloadBuffer(descriptor.bundle);
 }
 
 export interface KitHandlerDeps {
   getStore: () => SqliteStore;
+  getKitStoreUrl: () => string;
   getSkillManager: () => SkillManager;
   syncOpenClawConfig: (options: {
     reason: string;
@@ -84,7 +99,9 @@ function sha256Buffer(buffer: Buffer): string {
 
 type InstalledKitsMap = Record<string, InstalledKitRecord>;
 
-const normalizeCapabilityList = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
+const normalizeCapabilityList = (value: unknown): unknown[] => (
+  Array.isArray(value) ? value : []
+);
 
 const normalizeLocalizedText = (value: unknown): string | LocalizedText | undefined => {
   if (typeof value === 'string') {
@@ -140,12 +157,7 @@ function ensureSkillsRoot(): string {
 }
 
 function normalizeFolderName(name: string): string {
-  return (
-    name
-      .replace(/[^a-zA-Z0-9_\-\.]/g, '-')
-      .replace(/-+/g, '-')
-      .replace(/^-|-$/g, '') || 'skill'
-  );
+  return name.replace(/[^a-zA-Z0-9_\-\.]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'skill';
 }
 
 function normalizeWindowsAttrs(targetDir: string): void {
@@ -187,16 +199,13 @@ function collectSkillDirs(source: string): string[] {
 
 function listSkillDirs(root: string): string[] {
   if (!fs.existsSync(root)) return [];
-  return fs
-    .readdirSync(root)
+  return fs.readdirSync(root)
     .sort((a, b) => a.localeCompare(b))
     .map(entry => path.join(root, entry))
     .filter(entryPath => {
       try {
-        return (
-          fs.statSync(entryPath).isDirectory() &&
-          fs.existsSync(path.join(entryPath, SKILL_FILE_NAME))
-        );
+        return fs.statSync(entryPath).isDirectory()
+          && fs.existsSync(path.join(entryPath, SKILL_FILE_NAME));
       } catch {
         return false;
       }
@@ -212,7 +221,7 @@ function notifySkillsChanged(): void {
 }
 
 export function registerKitHandlers(deps: KitHandlerDeps): void {
-  const { getStore, getSkillManager, syncOpenClawConfig } = deps;
+  const { getStore, getKitStoreUrl, getSkillManager, syncOpenClawConfig } = deps;
   const skinPackKitLifecycle = createSkinPackKitLifecycle({
     getStore,
     getSkillManager,
@@ -223,24 +232,28 @@ export function registerKitHandlers(deps: KitHandlerDeps): void {
     isComputerUseKitSupportedPlatform() ? [buildComputerUseMarketplaceKit()] : []
   );
 
-  // Fetch kit store catalog from admin-claw
-  ipcMain.handle('kits:fetchStore', async () => {
+  // Fetch kit store catalog from overmind
+  ipcMain.handle(KitIpcChannel.FetchStore, async (): Promise<KitStoreResponse> => {
+    const url = getKitStoreUrl();
+    console.log(`[KitStore] fetching from: ${url}`);
     try {
-      const res = await mainHttpClient.admin.get('/api/kits');
-      if (!res.ok) {
-        throw new Error(res.error || `HTTP ${res.status}`);
+      const response = await net.fetch(url, {
+        signal: AbortSignal.timeout(KIT_STORE_REQUEST_TIMEOUT_MS),
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
       }
-      const rawData = typeof res.data === 'string' ? res.data : JSON.stringify(res.data);
+      const data = await response.text();
       return {
         success: true,
-        data: skinPackKitLifecycle.appendToStoreResponse(rawData, getAdditionalBuiltInKits()),
+        data: skinPackKitLifecycle.appendToStoreResponse(data, getAdditionalBuiltInKits()),
       };
     } catch (error) {
       console.error('[KitStore] fetch failed:', error);
       return {
-        success: true,
+        success: false,
         data: skinPackKitLifecycle.buildOfflineStoreResponse(getAdditionalBuiltInKits()),
-        warning: error instanceof Error ? error.message : 'Failed to fetch kit store',
+        error: error instanceof Error ? error.message : 'Failed to fetch kit store',
       };
     }
   });
@@ -249,83 +262,38 @@ export function registerKitHandlers(deps: KitHandlerDeps): void {
   ipcMain.handle('kits:listInstalled', () => {
     try {
       const map = getStore().get<InstalledKitsMap>(KITS_INSTALLED_KEY) ?? {};
-      
-      // 强行注入视频剪辑专员专家套件为已安装状态，关联其5个内置技能
-      map['video-editor-kit'] = {
-        id: 'video-editor-kit',
-        version: '1.0.0',
-        installedAt: Date.now(),
-        skills: {
-          skillIds: [
-            'clip-editor',
-            'ffmpeg-video-editor',
-            'remotion-video-toolkit',
-            'video-clip-assistant',
-            'video-editor',
-          ],
-        },
-        mcpServers: [],
-        connectors: [],
-      };
-
-      // 强行注入用户运营助理专家套件为已安装状态，关联其8个内置技能
-      map['user-operations-assistant-kit'] = {
-        id: 'user-operations-assistant-kit',
-        version: '1.0.0',
-        installedAt: Date.now(),
-        skills: {
-          skillIds: [
-            'campaign-analytics',
-            'cmo',
-            'content-marketing',
-            'content-strategy',
-            'geo-content-optimizer',
-            'marketing-brand-playbook',
-            'marketing-psychology',
-            'social-content-calendar',
-          ],
-        },
-        mcpServers: [],
-        connectors: [],
-      };
-
       return { success: true, installed: map };
     } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to list installed kits',
-      };
+      return { success: false, error: error instanceof Error ? error.message : 'Failed to list installed kits' };
     }
   });
 
   // Install a kit
-  ipcMain.handle(
-    'kits:install',
-    async (
-      _event,
-      params: {
-        kitId: string;
-        bundleUrl: string;
-        version: string;
-        skillListIds: string[];
-        skillList?: KitSkillMetadata[];
-        mcpServers?: unknown[] | null;
-        connectors?: unknown[] | null;
-      },
-    ) => {
-      const { kitId, bundleUrl, version, skillListIds: _skillListIds } = params;
-      const isComputerUseKit = kitId === ComputerUseKitId.BuiltIn;
-      console.log(`[KitStore] Installing kit "${kitId}" v${version} from ${bundleUrl || 'local'}`);
+  ipcMain.handle('kits:install', async (_event, params: {
+    kitId: string;
+    bundleUrl: string;
+    version: string;
+    skillListIds: string[];
+    skillList?: KitSkillMetadata[];
+    mcpServers?: unknown[] | null;
+    connectors?: unknown[] | null;
+  }) => {
+    const { kitId, bundleUrl, version, skillListIds: _skillListIds } = params;
+    const isComputerUseKit = kitId === ComputerUseKitId.BuiltIn;
+    console.log(`[KitStore] Installing kit "${kitId}" v${version} from ${bundleUrl}`);
 
     let tempRoot: string | null = null;
     let skillWatchingStopped = false;
     let skillWatchingRestarted = false;
     try {
-      if (isComputerUseKit && bundleUrl !== ComputerUseKitBundle.BuiltIn) {
-        throw new Error('Computer Use kit bundle URL does not match the built-in catalog entry');
+      const computerUseBundleDescriptor = isComputerUseKit
+        ? getCurrentComputerUseKitBundleDescriptor()
+        : null;
+      if (isComputerUseKit && !computerUseBundleDescriptor) {
+        throw new Error(`Computer Use kit is only available on ${getComputerUseSupportedPlatformLabel()}.`);
       }
-      if (isComputerUseKit && !isComputerUseKitSupportedPlatform()) {
-        throw new Error('Computer Use kit is only available on Windows x64.');
+      if (computerUseBundleDescriptor && bundleUrl !== computerUseBundleDescriptor.bundle) {
+        throw new Error('Computer Use kit bundle URL does not match the built-in catalog entry');
       }
       const skinPackInstallResult = await skinPackKitLifecycle.installIfHandled({ kitId, bundleUrl });
       if (skinPackInstallResult !== undefined) {
@@ -334,196 +302,150 @@ export function registerKitHandlers(deps: KitHandlerDeps): void {
 
       // 1. Download zip
       tempRoot = fs.mkdtempSync(path.join(app.getPath('temp'), 'lobsterai-kit-'));
-      const buffer = await downloadBuffer(bundleUrl);
-      if (isComputerUseKit) {
-        if (buffer.length !== ComputerUseKitBundleIntegrity.SizeBytes) {
+      const buffer = computerUseBundleDescriptor
+        ? await loadComputerUseKitBundle(computerUseBundleDescriptor)
+        : await downloadBuffer(bundleUrl);
+      if (computerUseBundleDescriptor) {
+        if (buffer.length !== computerUseBundleDescriptor.sizeBytes) {
           throw new Error('Computer Use kit bundle size verification failed');
         }
-        if (isComputerUseKit && !isComputerUseKitSupportedPlatform()) {
-          throw new Error('Computer Use kit is only available on Windows x64.');
-        }
-
-        const isLocal = !bundleUrl;
-        const installedSkillIds: string[] = [];
-        const installedSkillMetadata: Record<string, KitSkillMetadata> = {};
-        const sourceSkillMetadata = normalizeKitSkillMetadataList(params.skillList);
-
-        if (!isLocal) {
-          // 1. Download zip
-          tempRoot = fs.mkdtempSync(path.join(app.getPath('temp'), 'lobsterai-kit-'));
-          const buffer = await downloadBuffer(bundleUrl);
-          if (isComputerUseKit) {
-            if (buffer.length !== ComputerUseKitBundleIntegrity.SizeBytes) {
-              throw new Error('Computer Use kit bundle size verification failed');
-            }
-            if (sha256Buffer(buffer) !== ComputerUseKitBundleIntegrity.Sha256) {
-              throw new Error('Computer Use kit bundle checksum verification failed');
-            }
-          }
-          const zipPath = path.join(tempRoot, 'kit-bundle.zip');
-          const extractRoot = path.join(tempRoot, 'extracted');
-          fs.writeFileSync(zipPath, buffer);
-          fs.mkdirSync(extractRoot, { recursive: true });
-
-          // 2. Extract
-          await extractZip(zipPath, { dir: extractRoot });
-
-          // Handle single-directory wrapper (e.g. zip contains one root folder)
-          let sourceRoot = extractRoot;
-          const extractedEntries = fs
-            .readdirSync(extractRoot)
-            .map(entry => path.join(extractRoot, entry))
-            .filter(p => {
-              try {
-                return fs.statSync(p).isDirectory();
-              } catch {
-                return false;
-              }
-            });
-          if (extractedEntries.length === 1) {
-            sourceRoot = extractedEntries[0];
-          }
-
-          // 3. Discover skill directories
-          const skillDirs = collectSkillDirs(sourceRoot);
-          if (skillDirs.length === 0) {
-            throw new Error('No skills found in kit bundle (no SKILL.md detected)');
-          }
-
-          if (isComputerUseKit) {
-            const runtimeResult = await installComputerUseRuntime();
-            if (!runtimeResult.success) {
-              throw new Error(runtimeResult.error || 'Computer Use runtime installation failed');
-            }
-          }
-
-          const skillManager = getSkillManager();
-          skillManager.stopWatching();
-          skillWatchingStopped = true;
-          if (isComputerUseKit) {
-            removeComputerUseSkillArtifacts(getStore());
-          }
-
-          // 4. Copy skills to user SKILLs directory
-          const root = ensureSkillsRoot();
-
-          for (const skillDir of skillDirs) {
-            const folderName = normalizeFolderName(path.basename(skillDir));
-            let targetDir = path.resolve(root, folderName);
-            let suffix = 1;
-            while (fs.existsSync(targetDir)) {
-              targetDir = path.resolve(root, `${folderName}-${suffix}`);
-              suffix += 1;
-            }
-            cpRecursiveSync(skillDir, targetDir);
-            normalizeWindowsAttrs(targetDir);
-            const installedSkillId = path.basename(targetDir);
-            installedSkillIds.push(installedSkillId);
-
-            const sourceSkillId = path.basename(skillDir);
-            const metadata =
-              sourceSkillMetadata.get(sourceSkillId) ?? sourceSkillMetadata.get(folderName);
-            if (metadata?.name || metadata?.description) {
-              installedSkillMetadata[installedSkillId] = {
-                id: installedSkillId,
-                ...(metadata.name ? { name: metadata.name } : {}),
-                ...(metadata.description ? { description: metadata.description } : {}),
-              };
-            }
-          }
-        } else {
-          // 如果是本地专家，直接启用传入的关联技能，并填充其 metadata
-          const skillListIds = params.skillListIds || [];
-          for (const sId of skillListIds) {
-            installedSkillIds.push(sId);
-            const metadata = sourceSkillMetadata.get(sId);
-            if (metadata?.name || metadata?.description) {
-              installedSkillMetadata[sId] = {
-                id: sId,
-                ...(metadata.name ? { name: metadata.name } : {}),
-                ...(metadata.description ? { description: metadata.description } : {}),
-              };
-            }
-          }
-        }
-
-        // 5. Enable installed skills
-        const stateMap = getStore().get<Record<string, { enabled: boolean }>>('skills_state') ?? {};
-        for (const skillId of installedSkillIds) {
-          stateMap[skillId] = { enabled: true };
-        }
-        getStore().set('skills_state', stateMap);
-
-        // 6. Persist kit installation record
-        const installedMap = getInstalledKitsMap(getStore());
-        installedMap[kitId] = isComputerUseKit
-          ? buildInstalledComputerUseKitRecord(installedSkillIds, installedSkillMetadata)
-          : {
-              id: kitId,
-              version,
-              installedAt: Date.now(),
-              skills:
-                installedSkillIds.length > 0
-                  ? {
-                      skillIds: installedSkillIds,
-                      ...(Object.keys(installedSkillMetadata).length > 0
-                        ? { metadata: installedSkillMetadata }
-                        : {}),
-                    }
-                  : null,
-              mcpServers: normalizeCapabilityList(params.mcpServers),
-              connectors: normalizeCapabilityList(params.connectors),
-            };
-        getStore().set(KITS_INSTALLED_KEY, installedMap);
-
-        if (isComputerUseKit) {
-          const syncResult = await syncOpenClawConfig({
-            reason: 'computer-use-kit-installed',
-            restartGatewayIfRunning: true,
-            expectedImpact: OpenClawConfigImpact.Restart,
-          });
-          if (!syncResult.success) {
-            throw new Error(
-              syncResult.error || 'OpenClaw config sync failed after Computer Use install',
-            );
-          }
-        }
-
-        // 7. Notify after all installation work and Computer Use config sync are complete.
-        getSkillManager().startWatching();
-        skillWatchingRestarted = true;
-        notifySkillsChanged();
-
-        console.log(
-          `[KitStore] Kit "${kitId}" installed successfully with skills: ${installedSkillIds.join(', ')}`,
-        );
-        return { success: true, skillIds: installedSkillIds };
-      } 
-    } catch (error) {
-        console.error(`[KitStore] Install failed for kit "${kitId}":`, error);
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : 'Kit installation failed',
-        };
-      } finally {
-        // Cleanup temp
-        if (tempRoot) {
-          try {
-            fs.rmSync(tempRoot, { recursive: true, force: true });
-          } catch {
-            /* ignore cleanup errors */
-          }
-        }
-        if (skillWatchingStopped && !skillWatchingRestarted) {
-          try {
-            getSkillManager().startWatching();
-          } catch (error) {
-            console.warn('[KitStore] failed to restart skill watcher after install:', error);
-          }
+        if (sha256Buffer(buffer) !== computerUseBundleDescriptor.sha256) {
+          throw new Error('Computer Use kit bundle checksum verification failed');
         }
       }
-    },
-  );
+      const zipPath = path.join(tempRoot, 'kit-bundle.zip');
+      const extractRoot = path.join(tempRoot, 'extracted');
+      fs.writeFileSync(zipPath, buffer);
+      fs.mkdirSync(extractRoot, { recursive: true });
+
+      // 2. Extract
+      await extractZip(zipPath, { dir: extractRoot });
+
+      // Handle single-directory wrapper (e.g. zip contains one root folder)
+      let sourceRoot = extractRoot;
+      const extractedEntries = fs.readdirSync(extractRoot)
+        .map(entry => path.join(extractRoot, entry))
+        .filter(p => { try { return fs.statSync(p).isDirectory(); } catch { return false; } });
+      if (extractedEntries.length === 1) {
+        sourceRoot = extractedEntries[0];
+      }
+
+      // 3. Discover skill directories
+      const skillDirs = collectSkillDirs(sourceRoot);
+      if (skillDirs.length === 0) {
+        throw new Error('No skills found in kit bundle (no SKILL.md detected)');
+      }
+
+      if (isComputerUseKit) {
+        const runtimeResult = await installComputerUseRuntime();
+        if (!runtimeResult.success) {
+          throw new Error(runtimeResult.error || 'Computer Use runtime installation failed');
+        }
+      }
+
+      const skillManager = getSkillManager();
+      skillManager.stopWatching();
+      skillWatchingStopped = true;
+      if (isComputerUseKit) {
+        removeComputerUseSkillArtifacts(getStore());
+      }
+
+      // 4. Copy skills to user SKILLs directory
+      const root = ensureSkillsRoot();
+      const installedSkillIds: string[] = [];
+      const installedSkillMetadata: Record<string, KitSkillMetadata> = {};
+      const sourceSkillMetadata = normalizeKitSkillMetadataList(params.skillList);
+
+      for (const skillDir of skillDirs) {
+        const folderName = normalizeFolderName(path.basename(skillDir));
+        let targetDir = path.resolve(root, folderName);
+        let suffix = 1;
+        while (fs.existsSync(targetDir)) {
+          targetDir = path.resolve(root, `${folderName}-${suffix}`);
+          suffix += 1;
+        }
+        cpRecursiveSync(skillDir, targetDir);
+        normalizeWindowsAttrs(targetDir);
+        const installedSkillId = path.basename(targetDir);
+        installedSkillIds.push(installedSkillId);
+
+        const sourceSkillId = path.basename(skillDir);
+        const metadata = sourceSkillMetadata.get(sourceSkillId) ?? sourceSkillMetadata.get(folderName);
+        if (metadata?.name || metadata?.description) {
+          installedSkillMetadata[installedSkillId] = {
+            id: installedSkillId,
+            ...(metadata.name ? { name: metadata.name } : {}),
+            ...(metadata.description ? { description: metadata.description } : {}),
+          };
+        }
+      }
+
+      // 5. Enable installed skills
+      const stateMap = getStore().get<Record<string, { enabled: boolean }>>('skills_state') ?? {};
+      for (const skillId of installedSkillIds) {
+        stateMap[skillId] = { enabled: true };
+      }
+      getStore().set('skills_state', stateMap);
+
+      // 6. Persist kit installation record
+      const installedMap = getInstalledKitsMap(getStore());
+      installedMap[kitId] = isComputerUseKit
+        ? buildInstalledComputerUseKitRecord(installedSkillIds, installedSkillMetadata)
+        : {
+          id: kitId,
+          version,
+          installedAt: Date.now(),
+          skills: installedSkillIds.length > 0
+            ? {
+              skillIds: installedSkillIds,
+              ...(Object.keys(installedSkillMetadata).length > 0 ? { metadata: installedSkillMetadata } : {}),
+            }
+            : null,
+          mcpServers: normalizeCapabilityList(params.mcpServers),
+          connectors: normalizeCapabilityList(params.connectors),
+      };
+      getStore().set(KITS_INSTALLED_KEY, installedMap);
+
+      if (isComputerUseKit) {
+        // The kit only adds an MCP server and a skill: OpenClaw hot-applies
+        // `mcp` by disposing MCP runtimes, and `skills` needs no reload. A
+        // restart would make the user wait for gateway startup before using it.
+        const syncResult = await syncOpenClawConfig({
+          reason: 'computer-use-kit-installed',
+          expectedImpact: OpenClawConfigImpact.Sync,
+        });
+        if (!syncResult.success) {
+          throw new Error(syncResult.error || 'OpenClaw config sync failed after Computer Use install');
+        }
+        promptComputerUseAccessibilityPermission();
+      }
+
+      // 7. Notify after all installation work and Computer Use config sync are complete.
+      skillManager.startWatching();
+      skillWatchingRestarted = true;
+      notifySkillsChanged();
+
+      console.log(`[KitStore] Kit "${kitId}" installed successfully with skills: ${installedSkillIds.join(', ')}`);
+      return { success: true, skillIds: installedSkillIds };
+    } catch (error) {
+      console.error(`[KitStore] Install failed for kit "${kitId}":`, error);
+      return { success: false, error: error instanceof Error ? error.message : 'Kit installation failed' };
+    } finally {
+      // Cleanup temp
+      if (tempRoot) {
+        try {
+          fs.rmSync(tempRoot, { recursive: true, force: true });
+        } catch { /* ignore cleanup errors */ }
+      }
+      if (skillWatchingStopped && !skillWatchingRestarted) {
+        try {
+          getSkillManager().startWatching();
+        } catch (error) {
+          console.warn('[KitStore] failed to restart skill watcher after install:', error);
+        }
+      }
+    }
+  });
 
   // Uninstall a kit
   ipcMain.handle('kits:uninstall', async (_event, kitId: string) => {
@@ -571,16 +493,16 @@ export function registerKitHandlers(deps: KitHandlerDeps): void {
 
       if (kitId === ComputerUseKitId.BuiltIn) {
         removeComputerUseSkillArtifacts(getStore());
-        await uninstallComputerUseRuntime();
+        // Without the kit record the MCP server is no longer resolved. Applying
+        // that first lets OpenClaw dispose the running helper before its
+        // runtime files are removed, without restarting the gateway.
         const syncResult = await syncOpenClawConfig({
           reason: 'computer-use-kit-uninstalled',
-          restartGatewayIfRunning: true,
-          expectedImpact: OpenClawConfigImpact.Restart,
+          expectedImpact: OpenClawConfigImpact.Sync,
         });
+        await uninstallComputerUseRuntime();
         if (!syncResult.success) {
-          throw new Error(
-            syncResult.error || 'OpenClaw config sync failed after Computer Use uninstall',
-          );
+          throw new Error(syncResult.error || 'OpenClaw config sync failed after Computer Use uninstall');
         }
       }
       // Notify
@@ -592,10 +514,7 @@ export function registerKitHandlers(deps: KitHandlerDeps): void {
       return { success: true };
     } catch (error) {
       console.error(`[KitStore] Uninstall failed for kit "${kitId}":`, error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Kit uninstallation failed',
-      };
+      return { success: false, error: error instanceof Error ? error.message : 'Kit uninstallation failed' };
     } finally {
       if (skillWatchingStopped && !skillWatchingRestarted) {
         try {

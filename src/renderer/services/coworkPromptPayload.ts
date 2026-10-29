@@ -9,8 +9,10 @@ import {
   getEffectiveMediaReferences,
 } from '../components/cowork/mediaMentionUtils';
 import type { MediaAttachmentRef } from '../types/mediaGeneration';
+import { imageEditUserPrompt } from './imageEditingPrompt';
 
 export interface CoworkPromptAttachment {
+  imageEdit?: import('../../shared/imageEditing/types').ImageEditRequest;
   path: string;
   name: string;
   isImage?: boolean;
@@ -171,18 +173,20 @@ export async function prepareCoworkPromptPayload(
   }
 
   const attachmentLines = options.attachments
-    .filter(attachment => !(attachment.isImage && imageAttachmentPathsWithPayload.has(attachment.path)))
-    .map(attachment => {
-      const displayPath = attachment.path.startsWith('inline:')
-        ? (attachment.name || attachment.path)
-        : attachment.path;
-      return `${attachment.isDirectory ? options.folderLabel : options.fileLabel}: ${displayPath}`;
-    })
+    .filter(attachment => (
+      !attachment.path.startsWith('inline:')
+      && !attachment.imageEdit
+      && !(attachment.isImage && imageAttachmentPathsWithPayload.has(attachment.path))
+    ))
+    .map(attachment => `${attachment.isDirectory ? options.folderLabel : options.fileLabel}: ${attachment.path}`)
     .join('\n');
-  const finalPrompt = options.basePrompt
+  let finalPrompt = options.basePrompt
     ? (attachmentLines ? `${options.basePrompt}\n\n${attachmentLines}` : options.basePrompt)
     : attachmentLines;
   const mediaLabels = computeMediaLabels(options.attachments);
+  const editLines = mediaLabels.filter(item => item.attachment.imageEdit).map(item =>
+    `@${item.label} ${imageEditUserPrompt(item.attachment.imageEdit!)}`);
+  if (editLines.length) finalPrompt = [finalPrompt, ...editLines].filter(Boolean).join('\n\n');
   const mediaReferences = getEffectiveMediaReferences(finalPrompt, mediaLabels);
 
   return {

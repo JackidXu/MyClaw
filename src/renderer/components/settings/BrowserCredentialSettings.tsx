@@ -13,11 +13,20 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { i18nService } from '@/services/i18n';
 
 import Modal from '../common/Modal';
+import {
+  SETTINGS_ACTION_BUTTON_CLASS,
+  SETTINGS_ICON_BUTTON_CLASS,
+  SettingsCard,
+  SettingsCardMessage,
+  SettingsSection,
+} from './SettingsLayout';
+import { SETTINGS_DESCRIPTION_TEXT, SETTINGS_META_TEXT } from './settingsTypography';
 
 const BrowserCredentialSettings: React.FC = () => {
   const [credentials, setCredentials] = useState<BrowserCredentialSummary[]>([]);
   const [available, setAvailable] = useState<boolean | null>(null);
   const [availabilityReason, setAvailabilityReason] = useState<string>();
+  const [requiresRestart, setRequiresRestart] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showAddDialog, setShowAddDialog] = useState(false);
@@ -27,6 +36,8 @@ const BrowserCredentialSettings: React.FC = () => {
   const [password, setPassword] = useState('');
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [requestingAccess, setRequestingAccess] = useState(false);
+  const accessRequestRef = useRef(false);
   const originInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -50,6 +61,7 @@ const BrowserCredentialSettings: React.FC = () => {
       } else {
         setAvailable(availabilityResponse.availability.available);
         setAvailabilityReason(availabilityResponse.availability.reason);
+        setRequiresRestart(availabilityResponse.availability.requiresRestart === true);
       }
       if (listResponse.success) {
         setCredentials(listResponse.credentials ?? []);
@@ -72,6 +84,30 @@ const BrowserCredentialSettings: React.FC = () => {
     if (showAddDialog) originInputRef.current?.focus();
   }, [showAddDialog]);
 
+  const requestAccess = async () => {
+    if (accessRequestRef.current) return;
+    accessRequestRef.current = true;
+    setRequestingAccess(true);
+    setError('');
+    try {
+      const response = await window.electron.openclaw.browser.credentials.requestAccess();
+      if (response.success && response.availability) {
+        setAvailable(response.availability.available);
+        setAvailabilityReason(response.availability.reason);
+        setRequiresRestart(response.availability.requiresRestart === true);
+      } else {
+        await load();
+        setError(i18nService.t('browserCredentialAccessFailed'));
+      }
+    } catch {
+      await load();
+      setError(i18nService.t('browserCredentialAccessFailed'));
+    } finally {
+      accessRequestRef.current = false;
+      setRequestingAccess(false);
+    }
+  };
+
   const closeAddDialog = (force = false) => {
     if (saving && !force) return;
     setShowAddDialog(false);
@@ -81,8 +117,11 @@ const BrowserCredentialSettings: React.FC = () => {
     setError('');
   };
 
-  const saveCredential = async (event: React.FormEvent) => {
+  const saveCredential = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    // The dialog is rendered through a portal, but React submit events still
+    // bubble through the component tree to the settings form.
+    event.stopPropagation();
     if (!origin.trim() || !username.trim() || !password) return;
     setSaving(true);
     setError('');
@@ -93,12 +132,14 @@ const BrowserCredentialSettings: React.FC = () => {
         password,
       });
       if (!response.success) {
+        await load();
         setError(i18nService.t('browserCredentialSaveFailed'));
         return;
       }
       closeAddDialog(true);
       await load();
     } catch {
+      await load();
       setError(i18nService.t('browserCredentialSaveFailed'));
     } finally {
       setSaving(false);
@@ -126,63 +167,78 @@ const BrowserCredentialSettings: React.FC = () => {
     }
   };
 
-  const unavailableMessage = availabilityReason === BrowserCredentialAvailabilityReason.InsecureStorageBackend
-    ? i18nService.t('browserCredentialInsecureBackend')
-    : i18nService.t('browserCredentialEncryptionUnavailable');
+  const accessNotRequested = availabilityReason === BrowserCredentialAvailabilityReason.AccessNotRequested;
+  const unavailableMessage = requiresRestart
+    ? i18nService.t('browserCredentialAccessRestartRequired')
+    : accessNotRequested
+      ? i18nService.t('browserCredentialAccessNotRequested')
+      : availabilityReason === BrowserCredentialAvailabilityReason.InsecureStorageBackend
+        ? i18nService.t('browserCredentialInsecureBackend')
+        : i18nService.t('browserCredentialEncryptionUnavailable');
 
   return (
-    <section className="space-y-3">
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <h4 className="text-sm font-medium text-foreground">
-            {i18nService.t('browserCredentialManagerTitle')}
-          </h4>
-          <p className="mt-1 text-sm text-secondary">
-            {i18nService.t('browserCredentialManagerDescription')}
-          </p>
-        </div>
+    <SettingsSection
+      title={i18nService.t('browserCredentialManagerTitle')}
+      description={i18nService.t('browserCredentialManagerDescription')}
+      action={(
         <button
           type="button"
           onClick={() => setShowAddDialog(true)}
           disabled={available !== true}
-          className="inline-flex h-8 shrink-0 items-center gap-1 rounded-lg bg-surface-raised px-3 text-sm font-medium text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+          className={SETTINGS_ACTION_BUTTON_CLASS}
         >
-          <PlusIcon className="h-4 w-4" />
+          <PlusIcon className="h-3.5 w-3.5" />
           {i18nService.t('browserCredentialAdd')}
         </button>
-      </div>
-
+      )}
+    >
       {available === false && !loading ? (
-        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">
-          {unavailableMessage}
+        <div className="flex items-center justify-between gap-4 rounded-xl border border-border bg-surface-raised px-4 py-3">
+          <div className={`min-w-0 ${SETTINGS_DESCRIPTION_TEXT} text-secondary`} role="status">
+            <p>{unavailableMessage}</p>
+            {window.electron?.platform === 'darwin' ? (
+              <p className="mt-1">{i18nService.t('browserCredentialMacAccessHint')}</p>
+            ) : null}
+          </div>
+          {typeof window.electron?.openclaw?.browser?.credentials?.requestAccess === 'function' ? (
+            <button
+              type="button"
+              onClick={() => void requestAccess()}
+              disabled={requestingAccess || requiresRestart}
+              className="inline-flex h-8 shrink-0 items-center rounded-lg bg-primary px-3 text-xs font-medium text-white transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {i18nService.t(requestingAccess
+                ? 'browserCredentialRequestingAccess'
+                : requiresRestart
+                  ? 'browserCredentialRetryAfterRestart'
+                  : accessNotRequested ? 'browserCredentialEnableAccess' : 'browserCredentialRetryAccess')}
+            </button>
+          ) : null}
         </div>
       ) : null}
       {error && !showAddDialog && !deleteTarget ? (
-        <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-300">
+        <div className={`rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 ${SETTINGS_DESCRIPTION_TEXT} text-red-600 dark:text-red-300`}>
           {error}
         </div>
       ) : null}
 
-      <div className="overflow-hidden rounded-lg border border-border bg-background">
+      <SettingsCard>
         {loading ? (
-          <div className="px-3 py-3 text-sm text-secondary">
-            {i18nService.t('loading')}
-          </div>
+          <SettingsCardMessage>{i18nService.t('loading')}</SettingsCardMessage>
         ) : credentials.length > 0 ? (
-          credentials.map((credential, index) => (
-            <div
-              key={credential.id}
-              className={`flex min-h-14 items-center gap-3 px-3 py-2 ${index > 0 ? 'border-t border-border' : ''}`}
-            >
+          credentials.map(credential => (
+            <div key={credential.id} className="flex items-center gap-3 px-4 py-2.5">
               <KeyIcon className="h-4 w-4 shrink-0 text-secondary" />
               <div className="min-w-0 flex-1">
-                <div className="truncate text-sm text-foreground">{credential.username}</div>
-                <div className="truncate text-xs text-secondary">{credential.origin}</div>
+                <div className={`truncate ${SETTINGS_DESCRIPTION_TEXT} font-medium text-foreground`}>
+                  {credential.username}
+                </div>
+                <div className={`truncate ${SETTINGS_META_TEXT} text-secondary`}>{credential.origin}</div>
               </div>
               <button
                 type="button"
                 onClick={() => setDeleteTarget(credential)}
-                className="rounded-md p-1 text-secondary transition-colors hover:bg-surface-raised hover:text-red-500"
+                className={SETTINGS_ICON_BUTTON_CLASS}
                 title={i18nService.t('delete')}
                 aria-label={i18nService.t('delete')}
               >
@@ -191,11 +247,9 @@ const BrowserCredentialSettings: React.FC = () => {
             </div>
           ))
         ) : (
-          <div className="px-3 py-3 text-sm text-secondary">
-            {i18nService.t('browserCredentialEmpty')}
-          </div>
+          <SettingsCardMessage>{i18nService.t('browserCredentialEmpty')}</SettingsCardMessage>
         )}
-      </div>
+      </SettingsCard>
 
       {showAddDialog ? (
         <Modal
@@ -310,7 +364,7 @@ const BrowserCredentialSettings: React.FC = () => {
           </div>
         </Modal>
       ) : null}
-    </section>
+    </SettingsSection>
   );
 };
 

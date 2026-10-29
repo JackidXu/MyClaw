@@ -1,7 +1,9 @@
-import { expect,test } from 'vitest';
+import { expect, test } from 'vitest';
 
+import { ProviderName } from '../shared/providers/constants';
 import {
   classifyErrorKey,
+  CoworkErrorI18nKey,
   isContextOrInterruptionErrorKey,
   isLobsterAIQuotaExhaustedError,
 } from './coworkErrorClassify';
@@ -63,6 +65,25 @@ test('auth: auth scope maps to model access denied', () => {
 });
 
 // ==================== Billing errors ====================
+
+test('billing: a local inline-key cooldown preserves its actual cause', () => {
+  const message = 'Inline API key for provider "lobsterai-server" is temporarily disabled after a provider auth/billing failure. Retry after about 300 minutes, or switch to a different auth profile/API key.';
+  expect(classifyErrorKey(message)).toBe(CoworkErrorI18nKey.ProviderCooldown);
+});
+
+test('billing: LobsterAI upstream balance errors do not tell users to recharge', () => {
+  expect(classifyErrorKey('insufficient balance', ProviderName.LobsteraiServer))
+    .toBe(CoworkErrorI18nKey.ModelServiceUnavailable);
+  expect(classifyErrorKey('insufficient balance', ProviderName.Moonshot))
+    .toBe(CoworkErrorI18nKey.InsufficientBalance);
+  expect(classifyErrorKey('{"error":{"code":50203,"message":"insufficient balance"}}'))
+    .toBe(CoworkErrorI18nKey.ModelServiceUnavailable);
+});
+
+test.each([40200, 40201, 40202])('billing: LobsterAI user quota code %s still requires quota recovery', (code) => {
+  expect(classifyErrorKey(JSON.stringify({ error: { code, message: 'billing failure' } }), ProviderName.LobsteraiServer))
+    .toBe(CoworkErrorI18nKey.QuotaExhausted);
+});
 
 test('billing: DeepSeek insufficient_balance', () => {
   expect(classifyError('insufficient_balance: Your account does not have enough balance')).toBe('coworkErrorInsufficientBalance');
@@ -217,6 +238,17 @@ test('gateway: heap OOM is not classified as a generic disconnect', () => {
   )).toBe('coworkErrorGatewayHeapOutOfMemory');
 });
 
+test('gateway: a repointed workspace folder has a dedicated recovery message', () => {
+  for (const error of [
+    'Error: Error: workspace path alias points to a different current target',
+    'workspace path aliases resolve to conflicting state',
+    'workspace path alias conflicts with canonical state',
+  ]) {
+    expect(classifyError(error)).toBe(CoworkErrorI18nKey.WorkspaceAliasRepointed);
+  }
+  expect(classifyError('workspace path alias key collision')).toBe('workspace path alias key collision');
+});
+
 test('gateway: session patch timeout before send', () => {
   expect(classifyError('gateway request timeout for sessions.patch')).toBe('coworkGatewaySessionSyncTimeout');
 });
@@ -339,6 +371,21 @@ test('network: provider network request failed', () => {
 
 test('network: socket hang up', () => {
   expect(classifyError('request failed: socket hang up')).toBe('coworkErrorNetworkError');
+});
+
+test('network: Chromium net error relayed by the token proxy as HTTP 502', () => {
+  expect(classifyError(
+    'HTTP 502: LobsterAI proxy upstream request failed: net::ERR_HTTP2_PING_FAILED',
+  )).toBe('coworkErrorNetworkError');
+  expect(classifyError(
+    '502 LobsterAI proxy upstream request failed: net::ERR_PROXY_CONNECTION_FAILED',
+  )).toBe('coworkErrorNetworkError');
+});
+
+test('network: Chromium certificate error is not mistaken for an invalid credential', () => {
+  expect(classifyError(
+    'HTTP 502: LobsterAI proxy upstream request failed: net::ERR_CERT_AUTHORITY_INVALID',
+  )).toBe('coworkErrorNetworkError');
 });
 
 // ==================== Server errors ====================

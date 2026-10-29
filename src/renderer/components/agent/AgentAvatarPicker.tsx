@@ -1,13 +1,16 @@
 import React, { useEffect, useRef, useState } from 'react';
 
+import { i18nService } from '../../services/i18n';
+import PencilIcon from '../icons/PencilIcon';
 import AgentAvatarIcon from './AgentAvatarIcon';
 
 interface AgentAvatarPickerProps {
   value: string;
   onChange: (value: string) => void;
+  expertFallback?: boolean;
 }
 
-const AgentAvatarPicker: React.FC<AgentAvatarPickerProps> = ({ value, onChange }) => {
+const AgentAvatarPicker: React.FC<AgentAvatarPickerProps> = ({ value, onChange, expertFallback }) => {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -51,16 +54,26 @@ const AgentAvatarPicker: React.FC<AgentAvatarPickerProps> = ({ value, onChange }
       <button
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
-        title="选择专家头像"
-        aria-label="选择专家头像"
-        className={`w-11 h-11 flex items-center justify-center rounded-full shrink-0 overflow-hidden transition-shadow hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/50 ${
-          isOpen ? 'ring-2 ring-primary/60 ring-offset-1' : ''
+        title={i18nService.t('agentAvatarPickerTitle')}
+        aria-label={i18nService.t('agentAvatarPickerTitle')}
+        aria-expanded={isOpen}
+        className={`relative flex rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${
+          isOpen ? 'bg-secondary/15 ring-2 ring-primary/60' : 'bg-surface-raised hover:bg-secondary/15'
         }`}
       >
         <AgentAvatarIcon
-          avatar={value || 'avatar_1'}
-          className="h-11 w-11 rounded-full shadow-sm"
+          value={value || 'avatar_1'}
+          expertFallback={expertFallback}
+          className="h-11 w-11"
+          iconClassName="h-[22px] w-[22px]"
         />
+        {/* Always-visible edit badge: the avatar alone reads as a static picture. */}
+        <span
+          aria-hidden="true"
+          className="absolute -bottom-0.5 -right-0.5 flex h-[18px] w-[18px] items-center justify-center rounded-full bg-foreground text-surface ring-2 ring-surface"
+        >
+          <PencilIcon className="h-2.5 w-2.5" />
+        </span>
       </button>
 
       {isOpen && (
@@ -86,7 +99,7 @@ const AgentAvatarPicker: React.FC<AgentAvatarPickerProps> = ({ value, onChange }
                   }`}
                 >
                   <AgentAvatarIcon
-                    avatar={avatarName}
+                    value={avatarName}
                     className="h-12 w-12 rounded-full"
                   />
                 </button>

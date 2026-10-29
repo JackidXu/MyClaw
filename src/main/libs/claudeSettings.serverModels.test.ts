@@ -4,13 +4,16 @@ vi.mock('electron', () => ({
   net: { fetch: vi.fn() },
 }));
 
+import { ModelPresetId } from '../../shared/modelPresets/constants';
 import {
   clearServerModelMetadata,
   evaluateServerModelRunGate,
   getAllServerModelMetadata,
   ServerModelRunGateReason,
   updateServerModelMetadata,
+  updateServerModelMetadataFromResponse,
 } from './claudeSettings';
+import { runStartupCacheWarmup } from './startupCacheWarmup';
 
 beforeEach(() => {
   clearServerModelMetadata();
@@ -32,7 +35,7 @@ describe('server model metadata cache', () => {
       supportsToolCalling: true,
       agenticReady: true,
       contextWindow: 1_048_576,
-      maxTokens: 8_192,
+      maxTokens: 1_048_576,
     }])).toBe(true);
 
     expect(getAllServerModelMetadata()).toEqual([{
@@ -47,7 +50,7 @@ describe('server model metadata cache', () => {
       supportsToolCalling: true,
       agenticReady: true,
       contextWindow: 1_048_576,
-      maxTokens: 8_192,
+      maxTokens: 1_048_576,
       explicitContextCache: undefined,
     }]);
   });
@@ -76,7 +79,7 @@ describe('server model metadata cache', () => {
       supportsToolCalling: false,
       agenticReady: false,
       contextWindow: 1_048_576,
-      maxTokens: 8_192,
+      maxTokens: 1_048_576,
     });
     expect(evaluateServerModelRunGate('kimi-k3-YoudaoInner')).toEqual({
       allowed: false,
@@ -97,6 +100,44 @@ describe('server model metadata cache', () => {
 
     expect(updateServerModelMetadata(metadata)).toBe(true);
     expect(updateServerModelMetadata(metadata)).toBe(false);
+  });
+
+  test('derives every model preset context window from a server response', () => {
+    const response = [
+      { modelId: 'yd-fast', presetId: ModelPresetId.Balanced, contextWindow: 400_000 },
+      { modelId: 'deepseek-flash-YoudaoInner', presetId: null, contextWindow: 1_000_000 },
+    ];
+
+    expect(updateServerModelMetadataFromResponse(response)).toBe(true);
+    expect(getAllServerModelMetadata().map(model => model.presetContextWindows)).toEqual([
+      { [ModelPresetId.Balanced]: 400_000 },
+      { [ModelPresetId.Balanced]: 400_000 },
+    ]);
+    expect(updateServerModelMetadataFromResponse(response)).toBe(false);
+  });
+
+  test('keeps a startup-warmed cache unchanged for the same models response', async () => {
+    const response = [
+      { modelId: 'yd-fast', presetId: ModelPresetId.Balanced, contextWindow: 400_000 },
+      { modelId: 'deepseek-flash-YoudaoInner', presetId: null, contextWindow: 1_000_000 },
+    ];
+    const fetchWithAuth = vi.fn(async (url: string) => new Response(JSON.stringify(
+      url.includes('/api/user/quota')
+        ? { code: 0, data: { subscriptionStatus: 'free' } }
+        : { code: 0, data: response },
+    ), { status: 200 }));
+
+    await runStartupCacheWarmup({
+      serverBaseUrl: 'https://lobster.test',
+      fetchWithAuth,
+      appendKeyfromQuery: url => url,
+      cachedSubscriptionStatus: 'free',
+      clientVersion: '2026.10.19',
+      t: key => key,
+    });
+
+    // The renderer's first model fetch must not restage the startup config.
+    expect(updateServerModelMetadataFromResponse(response)).toBe(false);
   });
 
   test('preserves valid thinking configuration and detects config changes', () => {

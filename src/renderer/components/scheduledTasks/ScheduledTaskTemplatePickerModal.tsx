@@ -62,8 +62,15 @@ const ScheduledTaskTemplatePickerModal: React.FC<ScheduledTaskTemplatePickerModa
                   onClick={() => onSelect(template)}
                   className="group flex flex-col gap-2 rounded-xl border border-border bg-surface p-4 text-left shadow-subtle transition hover:border-primary/50 hover:bg-surface-raised hover:shadow-card cursor-pointer"
                 >
-                  <div className="text-sm font-bold text-foreground">
-                    {i18nService.t(template.titleKey)}
+                  <div className="flex w-full items-start justify-between gap-2">
+                    <div className="truncate text-sm font-bold text-foreground">
+                      {i18nService.t(template.titleKey)}
+                    </div>
+                    {template.scheduleLabelKey && (
+                      <div className="shrink-0 truncate text-xs text-secondary">
+                        {i18nService.t(template.scheduleLabelKey)}
+                      </div>
+                    )}
                   </div>
                   <div>
                     <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">

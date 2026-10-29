@@ -12,10 +12,41 @@
  *   const msg = t('imMissingCredentials', { fields: 'appId, appSecret' });
  */
 
+import { desktopCompanionTranslations } from '../shared/desktopCompanion/copy';
+import { imageEditingTranslations } from '../shared/imageEditing/copy';
+import { mediaTranslations } from '../shared/media/copy';
+
 export type LanguageType = 'zh' | 'en';
 
 const translations: Record<LanguageType, Record<string, string>> = {
   zh: {
+    modelPresetBalanced: '快速',
+    modelPresetUltimate: '旗舰',
+    modelPresetPricingHint: '按候选模型权重选择，当前会话保持固定。实际积分按底层模型扣费。',
+    modelPresetLoginRequired: '请登录后选择模型模式。',
+    modelPresetInvalidSession: '无效的聊天模型模式或会话。',
+    modelPresetSessionBusy: '请等待当前回复结束后再切换模型。',
+    modelPresetModelMismatch: '实际模型与所选模型不一致，请重新选择。',
+    modelPresetAccountChanged: '账号已切换，请重新选择模型。',
+
+    ...desktopCompanionTranslations.zh,
+    ...mediaTranslations.zh,
+    ...imageEditingTranslations.zh,
+    browserPasskeyChooseAccountTitle: '使用通行密钥',
+    browserPasskeyChooseAccountMessage: '选择用于登录 {site} 的账号',
+    browserPasskeyUnnamedAccount: '已保存的账号',
+    browserPasskeyCancel: '取消',
+    xaiAuthMigrationPending: '请等待 AI 引擎完成认证数据升级后，再更改 xAI 登录；若升级失败，请先修复引擎。',
+    xaiAuthStoreFailed: '无法访问 xAI 认证存储，请检查 AI 引擎状态后重试。',
+    openClawStartupMigrationFailed: 'AI 引擎状态升级失败：{error}',
+    openClawPluginVerificationFailed: 'AI 引擎插件校验失败，已停止自动重启。请处理以下插件错误后重试：\n{error}',
+    openClawStartupMigrationRefused: 'AI 引擎启动迁移未完成，已停止自动重启。请先处理以下旧数据，再重新启动网关：\n{error}',
+    openClawStartupCompatibilityRepairing: '正在备份并修复旧版网关状态…',
+    openClawRepairCommandTimeout: '修复命令 {command} 等待 {seconds} 秒后超时，修复已停止。诊断记录：{path}',
+    openClawRepairCommandFailed: '修复命令 {command} 未完成。诊断记录：{path}',
+    openClawDreamingStateRepairing: '正在备份并处理旧版记忆状态…',
+    openClawRuntimeFilesMissing: 'AI 引擎运行文件缺失或无法读取，已停止启动。请退出应用，使用包含修复的最新安装包覆盖安装后重试。',
+    openClawLoopbackBlocked: '本机连接自检失败（{code}），已暂停启动 AI 引擎。',
     // DeepSeek Harness (experimental)
     dshWorkbenchTitle: 'DeepSeek Harness 工作台（实验）',
     dshPlanProviderName: '套餐',
@@ -31,6 +62,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     // Quit confirmation (native dialog shown on user-initiated quit)
     appQuitConfirmTitle: '退出 HeyClaw？',
     appQuitConfirmDetail: 'HeyClaw 关闭期间，定时任务不会运行，也无法回复 IM 消息。',
+    appQuitConfirmUnsafeMarkdown: '有文档修改尚未保存，也尚未备份。退出后这些修改将丢失。请取消退出，返回文档保存修改。',
     appQuitConfirmQuit: '退出',
     appQuitConfirmCancel: '取消',
     taskCompletionNotificationTitle: '任务已完成',
@@ -58,9 +90,22 @@ const translations: Record<LanguageType, Record<string, string>> = {
     contextMenuCopy: '复制',
     contextMenuPaste: '粘贴',
     contextMenuSelectAll: '全选',
+    agentBrowserMenuScreenshot: '截图',
+    agentBrowserMenuNewBlankPage: '空白页',
+    agentBrowserMenuZoom: '缩放',
+    agentBrowserMenuZoomOut: '缩小',
+    agentBrowserMenuResetZoom: '重置为 100%',
+    agentBrowserMenuZoomIn: '放大',
+    agentBrowserMenuClearCookies: '清除 Cookie',
+    agentBrowserMenuClearCache: '清除缓存',
+    agentBrowserMenuUnavailable: '浏览器窗口当前不可用。',
+    agentBrowserRuntimeUnavailable: 'Agent 浏览器暂不可用，请稍后重试。',
+    agentBrowserMenuOpenFailed: '无法打开浏览器菜单。',
+    agentBrowserZoomFailed: '调整浏览器缩放失败。',
 
     // Session titles (created by ChannelSessionSync)
     coworkDefaultSessionTitle: '新对话',
+    coworkWorkspaceChangesTitle: '工作区变更',
     cronSessionPrefix: '定时',
     channelPrefixFeishu: '飞书',
     channelPrefixDingtalk: '钉钉',
@@ -69,13 +114,9 @@ const translations: Record<LanguageType, Record<string, string>> = {
     channelPrefixWeixin: '微信',
     channelPrefixNeteaseBee: '小蜜蜂',
     channelPrefixEmail: '邮件',
-    // NIM chat type labels
-    nimQChat: '圈组',
-    nimGroup: '群聊',
 
     // Timeout hint
     taskTimedOut: '[任务超时] 任务因超过最大允许时长而被自动停止。你可以继续对话以从中断处继续。',
-    imSessionStoppedReply: '任务已被手动停止。你可以继续发送消息开始新的对话。',
 
     // Thinking-only hint
     taskThinkingOnly:
@@ -89,12 +130,18 @@ const translations: Record<LanguageType, Record<string, string>> = {
 
     // Cowork error messages (shared with renderer via classifyErrorKey)
     coworkErrorAuthInvalid: 'API 密钥无效或已过期，请检查配置。',
+    coworkErrorSubagentSummaryFailed: '子任务已完成，但主 Agent 未能恢复汇总。请继续对话以重试汇总。',
     coworkErrorLobsterAILoginExpired: '登录状态已过期，请重新登录后继续使用 HeyClaw 套餐模型。',
     coworkErrorOAuthInvalid: 'OAuth 授权已失效或权限不足，请重新授权后重试。',
     coworkErrorModelAccessDenied: '当前账号无权访问该模型，请切换模型或检查服务商账号权限。',
     coworkErrorQuotaExhausted: '当前账号算力余额不足，请充值后继续使用。',
     coworkErrorFreeQuotaExhausted: '当前账号算力余额不足，请充值后继续使用。',
+    coworkErrorEnterpriseMemberQuotaExhausted: '当前团队成员周期额度已用完。',
+    coworkErrorEnterprisePoolExhausted: '当前团队积分池已用完。',
+    coworkErrorEnterpriseCreditBatchesExpired: '当前团队积分批次已全部过期。',
     coworkErrorInsufficientBalance: '当前账号算力余额不足，请充值后继续使用。',
+    coworkErrorModelServiceUnavailable: '该模型服务暂不可用，请切换模型或稍后重试。',
+    coworkErrorProviderCooldown: '模型凭据暂时处于冷却期，请稍后重试或切换其他服务商。',
     coworkErrorIncompleteTurnWithTools:
       'AI 生成回复中断（对话上下文过长或模型输出异常）。部分工具操作已执行，建议压缩上下文或开启新会话继续。',
     coworkErrorIncompleteTurn:
@@ -107,14 +154,20 @@ const translations: Record<LanguageType, Record<string, string>> = {
     coworkGatewaySessionSyncTimeout: 'OpenClaw 引擎响应缓慢，消息尚未发送。请等待 1~2 分钟后重新发送；若频繁出现，请检查系统内存与磁盘占用，并将 HeyClaw 加入杀毒软件白名单。',
     coworkErrorTranscriptOversized: '该任务的历史记录过大。为保护 AI 引擎，本次消息未发送；请新建任务继续，原任务记录仍会保留。',
     coworkErrorGatewayHeapOutOfMemory: '本地 AI 引擎内存不足并已自动重启。当前任务可能过大，请等待恢复后在新任务中继续。',
+    coworkErrorWorkspaceAliasRepointed: 'AI 引擎无法确认工作区目录：它被移动过，或被替换成了指向其他位置的链接，本次消息未发送。请恢复原来的目录或链接后重试；如果问题持续，请联系客服并附上日志。',
     coworkErrorGatewayDisconnected: 'AI 引擎连接中断，请重试。',
     coworkErrorServiceRestart: 'AI 引擎正在重启，请稍后重试。',
     coworkErrorGatewayDraining: 'AI 引擎正在重启中，请稍等片刻后重试。',
     openClawConfigApplyPending: 'OpenClaw 正在应用配置，请稍后重试。',
+    openClawConfigApplyPendingForModel:
+      '所选模型的最新设置还没生效，会在正在运行的任务结束后应用。可以先停止正在运行的任务，或稍后重新发送。',
     openClawConfigApplyOverdue:
       'OpenClaw 正在等待活动任务结束后应用配置。请完成或停止活动任务，然后重试。',
+    openClawConfigApplyStalled: '最新配置在重启网关后仍无法应用到 OpenClaw（{detail}）。',
     coworkErrorModelResponseTimeout: '模型响应超时，请稍后重试。',
     coworkErrorNetworkError: '网络连接失败，请检查网络设置。',
+    coworkErrorNetworkErrorViaSystemProxy:
+      '网络连接中断。你开启了“使用系统代理”，请求在经过代理软件转发时中断。请在代理软件里把 {host} 设为直连，或在设置中关闭“使用系统代理”后重试。',
     coworkErrorRateLimit:
       '当前提问过于频繁，已触发该模型的请求频率限制。建议切换其他模型继续对话，或稍等 1~2 分钟后再试。',
     coworkErrorRateLimitTpm:
@@ -124,6 +177,14 @@ const translations: Record<LanguageType, Record<string, string>> = {
     coworkErrorContentFiltered: '内容未通过安全审核，请修改后重试。',
     coworkErrorToolLoopBlocked:
       '检测到 AI 在重复执行同一个工具调用且没有新的进展（通常是在等待一个耗时较长的后台任务），本轮已被安全停止。后台任务可能仍在运行，可以继续发消息让 AI 接着处理。',
+    coworkErrorModelRoutedToPlan:
+      '当前任务选择的模型是「{requested}」，但 AI 引擎把它解析成了套餐模型「{resolved}」。为避免误用套餐额度，这条消息没有发送。请重新选择模型后重试；如果仍然出现，请重启 HeyClaw。',
+    coworkErrorRunUsedPlanModel:
+      '这一轮本应使用你选择的「{requested}」，但 AI 引擎实际调用了套餐模型「{actual}」并且失败了，所以出现了套餐相关的报错。请重新选择模型后重试；如果仍然出现，请重启 HeyClaw。',
+    coworkErrorOutputLimitReached:
+      '模型单次回复达到了输出长度上限，任务没有完成。可以继续发消息让它从中断处接着做；如果反复出现，可以让它分段完成，比如分批写入文件、用脚本生成大段数据。',
+    coworkErrorOutputLimitReachedWithSettings:
+      '模型单次回复达到了输出长度上限，任务没有完成。可以继续发消息让它从中断处接着做；如果反复出现，可以在模型设置中调大「最大输出 Token」，或让它分段完成，比如分批写入文件、用脚本生成大段数据。',
     coworkErrorServerError: '服务端出现错误，请稍后重试。',
     coworkErrorEngineNotReady: 'AI 引擎正在启动中，请稍等几秒后重试。',
     serverModelMetadataUnavailable: '套餐模型信息暂不可用，请刷新后重试。',
@@ -151,7 +212,6 @@ const translations: Record<LanguageType, Record<string, string>> = {
     coworkBtwSubmitFailed: '提交顺便问问失败。',
     coworkBtwNoPending: '找不到正在回答的顺便问问。',
     coworkBtwStopFailed: '停止顺便问问失败，请重试。',
-    imErrorPrefix: '处理消息时出错',
 
     // Exec approval continuation
     execApprovalApproved: '用户已确认执行该命令，请检查执行结果并继续。',
@@ -279,6 +339,10 @@ const translations: Record<LanguageType, Record<string, string>> = {
 
     // Weixin
     imWeixinNotEnabled: '微信渠道当前未启用。',
+    imWeixinQrSessionExpired: '本次微信扫码已结束，请重新获取二维码。',
+    imWeixinGatewayUnavailable: 'AI 引擎尚未连接，请启动引擎后重新扫码。',
+    imWeixinQrInvalidResponse: '未能获取有效的微信二维码，请重试；若持续失败，请更新应用。',
+    openClawConfigSyncFailed: 'AI 引擎配置同步失败，请重试。',
     imWeixinEnableSuggestion: '请启用微信渠道后重新测试连通性。',
     imWeixinConfigReady: '微信配置已就绪。',
     imWeixinOpenClawHint:
@@ -373,6 +437,33 @@ const translations: Record<LanguageType, Record<string, string>> = {
     'enterprise.updateBlocked': '版本更新由企业统一管理',
   },
   en: {
+    modelPresetBalanced: 'Fast',
+    modelPresetUltimate: 'Flagship',
+    modelPresetPricingHint: 'Weighted model selection stays fixed for this conversation. Credits are charged at the underlying model rate.',
+    modelPresetLoginRequired: 'Sign in to choose a model preset.',
+    modelPresetInvalidSession: 'Invalid chat model preset or session.',
+    modelPresetSessionBusy: 'Wait for the current reply to finish before switching models.',
+    modelPresetModelMismatch: 'The resolved model differs from your selection. Please select again.',
+    modelPresetAccountChanged: 'The account changed. Please select a model again.',
+
+    ...desktopCompanionTranslations.en,
+    ...mediaTranslations.en,
+    ...imageEditingTranslations.en,
+    openClawRepairCommandTimeout: 'Repair command {command} timed out after {seconds} seconds. Repair has stopped. Diagnostics: {path}',
+    openClawRepairCommandFailed: 'Repair command {command} did not complete. Diagnostics: {path}',
+    browserPasskeyChooseAccountTitle: 'Use a passkey',
+    browserPasskeyChooseAccountMessage: 'Choose an account to sign in to {site}',
+    browserPasskeyUnnamedAccount: 'Saved account',
+    browserPasskeyCancel: 'Cancel',
+    xaiAuthMigrationPending: 'Wait for the AI engine credential migration to finish before changing xAI login. If migration failed, repair the engine first.',
+    xaiAuthStoreFailed: 'Unable to access the xAI credential store. Check the AI engine status and retry.',
+    openClawStartupMigrationFailed: 'AI engine state migration failed: {error}',
+    openClawPluginVerificationFailed: 'AI engine plugin verification failed. Automatic restarts stopped. Fix the plugin error and retry:\n{error}',
+    openClawStartupMigrationRefused: 'AI engine startup migrations did not complete. Automatic restarts stopped. Handle the legacy data below, then restart the gateway:\n{error}',
+    openClawStartupCompatibilityRepairing: 'Backing up and repairing legacy gateway state…',
+    openClawDreamingStateRepairing: 'Backing up and handling legacy memory state…',
+    openClawRuntimeFilesMissing: 'AI engine runtime files are missing or unreadable. Startup has stopped. Quit the app and reinstall using the latest installer containing the fix, then try again.',
+    openClawLoopbackBlocked: 'Local connection self-test failed ({code}). AI engine startup is paused.',
     // DeepSeek Harness (experimental)
     dshWorkbenchTitle: 'DeepSeek Harness Workbench (Experimental)',
     dshPlanProviderName: 'Plan',
@@ -388,6 +479,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     // Quit confirmation (native dialog shown on user-initiated quit)
     appQuitConfirmTitle: 'Quit HeyClaw?',
     appQuitConfirmDetail: 'While HeyClaw is closed, scheduled tasks will not run and IM messages will not be answered.',
+    appQuitConfirmUnsafeMarkdown: 'Some document changes have not been saved or backed up. Quitting will lose these changes. Cancel and return to the document to save your changes.',
     appQuitConfirmQuit: 'Quit',
     appQuitConfirmCancel: 'Cancel',
     taskCompletionNotificationTitle: 'Task Complete',
@@ -415,9 +507,22 @@ const translations: Record<LanguageType, Record<string, string>> = {
     contextMenuCopy: 'Copy',
     contextMenuPaste: 'Paste',
     contextMenuSelectAll: 'Select All',
+    agentBrowserMenuScreenshot: 'Screenshot',
+    agentBrowserMenuNewBlankPage: 'Blank page',
+    agentBrowserMenuZoom: 'Zoom',
+    agentBrowserMenuZoomOut: 'Zoom out',
+    agentBrowserMenuResetZoom: 'Reset to 100%',
+    agentBrowserMenuZoomIn: 'Zoom in',
+    agentBrowserMenuClearCookies: 'Clear Cookie',
+    agentBrowserMenuClearCache: 'Clear cache',
+    agentBrowserMenuUnavailable: 'The browser window is unavailable.',
+    agentBrowserRuntimeUnavailable: 'The Agent browser is temporarily unavailable. Try again later.',
+    agentBrowserMenuOpenFailed: 'Failed to open the browser menu.',
+    agentBrowserZoomFailed: 'Failed to adjust browser zoom.',
 
     // Session titles
     coworkDefaultSessionTitle: 'New Chat',
+    coworkWorkspaceChangesTitle: 'Workspace changes',
     cronSessionPrefix: 'Cron',
     channelPrefixFeishu: 'Feishu',
     channelPrefixDingtalk: 'DingTalk',
@@ -426,15 +531,10 @@ const translations: Record<LanguageType, Record<string, string>> = {
     channelPrefixWeixin: 'WeChat',
     channelPrefixNeteaseBee: 'Xiaomifeng',
     channelPrefixEmail: 'Email',
-    // NIM chat type labels
-    nimQChat: 'QChat',
-    nimGroup: 'Group',
 
     // Timeout hint
     taskTimedOut:
       '[Task timed out] The task was automatically stopped because it exceeded the maximum allowed duration. You can continue the conversation to pick up where it left off.',
-    imSessionStoppedReply:
-      'The task was manually stopped. You can send a new message to start a fresh conversation.',
 
     // OAuth flow messages
     qwenOAuthRequestingDeviceCode: 'Requesting device authorization code...',
@@ -456,6 +556,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
 
     // Cowork error messages
     coworkErrorAuthInvalid: 'Invalid or expired API key. Please check your configuration.',
+    coworkErrorSubagentSummaryFailed: 'Subtasks finished, but the main agent could not resume the summary. Send a follow-up to retry.',
     coworkErrorLobsterAILoginExpired:
       'Your login session has expired. Sign in again to continue using HeyClaw plan models.',
     coworkErrorOAuthInvalid: 'OAuth authorization is invalid or missing required access. Re-authenticate and try again.',
@@ -464,8 +565,13 @@ const translations: Record<LanguageType, Record<string, string>> = {
       'Insufficient computing balance in your account. Please recharge to continue.',
     coworkErrorFreeQuotaExhausted:
       'Insufficient computing balance in your account. Please recharge to continue.',
+    coworkErrorEnterpriseMemberQuotaExhausted: 'The current team member period quota has been used up.',
+    coworkErrorEnterprisePoolExhausted: 'The current team credit pool has been used up.',
+    coworkErrorEnterpriseCreditBatchesExpired: 'All credit batches for the current team have expired.',
     coworkErrorInsufficientBalance:
       'Insufficient computing balance in your account. Please recharge to continue.',
+    coworkErrorModelServiceUnavailable: 'This model service is temporarily unavailable. Switch models or try again later.',
+    coworkErrorProviderCooldown: 'The model credentials are temporarily in cooldown. Try again later or switch providers.',
     coworkErrorIncompleteTurnWithTools:
       'AI response was interrupted (conversation context too long or model output ended abnormally). Some actions were executed. Please compact context or start a new task.',
     coworkErrorIncompleteTurn:
@@ -478,14 +584,20 @@ const translations: Record<LanguageType, Record<string, string>> = {
     coworkGatewaySessionSyncTimeout: 'The OpenClaw engine is responding slowly and your message has not been sent. Please wait a minute or two and resend. If this happens frequently, check system memory and disk usage, and add HeyClaw to your antivirus allowlist.',
     coworkErrorTranscriptOversized: 'This task history is too large. The message was not sent to protect the AI engine. Continue in a new task; the original task will be preserved.',
     coworkErrorGatewayHeapOutOfMemory: 'The local AI engine ran out of memory and is restarting automatically. This task may be too large; wait for recovery and continue in a new task.',
+    coworkErrorWorkspaceAliasRepointed: 'The AI engine could not verify the workspace folder because it was moved or replaced with a link to another location. The message was not sent. Restore the original folder or link and retry; if the problem continues, contact support with your logs.',
     coworkErrorGatewayDisconnected: 'AI engine connection lost. Please retry.',
     coworkErrorServiceRestart: 'AI engine is restarting. Please try again later.',
     coworkErrorGatewayDraining: 'AI engine is restarting. Please wait a moment and try again.',
     openClawConfigApplyPending: 'OpenClaw is applying configuration. Please try again shortly.',
+    openClawConfigApplyPendingForModel:
+      "The latest settings for the selected model haven't taken effect yet; they apply once the running tasks finish. Stop the running tasks, or send again later.",
     openClawConfigApplyOverdue:
       'OpenClaw is waiting for active tasks to finish before applying configuration. Complete or stop the active tasks, then try again.',
+    openClawConfigApplyStalled: 'The latest configuration still could not be applied to OpenClaw after restarting the gateway ({detail}).',
     coworkErrorModelResponseTimeout: 'The model response timed out. Please try again.',
     coworkErrorNetworkError: 'Network connection failed. Please check your network settings.',
+    coworkErrorNetworkErrorViaSystemProxy:
+      'The network connection was interrupted while going through your system proxy. In your proxy app, route {host} directly (DIRECT), or turn off "Use System Proxy" in Settings, then try again.',
     coworkErrorRateLimit:
       'Too many requests. Rate limit reached for this model. Switching to another model is recommended, or try again in 1-2 minutes.',
     coworkErrorRateLimitTpm:
@@ -496,6 +608,14 @@ const translations: Record<LanguageType, Record<string, string>> = {
       'Content did not pass the safety review. Please modify and try again.',
     coworkErrorToolLoopBlocked:
       'This turn was stopped safely because the AI kept repeating the same tool call with no new progress (usually while waiting on a slow background task). The background task may still be running — send another message to continue.',
+    coworkErrorModelRoutedToPlan:
+      'This task is set to {requested}, but the AI engine resolved it to the plan model {resolved}. The message was not sent, so your plan quota is not used by mistake. Reselect the model and try again; if this keeps happening, restart HeyClaw.',
+    coworkErrorRunUsedPlanModel:
+      'This turn should have used your selected model {requested}, but the AI engine called the plan model {actual} instead, and that call failed. That is why a plan error appeared. Reselect the model and try again; if this keeps happening, restart HeyClaw.',
+    coworkErrorOutputLimitReached:
+      'The model hit its output length limit before finishing this task. Send another message to let it continue where it stopped. If this keeps happening, ask it to work in smaller steps, such as writing files in batches or generating large data with a script.',
+    coworkErrorOutputLimitReachedWithSettings:
+      'The model hit its output length limit before finishing this task. Send another message to let it continue where it stopped. If this keeps happening, raise Max Output Tokens in the model settings, or ask it to work in smaller steps, such as writing files in batches or generating large data with a script.',
     coworkErrorServerError: 'Server error occurred. Please try again later.',
     coworkErrorEngineNotReady: 'AI engine is starting up. Please wait a few seconds and try again.',
     serverModelMetadataUnavailable:
@@ -528,7 +648,6 @@ const translations: Record<LanguageType, Record<string, string>> = {
     coworkBtwSubmitFailed: 'Failed to submit the BTW side question.',
     coworkBtwNoPending: 'No pending BTW side question was found.',
     coworkBtwStopFailed: 'Failed to stop the BTW side question. Please try again.',
-    imErrorPrefix: 'Error processing message',
 
     // Exec approval continuation
     execApprovalApproved:
@@ -680,6 +799,10 @@ const translations: Record<LanguageType, Record<string, string>> = {
 
     // Weixin
     imWeixinNotEnabled: 'WeChat channel is not currently enabled.',
+    imWeixinQrSessionExpired: 'This WeChat login session has ended. Please request a new QR code.',
+    imWeixinGatewayUnavailable: 'The AI engine is not connected. Start the engine and try scanning again.',
+    imWeixinQrInvalidResponse: 'Could not get a valid WeChat QR code. Try again; if this continues, update the app.',
+    openClawConfigSyncFailed: 'Failed to sync the AI engine configuration. Please try again.',
     imWeixinEnableSuggestion: 'Please enable the WeChat channel and test connectivity again.',
     imWeixinConfigReady: 'WeChat configuration is ready.',
     imWeixinOpenClawHint:

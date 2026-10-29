@@ -1,0 +1,26 @@
+diff --git a/src/agents/agent-tools.read.ts b/src/agents/agent-tools.read.ts
+index 5e7af9bf2c0..922f4693c02 100644
+--- a/src/agents/agent-tools.read.ts
++++ b/src/agents/agent-tools.read.ts
+@@ -1063,6 +1063,21 @@ export function createOpenClawReadTool(
+       assertRequiredParams(normalizedRecord, REQUIRED_PARAM_GROUPS.read, base.name);
+       const filePath =
+         typeof normalizedRecord?.path === "string" ? normalizedRecord.path : "<unknown>";
++
++      if (typeof normalizedRecord?.path === "string") {
++        const lastDotIdx = normalizedRecord.path.lastIndexOf(".");
++        if (lastDotIdx !== -1) {
++          const ext = normalizedRecord.path.slice(lastDotIdx).toLowerCase();
++          const blockedExtensions = [".xlsx", ".xls", ".pdf", ".zip", ".gz", ".tar", ".tgz", ".rar", ".7z"];
++          if (blockedExtensions.includes(ext)) {
++            throw new Error(
++              `Reading binary or formatted files directly via tool is prohibited. ` +
++              `Reading '${ext}' file raw bytes will output garbled content and break your context window. ` +
++              `Instead, you MUST write and execute a Python script to programmatically parse and extract the relevant content from this file (e.g., pandas/openpyxl for Excel, pypdf for PDF) and output only the text summary.`
++            );
++          }
++        }
++      }
+       const dailyMemoryPath =
+         process.platform === "win32" ? filePath.replace(/\\/g, "/") : filePath;
+       // Daily journals may not exist yet; let the concrete reader own filesystem errors.

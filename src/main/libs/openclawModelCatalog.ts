@@ -60,32 +60,50 @@ const BUILT_IN_MODEL_MAX_TOKENS = new Map<string, number>([
   ['minimax-portal/minimax-m2.7', 131_072],
   ['minimax-portal/minimax-m2.7-highspeed', 131_072],
   ['minimax-portal/minimax-m2.5', 131_072],
-  ['minimax-portal/minimax-m2.5-highspeed', 131_072],
-  ['openai/deepseek-v4-flash', 32_768],
-  ['openai/deepseek-v4-pro', 32_768],
-  ['deepseek/deepseek-v4-flash', 32_768],
-  ['deepseek/deepseek-v4-pro', 32_768],
-  ['volcengine/deepseek-v4-flash', 32_768],
-  ['volcengine/deepseek-v4-pro', 32_768],
-  ['volcengine/doubao-seed-2.0-lite', 32_768],
-  ['volcengine/doubao-seed-2.0-mini', 32_768],
-  ['volcengine/doubao-seed-2.0-pro', 32_768],
-  ['openai/doubao-seed-2.0-lite', 32_768],
-  ['openai/doubao-seed-2.0-mini', 32_768],
-  ['openai/doubao-seed-2.0-pro', 32_768],
-  ['openai/glm-5.2', 65_536],
-  ['openai/glm-5.3-flash', 65_536],
-  ['openai/glm-5', 65_536],
-  ['openai/glm-4-plus', 65_536],
-  ['openai/glm-4.7', 65_536],
-  ['zhipu/glm-5.2', 65_536],
-  ['zhipu/glm-5.3-flash', 65_536],
-  ['zhipu/glm-5', 65_536],
-  ['zhipu/glm-4-plus', 65_536],
-  ['zhipu/glm-4.7', 65_536],
-  ['volcengine/glm-5.2', 65_536],
-  ['volcengine/glm-5.3-flash', 65_536],
-  ['volcengine/glm-5', 65_536],
+  // Moonshot / Kimi K3 & K3.1 系列（最大输出 1024k）
+  ['moonshot/kimi-k3.1-pro', 1_048_576],
+  ['moonshot/kimi-k3.1', 1_048_576],
+  ['moonshot/kimi-k3', 1_048_576],
+  ['openai/kimi-k3.1-pro', 1_048_576],
+  ['openai/kimi-k3.1', 1_048_576],
+  ['openai/kimi-k3', 1_048_576],
+  // DeepSeek 系列（最大输出 393,216）
+  ['openai/deepseek-v4-flash', 393_216],
+  ['openai/deepseek-v4.1-flash', 393_216],
+  ['openai/deepseek-v4-pro', 393_216],
+  ['deepseek/deepseek-v4-flash', 393_216],
+  ['deepseek/deepseek-v4.1-flash', 393_216],
+  ['deepseek/deepseek-v4-pro', 393_216],
+  ['volcengine/deepseek-v4-flash', 393_216],
+  ['volcengine/deepseek-v4.1-flash', 393_216],
+  ['volcengine/deepseek-v4-pro', 393_216],
+  // Doubao-Seed 2.1 & 2.0 系列（最大输出 256k / 262,144）
+  ['volcengine/doubao-seed-2.1-pro', 262_144],
+  ['volcengine/doubao-seed-2.1-turbo', 262_144],
+  ['volcengine/doubao-seed-2.1-lite', 262_144],
+  ['volcengine/doubao-seed-2.0-pro', 262_144],
+  ['volcengine/doubao-seed-2.0-lite', 262_144],
+  ['volcengine/doubao-seed-2.0-mini', 262_144],
+  ['openai/doubao-seed-2.1-pro', 262_144],
+  ['openai/doubao-seed-2.1-turbo', 262_144],
+  ['openai/doubao-seed-2.1-lite', 262_144],
+  ['openai/doubao-seed-2.0-pro', 262_144],
+  ['openai/doubao-seed-2.0-lite', 262_144],
+  ['openai/doubao-seed-2.0-mini', 262_144],
+  // GLM 系列（最大输出 131,072）
+  ['openai/glm-5.2', 131_072],
+  ['openai/glm-5.3-flash', 131_072],
+  ['openai/glm-5', 131_072],
+  ['openai/glm-4-plus', 131_072],
+  ['openai/glm-4.7', 131_072],
+  ['zhipu/glm-5.2', 131_072],
+  ['zhipu/glm-5.3-flash', 131_072],
+  ['zhipu/glm-5', 131_072],
+  ['zhipu/glm-4-plus', 131_072],
+  ['zhipu/glm-4.7', 131_072],
+  ['volcengine/glm-5.2', 131_072],
+  ['volcengine/glm-5.3-flash', 131_072],
+  ['volcengine/glm-5', 131_072],
 ]);
 
 const BUILT_IN_PROVIDER_ALIASES = new Map<string, string>([
@@ -282,7 +300,12 @@ const indexProviderCatalogBuilders = (
 
     let providerConfig: OpenClawCatalogProvider | undefined;
     try {
-      providerConfig = exported(process.env) as OpenClawCatalogProvider;
+      const candidate = exported(process.env);
+      if (candidate && typeof (candidate as Promise<unknown>).catch === 'function') {
+        (candidate as Promise<unknown>).catch(() => {});
+        continue;
+      }
+      providerConfig = candidate as OpenClawCatalogProvider;
     } catch {
       continue;
     }

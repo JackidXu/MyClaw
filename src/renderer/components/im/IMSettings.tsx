@@ -25,6 +25,7 @@ import Modal from '../common/Modal';
 import ComposeIcon from '../icons/ComposeIcon';
 import EditIcon from '../icons/EditIcon';
 import TrashIcon from '../icons/TrashIcon';
+import { SETTINGS_ITEM_TITLE_TEXT, SETTINGS_SECTION_TITLE_TEXT } from '../settings/settingsTypography';
 import DingTalkInstanceSettings from './DingTalkInstanceSettings';
 import DiscordInstanceSettings from './DiscordInstanceSettings';
 import FeishuInstanceSettings from './FeishuInstanceSettings';
@@ -435,6 +436,7 @@ const IMSettings: React.FC = () => {
   const [weixinAllowFromInput, setWeixinAllowFromInput] = useState<string>('');
   const [isWeixinDmPolicyMenuOpen, setIsWeixinDmPolicyMenuOpen] = useState(false);
   const weixinTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const weixinLoginRequestRef = useRef(0);
   const weixinDmPolicyMenuRef = useRef<HTMLDivElement>(null);
   const [_localIp, setLocalIp] = useState<string>('');
   const isMountedRef = useRef(true);
@@ -755,11 +757,13 @@ const IMSettings: React.FC = () => {
   };
 
   const handleWeixinQrLogin = async () => {
+    const requestId = ++weixinLoginRequestRef.current;
+    const isCurrentRequest = () => isMountedRef.current && requestId === weixinLoginRequestRef.current;
     setWeixinQrStatus('loading');
     setWeixinQrError('');
     try {
       const startResult = await window.electron.im.weixinQrLoginStart();
-      if (!isMountedRef.current) return;
+      if (!isCurrentRequest()) return;
 
       if (!startResult.success || !startResult.qrDataUrl) {
         setWeixinQrStatus('error');
@@ -767,18 +771,20 @@ const IMSettings: React.FC = () => {
         return;
       }
 
-      setWeixinQrUrl(startResult.qrDataUrl);
-      setWeixinQrStatus('showing');
       if (!startResult.sessionKey) {
         setWeixinQrStatus('error');
-        setWeixinQrError(i18nService.t('imWeixinQrFailed'));
+        setWeixinQrError(i18nService.t('imWeixinQrInvalidResponse'));
         return;
       }
+      setWeixinQrUrl(startResult.qrDataUrl);
+      setWeixinQrStatus('showing');
+      // Starting a rescan may have stopped the previous channel connection.
+      void imService.loadStatus();
 
       // QR expires in ~2 minutes. Show error and let user retry.
       if (weixinTimerRef.current) clearTimeout(weixinTimerRef.current);
       weixinTimerRef.current = setTimeout(() => {
-        if (!isMountedRef.current) return;
+        if (!isCurrentRequest()) return;
         setWeixinQrStatus('error');
         setWeixinQrError(i18nService.t('imWeixinQrExpired'));
       }, 120000);
@@ -786,8 +792,8 @@ const IMSettings: React.FC = () => {
       // Start polling for scan result
       setWeixinQrStatus('waiting');
       const waitResult = await window.electron.im.weixinQrLoginWait(startResult.sessionKey);
+      if (!isCurrentRequest()) return;
       if (weixinTimerRef.current) { clearTimeout(weixinTimerRef.current); weixinTimerRef.current = null; }
-      if (!isMountedRef.current) return;
 
       if (waitResult.success && (waitResult.connected || waitResult.alreadyConnected)) {
         const accountId = waitResult.accountId || weixinAccountId;
@@ -805,10 +811,13 @@ const IMSettings: React.FC = () => {
         setWeixinQrError(waitResult.message || i18nService.t('imWeixinQrFailed'));
       }
     } catch (err) {
+      if (!isCurrentRequest()) return;
       if (weixinTimerRef.current) { clearTimeout(weixinTimerRef.current); weixinTimerRef.current = null; }
-      if (!isMountedRef.current) return;
       setWeixinQrStatus('error');
       setWeixinQrError(String(err));
+    } finally {
+      // A failed rescan and the existing account's connection are independent.
+      if (isCurrentRequest()) await imService.loadStatus();
     }
   };
 
@@ -1472,15 +1481,9 @@ const IMSettings: React.FC = () => {
 
     const isEnabled = isPlatformEnabled(platform);
 
-    // For NIM, skip the frontend stop/start cycle entirely.
-    // The backend's testNimConnectivity already manages the SDK lifecycle
-    // (stop main → probe with temp instance → restart main) under a mutex,
-    // so doing stop/start here would cause a race condition and potential crash.
-    // When the gateway is OFF we skip stop/start entirely.
-    // The main process testGateway → runAuthProbe will spawn an isolated
-    // temporary NimGateway (for NIM) or use stateless HTTP calls for other
-    // platforms, so no historical messages are ingested and the main
-    // gateway state is never touched.
+    // Skip the frontend stop/start cycle: the main process testGateway only
+    // validates config or makes stateless auth probes, so no historical
+    // messages are ingested and the running OpenClaw channel is never touched.
 
     // Run connectivity test (always passes configOverride so the backend uses
     // the latest unsaved credential values from the form).
@@ -1873,7 +1876,7 @@ const IMSettings: React.FC = () => {
         <div className="flex items-center gap-3 border-b border-border-subtle pb-4">
           <div className="flex min-w-0 items-center gap-3">
             <div className="min-w-0">
-              <h3 className="truncate text-[15px] font-medium leading-5 text-foreground">
+              <h3 className={`truncate ${SETTINGS_SECTION_TITLE_TEXT} font-semibold text-foreground`}>
                 {i18nService.t('imChannelBotsTitle').replace('{platform}', i18nService.t(platform))}
               </h3>
               <p className="mt-0.5 whitespace-nowrap text-xs text-green-600 dark:text-green-400">
@@ -1988,11 +1991,11 @@ const IMSettings: React.FC = () => {
                           }
                         }}
                         onBlur={() => void finishRenamingInstanceFromCard(platform, instance)}
-                        className="block w-full rounded-md border border-primary/50 bg-surface px-1.5 py-0.5 text-sm font-medium leading-5 text-foreground outline-none"
+                        className={`block w-full rounded-md border border-primary/50 bg-surface px-1.5 py-0.5 ${SETTINGS_ITEM_TITLE_TEXT} font-medium text-foreground outline-none`}
                         autoFocus
                       />
                     ) : (
-                      <div className="truncate text-sm font-medium leading-5 text-foreground">
+                      <div className={`truncate ${SETTINGS_ITEM_TITLE_TEXT} font-medium text-foreground`}>
                         {instance.instanceName}
                       </div>
                     )}
@@ -2042,7 +2045,7 @@ const IMSettings: React.FC = () => {
               <span className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-raised">
                 <PlusIcon className="h-4 w-4" />
               </span>
-              <span className="mt-2 text-sm font-medium">
+              <span className={`mt-2 ${SETTINGS_ITEM_TITLE_TEXT} font-medium`}>
                 {i18nService.t('imAddBot')}
               </span>
             </button>
@@ -2107,7 +2110,7 @@ const IMSettings: React.FC = () => {
               </div>
               <div className="min-w-0 flex-1">
                 <span className="flex min-w-0 items-center gap-1.5">
-                  <span className="truncate text-[14px] font-normal leading-5 text-foreground/80">
+                  <span className={`truncate ${SETTINGS_ITEM_TITLE_TEXT} font-normal text-foreground/80`}>
                     {i18nService.t(platform)}
                   </span>
                   {statusDotClass && (
@@ -2143,7 +2146,7 @@ const IMSettings: React.FC = () => {
         {(activePlatform === 'weixin' || activePlatform === 'netease-bee') && (
           <div className="flex items-center gap-3 border-b border-border-subtle pb-4">
             <div className="flex items-center gap-2">
-              <h3 className="text-sm font-medium text-foreground">
+              <h3 className={`${SETTINGS_SECTION_TITLE_TEXT} font-semibold text-foreground`}>
                 {`${i18nService.t(activePlatform)}${i18nService.t('settings')}`}
               </h3>
             </div>
@@ -2324,7 +2327,7 @@ const IMSettings: React.FC = () => {
               <div className="flex items-center gap-3 pb-3 border-b border-border-subtle">
                 <div className="flex items-center gap-2 flex-1 min-w-0">
                   {renderBackToInstanceList('email')}
-                  <h3 className="text-sm font-medium text-foreground truncate">{inst.instanceName}</h3>
+                  <h3 className={`${SETTINGS_SECTION_TITLE_TEXT} font-semibold text-foreground truncate`}>{inst.instanceName}</h3>
                 </div>
 
                 {/* Status badge */}
@@ -2900,7 +2903,10 @@ const IMSettings: React.FC = () => {
                     {weixinQrStatus === 'error' && weixinQrError && (
                       <div className="flex items-center justify-center gap-1.5 text-xs text-red-500 bg-red-500/10 px-3 py-2 rounded-lg">
                         <XCircleIcon className="h-4 w-4 flex-shrink-0" />
-                        {weixinQrError}
+                        <span>
+                          {i18nService.t('imWeixinQrFailed')}
+                          {weixinQrError !== i18nService.t('imWeixinQrFailed') && `: ${weixinQrError}`}
+                        </span>
                       </div>
                     )}
                   </>

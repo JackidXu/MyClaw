@@ -19,6 +19,7 @@ export const LOBSTERAI_CLIENT_VERSION_HEADER = 'X-LobsterAI-Client-Version';
 export const KIMI_K3_AGENTIC_CAPABILITY = 'kimi-k3-agentic-v1';
 export const THINKING_LEVEL_CONTROL_CAPABILITY = 'thinking-level-control-v1';
 export const LOBSTERAI_CLIENT_CAPABILITIES = [
+  'virtual-models-v1',
   KIMI_K3_AGENTIC_CAPABILITY,
   THINKING_LEVEL_CONTROL_CAPABILITY,
 ].join(',');
@@ -36,7 +37,7 @@ export const KIMI_K3_RUNTIME_PROFILE = {
   reasoning: true,
   input: ['text', 'image', 'video'],
   contextWindow: 1_048_576,
-  maxTokens: 8_192,
+  maxTokens: 1_048_576,
   thinkingLevelMap: {
     off: null as null,
     minimal: 'max',

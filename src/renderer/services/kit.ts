@@ -1,79 +1,93 @@
-import type { InstalledKit, KitCategory, MarketplaceKit } from '../types/kit';
+import type { InstalledKit, MarketplaceKit } from '../types/kit';
+
+const MARKETPLACE_CACHE_TTL_MS = 5 * 60 * 1000;
+
+export interface MarketplaceKitCatalog {
+  kits: MarketplaceKit[];
+  error: string | null;
+}
+
+function parseMarketplaceKits(data: string): MarketplaceKit[] {
+  const parsed = JSON.parse(data);
+  const rawValue = parsed?.data?.value;
+  const value = typeof rawValue === 'string' ? JSON.parse(rawValue) : rawValue;
+  if (!Array.isArray(value?.kits)) {
+    throw new Error('Unexpected kit store response structure');
+  }
+  return value.kits;
+}
 
 class KitService {
   private marketplaceCache: MarketplaceKit[] | null = null;
-  private categoriesCache: KitCategory[] | null = null;
-  private fetchPromise: Promise<{ kits: MarketplaceKit[]; categories: KitCategory[] }> | null = null;
+  private cacheExpiresAt = 0;
+  private fetchPromise: Promise<MarketplaceKitCatalog> | null = null;
 
-  async fetchMarketplaceKits(): Promise<MarketplaceKit[]> {
-    if (this.marketplaceCache) {
-      return this.marketplaceCache;
-    }
-    await this.fetchStoreData();
-    return this.marketplaceCache ?? [];
+  async fetchMarketplaceKits(options: { forceRefresh?: boolean } = {}): Promise<MarketplaceKit[]> {
+    return (await this.fetchMarketplaceCatalog(options)).kits;
   }
 
-  async fetchMarketplaceCategories(): Promise<KitCategory[]> {
-    if (this.categoriesCache) {
-      return this.categoriesCache;
-    }
-    await this.fetchStoreData();
-    return this.categoriesCache ?? [];
-  }
-
-  private async fetchStoreData(): Promise<void> {
+  async fetchMarketplaceCatalog(
+    options: { forceRefresh?: boolean } = {},
+  ): Promise<MarketplaceKitCatalog> {
     if (this.fetchPromise) {
-      await this.fetchPromise;
-      return;
+      const result = await this.fetchPromise;
+      // A reconnect can arrive while the old request is still timing out.
+      // After that failure, share one new request with any other retry callers.
+      return options.forceRefresh && result.error
+        ? this.fetchMarketplaceCatalog()
+        : result;
     }
-    this.fetchPromise = this.loadMarketplaceData();
-    await this.fetchPromise;
-    this.fetchPromise = null;
+    if (!options.forceRefresh && this.marketplaceCache && Date.now() < this.cacheExpiresAt) {
+      return { kits: this.marketplaceCache, error: null };
+    }
+    const request = this.loadMarketplaceCatalog().finally(() => {
+      this.fetchPromise = null;
+    });
+    this.fetchPromise = request;
+    return request;
   }
 
-  private async loadMarketplaceData(): Promise<{ kits: MarketplaceKit[]; categories: KitCategory[] }> {
+  private unavailableCatalog(error: string, fallbackKits: MarketplaceKit[] = []): MarketplaceKitCatalog {
+    this.cacheExpiresAt = 0;
+    return {
+      kits: Array.from(new Map(
+        [...(this.marketplaceCache ?? []), ...fallbackKits].map(kit => [kit.id, kit]),
+      ).values()),
+      error,
+    };
+  }
+
+  private async loadMarketplaceCatalog(): Promise<MarketplaceKitCatalog> {
     try {
       const result = await window.electron.kits.fetchStore();
-      if (!result.success || !result.data) {
+      if (!result.success) {
         console.warn('[KitService] Failed to fetch kit store:', result.error);
-        return { kits: [], categories: [] };
+        return this.unavailableCatalog(
+          result.error,
+          result.data ? parseMarketplaceKits(result.data) : [],
+        );
       }
-
-      const parsed = JSON.parse(result.data);
-      // overmind response: { data: { value: { ... } } }
-      const value = parsed?.data?.value;
-      if (!value) {
-        console.warn('[KitService] Unexpected kit store response structure');
-        return { kits: [], categories: [] };
-      }
-
-      const local = (value.localKit || []).map((k: any) => ({ ...k, _type: 'localKit' as const }));
-      const market = (value.marketplace || []).map((k: any) => ({ ...k, _type: 'marketplace' as const }));
-      const kits = [...local, ...market];
-
-      const categories: KitCategory[] = value.categories ?? [];
+      const kits = parseMarketplaceKits(result.data);
       this.marketplaceCache = kits;
-      this.categoriesCache = categories;
-      return { kits, categories };
+      this.cacheExpiresAt = Date.now() + MARKETPLACE_CACHE_TTL_MS;
+      return { kits, error: null };
     } catch (error) {
       console.error('[KitService] Error loading marketplace kits:', error);
-      return { kits: [], categories: [] };
+      return this.unavailableCatalog(error instanceof Error ? error.message : 'Failed to fetch kit store');
     }
   }
 
   async installKit(kit: MarketplaceKit): Promise<{ success: boolean; error?: string }> {
-    const isLocal = kit._type === 'localKit';
-
-    if (!isLocal && !kit.skills?.bundle) {
+    if (!kit.skills?.bundle) {
       return { success: false, error: 'Kit has no skill bundle URL' };
     }
 
     const result = await window.electron.kits.install({
       kitId: kit.id,
-      bundleUrl: isLocal ? '' : (kit.skills?.bundle || ''),
+      bundleUrl: kit.skills.bundle,
       version: kit.version ?? '0.0.0',
-      skillListIds: (kit.skills?.list || []).map(s => s.id),
-      skillList: kit.skills?.list || [],
+      skillListIds: kit.skills.list.map(s => s.id),
+      skillList: kit.skills.list,
       mcpServers: kit.mcpServers ?? null,
       connectors: kit.connectors ?? null,
     });
@@ -95,6 +109,7 @@ class KitService {
 
   clearCache(): void {
     this.marketplaceCache = null;
+    this.cacheExpiresAt = 0;
   }
 }
 

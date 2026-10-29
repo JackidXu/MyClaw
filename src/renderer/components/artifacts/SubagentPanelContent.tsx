@@ -4,7 +4,7 @@ import { useSelector } from 'react-redux';
 
 import { i18nService } from '@/services/i18n';
 import type { RootState } from '@/store';
-import type { CoworkMessage, SubagentSessionSummary } from '@/types/cowork';
+import { type CoworkMessage, SubagentSessionStatus, type SubagentSessionSummary } from '@/types/cowork';
 import { getSubagentDisplayInitial, getSubagentDisplayName } from '@/utils/subagentDisplay';
 
 import ConversationTurnsView from '../cowork/ConversationTurnsView';
@@ -32,24 +32,30 @@ const formatDuration = (createdAt: number, endedAt: number | null): string => {
 };
 
 const getSubagentStatusLabel = (status: SubagentSessionSummary['status']): string => {
-  if (status === 'done') return i18nService.t('subagentCompleted');
-  if (status === 'error') return i18nService.t('subagentError');
-  return i18nService.t('subagentWorking');
+  if (status === SubagentSessionStatus.Done) return i18nService.t('subagentCompleted');
+  if (status === SubagentSessionStatus.Error) return i18nService.t('subagentError');
+  return i18nService.t('subagentPanelRunning');
 };
 
-const SubagentStatusDot: React.FC<{ status: SubagentSessionSummary['status'] }> = ({ status }) => (
+const SubagentStatusBadge: React.FC<{ status: SubagentSessionStatus }> = ({ status }) => (
   <span
-    className={`h-2 w-2 shrink-0 rounded-full ${
-      status === 'running'
-        ? 'animate-pulse bg-blue-500'
-        : status === 'error'
-          ? 'bg-red-500'
-          : 'bg-green-500'
+    className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-1 text-xs ${
+      status === SubagentSessionStatus.Running
+        ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
+        : status === SubagentSessionStatus.Error
+          ? 'bg-red-500/10 text-red-600 dark:text-red-400'
+          : 'bg-green-500/10 text-green-700 dark:text-green-400'
     }`}
-  />
+  >
+    <span
+      className={`h-1.5 w-1.5 shrink-0 rounded-full bg-current ${status === SubagentSessionStatus.Running ? 'animate-pulse' : ''}`}
+      aria-hidden="true"
+    />
+    {getSubagentStatusLabel(status)}
+  </span>
 );
 
-const SubagentPanelRow: React.FC<{
+export const SubagentPanelRow: React.FC<{
   subagent: SubagentSessionSummary;
   agents: RootState['agent']['agents'];
   onSelectSubagent: (subagent: SubagentSessionSummary) => void;
@@ -57,7 +63,7 @@ const SubagentPanelRow: React.FC<{
   const displayName = getSubagentDisplayName(subagent, agents);
   const duration = formatDuration(
     subagent.createdAt,
-    subagent.status === 'running' ? null : subagent.endedAt,
+    subagent.status === SubagentSessionStatus.Running ? null : subagent.endedAt,
   );
 
   return (
@@ -72,7 +78,6 @@ const SubagentPanelRow: React.FC<{
       <span className="min-w-0 flex-1">
         <span className="flex min-w-0 items-center gap-2">
           <span className="truncate text-sm font-medium text-foreground">{displayName}</span>
-          <SubagentStatusDot status={subagent.status} />
         </span>
         {subagent.status === 'error' && subagent.error ? (
           <span className="mt-0.5 block truncate text-xs text-red-500/90" title={subagent.error}>
@@ -84,8 +89,11 @@ const SubagentPanelRow: React.FC<{
           </span>
         ) : null}
       </span>
-      <span className="shrink-0 text-xs text-muted">
-        {subagent.status === 'running' ? i18nService.t('subagentWorking') : duration}
+      <span className="flex shrink-0 flex-col items-end gap-1">
+        <SubagentStatusBadge status={subagent.status} />
+        {subagent.status !== SubagentSessionStatus.Running && (
+          <span className="text-xs text-muted">{duration}</span>
+        )}
       </span>
     </button>
   );
@@ -147,7 +155,7 @@ const SubagentDetailContent: React.FC<{
   }, [fetchHistory, fetchStatus, subagent.error, subagent.id, subagent.status]);
 
   useEffect(() => {
-    if (status !== 'running') return undefined;
+    if (status !== SubagentSessionStatus.Running) return undefined;
     const timer = window.setInterval(() => {
       void fetchHistory();
       void fetchStatus();
@@ -196,10 +204,7 @@ const SubagentDetailContent: React.FC<{
             <div className="truncate text-xs text-secondary">{subagent.task}</div>
           )}
         </div>
-        <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-surface px-2 py-1 text-xs text-secondary">
-          <SubagentStatusDot status={status} />
-          <span>{getSubagentStatusLabel(status)}</span>
-        </span>
+        <SubagentStatusBadge status={status} />
       </div>
       {status === 'error' && errorMessage && (
         <div className="mx-3 mt-2 flex items-start gap-2 rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2 text-xs text-red-500">
@@ -215,7 +220,7 @@ const SubagentDetailContent: React.FC<{
         ) : (
           <ConversationTurnsView
             messages={effectiveMessages}
-            isStreaming={status === 'running'}
+            isStreaming={status === SubagentSessionStatus.Running}
             readOnly
             className="py-2"
           />
@@ -263,9 +268,9 @@ const SubagentPanelContent: React.FC<SubagentPanelContentProps> = ({
 }) => {
   const agents = useSelector((state: RootState) => state.agent.agents);
   const grouped = useMemo(() => ({
-    running: subagents.filter(subagent => subagent.status === 'running'),
-    done: subagents.filter(subagent => subagent.status === 'done'),
-    error: subagents.filter(subagent => subagent.status === 'error'),
+    running: subagents.filter(subagent => subagent.status === SubagentSessionStatus.Running),
+    done: subagents.filter(subagent => subagent.status === SubagentSessionStatus.Done),
+    error: subagents.filter(subagent => subagent.status === SubagentSessionStatus.Error),
   }), [subagents]);
 
   if (selectedSubagent) {

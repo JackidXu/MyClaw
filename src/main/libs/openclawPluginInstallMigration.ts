@@ -4,7 +4,7 @@ import path from 'path';
 
 import { safelyReplaceTextFileSync } from './safeFileReplace';
 
-const LEGACY_PLUGIN_INSTALL_CONFIG_PATH = 'plugins.installs';
+export const LEGACY_PLUGIN_INSTALL_CONFIG_PATH = 'plugins.installs';
 const LEGACY_PLUGIN_INSTALL_MIGRATION_TIMEOUT_MS = 2 * 60_000;
 const PROCESS_KILL_GRACE_MS = 2_000;
 const PROCESS_OUTPUT_TAIL_LIMIT = 4_000;
@@ -142,7 +142,7 @@ export const hasLegacyPluginInstallConfig = (raw: string): boolean => (
   inspectLegacyPluginInstallConfig(raw).hasLegacyInstalls
 );
 
-const resolveOpenClawCliPath = (runtimeRoot: string): string | null => {
+export const resolveOpenClawCliPath = (runtimeRoot: string): string | null => {
   const candidates = [
     path.join(runtimeRoot, 'openclaw.mjs'),
     path.join(runtimeRoot, 'gateway.asar', 'openclaw.mjs'),

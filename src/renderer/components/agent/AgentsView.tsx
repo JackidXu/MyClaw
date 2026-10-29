@@ -6,6 +6,7 @@ import { agentService } from '../../services/agent';
 import { i18nService } from '../../services/i18n';
 import type { RootState } from '../../store';
 import type { PresetAgent } from '../../types/agent';
+import { usesManagedPresetAvatar } from '../../utils/agentDisplay';
 import ComposeIcon from '../icons/ComposeIcon';
 import SidebarToggleIcon from '../icons/SidebarToggleIcon';
 import AgentAvatarIcon from './AgentAvatarIcon';
@@ -107,7 +108,8 @@ const AgentsView: React.FC<AgentsViewProps> = ({
                 {presetAgents.map((agent) => (
                   <AgentCard
                     key={agent.id}
-                    icon={agent.avatar || ''}
+                    expertFallback={usesManagedPresetAvatar(agent)}
+                    icon={agent.avatar || agent.icon || ''}
                     name={agent.name}
                     description={agent.description}
                     isActive={agent.id === currentAgentId}
@@ -184,11 +186,12 @@ const AgentsView: React.FC<AgentsViewProps> = ({
 
 const AgentCard: React.FC<{
   icon: string;
+  expertFallback?: boolean;
   name: string;
   description: string;
   isActive: boolean;
   onClick: () => void;
-}> = ({ icon, name, description, isActive, onClick }) => (
+}> = ({ icon, expertFallback, name, description, isActive, onClick }) => (
   <button
     type="button"
     onClick={onClick}
@@ -200,7 +203,8 @@ const AgentCard: React.FC<{
   >
     <div className="w-14 h-14 rounded-2xl overflow-hidden flex items-center justify-center bg-slate-100 dark:bg-zinc-800">
       <AgentAvatarIcon
-        avatar={icon}
+        value={icon}
+        expertFallback={expertFallback}
         className="w-full h-full rounded-2xl object-cover group-hover:scale-105 transition-transform duration-300"
       />
     </div>
@@ -229,7 +233,8 @@ const UninstalledPresetCard: React.FC<{
   <div className="group flex flex-col items-start gap-3 p-4 rounded-2xl border-2 border-dashed border-border opacity-70 hover:opacity-100 transition-all min-h-[160px] bg-surface/50">
     <div className="w-14 h-14 rounded-2xl overflow-hidden flex items-center justify-center bg-slate-100 dark:bg-zinc-800">
       <AgentAvatarIcon
-        avatar={icon}
+        value={icon}
+        expertFallback
         className="w-full h-full rounded-2xl object-cover"
       />
     </div>

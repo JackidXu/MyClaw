@@ -1,0 +1,26 @@
+diff --git a/src/agents/failover/message-patterns.ts b/src/agents/failover/message-patterns.ts
+index dda3f9ef514..894cb3a2944 100644
+--- a/src/agents/failover/message-patterns.ts
++++ b/src/agents/failover/message-patterns.ts
+@@ -99,10 +99,6 @@ const ERROR_PATTERNS = {
+     "请求过于频繁",
+     "调用频率",
+     "频率限制",
+-    "配额不足",
+-    "配额已用尽",
+-    "额度不足",
+-    "额度已用尽",
+   ],
+   overloaded: [
+     /overloaded_error|"type"\s*:\s*"overloaded_error"/i,
+@@ -237,6 +233,10 @@ const ERROR_PATTERNS = {
+     "账户余额不足",
+     "欠费",
+     "账户已欠费",
++    "配额不足",
++    "配额已用尽",
++    "额度不足",
++    "额度已用尽",
+     // Volcengine Coding Plan entitlement failure. Official Ark error code:
+     // HTTP 400 + InvalidSubscription means the plan is missing or expired.
+     VOLCENGINE_INVALID_SUBSCRIPTION_RE,

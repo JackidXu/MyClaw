@@ -8,7 +8,9 @@ import {
 } from '@heroicons/react/24/outline';
 import { PublishingRecoveryAnalyticsSurface } from '@shared/analytics/constants';
 import { ArtifactBrowserPartition } from '@shared/artifactPreview/constants';
+import { isWorkspaceDiffArtifact } from '@shared/artifactPreview/workspaceChanges';
 import { AuthSubscriptionStatus } from '@shared/auth/constants';
+import { buildBrowserSearchUrl } from '@shared/browserWebAccess/constants';
 import {
   BrowserAnnotationGuestChannel,
   BrowserAnnotationGuestCommandType,
@@ -73,6 +75,8 @@ import {
   readLocalServiceProjectDirectoryCandidate as readNodeDeploymentProjectDirectoryCandidate,
   writeLocalServiceProjectDirectory as writeNodeDeploymentProjectDirectory,
 } from '@/services/localServiceProjectDirectoryCache';
+import { getMarkdownDocumentContent } from '@/services/markdownDocument';
+import { refreshOpenOfficeEditor } from '@/services/office/officeFormats';
 import {
   armPublishingSubscriptionRecovery,
   PublishingSubscriptionRecoveryRefreshOutcome,
@@ -112,6 +116,7 @@ import ServiceDeploymentIcon from '../icons/ServiceDeploymentIcon';
 import {
   ArtifactPreviewActionSource,
   ArtifactPublishEntryPoint,
+  ArtifactRefreshTrigger,
   getArtifactBrowserUrlType,
   reportArtifactPreviewAction,
 } from './artifactAnalytics';
@@ -209,12 +214,11 @@ import {
   PublishingTrialStatus,
   usePublishingTrialStatus,
 } from './PublishingTrialStatus';
-import CodeRenderer from './renderers/CodeRenderer';
 import {
   OfficePreviewActionsContext,
   type OfficePreviewZoomControlsConfig,
-} from './renderers/OfficePreviewActionsContext';
-import { OfficeZoomControls } from './renderers/OfficeZoomControls';
+} from './renderers/office/common/OfficePreviewActionsContext';
+import { OfficeZoomControls } from './renderers/office/common/OfficeZoomControls';
 import { usePublishingRecoveryExposureLifecycle } from './usePublishingRecoveryExposureLifecycle';
 
 const t = (key: string) => i18nService.t(key);
@@ -1626,9 +1630,12 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
   }, [closeFileListDrawer, selectedArtifact]);
 
   useEffect(() => {
-    closeFileListDrawer();
     setIsArtifactActionsMenuOpen(false);
-  }, [activePreviewTab?.id, closeFileListDrawer]);
+  }, [activePreviewTab?.id]);
+
+  useEffect(() => {
+    closeFileListDrawer();
+  }, [sessionId, closeFileListDrawer]);
 
   useEffect(() => {
     if (!isArtifactActionsMenuOpen) return;
@@ -1686,10 +1693,11 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
     };
   }, [closeFileListDrawer, showFileListDrawer]);
 
-  // Auto-refresh when the previewed file changes on disk
+  // Auto-refresh when the previewed file changes on disk. Markdown is left out: EditableMarkdownFile
+  // polls and version-checks its file itself, and a watch would re-read it after each autosave.
   useEffect(() => {
     const filePath = selectedArtifact?.filePath;
-    if (!filePath) return;
+    if (!filePath || selectedArtifact?.type === ArtifactTypeValue.Markdown) return;
 
     let cleanup: (() => void) | undefined;
     let watchedPath: string | null = null;
@@ -1699,7 +1707,7 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
 
     cleanup = window.electron?.artifact?.onFileChanged(({ filePath: changedPath }) => {
       if (changedPath === watchedPath) {
-        handleRefreshRef.current();
+        handleRefreshRef.current(ArtifactRefreshTrigger.FileChange);
       }
     });
 
@@ -1707,7 +1715,7 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
       if (cleanup) cleanup();
       if (watchedPath) window.electron?.artifact?.unwatchFile(watchedPath);
     };
-  }, [selectedArtifact?.filePath]);
+  }, [selectedArtifact?.filePath, selectedArtifact?.type]);
 
   const openLocalServiceArtifact = useCallback(
     (artifact: Artifact): boolean => {
@@ -1774,7 +1782,6 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
         return;
       }
       dispatch(openArtifactPreviewTab({ sessionId, artifactId: id }));
-      closeFileListDrawer();
     },
     [
       artifacts,
@@ -1832,7 +1839,13 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
           await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
         }
       } else {
-        if (selectedArtifact.filePath && !selectedArtifact.content && selectedArtifact.type !== 'document') {
+        const editingContent = selectedArtifact.type === ArtifactTypeValue.Markdown && selectedArtifact.filePath
+          ? getMarkdownDocumentContent(selectedArtifact.filePath) : undefined;
+        if (editingContent !== undefined) {
+          if (!await copyTextToClipboard(editingContent)) {
+            throw new Error('Failed to copy Markdown editor content');
+          }
+        } else if (selectedArtifact.filePath && !selectedArtifact.content && selectedArtifact.type !== 'document') {
           const result = await window.electron?.dialog?.readTextFile?.(selectedArtifact.filePath);
           if (result?.truncated) {
             logArtifactFileActionFailure(
@@ -4649,17 +4662,18 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
     }
   }, [reportSelectedArtifactAction, selectedArtifact]);
 
-  const handleRefresh = useCallback(async () => {
+  const handleRefresh = useCallback(async (trigger: ArtifactRefreshTrigger = ArtifactRefreshTrigger.Manual) => {
     if (!selectedArtifact?.filePath) return;
     if (selectedArtifact.type === 'video') {
       dispatch(addArtifact({
         sessionId: selectedArtifact.sessionId,
         artifact: { ...selectedArtifact, createdAt: Date.now() },
       }));
-      reportSelectedArtifactAction('refresh_preview', { result: 'success' });
+      reportSelectedArtifactAction('refresh_preview', { result: 'success', trigger });
       return;
     }
     try {
+      if (await refreshOpenOfficeEditor(selectedArtifact.filePath)) return;
       if (selectedArtifact.type === ArtifactTypeValue.Html) {
         dispatch(addArtifact({
           sessionId: selectedArtifact.sessionId,
@@ -4668,7 +4682,7 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
             contentVersion: Date.now(),
           },
         }));
-        reportSelectedArtifactAction('refresh_preview', { result: 'success' });
+        reportSelectedArtifactAction('refresh_preview', { result: 'success', trigger });
         return;
       }
 
@@ -4680,7 +4694,7 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
             'refresh artifact source',
             `file exceeds read limit; size=${result.size ?? 'unknown'}, readBytes=${result.readBytes ?? 'unknown'}`,
           );
-          reportSelectedArtifactAction('refresh_preview', { result: 'failed' });
+          reportSelectedArtifactAction('refresh_preview', { result: 'failed', trigger });
           window.dispatchEvent(new CustomEvent('app:showToast', {
             detail: t('artifactSourceTooLarge'),
           }));
@@ -4691,10 +4705,10 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
             sessionId: selectedArtifact.sessionId,
             artifact: { ...selectedArtifact, content: result.content, contentVersion: Date.now() },
           }));
-          reportSelectedArtifactAction('refresh_preview', { result: 'success' });
+          reportSelectedArtifactAction('refresh_preview', { result: 'success', trigger });
         } else {
           logArtifactFileActionFailure('refresh artifact source', result?.error);
-          reportSelectedArtifactAction('refresh_preview', { result: 'failed' });
+          reportSelectedArtifactAction('refresh_preview', { result: 'failed', trigger });
           window.dispatchEvent(new CustomEvent('app:showToast', {
             detail: result?.error || t('artifactSourceLoadFailed'),
           }));
@@ -4722,17 +4736,17 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
             artifact: { ...selectedArtifact, content },
           }),
         );
-        reportSelectedArtifactAction('refresh_preview', { result: 'success' });
+        reportSelectedArtifactAction('refresh_preview', { result: 'success', trigger });
       } else {
         logArtifactFileActionFailure('refresh artifact preview', result?.error);
-        reportSelectedArtifactAction('refresh_preview', { result: 'failed' });
+        reportSelectedArtifactAction('refresh_preview', { result: 'failed', trigger });
         window.dispatchEvent(new CustomEvent('app:showToast', {
           detail: result?.error || t('artifactSourceLoadFailed'),
         }));
       }
     } catch (error) {
       logArtifactFileActionFailure('refresh artifact preview', error);
-      reportSelectedArtifactAction('refresh_preview', { result: 'failed' });
+      reportSelectedArtifactAction('refresh_preview', { result: 'failed', trigger });
       window.dispatchEvent(new CustomEvent('app:showToast', {
         detail: t('artifactSourceLoadFailed'),
       }));
@@ -5180,7 +5194,7 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
         style={isPanelExpanded
           ? { width: '100%', maxWidth: 'none' }
           : { width: constrainedPanelWidth, maxWidth: constrainedMaxPanelWidth }}
-        className={`bg-background flex flex-col h-full overflow-hidden relative ${
+        className={`${selectedArtifact && isWorkspaceDiffArtifact(selectedArtifact) ? 'bg-white dark:bg-[#181818]' : 'bg-background'} flex flex-col h-full overflow-hidden relative ${
           isPanelExpanded ? 'min-w-0 flex-1' : 'shrink border-l border-border'
         }`}
       >
@@ -5190,8 +5204,8 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
 
         {selectedArtifact ? (
           <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
-            {/* Header: current file + actions */}
-            <div className="h-10 flex items-center gap-2 px-3 border-b border-border shrink-0">
+            {/* Header: current file + actions. A workspace review owns its toolbar and file tree. */}
+            {!isWorkspaceDiffArtifact(selectedArtifact) && <div className="h-10 flex items-center gap-2 px-3 border-b border-border shrink-0">
               <span className="text-sm font-medium truncate">
                 {selectedArtifact.fileName || selectedArtifact.title}
               </span>
@@ -5355,9 +5369,9 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
               >
                 <FileListIcon />
               </button>
-            </div>
+            </div>}
 
-            {showFileListDrawer && (
+            {showFileListDrawer && !isWorkspaceDiffArtifact(selectedArtifact) && (
               <div
                 ref={fileListDrawerRef}
                 className={`absolute top-10 right-0 bottom-0 z-20 flex w-[min(320px,86%)] flex-col border-l border-border bg-background shadow-xl transition-[transform,opacity] duration-[180ms] ease-out motion-reduce:transition-none ${
@@ -5383,15 +5397,12 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
             {/* Render area */}
             <div className="flex-1 min-h-0 overflow-hidden">
               <OfficePreviewActionsContext.Provider value={officePreviewActionsContextValue}>
-                {!isCodeViewActive ? (
-                  <ArtifactRenderer
-                    artifact={selectedArtifact}
-                    sessionArtifacts={artifacts}
-                    selectedTextContext={selectedTextContext}
-                  />
-                ) : (
-                  <CodeRenderer artifact={selectedArtifact} />
-                )}
+                <ArtifactRenderer
+                  artifact={selectedArtifact}
+                  sessionArtifacts={artifacts}
+                  selectedTextContext={selectedTextContext}
+                  sourceView={isCodeViewActive}
+                />
               </OfficePreviewActionsContext.Provider>
             </div>
           </div>
@@ -6486,7 +6497,7 @@ function normalizeBrowserUrl(value: string): string | null {
   if (/^[\w.-]+\.[a-z]{2,}(:\d+)?(\/.*)?$/i.test(trimmed)) {
     return `https://${trimmed}`;
   }
-  return `https://www.google.com/search?q=${encodeURIComponent(trimmed)}`;
+  return buildBrowserSearchUrl(trimmed, i18nService.getLanguage());
 }
 
 function normalizeBrowserPreviewUrlForMatch(value: string): string {

@@ -25,6 +25,7 @@ type MainLogReporterResponse = {
 
 export interface MainLogReporterOptions {
   appVersion: string;
+  environment?: string;
   fetch: (url: string, signal: AbortSignal) => Promise<MainLogReporterResponse>;
   store: MainLogReporterStore;
   arch?: string;
@@ -36,6 +37,7 @@ export interface MainLogReporterOptions {
 }
 
 export interface MainLogUrlContext {
+  environment?: string;
   appVersion: string;
   arch: string;
   firstKeyfrom: string;
@@ -73,14 +75,18 @@ export const buildMainLogUrl = (
     ...params,
     ...logCommons,
     app_version: context.appVersion,
+    eventId: randomUUID(),
+    environment: context.environment ?? 'production',
     os_platform: context.platform,
     os_arch: context.arch,
     language: context.language,
     uuid: context.installationId,
     firstKeyfrom: context.firstKeyfrom,
     latestKeyfrom: context.latestKeyfrom,
+    keyfrom: context.latestKeyfrom,
     is_logged_in: context.userId.length > 0,
     log_Usid: context.userId,
+    user_id: context.userId || undefined,
     uts: context.timestamp,
   };
 
@@ -170,13 +176,14 @@ export class MainLogReporter {
   }
 
   private buildContext(): MainLogUrlContext {
-    const config = this.options.store.get<{ language?: string }>(LogReporterStoreKey.AppConfig);
+    const config = this.options.store.get<{ language?: string; app?: { testMode?: boolean } }>(LogReporterStoreKey.AppConfig);
     const authUser = this.options.store.get<Record<string, unknown>>(LogReporterStoreKey.AuthUser);
     const userId = getTrimmedString(authUser?.yid) || getTrimmedString(authUser?.userId);
     const { firstKeyfrom, latestKeyfrom } = getKeyfromAttribution(this.options.store);
 
     return {
       appVersion: this.options.appVersion,
+      environment: config?.app?.testMode ? 'test' : this.options.environment ?? 'production',
       arch: this.options.arch ?? process.arch,
       firstKeyfrom,
       installationId: this.getOrCreateInstallationId(),

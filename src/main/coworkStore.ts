@@ -8,6 +8,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 import { CoworkSystemMessageKind } from '../common/coworkSystemMessages';
 import { AgentId, normalizeAgentAvatarIcon } from '../shared/agent';
+import { usesManagedPresetAvatar } from '../shared/agent/presetAvatar';
 import {
   COWORK_MESSAGE_PAGE_SIZE,
   COWORK_SEARCH_HISTORY_MAX_MESSAGE_CONTENT_CODE_UNITS,
@@ -23,6 +24,13 @@ import {
   type CoworkGoal,
   normalizeCoworkGoal,
 } from '../shared/cowork/goal';
+import {
+  type CoworkLlmTrace,
+  type CoworkTurnUsage,
+  type CoworkTurnUsageAnchor,
+  getCoworkTurnUsage,
+} from '../shared/cowork/llmTurnUsage';
+import type { CoworkModelChange } from '../shared/cowork/modelChange';
 import { OpenClawCronRunMetadataKey } from '../shared/cowork/openclawCronSessionKey';
 import {
   COWORK_RAIL_TOOLTIP_PREVIEW_MAX_LENGTH,
@@ -42,6 +50,7 @@ import type {
   KitReference,
   ResolvedKitCapabilities,
 } from '../shared/kit/constants';
+import { type ModelPresetId, parseModelPresetId } from '../shared/modelPresets/constants';
 import {
   type Platform,
   PlatformRegistry,
@@ -54,6 +63,12 @@ import {
   ContinuityCapsuleSource,
   type CoworkContinuityCapsule,
 } from './libs/agentEngine/coworkContinuityCapsule';
+import { VISIBLE_COWORK_SESSION_SQL } from './libs/agentEngine/subagent/sessionVisibility';
+import {
+  type SessionProjection,
+  type SessionProjectionChanges,
+  SessionProjectionNotifications,
+} from './libs/sessionProjectionNotifications';
 
 // Default working directory for new users
 const getDefaultWorkingDirectory = (): string => {
@@ -407,7 +422,9 @@ export interface Agent {
   model: string;
   thinkingLevel: ModelThinkingLevel | '';
   workingDirectory: string;
+  icon: string;
   avatar?: string;
+  iconCustomized?: boolean;
   skillIds: string[];
   subagentAllowAgentIds: string[];
   level?: '高级' | '中级' | '初级';
@@ -433,6 +450,7 @@ export interface CreateAgentRequest {
   thinkingLevel?: ModelThinkingLevel | '';
   workingDirectory?: string;
   avatar?: string;
+  icon?: string;
   skillIds?: string[];
   subagentAllowAgentIds?: string[];
   level?: '高级' | '中级' | '初级';
@@ -451,6 +469,7 @@ export interface UpdateAgentRequest {
   thinkingLevel?: ModelThinkingLevel | '';
   workingDirectory?: string;
   avatar?: string;
+  icon?: string;
   skillIds?: string[];
   subagentAllowAgentIds?: string[];
   level?: '高级' | '中级' | '初级';
@@ -461,7 +480,17 @@ export interface UpdateAgentRequest {
 }
 
 
+/** Live +N/-M line counts streamed while a file tool call's arguments are generated. */
+export interface CoworkLiveEditDiff {
+  added: number;
+  removed: number;
+}
+
 export interface CoworkMessageMetadata {
+  imageEdits?: import('../shared/imageEditing/types').ImageEditMessageSnapshot[];
+  modelChange?: CoworkModelChange;
+  modelPresetId?: ModelPresetId;
+  resolvedModelId?: string;
   toolName?: string;
   toolInput?: Record<string, unknown>;
   toolResult?: string;
@@ -471,6 +500,9 @@ export interface CoworkMessageMetadata {
   isError?: boolean;
   isStreaming?: boolean;
   isFinal?: boolean;
+  /** True while the model is still streaming this tool call's arguments. */
+  isGenerating?: boolean;
+  liveEditDiff?: CoworkLiveEditDiff;
   skillIds?: string[];
   kitIds?: string[];
   kitReferences?: KitReference[];
@@ -490,6 +522,12 @@ export interface CoworkMessageMetadata {
     mimeType?: string;
     name?: string;
   }>;
+  /** User messages: trace carried by every model request of the turn. */
+  llmTrace?: CoworkLlmTrace;
+  /** User messages: credits and tokens the turn consumed on LobsterAI models. */
+  turnUsage?: CoworkTurnUsage;
+  /** Server media task IDs created by this turn; prices are read from the server. */
+  turnMediaTaskIds?: string[];
   [key: string]: unknown;
 }
 
@@ -526,6 +564,7 @@ export interface CoworkSession {
   cwd: string;
   systemPrompt: string;
   modelOverride: string;
+  modelPresetId?: ModelPresetId | null;
   thinkingLevel?: ModelThinkingLevel | '';
   executionMode: CoworkExecutionMode;
   activeSkillIds: string[];
@@ -537,6 +576,12 @@ export interface CoworkSession {
   messagesOffset: number;
   /** Total number of messages stored for this session. */
   totalMessages: number;
+  /**
+   * Start of the turn the first loaded message belongs to, when that turn
+   * began before `messagesOffset`. Filled in for the renderer only.
+   */
+  leadingTurnStartTimestamp?: number | null;
+  leadingTurnUsage?: CoworkTurnUsageAnchor | null;
   parentSessionId?: string | null;
   forkedFromMessageId?: string | null;
   forkedAt?: number | null;
@@ -646,6 +691,8 @@ export interface CoworkConfig {
   memoryUserMemoriesMaxItems: number;
   skipMissedJobs: boolean;
   openClawHeartbeatEnabled: boolean;
+  openClawSkillReviewEnabled: boolean;
+  openClawMemoryFlushEnabled: boolean;
   embeddingEnabled: boolean;
   embeddingProvider: string;
   embeddingModel: string;
@@ -671,6 +718,8 @@ CoworkConfig,
   | 'memoryUserMemoriesMaxItems'
   | 'skipMissedJobs'
   | 'openClawHeartbeatEnabled'
+  | 'openClawSkillReviewEnabled'
+  | 'openClawMemoryFlushEnabled'
   | 'embeddingEnabled'
   | 'embeddingProvider'
   | 'embeddingModel'
@@ -801,11 +850,38 @@ export interface CreateCoworkSessionOptions {
 
 export class CoworkStore {
   private db: Database.Database;
+  private readonly sessionProjectionNotifications: SessionProjectionNotifications;
   private readonly knownIMPlatforms = new Set<string>(PlatformRegistry.platforms);
 
   constructor(db: Database.Database) {
     this.db = db;
+    this.sessionProjectionNotifications = new SessionProjectionNotifications({
+      runTransaction: operation => this.db.transaction(operation)(),
+      isInTransaction: () => this.db.inTransaction,
+      readProjection: sessionId => this.getOne<SessionProjection>(
+        `SELECT title, agent_id AS agentId,
+          created_at AS createdAt, updated_at AS updatedAt
+         FROM cowork_sessions WHERE id = ?`,
+        [sessionId],
+      ),
+    });
     this.ensureContinuityCapsuleTable();
+  }
+
+  onSessionProjectionChanges(listener: (changes: SessionProjectionChanges) => void): () => void {
+    return this.sessionProjectionNotifications.subscribe(listener);
+  }
+
+  /** All outer transactions containing session writes must use this boundary. */
+  runSessionTransaction<T>(operation: () => T): T {
+    return this.sessionProjectionNotifications.transaction(operation);
+  }
+
+  private writeSessionProjections<T>(sessionIds: readonly string[], operation: () => T): T {
+    return this.runSessionTransaction(() => {
+      this.sessionProjectionNotifications.capture(sessionIds);
+      return operation();
+    });
   }
 
   private ensureContinuityCapsuleTable(): void {
@@ -961,29 +1037,31 @@ export class CoworkStore {
     const secondBrainEnabledInt = options.secondBrainEnabled !== false ? 1 : 0;
     const projectId = options.projectId?.trim() || null;
 
-    this.db
-      .prepare(
-        `
-      INSERT INTO cowork_sessions (id, title, claude_session_id, scheduled_task_id, project_id, status, cwd, system_prompt, model_override, thinking_level, execution_mode, active_skill_ids, agent_id, second_brain_enabled, pinned, created_at, updated_at)
-      VALUES (?, ?, NULL, ?, ?, 'idle', ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
-    `,
-      )
-      .run(
-        id,
-        title,
-        scheduledTaskId,
-        projectId,
-        cwd,
-        systemPrompt,
-        modelOverride,
-        thinkingLevel,
-        executionMode,
-        JSON.stringify(activeSkillIds),
-        agentId,
-        secondBrainEnabledInt,
-        now,
-        now,
-      );
+    this.writeSessionProjections([id], () => {
+      this.db
+        .prepare(
+          `
+        INSERT INTO cowork_sessions (id, title, claude_session_id, scheduled_task_id, project_id, status, cwd, system_prompt, model_override, thinking_level, execution_mode, active_skill_ids, agent_id, second_brain_enabled, pinned, created_at, updated_at)
+        VALUES (?, ?, NULL, ?, ?, 'idle', ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+      `,
+        )
+        .run(
+          id,
+          title,
+          scheduledTaskId,
+          projectId,
+          cwd,
+          systemPrompt,
+          modelOverride,
+          thinkingLevel,
+          executionMode,
+          JSON.stringify(activeSkillIds),
+          agentId,
+          secondBrainEnabledInt,
+          now,
+          now,
+        );
+    });
 
     try {
       this.bumpAgentToTop(agentId);
@@ -1035,6 +1113,7 @@ export class CoworkStore {
       cwd: string;
       system_prompt: string;
       model_override?: string | null;
+      model_preset_id?: string | null;
       thinking_level?: string | null;
       execution_mode?: string | null;
       active_skill_ids?: string | null;
@@ -1048,7 +1127,7 @@ export class CoworkStore {
 
     const row = this.getOne<SessionRow>(
       `
-      SELECT id, title, claude_session_id, scheduled_task_id, project_id, status, pinned, pin_order, cwd, system_prompt, model_override, thinking_level, execution_mode, active_skill_ids, agent_id, goal_json, second_brain_enabled, created_at, updated_at
+      SELECT id, title, claude_session_id, scheduled_task_id, project_id, status, pinned, pin_order, cwd, system_prompt, model_override, model_preset_id, thinking_level, execution_mode, active_skill_ids, agent_id, goal_json, second_brain_enabled, created_at, updated_at
       FROM cowork_sessions
       WHERE id = ?
     `,
@@ -1063,6 +1142,11 @@ export class CoworkStore {
       messageOffset > 0
         ? this.getPagedSessionMessages(id, messageLimit, messageOffset)
         : this.getSessionMessages(id);
+    // Model changes also reload this page; keep usage and timing when its user
+    // message is outside the window. Metadata-only reads need no turn context.
+    const leadingTurn = messageOffset > 0 && messages.length > 0
+      ? this.getTurnContextAt(id, messageOffset)
+      : null;
 
     let activeSkillIds: string[] = [];
     if (row.active_skill_ids) {
@@ -1086,6 +1170,7 @@ export class CoworkStore {
       cwd: row.cwd,
       systemPrompt: row.system_prompt,
       modelOverride: row.model_override || '',
+      modelPresetId: parseModelPresetId(row.model_preset_id),
       thinkingLevel: parseModelThinkingLevel(row.thinking_level) ?? '',
       executionMode: (row.execution_mode as CoworkExecutionMode) || 'local',
       activeSkillIds,
@@ -1094,6 +1179,8 @@ export class CoworkStore {
       messages,
       messagesOffset: messageOffset,
       totalMessages,
+      leadingTurnStartTimestamp: leadingTurn?.startTimestamp ?? null,
+      leadingTurnUsage: leadingTurn?.usageAnchor ?? null,
       ...this.getSessionForkMetadata(row.id),
       goal: this.parseGoalJson(row.goal_json),
       createdAt: row.created_at,
@@ -1285,7 +1372,7 @@ export class CoworkStore {
     `,
     );
 
-    this.db.transaction(() => {
+    this.writeSessionProjections([id], () => {
       insertSession.run(
         id,
         title,
@@ -1306,6 +1393,8 @@ export class CoworkStore {
         now,
         now,
       );
+
+      this.db.prepare('UPDATE cowork_sessions SET model_preset_id = ? WHERE id = ?').run(source.modelPresetId ?? null, id);
 
       for (const contextMessage of contextMessages) {
         const content = contextMessage.content.trim();
@@ -1338,7 +1427,7 @@ export class CoworkStore {
       }
 
       this.copyContinuityCapsuleToFork(options.sourceSessionId, id, now);
-    })();
+    });
 
     const forked = this.getSession(id);
     if (!forked) {
@@ -1360,6 +1449,51 @@ export class CoworkStore {
 
   getMessageTimestamp(sessionId: string, messageId: string): number | null {
     return this.getMessageForkBoundary(sessionId, messageId)?.createdAt ?? null;
+  }
+
+  getMessage(sessionId: string, messageId: string): CoworkMessage | null {
+    const row = this.getOne<CoworkMessageRow>(
+      'SELECT id, type, content, metadata, created_at, sequence FROM cowork_messages WHERE session_id = ? AND id = ?',
+      [sessionId, messageId],
+    );
+    return row ? this.parseStoredMessage(sessionId, row) : null;
+  }
+
+  getLatestUserMessage(sessionId: string): CoworkMessage | null {
+    const row = this.getOne<CoworkMessageRow>(
+      `
+      SELECT id, type, content, metadata, created_at, sequence
+      FROM cowork_messages
+      WHERE session_id = ? AND type = 'user'
+      ORDER BY
+        COALESCE(sequence, created_at) DESC,
+        created_at DESC,
+        ROWID DESC
+      LIMIT 1
+    `,
+      [sessionId],
+    );
+    return row ? this.parseStoredMessage(sessionId, row) : null;
+  }
+
+  private parseStoredMessage(sessionId: string, row: CoworkMessageRow): CoworkMessage {
+    let metadata: Record<string, unknown> | undefined;
+    if (row.metadata) {
+      try {
+        metadata = JSON.parse(row.metadata);
+      } catch {
+        console.warn(
+          `[CoworkStore] corrupt metadata detected for message ${row.id} in session ${sessionId}, discarding metadata`,
+        );
+      }
+    }
+    return {
+      id: row.id,
+      type: row.type as CoworkMessageType,
+      content: row.content,
+      timestamp: row.created_at,
+      metadata,
+    };
   }
 
   private shouldCopyForkContextMessage(
@@ -1492,7 +1626,7 @@ export class CoworkStore {
     updates: Partial<
       Pick<
         CoworkSession,
-        'title' | 'claudeSessionId' | 'status' | 'cwd' | 'systemPrompt' | 'modelOverride' | 'thinkingLevel' | 'executionMode' | 'goal' | 'secondBrainEnabled'
+        'title' | 'claudeSessionId' | 'status' | 'cwd' | 'systemPrompt' | 'modelOverride' | 'modelPresetId' | 'thinkingLevel' | 'executionMode' | 'goal' | 'secondBrainEnabled'
       >
     >,
     options: { touchUpdatedAt?: boolean } = {},
@@ -1540,6 +1674,10 @@ export class CoworkStore {
       setClauses.push('model_override = ?');
       values.push(updates.modelOverride);
     }
+    if (updates.modelPresetId !== undefined) {
+      setClauses.push('model_preset_id = ?');
+      values.push(updates.modelPresetId);
+    }
     if (updates.thinkingLevel !== undefined) {
       setClauses.push('thinking_level = ?');
       values.push(updates.thinkingLevel);
@@ -1560,15 +1698,17 @@ export class CoworkStore {
     if (setClauses.length === 0) return;
 
     values.push(id);
-    this.db
-      .prepare(
-        `
-      UPDATE cowork_sessions
-      SET ${setClauses.join(', ')}
-      WHERE id = ?
-    `,
-      )
-      .run(...values);
+    this.writeSessionProjections([id], () => {
+      this.db
+        .prepare(
+          `
+        UPDATE cowork_sessions
+        SET ${setClauses.join(', ')}
+        WHERE id = ?
+      `,
+        )
+        .run(...values);
+    });
   }
 
   listSessionIdsByAgent(agentId: string): string[] {
@@ -1581,6 +1721,7 @@ export class CoworkStore {
 
   private deleteSessionRows(ids: string[]): string[] {
     if (ids.length === 0) return [];
+    this.sessionProjectionNotifications.capture(ids);
     const placeholders = ids.map(() => '?').join(',');
     const affectedArtifactRows = this.getAll<{ artifact_id: string }>(
       `SELECT DISTINCT artifact_id
@@ -1592,7 +1733,9 @@ export class CoworkStore {
     this.db.prepare(`DELETE FROM cowork_session_capsules WHERE session_id IN (${placeholders})`).run(...ids);
     this.db.prepare(`DELETE FROM cowork_messages WHERE session_id IN (${placeholders})`).run(...ids);
     this.db.prepare(`DELETE FROM cowork_sessions WHERE id IN (${placeholders})`).run(...ids);
-    return affectedArtifactRows.map(row => row.artifact_id);
+    const affectedArtifactIds = affectedArtifactRows.map(row => row.artifact_id);
+    this.sessionProjectionNotifications.recordDeletion(ids, affectedArtifactIds);
+    return affectedArtifactIds;
   }
 
   private deleteSessionsForAgent(agentId: string): string[] {
@@ -1605,11 +1748,10 @@ export class CoworkStore {
   }
 
   deleteSession(id: string): string[] {
-    const deleteSession = this.db.transaction((sessionId: string) => {
-      this.markMemorySourcesInactiveBySession(sessionId);
-      return this.deleteSessionRows([sessionId]);
+    const affectedArtifactIds = this.runSessionTransaction(() => {
+      this.markMemorySourcesInactiveBySession(id);
+      return this.deleteSessionRows([id]);
     });
-    const affectedArtifactIds = deleteSession(id);
     this.markOrphanImplicitMemoriesStale();
     return affectedArtifactIds;
   }
@@ -1618,13 +1760,12 @@ export class CoworkStore {
     const uniqueIds = Array.from(new Set(ids.filter(Boolean)));
     if (uniqueIds.length === 0) return [];
 
-    const deleteSessions = this.db.transaction((sessionIds: string[]) => {
-      for (const id of sessionIds) {
+    const affectedArtifactIds = this.runSessionTransaction(() => {
+      for (const id of uniqueIds) {
         this.markMemorySourcesInactiveBySession(id);
       }
-      return this.deleteSessionRows(sessionIds);
+      return this.deleteSessionRows(uniqueIds);
     });
-    const affectedArtifactIds = deleteSessions(uniqueIds);
     this.markOrphanImplicitMemoriesStale();
     return affectedArtifactIds;
   }
@@ -1662,11 +1803,11 @@ export class CoworkStore {
   countSessions(agentId?: string): number {
     if (agentId) {
       const row = this.db
-        .prepare("SELECT COUNT(*) as count FROM cowork_sessions WHERE COALESCE(NULLIF(TRIM(agent_id), ''), 'main') = ?")
+        .prepare(`SELECT COUNT(*) as count FROM cowork_sessions s WHERE COALESCE(NULLIF(TRIM(s.agent_id), ''), 'main') = ? AND ${VISIBLE_COWORK_SESSION_SQL}`)
         .get(agentId) as { count: number } | undefined;
       return row?.count || 0;
     }
-    const row = this.db.prepare('SELECT COUNT(*) as count FROM cowork_sessions').get() as
+    const row = this.db.prepare(`SELECT COUNT(*) as count FROM cowork_sessions s WHERE ${VISIBLE_COWORK_SESSION_SQL}`).get() as
       | { count: number }
       | undefined;
     return row?.count || 0;
@@ -1681,6 +1822,7 @@ export class CoworkStore {
         SELECT ${summaryColumns}
         FROM cowork_sessions s
         WHERE COALESCE(NULLIF(TRIM(s.agent_id), ''), 'main') = ?
+          AND ${VISIBLE_COWORK_SESSION_SQL}
         ORDER BY s.pinned DESC,
           CASE WHEN s.pinned = 1 THEN COALESCE(s.pin_order, s.updated_at, s.created_at) END ASC,
           CASE WHEN s.pinned = 0 THEN s.updated_at END DESC,
@@ -1694,6 +1836,7 @@ export class CoworkStore {
         `
         SELECT ${summaryColumns}
         FROM cowork_sessions s
+        WHERE ${VISIBLE_COWORK_SESSION_SQL}
         ORDER BY s.pinned DESC,
           CASE WHEN s.pinned = 1 THEN COALESCE(s.pin_order, s.updated_at, s.created_at) END ASC,
           CASE WHEN s.pinned = 0 THEN s.updated_at END DESC,
@@ -1717,9 +1860,10 @@ export class CoworkStore {
         .prepare(
           `
           SELECT COUNT(*) as count
-          FROM cowork_sessions
-          WHERE title LIKE ? ESCAPE '\\'
-            AND COALESCE(NULLIF(TRIM(agent_id), ''), 'main') = ?
+          FROM cowork_sessions s
+          WHERE s.title LIKE ? ESCAPE '\\'
+          AND ${VISIBLE_COWORK_SESSION_SQL}
+            AND COALESCE(NULLIF(TRIM(s.agent_id), ''), 'main') = ?
         `,
         )
         .get(pattern, options.agentId) as { count: number } | undefined;
@@ -1730,8 +1874,9 @@ export class CoworkStore {
       .prepare(
         `
         SELECT COUNT(*) as count
-        FROM cowork_sessions
-        WHERE title LIKE ? ESCAPE '\\'
+        FROM cowork_sessions s
+        WHERE s.title LIKE ? ESCAPE '\\'
+          AND ${VISIBLE_COWORK_SESSION_SQL}
       `,
       )
       .get(pattern) as { count: number } | undefined;
@@ -1753,6 +1898,7 @@ export class CoworkStore {
         SELECT ${summaryColumns}
         FROM cowork_sessions s
         WHERE s.title LIKE ? ESCAPE '\\'
+          AND ${VISIBLE_COWORK_SESSION_SQL}
           AND COALESCE(NULLIF(TRIM(s.agent_id), ''), 'main') = ?
         ORDER BY s.pinned DESC,
           CASE WHEN s.pinned = 1 THEN COALESCE(s.pin_order, s.updated_at, s.created_at) END ASC,
@@ -1768,6 +1914,7 @@ export class CoworkStore {
         SELECT ${summaryColumns}
         FROM cowork_sessions s
         WHERE s.title LIKE ? ESCAPE '\\'
+          AND ${VISIBLE_COWORK_SESSION_SQL}
         ORDER BY s.pinned DESC,
           CASE WHEN s.pinned = 1 THEN COALESCE(s.pin_order, s.updated_at, s.created_at) END ASC,
           CASE WHEN s.pinned = 0 THEN s.updated_at END DESC,
@@ -1783,16 +1930,22 @@ export class CoworkStore {
 
   resetRunningSessions(): number {
     const now = Date.now();
-    const result = this.db
-      .prepare(
-        `
-      UPDATE cowork_sessions
-      SET status = 'idle', updated_at = ?
-      WHERE status = 'running'
-    `,
-      )
-      .run(now);
-    return result.changes;
+    return this.runSessionTransaction(() => {
+      const sessionIds = this.getAll<{ id: string }>(
+        "SELECT id FROM cowork_sessions WHERE status = 'running'",
+      ).map(row => row.id);
+      this.sessionProjectionNotifications.capture(sessionIds);
+      const result = this.db
+        .prepare(
+          `
+        UPDATE cowork_sessions
+        SET status = 'idle', updated_at = ?
+        WHERE status = 'running'
+      `,
+        )
+        .run(now);
+      return result.changes;
+    });
   }
 
   listRecentCwds(limit: number = 8): string[] {
@@ -1859,6 +2012,66 @@ export class CoworkStore {
       timestamp: row.created_at,
       metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
     }));
+  }
+
+  /**
+   * Start of the turn that the message at `position` (paging order) belongs
+   * to: the earliest timestamp from the latest user message at or before that
+   * position up to the position itself. A paged window can begin mid-turn, and
+   * the renderer needs this to time that turn without loading its first messages.
+   */
+  getTurnContextAt(sessionId: string, position: number): {
+    startTimestamp: number | null;
+    usageAnchor: CoworkTurnUsageAnchor | null;
+  } {
+    if (!Number.isInteger(position) || position < 0) {
+      return { startTimestamp: null, usageAnchor: null };
+    }
+    const rows = this.db
+      .prepare<[string, number], { id: string; type: string; created_at: number; metadata: string | null }>(
+        `
+        SELECT id, type, created_at, CASE WHEN type = 'user' THEN metadata ELSE NULL END AS metadata
+        FROM (
+          SELECT id, type, created_at, metadata, sequence, ROWID as rowid_
+          FROM cowork_messages
+          WHERE session_id = ?
+          ORDER BY COALESCE(sequence, created_at) ASC, created_at ASC, ROWID ASC
+          LIMIT ?
+        )
+        ORDER BY COALESCE(sequence, created_at) DESC, created_at DESC, rowid_ DESC
+      `,
+      )
+      .iterate(sessionId, position + 1);
+
+    let start: number | null = null;
+    let usageAnchor: CoworkTurnUsageAnchor | null = null;
+    let firstRow = true;
+    for (const row of rows) {
+      const timestamp = normalizeMessageTimestamp(Number(row.created_at));
+      if (timestamp != null) {
+        start = start == null ? timestamp : Math.min(start, timestamp);
+      }
+      if (row.type === 'user') {
+        if (!firstRow) {
+          let turnUsage: CoworkTurnUsage | null = null;
+          if (row.metadata) {
+            try {
+              turnUsage = getCoworkTurnUsage(JSON.parse(row.metadata));
+            } catch {
+              // A malformed user message cannot supply a saved usage summary.
+            }
+          }
+          usageAnchor = { userMessageId: row.id, turnUsage };
+        }
+        break;
+      }
+      firstRow = false;
+    }
+    return { startTimestamp: start, usageAnchor };
+  }
+
+  getTurnStartTimestampAt(sessionId: string, position: number): number | null {
+    return this.getTurnContextAt(sessionId, position).startTimestamp;
   }
 
   /**
@@ -2078,27 +2291,6 @@ export class CoworkStore {
     return this.mapConversationMessageRows(sessionId, rows);
   }
 
-  /**
-   * 获取指定会话中最新的一条用户消息
-   */
-  getLatestUserMessage(sessionId: string): CoworkMessage | null {
-    if (!sessionId) return null;
-    try {
-      const rows = this.getAll<CoworkMessageRow>(
-        `
-        SELECT id, type, content, metadata, created_at, sequence
-        FROM cowork_messages
-        WHERE session_id = ? AND type = 'user'
-        ORDER BY COALESCE(sequence, created_at) DESC, created_at DESC, ROWID DESC
-        LIMIT 1
-      `,
-        [sessionId],
-      );
-      return rows.length > 0 ? this.mapConversationMessageRows(sessionId, rows)[0] : null;
-    } catch {
-      return null;
-    }
-  }
 
   /**
    * Read the complete user/assistant transcript for a rare reconciliation fallback.
@@ -2222,6 +2414,16 @@ export class CoworkStore {
     const id = uuidv4();
     const now = timestamp ?? Date.now();
 
+    if (message.type === 'user' || message.type === 'assistant') {
+      const selection = this.db.prepare('SELECT model_preset_id, model_override FROM cowork_sessions WHERE id = ?')
+        .get(sessionId) as { model_preset_id?: string; model_override?: string } | undefined;
+      const modelPresetId = parseModelPresetId(selection?.model_preset_id);
+      if (modelPresetId && selection?.model_override) {
+        message = { ...message, metadata: { ...message.metadata, modelPresetId,
+          resolvedModelId: selection.model_override.split('/').slice(1).join('/') } };
+      }
+    }
+
     const seqRow = this.db
       .prepare(
         'SELECT COALESCE(MAX(sequence), 0) + 1 as next_seq FROM cowork_messages WHERE session_id = ?',
@@ -2229,28 +2431,30 @@ export class CoworkStore {
       .get(sessionId) as { next_seq: number } | undefined;
     const sequence = seqRow?.next_seq ?? 1;
 
-    this.db
-      .prepare(
-        `
-      INSERT INTO cowork_messages (id, session_id, type, content, metadata, created_at, sequence)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `,
-      )
-      .run(
-        id,
-        sessionId,
-        message.type,
-        message.content,
-        message.metadata ? JSON.stringify(message.metadata) : null,
-        now,
-        sequence,
-      );
+    this.writeSessionProjections([sessionId], () => {
+      this.db
+        .prepare(
+          `
+        INSERT INTO cowork_messages (id, session_id, type, content, metadata, created_at, sequence)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `,
+        )
+        .run(
+          id,
+          sessionId,
+          message.type,
+          message.content,
+          message.metadata ? JSON.stringify(message.metadata) : null,
+          now,
+          sequence,
+        );
 
-    // updated_at drives session list ordering: only user messages may move it,
-    // otherwise concurrent streaming runs keep reordering the list.
-    if (message.type === 'user') {
-      this.db.prepare('UPDATE cowork_sessions SET updated_at = ? WHERE id = ?').run(now, sessionId);
-    }
+      // updated_at drives session list ordering: only user messages may move it,
+      // otherwise concurrent streaming runs keep reordering the list.
+      if (message.type === 'user') {
+        this.db.prepare('UPDATE cowork_sessions SET updated_at = ? WHERE id = ?').run(now, sessionId);
+      }
+    });
 
     return {
       id,
@@ -2285,7 +2489,7 @@ export class CoworkStore {
       return this.addMessage(sessionId, message);
     }
 
-    this.db.transaction(() => {
+    this.writeSessionProjections([sessionId], () => {
       // Shift all messages with sequence >= target up by 1
       this.db
         .prepare(
@@ -2314,7 +2518,7 @@ export class CoworkStore {
       if (message.type === 'user') {
         this.db.prepare('UPDATE cowork_sessions SET updated_at = ? WHERE id = ?').run(now, sessionId);
       }
-    })();
+    });
 
     return {
       id,
@@ -2347,7 +2551,7 @@ export class CoworkStore {
   ): void {
     const now = Date.now();
 
-    this.db.transaction(() => {
+    this.writeSessionProjections([sessionId], () => {
       const existingRows = this.db
         .prepare(
           `
@@ -2426,7 +2630,7 @@ export class CoworkStore {
           .prepare('UPDATE cowork_sessions SET updated_at = MAX(updated_at, ?) WHERE id = ?')
           .run(lastUserMessageAt, sessionId);
       }
-    })();
+    });
   }
 
   replaceSessionMessages(
@@ -2435,7 +2639,7 @@ export class CoworkStore {
   ): void {
     const now = Date.now();
 
-    this.db.transaction(() => {
+    this.writeSessionProjections([sessionId], () => {
       this.db
         .prepare(
           "DELETE FROM cowork_messages WHERE session_id = ? AND type IN ('user', 'assistant', 'tool_use', 'tool_result')",
@@ -2475,7 +2679,7 @@ export class CoworkStore {
           .prepare('UPDATE cowork_sessions SET updated_at = MAX(updated_at, ?) WHERE id = ?')
           .run(lastUserMessageAt, sessionId);
       }
-    })();
+    });
   }
 
   updateMessage(
@@ -2491,6 +2695,11 @@ export class CoworkStore {
       values.push(updates.content);
     }
     if (updates.metadata !== undefined) {
+      const existing = this.getMessage(sessionId, messageId)?.metadata;
+      if (existing?.modelPresetId) {
+        updates = { ...updates, metadata: { ...updates.metadata,
+          modelPresetId: existing.modelPresetId, resolvedModelId: existing.resolvedModelId } };
+      }
       setClauses.push('metadata = ?');
       values.push(updates.metadata ? JSON.stringify(updates.metadata) : null);
     }
@@ -2525,6 +2734,8 @@ export class CoworkStore {
       'memoryUserMemoriesMaxItems',
       'skipMissedJobs',
       'openClawHeartbeatEnabled',
+      'openClawSkillReviewEnabled',
+      'openClawMemoryFlushEnabled',
       'embeddingEnabled',
       'embeddingProvider',
       'embeddingModel',
@@ -2563,6 +2774,8 @@ export class CoworkStore {
       ),
       skipMissedJobs: parseBooleanConfig(cfg.get('skipMissedJobs'), true),
       openClawHeartbeatEnabled: parseBooleanConfig(cfg.get('openClawHeartbeatEnabled'), false),
+      openClawSkillReviewEnabled: parseBooleanConfig(cfg.get('openClawSkillReviewEnabled'), false),
+      openClawMemoryFlushEnabled: parseBooleanConfig(cfg.get('openClawMemoryFlushEnabled'), false),
       embeddingEnabled: parseBooleanConfig(cfg.get('embeddingEnabled'), DEFAULT_EMBEDDING_ENABLED),
       embeddingProvider: cfg.get('embeddingProvider') || DEFAULT_EMBEDDING_PROVIDER,
       embeddingModel: cfg.get('embeddingModel') || DEFAULT_EMBEDDING_MODEL,
@@ -2609,6 +2822,12 @@ export class CoworkStore {
     }
     if (config.openClawHeartbeatEnabled !== undefined) {
       this.upsertConfig('openClawHeartbeatEnabled', config.openClawHeartbeatEnabled ? '1' : '0', now);
+    }
+    if (config.openClawSkillReviewEnabled !== undefined) {
+      this.upsertConfig('openClawSkillReviewEnabled', config.openClawSkillReviewEnabled ? '1' : '0', now);
+    }
+    if (config.openClawMemoryFlushEnabled !== undefined) {
+      this.upsertConfig('openClawMemoryFlushEnabled', config.openClawMemoryFlushEnabled ? '1' : '0', now);
     }
     if (config.embeddingEnabled !== undefined) {
       this.upsertConfig('embeddingEnabled', config.embeddingEnabled ? '1' : '0', now);
@@ -3253,6 +3472,7 @@ export class CoworkStore {
       thinking_level?: string | null;
       working_directory?: string | null;
       icon: string;
+      icon_customized?: number | null;
       skill_ids: string;
       subagent_allow_agent_ids?: string | null;
       level?: string | null;
@@ -3287,6 +3507,7 @@ export class CoworkStore {
       thinking_level?: string | null;
       working_directory?: string | null;
       icon: string;
+      icon_customized?: number | null;
       skill_ids: string;
       subagent_allow_agent_ids?: string | null;
       level?: string | null;
@@ -3326,14 +3547,17 @@ export class CoworkStore {
 
     let removedOrphanSessionCount = 0;
     const isEnabled = request.enabled !== false ? 1 : 0;
-    const createAgent = this.db.transaction(() => {
+    this.runSessionTransaction(() => {
       removedOrphanSessionCount = this.deleteSessionsForAgent(id).length;
+
+      const avatarIcon = normalizeAgentAvatarIcon(request.avatar || request.icon);
+      const isCustomized = usesManagedPresetAvatar({ id, source: request.source, iconCustomized: false }) ? 0 : 1;
 
       this.db
         .prepare(
           `
-        INSERT INTO agents (id, name, description, system_prompt, identity, model, thinking_level, working_directory, icon, skill_ids, subagent_allow_agent_ids, level, department, enabled, is_default, source, preset_id, sort_order, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)
+        INSERT INTO agents (id, name, description, system_prompt, identity, model, thinking_level, working_directory, icon, icon_customized, skill_ids, subagent_allow_agent_ids, level, department, enabled, is_default, source, preset_id, sort_order, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)
       `,
         )
         .run(
@@ -3345,7 +3569,8 @@ export class CoworkStore {
           request.model || '',
           normalizeAgentThinkingLevel(request.thinkingLevel),
           request.workingDirectory || '',
-          normalizeAgentAvatarIcon(request.avatar),
+          avatarIcon,
+          isCustomized,
           JSON.stringify(normalizeStringIdList(request.skillIds)),
           JSON.stringify(normalizeStringIdList(request.subagentAllowAgentIds)),
           request.level || '高级',
@@ -3358,7 +3583,6 @@ export class CoworkStore {
           now,
         );
     });
-    createAgent();
     if (removedOrphanSessionCount > 0) {
       this.markOrphanImplicitMemoriesStale();
     }
@@ -3413,9 +3637,11 @@ export class CoworkStore {
       setClauses.push('working_directory = ?');
       values.push(updates.workingDirectory);
     }
-    if (updates.avatar !== undefined) {
-      setClauses.push('icon = ?');
-      values.push(normalizeAgentAvatarIcon(updates.avatar));
+    if (updates.avatar !== undefined || updates.icon !== undefined) {
+      const iconValue = updates.avatar !== undefined ? updates.avatar : updates.icon;
+      const icon = normalizeAgentAvatarIcon(iconValue);
+      setClauses.push('icon = ?', 'icon_customized = ?');
+      values.push(icon, icon !== existing.icon || existing.iconCustomized ? 1 : 0);
     }
     if (updates.skillIds !== undefined) {
       setClauses.push('skill_ids = ?');
@@ -3456,6 +3682,18 @@ export class CoworkStore {
 
     values.push(id);
     this.db.prepare(`UPDATE agents SET ${setClauses.join(', ')} WHERE id = ?`).run(...values);
+    return this.getAgent(id);
+  }
+
+  /** Cosmetic catalog refresh: never overwrite a user-owned avatar. */
+  updatePresetAgentAvatar(id: string, icon: string): Agent | null {
+    const existing = this.getAgent(id);
+    if (!usesManagedPresetAvatar(existing)) return existing;
+    const normalized = normalizeAgentAvatarIcon(icon);
+    if (existing?.icon !== normalized) {
+      this.db.prepare('UPDATE agents SET icon = ?, icon_customized = 0, updated_at = ? WHERE id = ?')
+        .run(normalized, Date.now(), id);
+    }
     return this.getAgent(id);
   }
 
@@ -3513,17 +3751,16 @@ export class CoworkStore {
   deleteAgent(id: string): boolean {
     if (id === AgentId.Main) return false; // Cannot delete default agent
 
-    const deleteAgent = this.db.transaction((agentId: string): boolean => {
-      const result = this.db.prepare('DELETE FROM agents WHERE id = ? AND is_default = 0').run(agentId);
+    const deleted = this.runSessionTransaction((): boolean => {
+      const result = this.db.prepare('DELETE FROM agents WHERE id = ? AND is_default = 0').run(id);
       if (result.changes === 0) {
         return false;
       }
 
-      this.deleteSessionsForAgent(agentId);
+      this.deleteSessionsForAgent(id);
       return true;
     });
 
-    const deleted = deleteAgent(id);
     if (deleted) {
       this.markOrphanImplicitMemoriesStale();
     }
@@ -3540,6 +3777,7 @@ export class CoworkStore {
     thinking_level?: string | null;
     working_directory?: string | null;
     icon: string;
+    icon_customized?: number | null;
     skill_ids: string;
     subagent_allow_agent_ids?: string | null;
     level?: string | null;
@@ -3565,7 +3803,12 @@ export class CoworkStore {
       model: row.model,
       thinkingLevel: parseModelThinkingLevel(row.thinking_level) ?? '',
       workingDirectory: row.working_directory || '',
+      icon: row.icon,
       avatar: row.icon || '',
+      iconCustomized: !usesManagedPresetAvatar({
+        id: row.id, source: row.source as AgentSource, presetId: row.preset_id, icon: row.icon,
+        iconCustomized: row.icon_customized == null ? undefined : Boolean(row.icon_customized),
+      }),
       skillIds,
       subagentAllowAgentIds,
       level: (row.level || '高级') as '高级' | '中级' | '初级',
@@ -3624,67 +3867,69 @@ export class CoworkStore {
     const activeSkillIds = agent?.skillIds ?? [];
     const status = options.status ?? 'running';
 
-    if (existing) {
-      this.db
-        .prepare(
-          `
-          UPDATE cowork_sessions
-          SET title = ?,
-              claude_session_id = ?,
-              status = ?,
-              cwd = ?,
-              system_prompt = ?,
-              model_override = ?,
-              execution_mode = ?,
-              active_skill_ids = ?,
-              agent_id = ?,
-              parent_session_id = ?,
-              updated_at = ?
-          WHERE id = ?
-        `,
-        )
-        .run(
-          title,
-          options.childSessionKey,
-          status,
-          cwd,
-          systemPrompt,
-          modelOverride,
-          executionMode,
-          JSON.stringify(activeSkillIds),
-          options.agentId,
-          options.parentSessionId,
-          now,
-          options.id,
-        );
-    } else {
-      this.db
-        .prepare(
-          `
-          INSERT INTO cowork_sessions (
-            id, title, claude_session_id, status, cwd, system_prompt, model_override,
-            execution_mode, active_skill_ids, agent_id, pinned, pin_order,
-            parent_session_id, created_at, updated_at
+    this.writeSessionProjections([options.id], () => {
+      if (existing) {
+        this.db
+          .prepare(
+            `
+            UPDATE cowork_sessions
+            SET title = ?,
+                claude_session_id = ?,
+                status = ?,
+                cwd = ?,
+                system_prompt = ?,
+                model_override = ?,
+                execution_mode = ?,
+                active_skill_ids = ?,
+                agent_id = ?,
+                parent_session_id = ?,
+                updated_at = ?
+            WHERE id = ?
+          `,
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?, ?)
-        `,
-        )
-        .run(
-          options.id,
-          title,
-          options.childSessionKey,
-          status,
-          cwd,
-          systemPrompt,
-          modelOverride,
-          executionMode,
-          JSON.stringify(activeSkillIds),
-          options.agentId,
-          options.parentSessionId,
-          createdAt,
-          now,
-        );
-    }
+          .run(
+            title,
+            options.childSessionKey,
+            status,
+            cwd,
+            systemPrompt,
+            modelOverride,
+            executionMode,
+            JSON.stringify(activeSkillIds),
+            options.agentId,
+            options.parentSessionId,
+            now,
+            options.id,
+          );
+      } else {
+        this.db
+          .prepare(
+            `
+            INSERT INTO cowork_sessions (
+              id, title, claude_session_id, status, cwd, system_prompt, model_override,
+              execution_mode, active_skill_ids, agent_id, pinned, pin_order,
+              parent_session_id, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?, ?)
+          `,
+          )
+          .run(
+            options.id,
+            title,
+            options.childSessionKey,
+            status,
+            cwd,
+            systemPrompt,
+            modelOverride,
+            executionMode,
+            JSON.stringify(activeSkillIds),
+            options.agentId,
+            options.parentSessionId,
+            createdAt,
+            now,
+          );
+      }
+    });
 
     const session = this.getSession(options.id, 0);
     if (!session) {

@@ -3,6 +3,8 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 
 import { ScheduledTaskDataStatus, TaskStatus } from '../../../scheduledTask/constants';
+import { hasRunDeliveryFailure } from '../../../scheduledTask/runDelivery';
+import { createRunFilter } from '../../../scheduledTask/runFilter';
 import type { RunFilter, ScheduledTaskRunWithName } from '../../../scheduledTask/types';
 import { i18nService } from '../../services/i18n';
 import { scheduledTaskService } from '../../services/scheduledTask';
@@ -22,40 +24,24 @@ const STATUS_OPTIONS = [
 
 const historyGridClass = 'grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_88px] items-center gap-3';
 
-const statusConfig: Record<TaskStatus, { label: string; color: string; activeColor: string }> = {
+const statusConfig: Record<TaskStatus, { label: string; color: string }> = {
   [TaskStatus.Success]: {
     label: 'scheduledTasksStatusSuccess',
     color: 'text-green-600 dark:text-green-400',
-    activeColor: 'bg-green-500/10 border-green-500/30 text-green-600 dark:text-green-400',
   },
   [TaskStatus.Error]: {
     label: 'scheduledTasksStatusError',
     color: 'text-red-500',
-    activeColor: 'bg-red-500/10 border-red-500/30 text-red-600 dark:text-red-400',
   },
   [TaskStatus.Skipped]: {
     label: 'scheduledTasksStatusSkipped',
     color: 'text-yellow-500',
-    activeColor: 'bg-yellow-500/10 border-yellow-500/30 text-yellow-600 dark:text-yellow-400',
   },
   [TaskStatus.Running]: {
     label: 'scheduledTasksStatusRunning',
     color: 'text-blue-500',
-    activeColor: 'bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-blue-400',
   },
 };
-
-function applyClientFilter(
-  runs: ScheduledTaskRunWithName[],
-  filter: RunFilter,
-): ScheduledTaskRunWithName[] {
-  return runs.filter(run => {
-    if (filter.status && run.status !== filter.status) return false;
-    if (filter.startDate && run.startedAt < filter.startDate + 'T00:00:00') return false;
-    if (filter.endDate && run.startedAt > filter.endDate + 'T23:59:59') return false;
-    return true;
-  });
-}
 
 const EMPTY_FILTER: RunFilter = {};
 
@@ -76,7 +62,7 @@ const AllRunsHistory: React.FC<AllRunsHistoryProps> = ({ searchText = '' }) => {
   const normalizedSearch = searchText.trim().toLowerCase();
 
   const displayedRuns = useMemo(() => {
-    let runs = hasActiveFilter ? applyClientFilter(allRuns, filter) : allRuns;
+    let runs = hasActiveFilter ? allRuns.filter(createRunFilter(filter)) : allRuns;
     if (normalizedSearch) {
       runs = runs.filter(run =>
         [run.taskName, run.summary ?? '', run.error ?? '']
@@ -136,7 +122,7 @@ const AllRunsHistory: React.FC<AllRunsHistoryProps> = ({ searchText = '' }) => {
   };
 
   const handleViewSession = (run: ScheduledTaskRunWithName) => {
-    if (run.sessionId || run.sessionKey || run.summary || run.error) {
+    if (run.sessionId || run.sessionKey || run.summary || run.error || hasRunDeliveryFailure(run)) {
       reportScheduledTaskAction('history_view_session', {
         source: 'scheduled_tasks_history',
         ...getRunAnalyticsParams(run),
@@ -188,7 +174,7 @@ const AllRunsHistory: React.FC<AllRunsHistoryProps> = ({ searchText = '' }) => {
                 onClick={() => handleStatusToggle(s)}
                 className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
                   isActive
-                    ? cfg.activeColor
+                    ? 'bg-surface-raised border-secondary/40 text-foreground'
                     : 'border-transparent text-secondary hover:bg-surface-raised'
                 }`}
               >
@@ -257,7 +243,7 @@ const AllRunsHistory: React.FC<AllRunsHistoryProps> = ({ searchText = '' }) => {
           <div className="p-2">
             {displayedRuns.map(run => {
               const cfg = statusConfig[run.status];
-              const canViewRun = run.sessionId || run.sessionKey || run.summary || run.error;
+              const canViewRun = run.sessionId || run.sessionKey || run.summary || run.error || hasRunDeliveryFailure(run);
               return (
                 <div
                   key={run.id}
@@ -305,8 +291,8 @@ const AllRunsHistory: React.FC<AllRunsHistoryProps> = ({ searchText = '' }) => {
                   </div>
 
                   {/* Status */}
-                  <div className={`text-sm font-medium ${cfg.color}`}>
-                    {i18nService.t(cfg.label)}
+                  <div className={`text-sm font-medium ${hasRunDeliveryFailure(run) ? 'text-amber-600 dark:text-amber-400' : cfg.color}`}>
+                    {i18nService.t(hasRunDeliveryFailure(run) ? 'scheduledTasksDeliveryFailed' : cfg.label)}
                   </div>
                 </div>
               );
@@ -318,7 +304,7 @@ const AllRunsHistory: React.FC<AllRunsHistoryProps> = ({ searchText = '' }) => {
             <button
               type="button"
               onClick={handleLoadMore}
-              className="w-full py-3 text-sm text-primary hover:text-primary-hover transition-colors"
+              className="w-full py-3 text-sm text-foreground hover:underline underline-offset-4 transition-colors"
             >
               {i18nService.t('scheduledTasksLoadMore')}
             </button>
@@ -334,6 +320,7 @@ const AllRunsHistory: React.FC<AllRunsHistoryProps> = ({ searchText = '' }) => {
           sessionKey={viewingRun.sessionKey}
           runSummary={viewingRun.summary}
           runError={viewingRun.error}
+          run={viewingRun}
           onClose={() => setViewingRun(null)}
         />
       )}

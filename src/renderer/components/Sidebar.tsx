@@ -1,5 +1,6 @@
 import {
   ChevronDownIcon,
+  Cog6ToothIcon,
   ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline';
 import { AgentId } from '@shared/agent';
@@ -22,6 +23,8 @@ import {
 } from '../store/selectors/coworkSelectors';
 import { setUserBalance } from '../store/slices/authSlice';
 import type { CoworkSessionSummary } from '../types/cowork';
+import { MainView } from '../types/navigation';
+import { getAccountConnectionState } from './accountConnectionState';
 import {
   type AgentSidebarBatchItem,
   AgentSidebarBatchItemKind,
@@ -62,6 +65,7 @@ interface SidebarProps {
   onShowExperts: (tab?: 'teams' | 'experts' | 'skills' | 'mcp') => void;
   onShowSecondBrain: () => void;
   onShowMcp?: () => void;
+  onShowConnectors?: () => void;
   onShowSites: () => void;
   onShowLibrary?: () => void;
   onShowRecordingCard?: () => void;
@@ -83,7 +87,7 @@ interface SidebarProps {
   isEngineStartupOverlayVisible?: boolean;
 }
 
-const DEFAULT_SIDEBAR_WIDTH = 244;
+const DEFAULT_SIDEBAR_WIDTH = 260;
 const MIN_SIDEBAR_WIDTH = 220;
 const MAX_SIDEBAR_WIDTH = 420;
 const SIDEBAR_COLLAPSE_TRANSITION_MS = 200;
@@ -91,16 +95,15 @@ const SIDEBAR_LOGIN_PROMO_TIP_DURATION_MS = 5000;
 const SIDEBAR_LOGIN_PROMO_TIP_FADE_MS = 220;
 
 const normalizeAgentId = (agentId?: string | null) => agentId?.trim() || AgentId.Main;
-const SidebarNewFeatureBadge = {
-  KitsDismissedVersionKey: 'sidebar.kitsNewFeatureBadge.dismissedVersion',
-  KitsVersion: '2026-06-05',
-} as const;
 
 const sidebarNavItemClassName =
   '-ml-[6px] w-[calc(100%+12px)] inline-flex h-[34px] items-center gap-2 rounded-lg pl-3 pr-2.5 text-left text-[13px] font-normal text-foreground/85 transition-all duration-150 hover:bg-foreground/[0.04] hover:text-foreground dark:hover:bg-white/[0.05]';
 const activeSidebarNavItemClassName =
   '-ml-[6px] w-[calc(100%+12px)] inline-flex h-[34px] items-center gap-2 rounded-lg pl-3 pr-2.5 text-left text-[13px] font-medium text-foreground bg-foreground/[0.07] shadow-[inset_0_0_0_1px_rgba(0,0,0,0.04)] dark:bg-white/[0.08] dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)] transition-all duration-150';
 const sidebarCreateIconClassName = 'h-4 w-4 shrink-0 text-foreground/80';
+const sidebarNavIconClassName = 'h-[18px] w-[18px] shrink-0 text-foreground/75';
+const sidebarBottomIconButtonClassName =
+  'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-foreground/80 transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.04]';
 
 type SidebarAnalyticsSource = 'home_sidebar' | 'home_agent_sidebar';
 
@@ -196,6 +199,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onShowExperts,
   onShowSecondBrain,
   onShowMcp,
+  onShowConnectors: _onShowConnectors,
   onShowSites,
   onShowLibrary,
   onShowRecordingCard,
@@ -221,8 +225,11 @@ const Sidebar: React.FC<SidebarProps> = ({
   const currentAgentId = useSelector((state: RootState) => state.agent.currentAgentId);
   const isLoggedIn = useSelector((state: RootState) => state.auth.isLoggedIn);
   const isAuthLoading = useSelector((state: RootState) => state.auth.isLoading);
+  const accountConnectionState = useSelector((state: RootState) => getAccountConnectionState(state.auth));
   const sessions = useSelector(selectCoworkSessions);
   const currentSessionId = useSelector(selectCurrentSessionId);
+  // The home page is the "new task" view, so its nav item reads as selected there.
+  const isNewTaskViewActive = activeView === MainView.Cowork && !currentSessionId;
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isBatchMode, setIsBatchMode] = useState(false);
   const isTeamGroupActive = activeView === 'experts' || activeView === 'skills' || activeView === 'mcp';
@@ -504,7 +511,6 @@ const Sidebar: React.FC<SidebarProps> = ({
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
   const [isResizing, setIsResizing] = useState(false);
   const [agentScrollEdges, setAgentScrollEdges] = useState({ top: false, bottom: false });
-  const [showKitsNewBadge, setShowKitsNewBadge] = useState(false);
   const [showLoginPromoTip, setShowLoginPromoTip] = useState(true);
   const [isLoginPromoTipFading, setIsLoginPromoTipFading] = useState(false);
   const isResizingRef = useRef(false);
@@ -513,7 +519,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   const agentScrollContainerRef = useRef<HTMLDivElement>(null);
   const isWindows = window.electron.platform === 'win32';
   const showHeaderRow = !isWindows;
-  const showLoginPromo = !hideLogin && !isAuthLoading && !isLoggedIn;
+  const showLoginPromo = !hideLogin && !isAuthLoading && !isLoggedIn && !accountConnectionState;
   const shouldShowLoginPromoTip = showLoginPromo && showLoginPromoTip;
   void isLoginPromoTipFading;
   void shouldShowLoginPromoTip;
@@ -547,27 +553,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     };
   }, [batchSelectableItemByKey, batchSelectableItems.length, batchSelectableKeySet, selectedKeys]);
 
-  useEffect(() => {
-    let isCurrent = true;
 
-    const loadKitsNewBadgeState = async () => {
-      try {
-        const dismissedVersion = await window.electron.store.get(
-          SidebarNewFeatureBadge.KitsDismissedVersionKey,
-        );
-        if (!isCurrent) return;
-        setShowKitsNewBadge(dismissedVersion !== SidebarNewFeatureBadge.KitsVersion);
-      } catch (error) {
-        console.warn('[Sidebar] failed to load kits new feature badge state:', error);
-      }
-    };
-
-    void loadKitsNewBadgeState();
-
-    return () => {
-      isCurrent = false;
-    };
-  }, []);
 
   useEffect(() => {
     if (!showLoginPromo) {
@@ -612,20 +598,6 @@ const Sidebar: React.FC<SidebarProps> = ({
     };
   }, [isEngineStartupOverlayVisible, showLoginPromo, showLoginPromoTip]);
 
-  const dismissKitsNewBadge = useCallback(() => {
-    if (!showKitsNewBadge) return;
-    setShowKitsNewBadge(false);
-    void window.electron.store
-      .set(
-        SidebarNewFeatureBadge.KitsDismissedVersionKey,
-        SidebarNewFeatureBadge.KitsVersion,
-      )
-      .catch((error) => {
-        console.warn('[Sidebar] failed to save kits new feature badge state:', error);
-      });
-  }, [showKitsNewBadge]);
-
-  void dismissKitsNewBadge;
   const openTaskSearch = useCallback((source: CoworkTaskSearchRequestSource) => {
     logTaskSearchRequest(source, activeView);
     onShowCowork();
@@ -930,10 +902,10 @@ const Sidebar: React.FC<SidebarProps> = ({
                 <button
                   type="button"
                   onClick={onToggleCollapse}
-                  className="non-draggable h-8 w-8 inline-flex items-center justify-center rounded-lg text-secondary hover:bg-surface-raised transition-colors"
+                  className="non-draggable h-8 w-8 inline-flex items-center justify-center rounded-lg text-foreground/80 hover:bg-black/[0.03] dark:hover:bg-white/[0.04] transition-colors"
                   aria-label={isCollapsed ? i18nService.t('expand') : i18nService.t('collapse')}
                 >
-                  <SidebarToggleIcon className="h-4 w-4" isCollapsed={isCollapsed} />
+                  <SidebarToggleIcon className="h-[18px] w-[18px]" isCollapsed={isCollapsed} />
                 </button>
                 {!isCollapsed && (
                   <>
@@ -945,7 +917,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                       className="non-draggable"
                       label={i18nService.t('search')}
                     />
-                    {SIDEBAR_TASK_FILTER_ENABLED && activeView === 'cowork' && (
+                    {SIDEBAR_TASK_FILTER_ENABLED && activeView === MainView.Cowork && (
                       <SidebarTaskFilterButton
                         isActive={isTaskFilterActive}
                         hasUnreadCompletedTasks={hasUnreadCompletedTasks}
@@ -973,7 +945,8 @@ const Sidebar: React.FC<SidebarProps> = ({
               reportSidebarAction('new_task', { activeView, isCollapsed });
               onNewChat();
             }}
-            className={sidebarNavItemClassName}
+            className={isNewTaskViewActive ? activeSidebarNavItemClassName : sidebarNavItemClassName}
+            aria-current={isNewTaskViewActive ? 'page' : undefined}
           >
             <ComposeIcon className={sidebarCreateIconClassName} />
             <span>{i18nService.t('newChat')}</span>
@@ -1008,33 +981,13 @@ const Sidebar: React.FC<SidebarProps> = ({
               setIsSearchOpen(false);
               onShowScheduledTasks();
             }}
-            className={activeView === 'scheduledTasks' ? activeSidebarNavItemClassName : sidebarNavItemClassName}
-            aria-current={activeView === 'scheduledTasks' ? 'page' : undefined}
+            className={activeView === MainView.ScheduledTasks ? activeSidebarNavItemClassName : sidebarNavItemClassName}
+            aria-current={activeView === MainView.ScheduledTasks ? 'page' : undefined}
           >
-            <SidebarAutomationIcon className="h-4 w-4 shrink-0" />
+            <SidebarAutomationIcon className={sidebarNavIconClassName} />
             {i18nService.t('scheduledTasks')}
           </button>
-          {/* 原“召唤专家”菜单，隐藏但不删除代码
-          <button
-            type="button"
-            onClick={() => {
-              reportSidebarAction('open_kits', { activeView, isCollapsed });
-              setIsSearchOpen(false);
-              dismissKitsNewBadge();
-              onShowKits();
-            }}
-            className={activeView === 'kits' ? activeSidebarNavItemClassName : sidebarNavItemClassName}
-            aria-current={activeView === 'kits' ? 'page' : undefined}
-          >
-            <SidebarKitsIcon className="h-4 w-4 shrink-0" />
-            <span className="min-w-0 truncate">{i18nService.t('kits')}</span>
-            {showKitsNewBadge && (
-              <span className="inline-flex h-4 shrink-0 items-center rounded-[4px] bg-[#ff4f6d] px-1.5 text-[10px] font-semibold leading-none text-white">
-                {i18nService.t('newFeatureBadge')}
-              </span>
-            )}
-          </button>
-          */}
+
           <div className="space-y-0.5">
             <button
               type="button"
@@ -1222,7 +1175,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       <div className="relative min-h-0 flex-1">
         <div
           ref={agentScrollContainerRef}
-          className="scrollbar-hidden h-full overflow-y-auto px-2.5"
+          className="scrollbar-hidden h-full overflow-y-auto px-2.5 pb-10"
           onScroll={handleAgentScroll}
         >
           <MyAgentSidebarTree
@@ -1280,7 +1233,9 @@ const Sidebar: React.FC<SidebarProps> = ({
         onSelectSession={handleSelectSession}
       />
       {!isBatchMode && updateNotice && (
-        <div className="non-draggable px-3 pt-1.5">{updateNotice}</div>
+        <div className="non-draggable px-3 pt-1.5">
+          <div>{updateNotice}</div>
+        </div>
       )}
       {isBatchMode ? (
         <div className="border-t border-border/60 px-3 pb-3 pt-2">
@@ -1360,6 +1315,16 @@ const Sidebar: React.FC<SidebarProps> = ({
                   @{accountUsername}
                 </div>
               )}
+            </div>
+            <div className="ml-auto flex shrink-0 items-center justify-end">
+              <button
+                type="button"
+                onClick={() => onShowSettings()}
+                className={sidebarBottomIconButtonClassName}
+                aria-label={i18nService.t('settings')}
+              >
+                <Cog6ToothIcon className="h-[18px] w-[18px] shrink-0" />
+              </button>
             </div>
           </div>
 

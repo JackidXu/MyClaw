@@ -1,6 +1,7 @@
 import { type ProviderConfig, ProviderName, ProviderRegistry } from '@shared/providers';
 
 import {
+  BROWSER_DISPLAY_MODE_MIGRATION_VERSION,
   type BrowserWebAccessConfig,
   defaultBrowserWebAccessConfig,
 } from '../shared/browserWebAccess/constants';
@@ -16,6 +17,7 @@ export const ShortcutAction = {
   SendMessage: 'sendMessage',
   ShowShortcuts: 'showShortcuts',
   FocusPrompt: 'focusPrompt',
+  VoiceInput: 'voiceInput',
   StopCurrentTask: 'stopCurrentTask',
   ToggleSidebar: 'toggleSidebar',
   ToggleArtifacts: 'toggleArtifacts',
@@ -39,6 +41,7 @@ export const ShortcutAction = {
   OpenMcp: 'openMcp',
   OpenSettingsGeneral: 'openSettingsGeneral',
   OpenSettingsAppearance: 'openSettingsAppearance',
+  OpenSettingsDesktopCompanion: 'openSettingsDesktopCompanion',
   OpenSettingsAgentEngine: 'openSettingsAgentEngine',
   OpenSettingsModel: 'openSettingsModel',
   OpenSettingsIm: 'openSettingsIm',
@@ -141,6 +144,8 @@ export interface AppConfig {
   notificationSettings?: NotificationSettings;
   // 浏览器与网页访问配置
   browserWebAccess: BrowserWebAccessConfig;
+  // 已应用的内置浏览器默认切换版本(见 BROWSER_DISPLAY_MODE_MIGRATION_VERSION，由主进程执行)
+  browserDisplayModeMigrationVersion?: number;
   // 语言初始化标记 (用于判断是否是首次启动)
   language_initialized?: boolean;
   // 应用配置
@@ -198,6 +203,7 @@ export const defaultConfig: AppConfig = {
   usageAnalyticsEnabled: false,
   notificationSettings: defaultNotificationSettings,
   browserWebAccess: defaultBrowserWebAccessConfig,
+  browserDisplayModeMigrationVersion: BROWSER_DISPLAY_MODE_MIGRATION_VERSION,
   app: {
     port: 3000,
     isDevelopment: process.env.NODE_ENV === 'development',
@@ -215,6 +221,7 @@ export const defaultConfig: AppConfig = {
     [ShortcutAction.SendMessage]: 'Enter',
     [ShortcutAction.ShowShortcuts]: 'CommandOrControl+/',
     [ShortcutAction.FocusPrompt]: 'CommandOrControl+K',
+    [ShortcutAction.VoiceInput]: '',
     [ShortcutAction.StopCurrentTask]: 'CommandOrControl+.',
     [ShortcutAction.ToggleSidebar]: 'CommandOrControl+B',
     [ShortcutAction.ToggleArtifacts]: 'CommandOrControl+Shift+B',
@@ -238,6 +245,7 @@ export const defaultConfig: AppConfig = {
     [ShortcutAction.OpenMcp]: 'CommandOrControl+5',
     [ShortcutAction.OpenSettingsGeneral]: '',
     [ShortcutAction.OpenSettingsAppearance]: '',
+    [ShortcutAction.OpenSettingsDesktopCompanion]: '',
     [ShortcutAction.OpenSettingsAgentEngine]: '',
     [ShortcutAction.OpenSettingsModel]: '',
     [ShortcutAction.OpenSettingsIm]: '',

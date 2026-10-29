@@ -109,6 +109,7 @@ export class SqliteStore {
         cwd TEXT NOT NULL,
         system_prompt TEXT NOT NULL DEFAULT '',
         model_override TEXT NOT NULL DEFAULT '',
+        model_preset_id TEXT,
         thinking_level TEXT NOT NULL DEFAULT '',
         execution_mode TEXT,
         parent_session_id TEXT,
@@ -231,6 +232,7 @@ export class SqliteStore {
         thinking_level TEXT NOT NULL DEFAULT '',
         working_directory TEXT NOT NULL DEFAULT '',
         icon TEXT NOT NULL DEFAULT '',
+        icon_customized INTEGER,
         skill_ids TEXT NOT NULL DEFAULT '[]',
         subagent_allow_agent_ids TEXT NOT NULL DEFAULT '[]',
         level TEXT NOT NULL DEFAULT '高级',
@@ -413,6 +415,11 @@ export class SqliteStore {
 
       if (!colNames.includes('active_skill_ids')) {
         this.db.exec('ALTER TABLE cowork_sessions ADD COLUMN active_skill_ids TEXT;');
+        this.didRunMigration = true;
+      }
+
+      if (!colNames.includes('model_preset_id')) {
+        this.db.exec('ALTER TABLE cowork_sessions ADD COLUMN model_preset_id TEXT;');
         this.didRunMigration = true;
       }
 
@@ -631,6 +638,13 @@ export class SqliteStore {
       throw error;
     }
 
+    // Null preserves legacy ownership inference; explicit edits are recorded from now on.
+    const avatarColumns = this.db.pragma('table_info(agents)') as Array<{ name: string }>;
+    if (!avatarColumns.some(column => column.name.toLowerCase() === 'icon_customized')) {
+      this.db.exec('ALTER TABLE agents ADD COLUMN icon_customized INTEGER;');
+      this.didRunMigration = true;
+    }
+
     // Migration: Add model preference and layout columns to agents
     try {
       const agentCols = this.db.pragma('table_info(agents)') as Array<{ name: string }>;
@@ -826,6 +840,34 @@ export class SqliteStore {
     } catch (error) {
       console.error('[SqliteStore] failed to add cowork_sessions.project_id:', error);
       throw error;
+    }
+
+    // Migration: Sanitize legacy agent IDs to comply with OpenClaw alphanumeric rules
+    try {
+      const agentsTable = this.db.pragma("table_info(agents)") as Array<{ name: string }>;
+      if (agentsTable && agentsTable.length > 0) {
+        const rows = this.db.prepare('SELECT id FROM agents').all() as Array<{ id: string }>;
+        const updateAgent = this.db.prepare('UPDATE agents SET id = ? WHERE id = ?');
+        const updateSessions = this.db.prepare('UPDATE cowork_sessions SET agent_id = ? WHERE agent_id = ?');
+        const updateMeta = this.db.prepare('UPDATE scheduled_task_meta SET agent_id = ? WHERE agent_id = ?');
+
+        for (const row of rows) {
+          if (!row.id || row.id === 'main') continue;
+          if (/[^a-zA-Z0-9_-]/.test(row.id)) {
+            const sanitized = row.id.replace(/[^a-zA-Z0-9_-]/g, '_').replace(/^_+|_+$/g, '') || 'agent';
+            if (sanitized !== row.id) {
+              this.db.transaction(() => {
+                updateAgent.run(sanitized, row.id);
+                try { updateSessions.run(sanitized, row.id); } catch { /* ignore if no sessions */ }
+                try { updateMeta.run(sanitized, row.id); } catch { /* ignore if table missing */ }
+              })();
+              this.didRunMigration = true;
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('[SqliteStore] failed to migrate legacy agent IDs:', error);
     }
 
     this.migrateLegacyMemoryFileToUserMemories();

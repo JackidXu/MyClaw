@@ -1,7 +1,11 @@
+import { parseAgentAvatarImageUrl } from '../shared/agent/avatar';
+import { AgentSource } from '../shared/agent/constants';
+import { usesManagedPresetAvatar } from '../shared/agent/presetAvatar';
+import type { ExpertCatalog, PresetAgent as SharedPresetAgent } from '../shared/agent/presets';
 import type { Agent, CoworkStore, CreateAgentRequest, UpdateAgentRequest } from './coworkStore';
 import { getLanguage } from './i18n';
 import { getExpertTeams, getPaidExperts, getPresetExperts } from './libs/expertStore';
-import { type PresetAgent, presetToCreateRequest } from './presetAgents';
+import { PresetAgent, presetToCreateRequest } from './presetAgents';
 
 /**
  * AgentManager handles CRUD operations for agents and preset agent installation.
@@ -10,7 +14,7 @@ import { type PresetAgent, presetToCreateRequest } from './presetAgents';
 export class AgentManager {
   private store: CoworkStore;
 
-  constructor(store: CoworkStore) {
+  constructor(store: CoworkStore, private readonly loadCatalog: () => Promise<ExpertCatalog>) {
     this.store = store;
   }
 
@@ -162,20 +166,35 @@ export class AgentManager {
 
   // --- Preset agents ---
 
-  getPresetAgents(): PresetAgent[] {
+  async getPresetAgents(): Promise<PresetAgent[]> {
     const existingAgents = this.store.listAgents();
     const existingPresetIds = new Set(
-      existingAgents.filter(a => a.source === 'preset').map(a => a.presetId)
+      existingAgents.filter(a => a.source === AgentSource.Preset).map(a => a.presetId)
     );
-    // Only return presets that haven't been added yet
     return getPresetExperts().filter(p => !existingPresetIds.has(p.id));
   }
 
-  getAllPresetAgents(): PresetAgent[] {
+  async getExpertCatalog(): Promise<ExpertCatalog> {
+    const catalog = await this.loadCatalog();
+    const presets = new Map(catalog.experts.map(preset => [preset.id, preset]));
+    for (const agent of this.store.listAgents()) {
+      const icon = presets.get(agent.presetId)?.icon;
+      if (icon && parseAgentAvatarImageUrl(icon) && usesManagedPresetAvatar(agent) && agent.icon !== icon) {
+        try {
+          this.store.updatePresetAgentAvatar(agent.id, icon);
+        } catch (error) {
+          console.warn('[AgentManager] Failed to refresh preset avatar:', agent.id, error);
+        }
+      }
+    }
+    return catalog;
+  }
+
+  async getAllPresetAgents(): Promise<PresetAgent[]> {
     return getPresetExperts();
   }
 
-  addPresetAgent(presetId: string, defaultModel?: string): Agent | null {
+  async addPresetAgent(presetId: string, defaultModel?: string): Promise<Agent | null> {
     const allExperts: any[] = [...getPresetExperts(), ...getPaidExperts(), ...getExpertTeams()];
     const preset = allExperts.find(p => p.id === presetId);
     if (!preset) return null;

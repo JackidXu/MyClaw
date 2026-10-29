@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
+import { useDispatch } from 'react-redux';
 
 import { configService } from '../services/config';
 import { httpClient } from '../services/httpClient';
 import { fetchAndFilterOneApiChatModels } from '../services/oneapiModels';
 import { vipService } from '../services/vipService';
+import { setLoggedIn } from '../store/slices/authSlice';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -11,6 +13,7 @@ interface AuthModalProps {
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
+  const dispatch = useDispatch();
   const [isLogin, setIsLogin] = useState(true);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -130,6 +133,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
         }
       });
 
+
+      dispatch(setLoggedIn({
+        user: {
+          yid: String(userId),
+          nickname: '',
+          avatarUrl: null,
+          accountMode: 'personal',
+        },
+        quota: null,
+        ownerAccountKey: `heyclaw-${userId}`,
+      }));
 
       // 刷新并注册 VIP 与设备状态
       try {
