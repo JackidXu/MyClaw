@@ -39,7 +39,6 @@ import {
 } from '../../../shared/library/constants';
 import type {
   LibraryChangedPayload,
-  LibraryCloudItem,
   LibraryCloudListData,
   LibraryItem,
   LibraryLocalDetailData,
@@ -65,10 +64,7 @@ import {
   MANAGEMENT_PAGE_TITLE_TEXT,
   MANAGEMENT_TITLE_TEXT,
 } from '../common/managementTypography';
-import CloudFilesIcon from '../icons/CloudFilesIcon';
 import FileTypeIcon from '../icons/fileTypes/FileTypeIcon';
-import LocalFilesIcon from '../icons/LocalFilesIcon';
-import ShareUploadIcon from '../icons/ShareUploadIcon';
 import SidebarToggleIcon from '../icons/SidebarToggleIcon';
 import Tooltip, { TooltipAlign, TooltipPosition } from '../ui/Tooltip';
 import { LIBRARY_ACTION_MENU_WIDTH_PX } from './libraryActionMenuPresentation';
@@ -128,7 +124,6 @@ import {
   LibraryRefreshOutcome,
 } from './libraryRefreshCoordinator';
 import { getLibrarySessionAnchorKey, type LibraryScrollAnchor } from './libraryScrollAnchor';
-import LibraryCloudView from './LibrarySharedFilesView';
 import { groupLibraryItemsByTask } from './libraryTaskGrouping';
 import LibraryThumbnail from './LibraryThumbnail';
 import LibraryVirtualizedGroups, {
@@ -209,11 +204,6 @@ const CATEGORY_FILTERS = [
   LibraryCategory.Other,
 ] as const;
 
-const SOURCE_FILTERS = [
-  LibrarySourceFilter.Local,
-  LibrarySourceFilter.Cloud,
-] as const;
-
 const getLocalLibraryError = (code?: LibraryErrorCode, fallback?: string): string => {
   if (code === LibraryErrorCode.ProtocolMismatch) return i18nService.t('libraryRestartForUpdate');
   if (code === LibraryErrorCode.InvalidCursor || code === LibraryErrorCode.InvalidLocalData) {
@@ -226,45 +216,6 @@ const formatLibrarySessionTime = (value: number): string => new Intl.DateTimeFor
   i18nService.getLanguage() === 'zh' ? 'zh-CN' : 'en-US',
   { hour: '2-digit', minute: '2-digit' },
 ).format(new Date(value));
-
-const SourceTab: React.FC<{
-  source: LibrarySourceFilter;
-  active: boolean;
-  loading?: boolean;
-  announceLoading?: boolean;
-  onClick: () => void;
-}> = ({
-  source,
-  active,
-  loading = false,
-  announceLoading = false,
-  onClick,
-}) => (
-  <button
-    type="button"
-    role="tab"
-    aria-selected={active}
-    onClick={onClick}
-    className={`non-draggable relative inline-flex h-8 items-center justify-center gap-1.5 rounded-lg px-6 ${MANAGEMENT_PAGE_TITLE_TEXT} font-semibold transition-colors ${
-      active ? 'bg-surface-raised text-foreground' : 'text-secondary hover:text-foreground'
-    }`}
-  >
-    {source === LibrarySourceFilter.Local ? (
-      <LocalFilesIcon className="h-[18px] w-[18px] shrink-0" />
-    ) : (
-      <CloudFilesIcon className="h-[18px] w-[18px] shrink-0" />
-    )}
-    {i18nService.t(`librarySource_${source}`)}
-    {loading && (
-      <span className="absolute inset-y-0 right-1.5 flex w-3.5 items-center justify-center">
-        <LibraryLoadingIndicator
-          label={i18nService.t('libraryUpdating')}
-          announce={announceLoading}
-        />
-      </span>
-    )}
-  </button>
-);
 
 const LibraryListItemIcon: React.FC<{ item: LibraryItem }> = ({ item }) => {
   const isWebsite = isLibraryWebsiteItem(item);
@@ -495,7 +446,6 @@ const LibraryView: React.FC<LibraryViewProps> = ({
     ? cloudResolvedQuery
     : undefined;
   const visibleCloudData = activeCloudResolvedQuery ? cloudData : EMPTY_CLOUD;
-  const cloudDisplayAvailability = activeCloudResolvedQuery?.availability ?? cloudAvailability;
   currentQueryKeyRef.current = queryKey;
   const notifyPositionChanged = useCallback(() => {
     setLocalNotice(i18nService.t('libraryPositionChanged'));
@@ -1569,7 +1519,15 @@ const LibraryView: React.FC<LibraryViewProps> = ({
       try {
         setActiveItem(undefined);
         setImageEditDraft(request);
-        onOpenSession({ sessionId: targetSessionId, sessionArtifactId: undefined, title: '' });
+        onOpenSession({
+          sessionId: targetSessionId,
+          sessionArtifactId: undefined,
+          title: '',
+          agentId: '',
+          createdAt: request.source.createdAt || 0,
+          updatedAt: Date.now(),
+          lastRelatedAt: Date.now(),
+        });
 
         const attachment = imageEditAttachment(request);
         const result = await prepareCoworkPromptPayload({
