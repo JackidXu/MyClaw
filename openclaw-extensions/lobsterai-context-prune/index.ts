@@ -16,6 +16,10 @@ export const CURRENT_TURN_ACTIVE_STEPS_KEEP = 3;
 export const CURRENT_TURN_MAX_IMAGES_KEEP = 3;
 export const IMAGE_PRUNED_TEXT = '[中间步骤截图已折叠，请参考最新界面呈现]';
 
+/** 单轮工具步数弹性熔断配置 */
+export const TURN_TOOL_CALL_SOFT_LIMIT = 40;
+export const TURN_TOOL_CALL_HARD_LIMIT = 50;
+
 const IMAGE_BLOCK_TYPES = new Set(['image', 'image_url', 'input_image']);
 
 function isImageBlock(block: unknown): boolean {
@@ -311,12 +315,72 @@ export class LobsterAIContextPruneEngine implements ContextEngine {
   }
 }
 
+/** 单轮工具步数计数跟踪（按 sessionKey 独立维护） */
+export const toolCallCountBySessionKey = new Map<string, number>();
+
+export function getSessionKeyTurnToolCount(sessionKey: string): number {
+  return toolCallCountBySessionKey.get(sessionKey) ?? 0;
+}
+
+export function incrementSessionKeyTurnToolCount(sessionKey: string): number {
+  const current = getSessionKeyTurnToolCount(sessionKey);
+  const next = current + 1;
+  toolCallCountBySessionKey.set(sessionKey, next);
+  return next;
+}
+
+export function resetSessionKeyTurnToolCount(sessionKey: string): void {
+  toolCallCountBySessionKey.delete(sessionKey);
+}
+
 export default {
   id: 'lobsterai-context-prune',
   name: 'LobsterAI Context Pruning Engine',
-  description: 'Applies proactive context management, progressive sliding window tool folding, and multi-modal image stripping.',
+  description: 'Applies proactive context management, progressive sliding window tool folding, multi-modal image stripping, and turn tool call cap protection.',
   register(api: OpenClawPluginApi) {
     api.registerContextEngine('lobsterai-context-prune', () => new LobsterAIContextPruneEngine());
     api.logger.info('[lobsterai-context-prune] registered context engine "lobsterai-context-prune".');
+
+    // 新一轮问答启动时重置步数计数
+    api.on('before_prompt_build', async (_event, ctx) => {
+      const sessionKey = ctx?.sessionKey;
+      if (sessionKey) {
+        resetSessionKeyTurnToolCount(sessionKey);
+      }
+    });
+
+    // 问答结束时清理步数计数
+    api.on('agent_end', async (_event, ctx) => {
+      const sessionKey = ctx?.sessionKey;
+      if (sessionKey) {
+        resetSessionKeyTurnToolCount(sessionKey);
+      }
+    });
+
+    // 工具调用前拦截：步数统计与软硬熔断
+    api.on('before_tool_call', async (event, ctx) => {
+      const sessionKey = ctx?.sessionKey;
+      if (!sessionKey) return;
+
+      const count = incrementSessionKeyTurnToolCount(sessionKey);
+
+      // 硬熔断：超过 50 步彻底拦截并指示模型收手
+      if (count >= TURN_TOOL_CALL_HARD_LIMIT) {
+        api.logger.warn(
+          `[lobsterai-context-prune] hard cap reached (${count}/${TURN_TOOL_CALL_HARD_LIMIT}) for tool "${event.toolName}" in session "${sessionKey}". Blocking tool call.`,
+        );
+        return {
+          block: true,
+          blockReason: `已达到单轮任务 ${TURN_TOOL_CALL_HARD_LIMIT} 步工具安全上限（当前第 ${count} 步）。已触发系统安全熔断止损，严禁继续调用任何工具！请立即整理已有工作成果，向用户进行阶段性交付汇报并等待用户指令。`,
+        };
+      }
+
+      // 软提示：达到 40~49 步时在日志中预警
+      if (count >= TURN_TOOL_CALL_SOFT_LIMIT) {
+        api.logger.warn(
+          `[lobsterai-context-prune] soft cap reached (${count}/${TURN_TOOL_CALL_HARD_LIMIT}) for tool "${event.toolName}" in session "${sessionKey}". Approaching limit.`,
+        );
+      }
+    });
   },
 };
