@@ -24,7 +24,6 @@ import { DECISION_MODEL_PLUGIN_ID } from '../../shared/decisionModel/constants';
 import { WeixinPlugin } from '../../shared/im/weixin';
 import { normalizeMcpServerUrlInput } from '../../shared/mcp/url';
 import { MediaConfirmationPolicy } from '../../shared/media/confirmation';
-import { OFFICE_EDITORS } from '../../shared/office/editors';
 import {
   OPENCLAW_MODEL_COMPAT_PLUGIN_ID,
   OPENCLAW_PLUGIN_INDEX_MANAGED_KEYS,
@@ -562,6 +561,7 @@ const MANAGED_DELIVERABLE_LINKS_PROMPT = [
   '  anything the user should keep must be saved outside of it.',
   '- Only link files that exist on disk after your work. Never link files you merely read.',
   '- **Strict existence verification**: ONLY link files that ACTUALLY exist on disk after being created or written by you in this turn (regardless of whether created by `write`, scripts, or commands). If the deliverable does NOT physically exist on disk with a valid file size, you are STRICTLY FORBIDDEN from outputting any file link or claiming "已保存到 [filename]". Fabricating a file link without verifying file existence causes a critical "File Not Found" error when the user clicks it.',
+  '- **Math notation**: When outputting mathematical formulas, format inline expressions with `$...$` and block expressions with `$$...$$`. Avoid pseudo plain text like `x_1` or `a^(m+n)`.',
 ].join('\n');
 
 const MANAGED_INCREMENTAL_DELIVERY_POLICY_PROMPT = [
@@ -578,22 +578,6 @@ const MANAGED_INCREMENTAL_DELIVERY_POLICY_PROMPT = [
   '',
   '3. **视觉微调与截图自律**：',
   '   - 严禁为了追求所谓“完美像素”而在没有用户明确指示的情况下频繁反复截图比对。初版呈现给用户后，等待用户下达具体的微调指令。',
-].join('\n');
-
-const MANAGED_MATH_FORMAT_PROMPT = [
-  '## Math Formula Formatting',
-  '',
-  'The HeyClaw app chat renders TeX formulas with KaTeX.',
-  '',
-  '- In app chat sessions, write every mathematical formula or expression in TeX:',
-  '  `$...$` inline, and `$$` on its own lines around display blocks.',
-  '  (`\\(...\\)` / `\\[...\\]` are also rendered, but prefer dollar delimiters.)',
-  '- Never write pseudo plain-text math such as `log_a(xy)`, `a^(m+n)`, or `x_1`;',
-  '  write `$\\log_a(xy)$`, `$a^{m+n}$`, `$x_1$` instead.',
-  '- Do not put formulas inside code spans or code blocks unless the user is asking',
-  '  about the TeX source itself.',
-  '- Exception: native IM channel replies (DingTalk, Feishu, Telegram, etc.) do NOT',
-  '  render TeX — use readable plain-text notation there.',
 ].join('\n');
 
 const MANAGED_MEMORY_POLICY_PROMPT = [
@@ -4282,10 +4266,8 @@ export class OpenClawConfigSync {
       sections.push(MANAGED_EXEC_SAFETY_PROMPT);
       sections.push(MANAGED_INCREMENTAL_DELIVERY_POLICY_PROMPT);
       sections.push(MANAGED_DELIVERABLE_LINKS_PROMPT);
-      for (const editor of OFFICE_EDITORS) {
-        if (editor.agent.prompt) sections.push(editor.agent.prompt);
-      }
-      sections.push(MANAGED_MATH_FORMAT_PROMPT);
+      // Office rules and verbose TeX format sections are stripped from global AGENTS.md
+      // to reduce base context token overhead by ~3,000 tokens per turn.
       sections.push(MANAGED_MEMORY_POLICY_PROMPT);
       sections.push(MANAGED_HEARTBEAT_POLICY_PROMPT);
       sections.push(buildManagedSubagentPolicyPrompt(agentContext?.currentAgent, agentContext?.allAgents));
