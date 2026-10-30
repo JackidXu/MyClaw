@@ -20,6 +20,9 @@ export const IMAGE_PRUNED_TEXT = '[中间步骤截图已折叠，请参考最新
 export const TURN_TOOL_CALL_SOFT_LIMIT = 40;
 export const TURN_TOOL_CALL_HARD_LIMIT = 50;
 
+/** 同工具同参连续尝试熔断阈值（防死磕重试） */
+export const SAME_TOOL_CONSECUTIVE_ATTEMPTS_LIMIT = 3;
+
 const IMAGE_BLOCK_TYPES = new Set(['image', 'image_url', 'input_image']);
 
 function isImageBlock(block: unknown): boolean {
@@ -318,6 +321,42 @@ export class LobsterAIContextPruneEngine implements ContextEngine {
 /** 单轮工具步数计数跟踪（按 sessionKey 独立维护） */
 export const toolCallCountBySessionKey = new Map<string, number>();
 
+/** 工具调用特征记录（用于检测连续相同参数重复调用，防死磕） */
+export type LastToolInvocation = {
+  signature: string;
+  count: number;
+};
+export const lastToolInvocationBySessionKey = new Map<string, LastToolInvocation>();
+
+export function serializeToolInvocationSignature(toolName: string, params: unknown): string {
+  try {
+    const serialized = JSON.stringify(params, Object.keys(params && typeof params === 'object' ? params : {}).sort());
+    return `${toolName}:${serialized}`;
+  } catch {
+    return `${toolName}:${String(params)}`;
+  }
+}
+
+export function checkAndRecordConsecutiveToolCall(
+  sessionKey: string,
+  toolName: string,
+  params: unknown,
+): { isConsecutiveLoop: boolean; consecutiveCount: number } {
+  const signature = serializeToolInvocationSignature(toolName, params);
+  const last = lastToolInvocationBySessionKey.get(sessionKey);
+
+  if (last && last.signature === signature) {
+    last.count += 1;
+    return {
+      isConsecutiveLoop: last.count >= SAME_TOOL_CONSECUTIVE_ATTEMPTS_LIMIT,
+      consecutiveCount: last.count,
+    };
+  }
+
+  lastToolInvocationBySessionKey.set(sessionKey, { signature, count: 1 });
+  return { isConsecutiveLoop: false, consecutiveCount: 1 };
+}
+
 export function getSessionKeyTurnToolCount(sessionKey: string): number {
   return toolCallCountBySessionKey.get(sessionKey) ?? 0;
 }
@@ -329,42 +368,59 @@ export function incrementSessionKeyTurnToolCount(sessionKey: string): number {
   return next;
 }
 
-export function resetSessionKeyTurnToolCount(sessionKey: string): void {
+export function resetSessionKeyState(sessionKey: string): void {
   toolCallCountBySessionKey.delete(sessionKey);
+  lastToolInvocationBySessionKey.delete(sessionKey);
 }
+
+// 保持向下兼容导出
+export const resetSessionKeyTurnToolCount = resetSessionKeyState;
 
 export default {
   id: 'lobsterai-context-prune',
   name: 'LobsterAI Context Pruning Engine',
-  description: 'Applies proactive context management, progressive sliding window tool folding, multi-modal image stripping, and turn tool call cap protection.',
+  description: 'Applies proactive context management, progressive sliding window tool folding, multi-modal image stripping, turn step capping, and circuit breaker protection.',
   register(api: OpenClawPluginApi) {
     api.registerContextEngine('lobsterai-context-prune', () => new LobsterAIContextPruneEngine());
     api.logger.info('[lobsterai-context-prune] registered context engine "lobsterai-context-prune".');
 
-    // 新一轮问答启动时重置步数计数
+    // 新一轮问答启动时重置步数与调用特征
     api.on('before_prompt_build', async (_event, ctx) => {
       const sessionKey = ctx?.sessionKey;
       if (sessionKey) {
-        resetSessionKeyTurnToolCount(sessionKey);
+        resetSessionKeyState(sessionKey);
       }
     });
 
-    // 问答结束时清理步数计数
+    // 问答结束时清理步数与调用特征
     api.on('agent_end', async (_event, ctx) => {
       const sessionKey = ctx?.sessionKey;
       if (sessionKey) {
-        resetSessionKeyTurnToolCount(sessionKey);
+        resetSessionKeyState(sessionKey);
       }
     });
 
-    // 工具调用前拦截：步数统计与软硬熔断
+    // 工具调用前拦截：步数统计、软硬熔断与同工具同参死循环熔断器
     api.on('before_tool_call', async (event, ctx) => {
       const sessionKey = ctx?.sessionKey;
       if (!sessionKey) return;
 
+      // 1. 同参连续死磕熔断检查
+      const toolCheck = checkAndRecordConsecutiveToolCall(sessionKey, event.toolName, event.params);
+      if (toolCheck.isConsecutiveLoop) {
+        api.logger.warn(
+          `[lobsterai-context-prune] circuit breaker triggered: tool "${event.toolName}" was called with identical parameters ${toolCheck.consecutiveCount} times consecutively in session "${sessionKey}". Blocking repeat attempt.`,
+        );
+        return {
+          block: true,
+          blockReason: `[⚠️ 连续失败熔断] 工具 "${event.toolName}" 已使用相同参数连续执行了 ${toolCheck.consecutiveCount} 次！严禁使用相同参数机械无意义重试。请仔细阅读前几次的错误反馈，调整排查思路或更换参数/工具，或直接向用户说明情况并请求协助。`,
+        };
+      }
+
+      // 2. 总步数统计与软硬熔断
       const count = incrementSessionKeyTurnToolCount(sessionKey);
 
-      // 硬熔断：超过 50 步彻底拦截并指示模型收手
+      // 硬熔断：达到 50 步彻底拦截并指示模型收手
       if (count >= TURN_TOOL_CALL_HARD_LIMIT) {
         api.logger.warn(
           `[lobsterai-context-prune] hard cap reached (${count}/${TURN_TOOL_CALL_HARD_LIMIT}) for tool "${event.toolName}" in session "${sessionKey}". Blocking tool call.`,
