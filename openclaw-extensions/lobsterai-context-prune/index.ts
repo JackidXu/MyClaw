@@ -16,12 +16,15 @@ export const CURRENT_TURN_ACTIVE_STEPS_KEEP = 3;
 export const CURRENT_TURN_MAX_IMAGES_KEEP = 3;
 export const IMAGE_PRUNED_TEXT = '[中间步骤截图已折叠，请参考最新界面呈现]';
 
-/** 单轮工具步数弹性熔断配置 */
-export const TURN_TOOL_CALL_SOFT_LIMIT = 40;
-export const TURN_TOOL_CALL_HARD_LIMIT = 50;
+/** 单轮工具步数弹性熔断配置（放宽至 60 步软预警，70 步硬止损） */
+export const TURN_TOOL_CALL_SOFT_LIMIT = 60;
+export const TURN_TOOL_CALL_HARD_LIMIT = 70;
 
-/** 同工具同参连续尝试熔断阈值（防死磕重试） */
-export const SAME_TOOL_CONSECUTIVE_ATTEMPTS_LIMIT = 3;
+/** 同工具同参连续尝试熔断阈值（放宽至 5 次防死磕，避免误伤状态轮询） */
+export const SAME_TOOL_CONSECUTIVE_ATTEMPTS_LIMIT = 5;
+
+/** 连续验收与微调复查阈值（如 browser 截图对比、exec 测试跑用例、连续微调等，超过 5 次强制注入阶段性交付提示） */
+export const CONSECUTIVE_INSPECTION_ATTEMPTS_LIMIT = 5;
 
 const IMAGE_BLOCK_TYPES = new Set(['image', 'image_url', 'input_image']);
 
@@ -368,9 +371,33 @@ export function incrementSessionKeyTurnToolCount(sessionKey: string): number {
   return next;
 }
 
+/** 检查类工具（如浏览器截图、查图片、查看文件等，用于微调自测）的频次统计 */
+export const inspectionToolCountBySessionKey = new Map<string, number>();
+
+const INSPECTION_TOOL_NAMES = new Set(['browser', 'view_image', 'view_file']);
+
+export function checkAndRecordInspectionToolCall(
+  sessionKey: string,
+  toolName: string,
+): { isThrashing: boolean; count: number } {
+  const normalized = (toolName || '').toLowerCase().trim();
+  if (!INSPECTION_TOOL_NAMES.has(normalized)) {
+    return { isThrashing: false, count: 0 };
+  }
+
+  const current = inspectionToolCountBySessionKey.get(sessionKey) ?? 0;
+  const next = current + 1;
+  inspectionToolCountBySessionKey.set(sessionKey, next);
+  return {
+    isThrashing: next >= CONSECUTIVE_INSPECTION_ATTEMPTS_LIMIT,
+    count: next,
+  };
+}
+
 export function resetSessionKeyState(sessionKey: string): void {
   toolCallCountBySessionKey.delete(sessionKey);
   lastToolInvocationBySessionKey.delete(sessionKey);
+  inspectionToolCountBySessionKey.delete(sessionKey);
 }
 
 // 保持向下兼容导出
@@ -417,7 +444,19 @@ export default {
         };
       }
 
-      // 2. 总步数统计与软硬熔断
+      // 2. 检查/复查类工具连续微调振荡拦截（如 browser 反复截图比对微调已达 5 次）
+      const inspectionCheck = checkAndRecordInspectionToolCall(sessionKey, event.toolName);
+      if (inspectionCheck.isThrashing) {
+        api.logger.warn(
+          `[lobsterai-context-prune] inspection thrashing limit reached (${inspectionCheck.count}/${CONSECUTIVE_INSPECTION_ATTEMPTS_LIMIT}) for tool "${event.toolName}" in session "${sessionKey}". Blocking further self-correction thrashing.`,
+        );
+        return {
+          block: true,
+          blockReason: `[⚠️ 阶段性交付拦截] 检测到你已针对当前任务进行了 ${inspectionCheck.count} 次视觉检查/复查！当前初版成果（如 HTML/文档/代码）已完全成型，严禁继续在后台自嗨式微调。请立即停止调用工具，向用户展示当前完成的成果并做阶段性交付汇报！后续微调必须交由用户决定。`,
+        };
+      }
+
+      // 3. 总步数统计与软硬熔断
       const count = incrementSessionKeyTurnToolCount(sessionKey);
 
       // 硬熔断：达到 50 步彻底拦截并指示模型收手
