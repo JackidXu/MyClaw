@@ -13,7 +13,9 @@ import { delegateCompactionToRuntime } from 'openclaw/plugin-sdk/core';
 export const TOOL_RESULT_KEEP_CHARS = 300;
 export const TOOL_RESULT_PRUNED_MARKER = '[工具步骤已折叠';
 export const CURRENT_TURN_ACTIVE_STEPS_KEEP = 3;
-export const CURRENT_TURN_MAX_IMAGES_KEEP = 3;
+/** 当前轮次工具产出（如 browser / view_image）允许保留的最新视觉截图数量（默认仅保留最新 1 张，用户上传图不限） */
+export const CURRENT_TURN_TOOL_IMAGES_KEEP = 1;
+export const CURRENT_TURN_MAX_IMAGES_KEEP = CURRENT_TURN_TOOL_IMAGES_KEEP;
 export const IMAGE_PRUNED_TEXT = '[中间步骤截图已折叠，请参考最新界面呈现]';
 
 /** 单轮工具步数弹性熔断配置（放宽至 60 步软预警，70 步硬止损） */
@@ -188,23 +190,28 @@ export function pruneContextMessages(messages: AgentMessage[]): AgentMessage[] {
     });
   }
 
-  // 3.2 当前轮次图片配额限制：最多保留最近的 CURRENT_TURN_MAX_IMAGES_KEEP 张（默认 3 张）
-  // 从后向前扫描当前轮次中所有的图片 block
-  const imageLocations: { messageIndex: number; blockIndex: number }[] = [];
+  // 3.2 当前轮次图片配额限制：
+  // 规则 1：用户主动上传的图片（role === 'user'）代表任务参考标准，在当前轮次全量完整保留，绝不剥离；
+  // 规则 2：工具产出（role !== 'user'，如 browser 截图）属于过程消耗品，只保留最新的 CURRENT_TURN_TOOL_IMAGES_KEEP 张（默认 1 张）。
+  const toolImageLocations: { messageIndex: number; blockIndex: number }[] = [];
   for (let i = nextMessages.length - 1; i >= currentTurnStartIndex; i--) {
-    const content = (nextMessages[i] as { content?: unknown })?.content;
+    const msg = nextMessages[i];
+    // 用户消息中的图片豁免剥离
+    if (msg?.role === 'user') continue;
+
+    const content = (msg as { content?: unknown })?.content;
     if (Array.isArray(content)) {
       for (let b = content.length - 1; b >= 0; b--) {
         if (isImageBlock(content[b])) {
-          imageLocations.push({ messageIndex: i, blockIndex: b });
+          toolImageLocations.push({ messageIndex: i, blockIndex: b });
         }
       }
     }
   }
 
-  // 如果当前轮次的图片数量超过了保留上限，剥离更早的图片
-  if (imageLocations.length > CURRENT_TURN_MAX_IMAGES_KEEP) {
-    const imagesToPrune = imageLocations.slice(CURRENT_TURN_MAX_IMAGES_KEEP);
+  // 如果当前轮次的工具截图超过了保留上限（默认 1 张），剥离更早的截图
+  if (toolImageLocations.length > CURRENT_TURN_TOOL_IMAGES_KEEP) {
+    const imagesToPrune = toolImageLocations.slice(CURRENT_TURN_TOOL_IMAGES_KEEP);
     // 按 messageIndex 分组
     const pruneMap = new Map<number, Set<number>>();
     for (const loc of imagesToPrune) {
