@@ -277,6 +277,22 @@ export const OPENCLAW_CHAT_SEND_PAYLOAD_LIMIT_BYTES = 30 * 1000 * 1000;
 export const OPENCLAW_CHAT_SEND_PAYLOAD_SAFETY_MARGIN_BYTES = 500 * 1000;
 export const OPENCLAW_CHAT_SEND_PAYLOAD_SAFE_LIMIT_BYTES =
   OPENCLAW_CHAT_SEND_PAYLOAD_LIMIT_BYTES - OPENCLAW_CHAT_SEND_PAYLOAD_SAFETY_MARGIN_BYTES;
+
+/** 单次工具执行输出的最大安全字符数，防止单步直接撑爆 Context */
+export const MAX_TOOL_RESULT_SAFE_CHARS = 10000;
+export const TOOL_RESULT_TRUNCATED_HEAD_CHARS = 4000;
+export const TOOL_RESULT_TRUNCATED_TAIL_CHARS = 2000;
+
+export function truncateOversizedToolResult(text: string, toolName = ''): string {
+  if (!text || text.length <= MAX_TOOL_RESULT_SAFE_CHARS) {
+    return text;
+  }
+  const omitted = text.length - TOOL_RESULT_TRUNCATED_HEAD_CHARS - TOOL_RESULT_TRUNCATED_TAIL_CHARS;
+  const head = text.slice(0, TOOL_RESULT_TRUNCATED_HEAD_CHARS);
+  const tail = text.slice(-TOOL_RESULT_TRUNCATED_TAIL_CHARS);
+  const toolHint = toolName ? `工具 ${toolName} ` : '工具';
+  return `${head}\n\n[⚠️ ${toolHint}输出过长已由系统源头截断，省略了中间 ${omitted} 字符。如需查看具体内容，请使用特定行号/切片查看]\n\n${tail}`;
+}
 const WebSocketCloseCode = {
   MessageTooBig: 1009,
   // RFC 6455 "Service Restart" — the OpenClaw gateway sends this when a config
@@ -7400,14 +7416,8 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       const existingText = turn.toolResultTextByToolCallId.get(msgToolCallId) ?? '';
       if (text.length <= existingText.length) continue;
 
-      let textToStore = text;
       const toolName = getHistoryToolName(msg) || '';
-      const toolNameLower = toolName.toLowerCase();
-      const isFileReadTool = toolNameLower === 'read' || toolNameLower === 'read_file' || toolNameLower === 'view_file' || toolNameLower === 'readfile';
-      const MAX_FILE_READ_RESULT_CHARS = 20000;
-      if (isFileReadTool && textToStore.length > MAX_FILE_READ_RESULT_CHARS) {
-        textToStore = textToStore.slice(0, MAX_FILE_READ_RESULT_CHARS);
-      }
+      const textToStore = truncateOversizedToolResult(text, toolName);
 
       const isError = Boolean(msg.isError);
       const metadata = {
@@ -7510,13 +7520,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       }
 
       if (!turn.toolResultMessageIdByToolCallId.has(entry.toolCallId) && !existingToolResult) {
-        let resultTextToStore = entry.resultText;
-        const toolNameLower = (entry.toolName || '').toLowerCase();
-        const isFileReadTool = toolNameLower === 'read' || toolNameLower === 'read_file' || toolNameLower === 'view_file' || toolNameLower === 'readfile';
-        const MAX_FILE_READ_RESULT_CHARS = 20000;
-        if (isFileReadTool && resultTextToStore.length > MAX_FILE_READ_RESULT_CHARS) {
-          resultTextToStore = resultTextToStore.slice(0, MAX_FILE_READ_RESULT_CHARS);
-        }
+        const resultTextToStore = truncateOversizedToolResult(entry.resultText, entry.toolName || '');
         const resultMessage = this.store.addMessage(sessionId, {
           type: 'tool_result',
           content: resultTextToStore,
@@ -9653,7 +9657,8 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       );
       const previous = turn.toolResultTextByToolCallId.get(toolCallId) ?? '';
       const isError = resolveToolEventIsError(data);
-      const finalContent = incoming.trim() ? incoming : previous;
+      const rawContent = incoming.trim() ? incoming : previous;
+      const finalContent = isError ? rawContent : truncateOversizedToolResult(rawContent, toolName);
       if (isCurrentRun && isSuccessfulYieldResult(toolNameRaw, finalContent, isError)) {
         turn.yieldedRunId = eventRunId ?? latestRunId;
       }
