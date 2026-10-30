@@ -367,14 +367,26 @@ export function checkAndRecordConsecutiveToolCall(
   return { isConsecutiveLoop: false, consecutiveCount: 1 };
 }
 
-export function getSessionKeyTurnToolCount(sessionKey: string): number {
-  return toolCallCountBySessionKey.get(sessionKey) ?? 0;
+/**
+ * 解析单轮问答（Turn / Run）的独立作用域 Key。
+ * 核心机制：用户每次提问或追问，OpenClaw 都会派发全局唯一的 runId。
+ * 以 runId 为核心作用域，确保每轮问答拥有纯净独立的步数配额，绝不跨轮次累加，彻底解决追问被锁死的问题。
+ */
+export function resolveTurnScopeKey(ctx?: { sessionKey?: string; runId?: string }): string {
+  if (ctx?.runId) {
+    return `${ctx.sessionKey || 'default'}:${ctx.runId}`;
+  }
+  return ctx?.sessionKey || 'default';
 }
 
-export function incrementSessionKeyTurnToolCount(sessionKey: string): number {
-  const current = getSessionKeyTurnToolCount(sessionKey);
+export function getSessionKeyTurnToolCount(scopeKey: string): number {
+  return toolCallCountBySessionKey.get(scopeKey) ?? 0;
+}
+
+export function incrementSessionKeyTurnToolCount(scopeKey: string): number {
+  const current = getSessionKeyTurnToolCount(scopeKey);
   const next = current + 1;
-  toolCallCountBySessionKey.set(sessionKey, next);
+  toolCallCountBySessionKey.set(scopeKey, next);
   return next;
 }
 
@@ -384,7 +396,7 @@ export const inspectionToolCountBySessionKey = new Map<string, number>();
 const INSPECTION_TOOL_NAMES = new Set(['browser', 'view_image', 'view_file']);
 
 export function checkAndRecordInspectionToolCall(
-  sessionKey: string,
+  scopeKey: string,
   toolName: string,
 ): { isThrashing: boolean; count: number } {
   const normalized = (toolName || '').toLowerCase().trim();
@@ -392,19 +404,19 @@ export function checkAndRecordInspectionToolCall(
     return { isThrashing: false, count: 0 };
   }
 
-  const current = inspectionToolCountBySessionKey.get(sessionKey) ?? 0;
+  const current = inspectionToolCountBySessionKey.get(scopeKey) ?? 0;
   const next = current + 1;
-  inspectionToolCountBySessionKey.set(sessionKey, next);
+  inspectionToolCountBySessionKey.set(scopeKey, next);
   return {
     isThrashing: next >= CONSECUTIVE_INSPECTION_ATTEMPTS_LIMIT,
     count: next,
   };
 }
 
-export function resetSessionKeyState(sessionKey: string): void {
-  toolCallCountBySessionKey.delete(sessionKey);
-  lastToolInvocationBySessionKey.delete(sessionKey);
-  inspectionToolCountBySessionKey.delete(sessionKey);
+export function resetSessionKeyState(scopeKey: string): void {
+  toolCallCountBySessionKey.delete(scopeKey);
+  lastToolInvocationBySessionKey.delete(scopeKey);
+  inspectionToolCountBySessionKey.delete(scopeKey);
 }
 
 // 保持向下兼容导出
@@ -418,19 +430,12 @@ export default {
     api.registerContextEngine('lobsterai-context-prune', () => new LobsterAIContextPruneEngine());
     api.logger.info('[lobsterai-context-prune] registered context engine "lobsterai-context-prune".');
 
-    // 新一轮问答启动时重置步数与调用特征
-    api.on('before_prompt_build', async (_event, ctx) => {
-      const sessionKey = ctx?.sessionKey;
-      if (sessionKey) {
-        resetSessionKeyState(sessionKey);
-      }
-    });
-
-    // 问答结束时清理步数与调用特征
+    // 问答结束时清理单轮状态，防止常驻内存泄露
     api.on('agent_end', async (_event, ctx) => {
-      const sessionKey = ctx?.sessionKey;
-      if (sessionKey) {
-        resetSessionKeyState(sessionKey);
+      const scopeKey = resolveTurnScopeKey(ctx);
+      resetSessionKeyState(scopeKey);
+      if (ctx?.sessionKey) {
+        resetSessionKeyState(ctx.sessionKey);
       }
     });
 
@@ -438,12 +443,14 @@ export default {
     api.on('before_tool_call', async (event, ctx) => {
       const sessionKey = ctx?.sessionKey;
       if (!sessionKey) return;
+      // 以单轮 Turn（RunId）为权威作用域，确保追问时步数天然重置为 0
+      const scopeKey = resolveTurnScopeKey(ctx);
 
       // 1. 同参连续死磕熔断检查
-      const toolCheck = checkAndRecordConsecutiveToolCall(sessionKey, event.toolName, event.params);
+      const toolCheck = checkAndRecordConsecutiveToolCall(scopeKey, event.toolName, event.params);
       if (toolCheck.isConsecutiveLoop) {
         api.logger.warn(
-          `[lobsterai-context-prune] circuit breaker triggered: tool "${event.toolName}" was called with identical parameters ${toolCheck.consecutiveCount} times consecutively in session "${sessionKey}". Blocking repeat attempt.`,
+          `[lobsterai-context-prune] circuit breaker triggered: tool "${event.toolName}" was called with identical parameters ${toolCheck.consecutiveCount} times consecutively in turn "${scopeKey}". Blocking repeat attempt.`,
         );
         return {
           block: true,
@@ -452,10 +459,10 @@ export default {
       }
 
       // 2. 检查/复查类工具连续微调振荡拦截（如 browser 反复截图比对微调已达 5 次）
-      const inspectionCheck = checkAndRecordInspectionToolCall(sessionKey, event.toolName);
+      const inspectionCheck = checkAndRecordInspectionToolCall(scopeKey, event.toolName);
       if (inspectionCheck.isThrashing) {
         api.logger.warn(
-          `[lobsterai-context-prune] inspection thrashing limit reached (${inspectionCheck.count}/${CONSECUTIVE_INSPECTION_ATTEMPTS_LIMIT}) for tool "${event.toolName}" in session "${sessionKey}". Blocking further self-correction thrashing.`,
+          `[lobsterai-context-prune] inspection thrashing limit reached (${inspectionCheck.count}/${CONSECUTIVE_INSPECTION_ATTEMPTS_LIMIT}) for tool "${event.toolName}" in turn "${scopeKey}". Blocking further self-correction thrashing.`,
         );
         return {
           block: true,
@@ -463,13 +470,13 @@ export default {
         };
       }
 
-      // 3. 总步数统计与软硬熔断
-      const count = incrementSessionKeyTurnToolCount(sessionKey);
+      // 3. 总步数统计与软硬熔断（按单轮 Turn 计算）
+      const count = incrementSessionKeyTurnToolCount(scopeKey);
 
-      // 硬熔断：达到 50 步彻底拦截并指示模型收手
-      if (count >= TURN_TOOL_CALL_HARD_LIMIT) {
+      // 硬熔断：达到 70 步彻底拦截并指示模型收手
+      if (count > TURN_TOOL_CALL_HARD_LIMIT) {
         api.logger.warn(
-          `[lobsterai-context-prune] hard cap reached (${count}/${TURN_TOOL_CALL_HARD_LIMIT}) for tool "${event.toolName}" in session "${sessionKey}". Blocking tool call.`,
+          `[lobsterai-context-prune] hard cap reached (${count} > ${TURN_TOOL_CALL_HARD_LIMIT}) for tool "${event.toolName}" in turn "${scopeKey}". Blocking tool call.`,
         );
         return {
           block: true,
@@ -477,10 +484,10 @@ export default {
         };
       }
 
-      // 软提示：达到 40~49 步时在日志中预警
+      // 软提示：达到 60 步时在日志中预警
       if (count >= TURN_TOOL_CALL_SOFT_LIMIT) {
         api.logger.warn(
-          `[lobsterai-context-prune] soft cap reached (${count}/${TURN_TOOL_CALL_HARD_LIMIT}) for tool "${event.toolName}" in session "${sessionKey}". Approaching limit.`,
+          `[lobsterai-context-prune] soft cap reached (${count}/${TURN_TOOL_CALL_HARD_LIMIT}) for tool "${event.toolName}" in turn "${scopeKey}". Approaching limit.`,
         );
       }
     });
