@@ -71,6 +71,8 @@ dev-heyclaw.sqlite
 
 output
 logs/
+issues/
+debug/
 
 # Local build, verification, and acceptance evidence
 /artifacts/
