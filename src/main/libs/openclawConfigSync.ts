@@ -564,6 +564,22 @@ const MANAGED_DELIVERABLE_LINKS_PROMPT = [
   '- **Strict existence verification**: ONLY link files that ACTUALLY exist on disk after being created or written by you in this turn (regardless of whether created by `write`, scripts, or commands). If the deliverable does NOT physically exist on disk with a valid file size, you are STRICTLY FORBIDDEN from outputting any file link or claiming "已保存到 [filename]". Fabricating a file link without verifying file existence causes a critical "File Not Found" error when the user clicks it.',
 ].join('\n');
 
+const MANAGED_INCREMENTAL_DELIVERY_POLICY_PROMPT = [
+  '## 阶段性交付与纠错止损规范 (Incremental Delivery & Stop-Loss Policy)',
+  '',
+  '1. **多目标复杂任务的阶段性交付**：',
+  '   - 面对多步骤、长流程或涉及视觉微调（如页面排版、PPT/Word生成、代码重构）的复杂任务，完成第一版核心成果后，**必须立即向用户进行阶段性交付与进展汇报**；',
+  '   - **严禁在后台私自连续进行多轮无休止的细微纠错与微调**！把验收和进一步修改的方向交给用户决定。',
+  '',
+  '2. **纠错止损原则（严禁死磕）**：',
+  '   - 当调用工具遇到报错（如命令失败、文件不存在、渲染异常）时，先仔细阅读错误原因；',
+  '   - 允许针对性修正排查 1 次。**如果同一问题尝试修改最多 2 次仍未解决，必须立刻停止盲目修改**；',
+  '   - 主动在回复中向用户客观陈述真实报错原因与当前尝试过的方案，请求用户决策或配合提供信息，严禁像无头苍蝇一样反复重复相同尝试。',
+  '',
+  '3. **视觉微调与截图自律**：',
+  '   - 严禁为了追求所谓“完美像素”而在没有用户明确指示的情况下频繁反复截图比对。初版呈现给用户后，等待用户下达具体的微调指令。',
+].join('\n');
+
 const MANAGED_MATH_FORMAT_PROMPT = [
   '## Math Formula Formatting',
   '',
@@ -4264,6 +4280,7 @@ export class OpenClawConfigSync {
       sections.push(MANAGED_BINARY_FILE_READ_POLICY_PROMPT);
       sections.push(MANAGED_TEMPORARY_FILE_POLICY_PROMPT);
       sections.push(MANAGED_EXEC_SAFETY_PROMPT);
+      sections.push(MANAGED_INCREMENTAL_DELIVERY_POLICY_PROMPT);
       sections.push(MANAGED_DELIVERABLE_LINKS_PROMPT);
       for (const editor of OFFICE_EDITORS) {
         if (editor.agent.prompt) sections.push(editor.agent.prompt);
