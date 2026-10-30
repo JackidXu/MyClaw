@@ -59,12 +59,67 @@ interface PrepareCoworkPromptPayloadOptions {
 const IMAGE_ATTACHMENT_PREVIEW_MAX_DIMENSION = 512;
 const IMAGE_ATTACHMENT_PREVIEW_QUALITY = 0.78;
 
+export const IMAGE_ATTACHMENT_COMPRESSION_MAX_DIMENSION = 1920;
+export const IMAGE_ATTACHMENT_COMPRESSION_QUALITY = 0.85;
+/** 当图片尺寸或体积超过该阈值时自动缩放压缩（单图约 1.2MB），彻底避免网关解析大 Base64 栈溢出 */
+export const IMAGE_ATTACHMENT_AUTO_COMPRESS_BYTES_THRESHOLD = 1200 * 1024;
+
 const extractBase64FromDataUrl = (
   dataUrl: string,
 ): { mimeType: string; base64Data: string } | null => {
   const match = /^data:(.+);base64,(.*)$/.exec(dataUrl);
   if (!match) return null;
   return { mimeType: match[1], base64Data: match[2] };
+};
+
+export const compressImageAttachmentDataUrl = async (
+  dataUrl: string,
+  maxDimension = IMAGE_ATTACHMENT_COMPRESSION_MAX_DIMENSION,
+  quality = IMAGE_ATTACHMENT_COMPRESSION_QUALITY,
+): Promise<string> => {
+  try {
+    const extracted = extractBase64FromDataUrl(dataUrl);
+    if (!extracted) return dataUrl;
+
+    const estimatedBytes = Math.round((extracted.base64Data.length * 3) / 4);
+
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = () => reject(new Error('Failed to load image for compression'));
+      image.src = dataUrl;
+    });
+
+    const naturalWidth = img.naturalWidth || img.width || 1;
+    const naturalHeight = img.naturalHeight || img.height || 1;
+    const largestDimension = Math.max(naturalWidth, naturalHeight);
+
+    // 如果图片尺寸在上限内且体积未超标，保留原图
+    if (largestDimension <= maxDimension && estimatedBytes <= IMAGE_ATTACHMENT_AUTO_COMPRESS_BYTES_THRESHOLD) {
+      return dataUrl;
+    }
+
+    const scale = Math.min(1, maxDimension / largestDimension);
+    const width = Math.max(1, Math.round(naturalWidth * scale));
+    const height = Math.max(1, Math.round(naturalHeight * scale));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return dataUrl;
+
+    ctx.drawImage(img, 0, 0, width, height);
+
+    // 默认转换为体积可控的 image/jpeg
+    const targetMimeType = extracted.mimeType === 'image/png' && !extracted.mimeType.includes('jpeg')
+      ? 'image/jpeg'
+      : extracted.mimeType;
+
+    return canvas.toDataURL(targetMimeType, quality);
+  } catch {
+    return dataUrl;
+  }
 };
 
 const createDefaultImagePreviewDataUrl = async (dataUrl: string): Promise<string> => {
@@ -120,6 +175,9 @@ export async function prepareCoworkPromptPayload(
     }
 
     if (!attachment.isImage || !imageDataUrl) continue;
+    // 上传前自动检测并进行智能等比缩放与压缩，杜绝超大 Base64 导致 V8 调用栈溢出 RangeError
+    imageDataUrl = await compressImageAttachmentDataUrl(imageDataUrl);
+
     const extracted = extractBase64FromDataUrl(imageDataUrl);
     if (!extracted) continue;
 
