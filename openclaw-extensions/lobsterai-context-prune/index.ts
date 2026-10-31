@@ -17,6 +17,14 @@ export const CURRENT_TURN_ACTIVE_STEPS_KEEP = 3;
 export const CURRENT_TURN_TOOL_IMAGES_KEEP = 1;
 export const CURRENT_TURN_MAX_IMAGES_KEEP = CURRENT_TURN_TOOL_IMAGES_KEEP;
 export const IMAGE_PRUNED_TEXT = '[中间步骤截图已折叠，请参考最新界面呈现]';
+export const HISTORICAL_USER_IMAGE_PRUNED_TEXT = '[历史轮次用户上传图片已归档]';
+
+/** 历史轮次消息文本折叠配置 */
+export const HISTORICAL_USER_TEXT_MAX_CHARS = 1500;
+export const HISTORICAL_ASSISTANT_TEXT_MAX_CHARS = 1500;
+export const HISTORICAL_TEXT_KEEP_HEAD_CHARS = 500;
+export const HISTORICAL_TEXT_KEEP_TAIL_CHARS = 200;
+export const HISTORICAL_TEXT_PRUNED_MARKER = '已折叠，省略';
 
 /** 单轮工具步数弹性熔断配置（放宽至 60 步软预警，70 步硬止损） */
 export const TURN_TOOL_CALL_SOFT_LIMIT = 60;
@@ -103,6 +111,106 @@ function pruneToolResultMessage(
   return msg;
 }
 
+export function pruneLongText(
+  rawText: string,
+  maxChars: number,
+  label: string,
+): string {
+  if (
+    !rawText ||
+    rawText.length <= maxChars ||
+    rawText.includes(HISTORICAL_TEXT_PRUNED_MARKER)
+  ) {
+    return rawText;
+  }
+  const head = rawText.slice(0, HISTORICAL_TEXT_KEEP_HEAD_CHARS);
+  const tail = rawText.slice(-HISTORICAL_TEXT_KEEP_TAIL_CHARS);
+  const omitted = rawText.length - HISTORICAL_TEXT_KEEP_HEAD_CHARS - HISTORICAL_TEXT_KEEP_TAIL_CHARS;
+  return `${head}\n\n[... ${label}已折叠，省略 ${omitted} 字符 ...]\n\n${tail}`;
+}
+
+export function pruneHistoricalUserMessage(msg: AgentMessage): AgentMessage {
+  const content = (msg as { content?: unknown }).content;
+
+  if (typeof content === 'string') {
+    const nextText = pruneLongText(content, HISTORICAL_USER_TEXT_MAX_CHARS, '用户历史超长输入');
+    if (nextText === content) return msg;
+    const { details: _details, ...rest } = msg as Record<string, unknown>;
+    return { ...rest, content: nextText } as AgentMessage;
+  }
+
+  if (Array.isArray(content)) {
+    let hasChanged = false;
+    const nextContent = content.map((block) => {
+      if (!block || typeof block !== 'object') return block;
+
+      // 剥离用户历史上传图片
+      if (isImageBlock(block)) {
+        hasChanged = true;
+        return { type: 'text', text: HISTORICAL_USER_IMAGE_PRUNED_TEXT };
+      }
+
+      // 折叠超长文本
+      const textBlock = block as { type?: unknown; text?: unknown };
+      if (textBlock.type === 'text' && typeof textBlock.text === 'string') {
+        const pruned = pruneLongText(textBlock.text, HISTORICAL_USER_TEXT_MAX_CHARS, '用户历史超长输入');
+        if (pruned !== textBlock.text) {
+          hasChanged = true;
+          return { ...block, text: pruned };
+        }
+      }
+      return block;
+    });
+
+    if (!hasChanged) return msg;
+    const { details: _details, ...rest } = msg as Record<string, unknown>;
+    return { ...rest, content: nextContent } as AgentMessage;
+  }
+
+  return msg;
+}
+
+export function pruneHistoricalAssistantMessage(msg: AgentMessage): AgentMessage {
+  const content = (msg as { content?: unknown }).content;
+
+  if (typeof content === 'string') {
+    const nextText = pruneLongText(content, HISTORICAL_ASSISTANT_TEXT_MAX_CHARS, '历史回复详细内容');
+    if (nextText === content) return msg;
+    const { details: _details, ...rest } = msg as Record<string, unknown>;
+    return { ...rest, content: nextText } as AgentMessage;
+  }
+
+  if (Array.isArray(content)) {
+    let hasChanged = false;
+    const nextContent = content.map((block) => {
+      if (!block || typeof block !== 'object') return block;
+
+      // 剥离模型输出历史内联图片
+      if (isImageBlock(block)) {
+        hasChanged = true;
+        return { type: 'text', text: IMAGE_PRUNED_TEXT };
+      }
+
+      // 折叠超长文本
+      const textBlock = block as { type?: unknown; text?: unknown };
+      if (textBlock.type === 'text' && typeof textBlock.text === 'string') {
+        const pruned = pruneLongText(textBlock.text, HISTORICAL_ASSISTANT_TEXT_MAX_CHARS, '历史回复详细内容');
+        if (pruned !== textBlock.text) {
+          hasChanged = true;
+          return { ...block, text: pruned };
+        }
+      }
+      return block;
+    });
+
+    if (!hasChanged) return msg;
+    const { details: _details, ...rest } = msg as Record<string, unknown>;
+    return { ...rest, content: nextContent } as AgentMessage;
+  }
+
+  return msg;
+}
+
 function stripImagesFromMessage(msg: AgentMessage): AgentMessage {
   const content = (msg as { content?: unknown }).content;
   if (!Array.isArray(content)) return msg;
@@ -143,15 +251,29 @@ export function pruneContextMessages(messages: AgentMessage[]): AgentMessage[] {
     nextMessages = nextMessages.map((msg, index) => {
       if (index >= lastUserIndex) return msg;
 
-      // 历史轮次的 toolResult：文本截断并彻底剥离图片
-      if (msg?.role === 'toolResult') {
+      // 历史轮次的 user：剥离历史图片，折叠历史超长文本
+      if (msg?.role === 'user') {
+        const pruned = pruneHistoricalUserMessage(msg);
+        if (pruned !== msg) {
+          changed = true;
+          return pruned;
+        }
+      } else if (msg?.role === 'assistant') {
+        // 历史轮次的 assistant：剥离历史内联图片，折叠历史超长回复
+        const pruned = pruneHistoricalAssistantMessage(msg);
+        if (pruned !== msg) {
+          changed = true;
+          return pruned;
+        }
+      } else if (msg?.role === 'toolResult') {
+        // 历史轮次的 toolResult：文本截断至 300 字符并彻底剥离图片
         const pruned = pruneToolResultMessage(msg, { label: '历史工具步骤', stripImages: true });
         if (pruned !== msg) {
           changed = true;
           return pruned;
         }
       } else {
-        // 历史轮次的其他消息（如 assistant 携带的中间图）：也剥离图片
+        // 其他可能存在的自定义角色：剥离图片
         const stripped = stripImagesFromMessage(msg);
         if (stripped !== msg) {
           changed = true;
