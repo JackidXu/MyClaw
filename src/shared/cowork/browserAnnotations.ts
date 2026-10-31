@@ -14,6 +14,8 @@ export const BrowserAnnotationScreenshotStatus = {
   Failed: 'failed',
 } as const;
 
+import { MAX_COWORK_INPUT_IMAGES } from './imageAttachments';
+
 export const BrowserAnnotationGuestCommandType = {
   Start: 'start',
   Sync: 'sync',
@@ -38,7 +40,7 @@ export const BrowserAnnotationGuestChannel = {
 } as const;
 
 export const BrowserAnnotationLimit = {
-  MaxAnnotations: 20,
+  MaxAnnotations: MAX_COWORK_INPUT_IMAGES,
   MaxCommentLength: 2_000,
   MaxTotalCommentLength: 12_000,
   MaxExcerptLength: 500,

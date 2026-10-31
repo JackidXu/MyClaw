@@ -25,6 +25,7 @@ import {
   type CoworkBrowserAnnotationBatch,
   hasBrowserAnnotationContent,
 } from '@shared/cowork/browserAnnotations';
+import { MAX_COWORK_INPUT_IMAGES } from '@shared/cowork/imageAttachments';
 import type { CoworkSelectedTextSnippet } from '@shared/cowork/selectedText';
 import {
   HtmlShareAccessMode,
@@ -84,7 +85,7 @@ import {
   resolvePublishingSubscriptionRecoveryRefreshOutcome,
 } from '@/services/publishingSubscriptionRecovery';
 import { normalizeShellFilePath } from '@/services/shellAppsCache';
-import type { RootState } from '@/store';
+import { type RootState, store } from '@/store';
 import {
   addArtifact,
   ArtifactContentView,
@@ -111,6 +112,7 @@ import {
 } from '@/types/artifact';
 import { openLocalPathWithToast, revealLocalPathWithToast } from '@/utils/localFileActions';
 
+import { isImagePath } from '../cowork/attachmentPaths';
 import CopyIcon from '../icons/CopyIcon';
 import ServiceDeploymentIcon from '../icons/ServiceDeploymentIcon';
 import {
@@ -7218,14 +7220,30 @@ const BrowserTabContent: React.FC<BrowserTabContentProps> = ({
         });
       }
     }
+    // 统计当前已有普通图片附件数量，计算允许的最大批注上限
+    const currentDraftAttachments = store.getState().cowork.draftAttachments[draftKey] || [];
+    const imageAttachmentCount = currentDraftAttachments.filter(a => a.isImage || isImagePath(a.path)).length;
+    const maxAllowedAnnotations = Math.max(0, MAX_COWORK_INPUT_IMAGES - imageAttachmentCount);
+
+    let effectiveAnnotations = message.annotations;
+    if (effectiveAnnotations.length > maxAllowedAnnotations) {
+      effectiveAnnotations = effectiveAnnotations.slice(0, maxAllowedAnnotations);
+      window.dispatchEvent(new CustomEvent('app:showToast', {
+        detail: t('maxInputImagesLimitReached').replace(/\{limit\}/g, String(MAX_COWORK_INPUT_IMAGES)),
+      }));
+    }
+
     const next: CoworkBrowserAnnotationBatch = {
       ...batch,
-      annotations: message.annotations.slice(0, BrowserAnnotationLimit.MaxAnnotations),
+      annotations: effectiveAnnotations.slice(0, BrowserAnnotationLimit.MaxAnnotations),
       pageUrl: currentUrl || batch.pageUrl,
       pageTitle: message.annotations[0]?.anchor.pageTitle || batch.pageTitle,
       updatedAt: Date.now(),
     };
     commitAnnotationBatch(next);
+    sendAnnotationCommand(BrowserAnnotationGuestCommandType.Sync, next, {
+      annotations: next.annotations,
+    });
     for (const annotation of next.annotations) {
       if (annotation.screenshot.status === BrowserAnnotationScreenshotStatus.Capturing) {
         void captureBrowserAnnotation(next, annotation);

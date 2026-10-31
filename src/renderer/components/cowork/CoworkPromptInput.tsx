@@ -2132,9 +2132,31 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
 
     const allImagesToSubmit = [...(promptPayload.imageAttachments ?? []), ...annotationImages];
     let finalImagesToSubmit = allImagesToSubmit;
+    let finalPreparedBrowserAnnotations = preparedBrowserAnnotations;
+
     if (allImagesToSubmit.length > MAX_COWORK_INPUT_IMAGES) {
       finalImagesToSubmit = allImagesToSubmit.slice(0, MAX_COWORK_INPUT_IMAGES);
       notifyMaxInputImagesLimitReached();
+
+      // 闭环修剪批注元数据：计算允许保留的批注截图配额
+      const allowedAnnotationImageCount = Math.max(0, MAX_COWORK_INPUT_IMAGES - (promptPayload.imageAttachments?.length ?? 0));
+      let remainingAnnotationBudget = allowedAnnotationImageCount;
+
+      finalPreparedBrowserAnnotations = preparedBrowserAnnotations.map(batch => {
+        const prunedAnnotations: CoworkBrowserAnnotationMessageBatch['annotations'] = [];
+        for (const annotation of batch.annotations) {
+          if (annotation.screenshot.status === BrowserAnnotationScreenshotStatus.Ready) {
+            if (remainingAnnotationBudget > 0) {
+              prunedAnnotations.push(annotation);
+              remainingAnnotationBudget -= 1;
+            }
+          } else {
+            // 没有有效截图的纯文本批注可以保留
+            prunedAnnotations.push(annotation);
+          }
+        }
+        return { ...batch, annotations: prunedAnnotations };
+      }).filter(batch => batch.annotations.length > 0);
     }
 
     const result = await onSubmit(
@@ -2143,7 +2165,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
       finalImagesToSubmit,
       promptPayload.mediaReferences,
       promptPayload.selectedTextSnippets,
-      preparedBrowserAnnotations,
+      finalPreparedBrowserAnnotations,
       effectiveCollaborationMode,
       buildSessionTitleInput(goalCommandPrompt, attachments),
     );
