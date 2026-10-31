@@ -447,9 +447,13 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
   const isCustomModelSelected = Boolean(selectedModel?.providerKey
     && !selectedModel.isServerModel
     && selectedModel.providerKey !== ProviderName.LobsteraiServer);
+  const isNodeServerModel = selectedModel?.providerKey === ProviderName.Oneapi;
   const customProviderName = isCustomModelSelected
     ? resolveCustomModelProviderName(selectedModel, currentModelMetadata)
     : '';
+  const customBadgeLabel = isNodeServerModel
+    ? i18nService.t('modelSourceOfficial')
+    : i18nService.t('modelSourceCustom');
   const showCustomProviderName = Boolean(customProviderName) && !hideCustomProviderName;
   const selectedModelKey = selectedModel ? getModelIdentityKey(selectedModel) : '';
   const serverModels: Model[] = [];
@@ -1490,7 +1494,7 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
               <span className="flex shrink-0 items-center" aria-hidden="true">
                 <CustomProviderIcon className="h-3 w-3" />
               </span>
-              <span className="shrink-0">{i18nService.t('modelSourceCustom')}</span>
+              <span className="shrink-0">{customBadgeLabel}</span>
               {showCustomProviderName && (
                 <>
                   <span className="shrink-0 opacity-50" aria-hidden="true">·</span>
