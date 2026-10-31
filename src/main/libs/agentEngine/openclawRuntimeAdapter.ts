@@ -1253,7 +1253,10 @@ const buildModelRef = (provider: string | null | undefined, model: string | null
   const normalizedModel = model?.trim();
   if (!normalizedModel) return null;
   const normalizedProvider = provider?.trim();
-  if (!normalizedProvider || normalizedModel.includes('/')) return normalizedModel;
+  if (!normalizedProvider) return normalizedModel;
+  if (normalizedModel === normalizedProvider || normalizedModel.startsWith(`${normalizedProvider}/`)) {
+    return normalizedModel;
+  }
   return `${normalizedProvider}/${normalizedModel}`;
 };
 
