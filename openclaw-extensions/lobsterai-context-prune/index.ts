@@ -33,7 +33,7 @@ export const TURN_TOOL_CALL_HARD_LIMIT = 70;
 /** 同工具同参连续尝试熔断阈值（放宽至 5 次防死磕，避免误伤状态轮询） */
 export const SAME_TOOL_CONSECUTIVE_ATTEMPTS_LIMIT = 5;
 
-/** 连续验收与微调复查阈值（如 browser 截图对比、exec 测试跑用例、连续微调等，超过 5 次强制注入阶段性交付提示） */
+/** 产物自检验收预算上限（如 browser 页面审查、回读新渲染的幻灯片/切片/代码产物，允许充分核验与局部微调，上限 5 次） */
 export const CONSECUTIVE_INSPECTION_ATTEMPTS_LIMIT = 5;
 
 const IMAGE_BLOCK_TYPES = new Set(['image', 'image_url', 'input_image']);
@@ -512,145 +512,122 @@ export function incrementSessionKeyTurnToolCount(scopeKey: string): number {
   return next;
 }
 
-/** 检查与修改类工具的生命周期状态跟踪（用于精准识别死磕微调，杜绝素材准备阶段误杀） */
-export type TurnInspectionState = {
-  /** 是否已经产出过主要交付物（如目标文件写入、修改或生成） */
-  hasProducedDeliverable: boolean;
-  /** 上一次工具操作性质：'modify' (写入修改) | 'inspect' (视觉验收) | 'other' */
-  lastActionKind: 'modify' | 'inspect' | 'other';
-  /** 修改与自测的交替震荡回合数（Ping-Pong Cycles） */
-  thrashingCycles: number;
-  /** 当前轮次是否已触发全局工具锁死（Global Lockout） */
-  isGlobalLocked: boolean;
-  /** 全局锁死的原因提示文案 */
-  lockReason?: string;
+/** 单轮任务自检跟踪状态（物理分水岭 + 审查自测预算） */
+export type TurnInspectionTracker = {
+  /** 当前轮次是否已经发生了物理修改/生成（write, edit, apply_patch, exec, bash 等） */
+  hasMutated: boolean;
+  /** 修改后累计进行的审查/自检验收调用次数 */
+  budgetUsed: number;
+  /** 是否已被系统全局判定为自检预算耗尽并锁死 */
+  isBudgetExhausted: boolean;
 };
 
-export const turnInspectionStateByScopeKey = new Map<string, TurnInspectionState>();
+export const turnInspectionTrackerByScopeKey = new Map<string, TurnInspectionTracker>();
 
+/**
+ * 物理写入与修改类工具全集（Mutating Tools）：
+ * 发生任何此类调用，标志着当前任务已从“前期调研”正式跃迁为“产物已修改/生成”！
+ * （注：已严格排除只读性质的 exec / bash，仅保留纯粹物理写入工具）
+ */
 const MUTATING_TOOL_NAMES = new Set([
+  // OpenClaw 核心文件写入与补丁
   'write',
   'edit',
-  'file_writer',
-  'patch',
-  'replace_file_content',
-  'write_file',
-  'edit_file',
+  'apply_patch',
+  'image_generate',
+  // HeyClaw Office 专属在位修改工具（三大件齐聚）
+  'ppt_edit',
+  'word_edit',
+  'excel_edit',
 ]);
 
+/**
+ * 视觉审查与产物回读自检工具全集（Inspection & Read-Back Tools）：
+ * 涵盖浏览器渲染、切片查看、Office审查及文件回读。
+ * 只有在 hasMutated 为 true（发生修改后）才计入自检预算；修改前视为看现状/读素材，完全放行！
+ */
 const INSPECTION_TOOL_NAMES = new Set([
+  // 1. 浏览器与页面审查
   'browser',
+  'playwright',
+  'web_inspector',
+  // 2. 视觉切片与图片审查
   'view_image',
+  // 3. 产物文档与代码回读自检（写后回读）
+  'read',
+  'read_file',
+  'read_file_range',
   'view_file',
-  'preview',
+  'pdf_view',
+  'docx_view',
+  'grep',
+  // 4. HeyClaw Office 专属在位审查（三大件齐聚）
+  'ppt_read',
+  'word_read',
+  'excel_read',
 ]);
 
-export function getOrCreateTurnInspectionState(scopeKey: string): TurnInspectionState {
-  let state = turnInspectionStateByScopeKey.get(scopeKey);
-  if (!state) {
-    state = {
-      hasProducedDeliverable: false,
-      lastActionKind: 'other',
-      thrashingCycles: 0,
-      isGlobalLocked: false,
+export function getOrCreateTurnInspectionTracker(scopeKey: string): TurnInspectionTracker {
+  let tracker = turnInspectionTrackerByScopeKey.get(scopeKey);
+  if (!tracker) {
+    tracker = {
+      hasMutated: false,
+      budgetUsed: 0,
+      isBudgetExhausted: false,
     };
-    turnInspectionStateByScopeKey.set(scopeKey, state);
+    turnInspectionTrackerByScopeKey.set(scopeKey, tracker);
   }
-  return state;
+  return tracker;
 }
 
-export function recordToolCallActivity(
+/**
+ * 业界标准二段生命周期判定（Pre-Edit Gathering vs Post-Edit Verification）：
+ * 1. 修改前（hasMutated === false）：大模型调 browser/view_image 是看旧现状/看素材，放行，自检消耗 = 0！
+ * 2. 修改后（hasMutated === true）：大模型调 browser/view_image 属于写后验收自检，计入预算！
+ */
+export function checkAndRecordInspectionToolCall(
   scopeKey: string,
   toolName: string,
-): { isThrashing: boolean; cycles: number; isGlobalLocked: boolean; lockReason?: string } {
-  const state = getOrCreateTurnInspectionState(scopeKey);
-
-  // 1. 如果已处于全局锁死状态，直接阻断
-  if (state.isGlobalLocked) {
-    return {
-      isThrashing: true,
-      cycles: state.thrashingCycles,
-      isGlobalLocked: true,
-      lockReason: state.lockReason,
-    };
-  }
-
+  _params?: unknown,
+): { isThrashing: boolean; count: number } {
+  const tracker = getOrCreateTurnInspectionTracker(scopeKey);
   const normalized = (toolName || '').toLowerCase().trim();
 
-  // 2. 检查是否为修改/写入类操作
+  // 1. 如果是物理修改/生产类工具：标记当前轮次已产生修改，修改工具永远 100% 放行！
   if (MUTATING_TOOL_NAMES.has(normalized)) {
-    state.hasProducedDeliverable = true;
-    state.lastActionKind = 'modify';
-    return {
-      isThrashing: false,
-      cycles: state.thrashingCycles,
-      isGlobalLocked: false,
-    };
+    tracker.hasMutated = true;
+    return { isThrashing: false, count: tracker.budgetUsed };
   }
 
-  // 3. 检查是否为验收类工具（如 browser / view_image）
-  if (INSPECTION_TOOL_NAMES.has(normalized)) {
-    // 工业标准门禁：如果核心交付物尚未落盘，判定为素材收集/准备阶段，绝对不计入微调震荡！
-    if (!state.hasProducedDeliverable) {
-      state.lastActionKind = 'other';
-      return {
-        isThrashing: false,
-        cycles: 0,
-        isGlobalLocked: false,
-      };
-    }
-
-    // 只有在产物落盘后，发生 [modify ➔ inspect] 的交替切换，才计为 1 次有效微调回合
-    if (state.lastActionKind === 'modify') {
-      state.thrashingCycles += 1;
-    }
-    state.lastActionKind = 'inspect';
-
-    // 达到 5 轮微调交替振荡，正式触发全局工具锁死（Global Lockout）
-    if (state.thrashingCycles >= CONSECUTIVE_INSPECTION_ATTEMPTS_LIMIT) {
-      state.isGlobalLocked = true;
-      state.lockReason = `[⚠️ 阶段性交付拦截] 检测到你已针对当前任务进行了 ${state.thrashingCycles} 轮代码修改与视觉复查！当前初版成果（如 HTML/文档/代码）已完全成型，严禁继续在后台自嗨式微调。请立即停止调用工具，向用户展示当前完成的成果并做阶段性交付汇报！后续微调必须交由用户决定。`;
-      return {
-        isThrashing: true,
-        cycles: state.thrashingCycles,
-        isGlobalLocked: true,
-        lockReason: state.lockReason,
-      };
-    }
-
-    return {
-      isThrashing: false,
-      cycles: state.thrashingCycles,
-      isGlobalLocked: false,
-    };
+  // 2. 如果不是自检审查类工具（如纯只读查代码的 read, grep, find, ls 等）：直接放行！
+  if (!INSPECTION_TOOL_NAMES.has(normalized)) {
+    return { isThrashing: false, count: tracker.budgetUsed };
   }
 
-  return {
-    isThrashing: false,
-    cycles: state.thrashingCycles,
-    isGlobalLocked: false,
-  };
-}
+  // 3. 如果当前轮次【压根还没发生过任何代码/文件修改】（前半场调研阶段）：
+  // 大模型打开浏览器看上一轮网页、看原图截图，物理性质 100% 属于看现状，零消耗完全放行！
+  if (!tracker.hasMutated) {
+    return { isThrashing: false, count: tracker.budgetUsed };
+  }
 
-// 保持向下兼容导出
-export const checkAndRecordInspectionToolCall = (scopeKey: string, toolName: string) => {
-  const result = recordToolCallActivity(scopeKey, toolName);
-  return {
-    isThrashing: result.isThrashing,
-    count: result.cycles,
-  };
-};
+  // 4. 后半场（已修改代码）：此时调用 browser 或 view_image 确凿属于自检验收！
+  if (tracker.isBudgetExhausted) {
+    return { isThrashing: true, count: tracker.budgetUsed };
+  }
 
-export function setTurnGlobalLockout(scopeKey: string, reason: string): void {
-  const state = getOrCreateTurnInspectionState(scopeKey);
-  state.isGlobalLocked = true;
-  state.lockReason = reason;
+  tracker.budgetUsed += 1;
+  if (tracker.budgetUsed >= CONSECUTIVE_INSPECTION_ATTEMPTS_LIMIT) {
+    tracker.isBudgetExhausted = true;
+    return { isThrashing: true, count: tracker.budgetUsed };
+  }
+
+  return { isThrashing: false, count: tracker.budgetUsed };
 }
 
 export function resetSessionKeyState(scopeKey: string): void {
   toolCallCountBySessionKey.delete(scopeKey);
   lastToolInvocationBySessionKey.delete(scopeKey);
-  turnInspectionStateByScopeKey.delete(scopeKey);
+  turnInspectionTrackerByScopeKey.delete(scopeKey);
 }
 
 // 保持向下兼容导出
@@ -680,19 +657,7 @@ export default {
       // 以单轮 Turn（RunId）为权威作用域，确保追问时步数天然重置为 0
       const scopeKey = resolveTurnScopeKey(ctx);
 
-      // 1. 全局工具锁死检查（Global Lockout）：如果当前轮次已触发熔断，直接锁死所有工具
-      const inspectionState = getOrCreateTurnInspectionState(scopeKey);
-      if (inspectionState.isGlobalLocked) {
-        api.logger.warn(
-          `[lobsterai-context-prune] global tool lockout active for turn "${scopeKey}". Blocking attempt to call tool "${event.toolName}".`,
-        );
-        return {
-          block: true,
-          blockReason: inspectionState.lockReason || '[⚠️ 全局工具锁死] 当前任务已达到安全阶段上限，严禁继续调用任何工具。请立即整理并交付当前已有成果！',
-        };
-      }
-
-      // 2. 同参连续死磕熔断检查
+      // 1. 同参连续死磕熔断检查
       const toolCheck = checkAndRecordConsecutiveToolCall(scopeKey, event.toolName, event.params);
       if (toolCheck.isConsecutiveLoop) {
         api.logger.warn(
@@ -704,31 +669,29 @@ export default {
         };
       }
 
-      // 3. 检查/复查类工具生命周期门禁与交替微调振荡拦截（Ping-Pong Thrashing）
-      const inspectionCheck = recordToolCallActivity(scopeKey, event.toolName);
+      // 2. 产物自检与视觉复查预算熔断（覆盖 browser 网页自测与 view_image/read_file 等产物回读）
+      const inspectionCheck = checkAndRecordInspectionToolCall(scopeKey, event.toolName, event.params);
       if (inspectionCheck.isThrashing) {
         api.logger.warn(
-          `[lobsterai-context-prune] inspection thrashing limit reached (${inspectionCheck.cycles}/${CONSECUTIVE_INSPECTION_ATTEMPTS_LIMIT}) for tool "${event.toolName}" in turn "${scopeKey}". Activating global lockout.`,
+          `[lobsterai-context-prune] artifact inspection budget limit reached (${inspectionCheck.count}/${CONSECUTIVE_INSPECTION_ATTEMPTS_LIMIT}) for tool "${event.toolName}" in turn "${scopeKey}". Blocking further self-correction thrashing.`,
         );
         return {
           block: true,
-          blockReason: inspectionCheck.lockReason,
+          blockReason: `[⚠️ 阶段性交付要求] 检测到你已针对当前任务进行了 ${inspectionCheck.count} 次成果视觉复查/回读自检！当前核心交付物（如 HTML/PPT/文档/代码）已完全成型，自检验收预算已用尽。严禁继续在后台自嗨式打磨细节或重复审查。请立即停止调用工具，向用户展示当前完成的成果并做总结汇报！后续微调必须交由用户决定。`,
         };
       }
 
-      // 4. 总步数统计与软硬熔断（按单轮 Turn 计算）
+      // 3. 总步数统计与软硬熔断（按单轮 Turn 计算）
       const count = incrementSessionKeyTurnToolCount(scopeKey);
 
-      // 硬熔断：达到 70 步彻底拦截并激活全局工具锁死，阻止模型换工具继续死磕
+      // 硬熔断：达到 70 步彻底拦截并指示模型收手
       if (count > TURN_TOOL_CALL_HARD_LIMIT) {
         api.logger.warn(
-          `[lobsterai-context-prune] hard cap reached (${count} > ${TURN_TOOL_CALL_HARD_LIMIT}) for tool "${event.toolName}" in turn "${scopeKey}". Activating global lockout.`,
+          `[lobsterai-context-prune] hard cap reached (${count} > ${TURN_TOOL_CALL_HARD_LIMIT}) for tool "${event.toolName}" in turn "${scopeKey}". Blocking tool call.`,
         );
-        const hardLockReason = `已达到单轮任务 ${TURN_TOOL_CALL_HARD_LIMIT} 步工具安全上限（当前第 ${count} 步）。已触发系统安全熔断止损，严禁继续调用任何工具！请立即整理已有工作成果，向用户进行阶段性交付汇报并等待用户指令。`;
-        setTurnGlobalLockout(scopeKey, hardLockReason);
         return {
           block: true,
-          blockReason: hardLockReason,
+          blockReason: `已达到单轮任务 ${TURN_TOOL_CALL_HARD_LIMIT} 步工具安全上限（当前第 ${count} 步）。已触发系统安全熔断止损，严禁继续调用任何工具！请立即整理已有工作成果，向用户进行阶段性交付汇报并等待用户指令。`,
         };
       }
 
