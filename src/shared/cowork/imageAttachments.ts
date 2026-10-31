@@ -1,5 +1,7 @@
 export const COWORK_IMAGE_ATTACHMENT_MAX_BYTES = 30 * 1000 * 1000;
 export const COWORK_IMAGE_ATTACHMENT_PREVIEW_FALLBACK_MAX_BYTES = 512 * 1024;
+/** 单次提问允许携带的图片与批注截图总数上限（遵循业界主流最佳实践，避免大模型视觉上下文超载） */
+export const MAX_COWORK_INPUT_IMAGES = 5;
 
 export const CoworkImageAttachmentRole = {
   /** Browser-annotation screenshot attached only as model transport. */

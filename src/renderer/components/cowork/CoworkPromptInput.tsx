@@ -36,6 +36,7 @@ import {
 import {
   CoworkImageAttachmentRole,
   formatCoworkImageAttachmentLimit,
+  MAX_COWORK_INPUT_IMAGES,
 } from '../../../shared/cowork/imageAttachments';
 import { isPlanImplementationApproval } from '../../../shared/cowork/planMode';
 import type { CoworkSelectedTextSnippet } from '../../../shared/cowork/selectedText';
@@ -320,6 +321,21 @@ const isImageMimeType = (mimeType: string): boolean => {
 
 const showToast = (message: string): void => {
   window.dispatchEvent(new CustomEvent('app:showToast', { detail: message }));
+};
+
+const notifyMaxInputImagesLimitReached = (): void => {
+  showToast(
+    i18nService.t('maxInputImagesLimitReached').replaceAll('{limit}', String(MAX_COWORK_INPUT_IMAGES)),
+  );
+};
+
+const countCurrentInputImages = (
+  attachments: DraftAttachment[],
+  batches: CoworkBrowserAnnotationMessageBatch[],
+): number => {
+  const imgCount = attachments.filter(a => a.isImage || isImagePath(a.path)).length;
+  const annotationCount = batches.reduce((acc, b) => acc + (b.annotations?.length ?? 0), 0);
+  return imgCount + annotationCount;
 };
 
 const DEFAULT_FREE_ASR_LIMIT_SECONDS = 20 * 60;
@@ -2114,10 +2130,17 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
       preparedBrowserAnnotations.push({ ...batch, annotations: preparedAnnotations });
     }
 
+    const allImagesToSubmit = [...(promptPayload.imageAttachments ?? []), ...annotationImages];
+    let finalImagesToSubmit = allImagesToSubmit;
+    if (allImagesToSubmit.length > MAX_COWORK_INPUT_IMAGES) {
+      finalImagesToSubmit = allImagesToSubmit.slice(0, MAX_COWORK_INPUT_IMAGES);
+      notifyMaxInputImagesLimitReached();
+    }
+
     const result = await onSubmit(
       promptPayload.finalPrompt,
       skillPrompt,
-      [...(promptPayload.imageAttachments ?? []), ...annotationImages],
+      finalImagesToSubmit,
       promptPayload.mediaReferences,
       promptPayload.selectedTextSnippets,
       preparedBrowserAnnotations,
@@ -2450,6 +2473,11 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
 
   const addAttachment = useCallback((filePath: string, options?: { isImage?: boolean; isDirectory?: boolean; dataUrl?: string }) => {
     if (!filePath) return;
+    const isImg = options?.isImage || isImagePath(filePath);
+    if (isImg && countCurrentInputImages(attachments, browserAnnotationBatches) >= MAX_COWORK_INPUT_IMAGES) {
+      notifyMaxInputImagesLimitReached();
+      return;
+    }
     dispatch(addDraftAttachment({
       draftKey,
       attachment: {
@@ -2460,9 +2488,13 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
         dataUrl: options?.dataUrl,
       },
     }));
-  }, [dispatch, draftKey]);
+  }, [attachments, browserAnnotationBatches, dispatch, draftKey]);
 
   const addImageAttachmentFromDataUrl = useCallback((name: string, dataUrl: string) => {
+    if (countCurrentInputImages(attachments, browserAnnotationBatches) >= MAX_COWORK_INPUT_IMAGES) {
+      notifyMaxInputImagesLimitReached();
+      return;
+    }
     // Use the dataUrl as the unique key (no file path for inline images)
     const pseudoPath = `inline:${name}:${Date.now()}`;
     dispatch(addDraftAttachment({
@@ -2474,7 +2506,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
         dataUrl,
       },
     }));
-  }, [dispatch, draftKey]);
+  }, [attachments, browserAnnotationBatches, dispatch, draftKey]);
 
   const fileToDataUrl = useCallback((file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -2622,6 +2654,12 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
 
       if (fileIsImage) {
         if (modelSupportsImage) {
+          // 统计当前已有图片 + 批注总量
+          if (countCurrentInputImages(attachments, browserAnnotationBatches) >= MAX_COWORK_INPUT_IMAGES) {
+            notifyMaxInputImagesLimitReached();
+            continue;
+          }
+
           // For images on vision-capable models, read as data URL
           if (nativePath) {
             try {
@@ -2696,7 +2734,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
       hasImageWithoutVision,
       ...getAttachmentAnalyticsParams(incomingAttachments),
     });
-  }, [addAttachment, addImageAttachmentFromDataUrl, disabled, effectiveSelectedModel, fileToDataUrl, getNativeFilePath, modelSupportsImage, reportPromptControl, saveInlineFile, statNativePath, voiceInputLocksEditing]);
+  }, [addAttachment, addImageAttachmentFromDataUrl, attachments, browserAnnotationBatches, disabled, effectiveSelectedModel, fileToDataUrl, getNativeFilePath, modelSupportsImage, reportPromptControl, saveInlineFile, statNativePath, voiceInputLocksEditing]);
 
   const handleAddFile = useCallback(async () => {
     if (isAddingFile || disabled || voiceInputLocksEditing) {
@@ -2722,8 +2760,15 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
         return;
       }
       let hasImageWithoutVision = false;
+      let currentImageBudgetCount = countCurrentInputImages(attachments, browserAnnotationBatches);
+
       for (const filePath of result.paths) {
         if (isImagePath(filePath)) {
+          if (currentImageBudgetCount >= MAX_COWORK_INPUT_IMAGES) {
+            notifyMaxInputImagesLimitReached();
+            continue;
+          }
+          currentImageBudgetCount += 1;
           if (modelSupportsImage) {
             try {
               const readResult = await window.electron.dialog.readFileAsDataUrl(filePath);
@@ -2771,7 +2816,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     } finally {
       setIsAddingFile(false);
     }
-  }, [addAttachment, effectiveSelectedModel, isAddingFile, disabled, modelSupportsImage, reportPromptControl, voiceInputLocksEditing]);
+  }, [addAttachment, attachments, browserAnnotationBatches, effectiveSelectedModel, isAddingFile, disabled, modelSupportsImage, reportPromptControl, voiceInputLocksEditing]);
 
   const handleOpenAddMenu = useCallback(() => {
     reportPromptControl(showAddMenu ? 'add_menu_close' : 'add_menu_open', {
