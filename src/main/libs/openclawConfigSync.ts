@@ -3166,7 +3166,6 @@ export class OpenClawConfigSync {
         config: {
           callbackUrl: audioTranscribeCallbackUrl,
           secret: '${LOBSTER_MCP_BRIDGE_SECRET}',
-          requestTimeoutMs: 300000,
         },
       };
     }

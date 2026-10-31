@@ -158,9 +158,6 @@ export async function executeAudioTranscribe(
     const asrResult = await pollAsrResultCore(
       (path, body) => mainHttpClient.admin.post(path, body),
       submitResult.taskId,
-      {
-        maxTimeoutMs: 300_000,
-      },
     );
 
     let durationSec = 0;

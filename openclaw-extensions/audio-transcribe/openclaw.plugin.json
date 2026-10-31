@@ -18,11 +18,6 @@
       "secret": {
         "type": "string",
         "description": "Shared secret for callback authentication"
-      },
-      "requestTimeoutMs": {
-        "type": "number",
-        "minimum": 1000,
-        "description": "Request timeout in milliseconds"
       }
     }
   }

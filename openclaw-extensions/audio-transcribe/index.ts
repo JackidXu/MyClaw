@@ -5,7 +5,6 @@ import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
 type PluginConfig = {
   callbackUrl: string;
   secret: string;
-  requestTimeoutMs: number;
 };
 
 type AudioTranscribeRequest = {
@@ -21,8 +20,6 @@ type AudioTranscribeResponse = {
   isError?: boolean;
 };
 
-const DEFAULT_TIMEOUT_MS = 300_000; // 5 分钟超时，满足长音频转写等待
-
 const isRecord = (value: unknown): value is Record<string, unknown> => {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 };
@@ -32,7 +29,6 @@ const parsePluginConfig = (value: unknown): PluginConfig => {
   return {
     callbackUrl: typeof raw.callbackUrl === 'string' ? raw.callbackUrl.trim() : '',
     secret: typeof raw.secret === 'string' ? raw.secret.trim() : '',
-    requestTimeoutMs: typeof raw.requestTimeoutMs === 'number' ? raw.requestTimeoutMs : DEFAULT_TIMEOUT_MS,
   };
 };
 
@@ -40,10 +36,6 @@ async function callAudioTranscribeBridge(
   config: PluginConfig,
   request: AudioTranscribeRequest,
 ): Promise<AudioTranscribeResponse> {
-  const controller = new AbortController();
-  const timeoutMs = config.requestTimeoutMs || DEFAULT_TIMEOUT_MS;
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-
   try {
     const response = await fetch(config.callbackUrl, {
       method: 'POST',
@@ -52,7 +44,6 @@ async function callAudioTranscribeBridge(
         'x-mcp-bridge-secret': config.secret,
       },
       body: JSON.stringify(request),
-      signal: controller.signal,
     });
 
     const text = await response.text();
@@ -74,13 +65,8 @@ async function callAudioTranscribeBridge(
       content: [{ type: 'text', text: typeof parsed === 'string' ? parsed : JSON.stringify(parsed, null, 2) }],
     };
   } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') {
-      return { content: [{ type: 'text', text: '音频转写请求超时，请稍后重试。' }], isError: true };
-    }
     const message = error instanceof Error ? error.message : String(error);
     return { content: [{ type: 'text', text: `音频转写失败: ${message}` }], isError: true };
-  } finally {
-    clearTimeout(timer);
   }
 }
 

@@ -42,8 +42,6 @@ export interface PollAsrOptions {
   onProgress?: (message: string) => void;
   /** 是否已被外部取消 */
   isCancelled?: () => boolean;
-  /** 最大等待毫秒数（默认 300,000ms = 5分钟） */
-  maxTimeoutMs?: number;
 }
 
 /** 抽象的 HTTP POST 执行函数类型 */
@@ -134,7 +132,6 @@ export async function pollAsrResultCore(
     intervalMs = calcAdaptivePollInterval(durationSec),
     onProgress,
     isCancelled,
-    maxTimeoutMs = 300_000,
   } = options;
 
   const baseIntervalMs = Math.max(10000, intervalMs);
@@ -143,10 +140,6 @@ export async function pollAsrResultCore(
   while (true) {
     if (isCancelled?.()) {
       throw new Error('用户已取消转写');
-    }
-
-    if (Date.now() - startTime > maxTimeoutMs) {
-      throw new Error(`音频转写等待超时（已等待超过 ${Math.round(maxTimeoutMs / 1000)} 秒），请稍后重试`);
     }
 
     const res = await queryAsrTaskCore(httpPost, taskId, durationSec);
