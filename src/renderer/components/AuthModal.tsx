@@ -21,6 +21,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
   
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [loadingText, setLoadingText] = useState('处理中...');
   const [errorMsg, setErrorMsg] = useState('');
 
   if (!isOpen) return null;
@@ -28,6 +29,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
+    setLoadingText('处理中...');
     setLoading(true);
 
     try {
@@ -94,46 +96,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
       const formattedKey = apiKey.startsWith('sk-') ? apiKey : `sk-${apiKey}`;
       localStorage.setItem('heyclaw_api_key', formattedKey);
 
-      // 同步更新系统模型服务 Provider 配置，并拉取同步最新模型，使后续聊天调用该 key 生效且能成功校验
-      const currentConfig = configService.getConfig();
-      const currentOneapi = (currentConfig.providers?.['oneapi'] || {}) as any;
-      const oneapiBaseUrl = currentOneapi.baseUrl?.trim() || 'https://token.chaohui.ai/v1';
-
-      let chatModels: any[] = [];
-      let defaultChatModel = '';
-
-      try {
-        const modelRes = await fetchAndFilterOneApiChatModels(oneapiBaseUrl, formattedKey);
-        if (modelRes.success) {
-          chatModels = modelRes.chatModels;
-          defaultChatModel = modelRes.defaultChatModel;
-        }
-      } catch (modelErr) {
-        console.error('[AuthModal] Failed to fetch and sync models on login success:', modelErr);
-      }
-
-      await configService.updateConfig({
-        providers: {
-          ...currentConfig.providers,
-          oneapi: {
-            ...currentOneapi,
-            apiKey: formattedKey,
-            enabled: true,
-            models: chatModels.length > 0 ? chatModels : (currentOneapi?.models || []),
-            baseUrl: oneapiBaseUrl,
-          }
-        },
-        model: {
-          ...currentConfig.model,
-          defaultModel: defaultChatModel || currentConfig.model?.defaultModel || '',
-          defaultModelProvider: 'oneapi',
-          availableModels: chatModels.length > 0 
-            ? chatModels.map(m => ({ ...m, provider: m.provider || 'oneapi', providerKey: 'oneapi' }))
-            : currentConfig.model?.availableModels,
-        }
-      });
-
-
       dispatch(setLoggedIn({
         user: {
           yid: String(userId),
@@ -145,14 +107,62 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
         ownerAccountKey: `heyclaw-${userId}`,
       }));
 
-      // 刷新并注册 VIP 与设备状态
-      try {
-        await vipService.refreshStatus();
-      } catch (vipErr) {
-        console.warn('[AuthModal] Failed to refresh VIP status after login:', vipErr);
-      }
+      // 登录三凭证已存入，给予积极正向反馈
+      setLoadingText('登录成功，正在进入...');
 
-      // 触发成功回调
+      // 异步触发模型拉取、配置更新与 VIP 刷新（此过程会触发主进程在 ~1 秒内将网关状态切为 starting）
+      void (async () => {
+        try {
+          const currentConfig = configService.getConfig();
+          const currentOneapi = (currentConfig.providers?.['oneapi'] || {}) as any;
+          const oneapiBaseUrl = currentOneapi.baseUrl?.trim() || 'https://token.chaohui.ai/v1';
+
+          let chatModels: any[] = [];
+          let defaultChatModel = '';
+
+          try {
+            const modelRes = await fetchAndFilterOneApiChatModels(oneapiBaseUrl, formattedKey);
+            if (modelRes.success) {
+              chatModels = modelRes.chatModels;
+              defaultChatModel = modelRes.defaultChatModel;
+            }
+          } catch (modelErr) {
+            console.error('[AuthModal] Failed to fetch and sync models on login success:', modelErr);
+          }
+
+          await configService.updateConfig({
+            providers: {
+              ...currentConfig.providers,
+              oneapi: {
+                ...currentOneapi,
+                apiKey: formattedKey,
+                enabled: true,
+                models: chatModels.length > 0 ? chatModels : (currentOneapi?.models || []),
+                baseUrl: oneapiBaseUrl,
+              }
+            },
+            model: {
+              ...currentConfig.model,
+              defaultModel: defaultChatModel || currentConfig.model?.defaultModel || '',
+              defaultModelProvider: 'oneapi',
+              availableModels: chatModels.length > 0 
+                ? chatModels.map(m => ({ ...m, provider: m.provider || 'oneapi', providerKey: 'oneapi' }))
+                : currentConfig.model?.availableModels,
+            }
+          });
+
+          await vipService.refreshStatus();
+        } catch (postLoginErr) {
+          console.error('[AuthModal] Post-login config or VIP sync error:', postLoginErr);
+        }
+      })();
+
+      // 预留 2 秒缓冲时间：
+      // 1. 给用户一个清晰友好的“登录成功”反馈状态；
+      // 2. 恰好覆盖模型拉取(~600ms)和主进程下发配置(~300ms)的时间，确保主进程网关进入 starting 重启状态；
+      // 3. 2 秒后关闭登录模态框时，主界面第一帧无缝呈现全屏 EngineStartupOverlay，绝不闪现主工作区
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+
       onSuccess();
     } catch (err: any) {
       console.error('[AuthModal] Auth flow error:', err);
@@ -258,7 +268,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
             disabled={loading}
             className="w-full py-3 mt-4 text-sm font-semibold text-white bg-primary rounded-xl hover:bg-primary/95 active:scale-[0.99] disabled:opacity-50 disabled:pointer-events-none transition-all shadow-[0_4px_12px_rgba(59,130,246,0.15)]"
           >
-            {loading ? '处理中...' : isLogin ? '立 即 登 录' : '注册并登录'}
+            {loading ? loadingText : isLogin ? '立 即 登 录' : '注册并登录'}
           </button>
         </form>
 
