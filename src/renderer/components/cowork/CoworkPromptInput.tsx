@@ -325,13 +325,13 @@ const showToast = (message: string): void => {
 
 const notifyMaxInputImagesLimitReached = (): void => {
   showToast(
-    i18nService.t('maxInputImagesLimitReached').replaceAll('{limit}', String(MAX_COWORK_INPUT_IMAGES)),
+    i18nService.t('maxInputImagesLimitReached').replace(/\{limit\}/g, String(MAX_COWORK_INPUT_IMAGES)),
   );
 };
 
 const countCurrentInputImages = (
   attachments: DraftAttachment[],
-  batches: CoworkBrowserAnnotationMessageBatch[],
+  batches: CoworkBrowserAnnotationBatch[],
 ): number => {
   const imgCount = attachments.filter(a => a.isImage || isImagePath(a.path)).length;
   const annotationCount = batches.reduce((acc, b) => acc + (b.annotations?.length ?? 0), 0);
