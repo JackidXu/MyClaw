@@ -4311,12 +4311,12 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
                   ? 'relative z-10 rounded-t-2xl'
                   : 'relative z-10 rounded-3xl border border-border bg-surface shadow-composer'}
               >
+                {activeSkillContextRow}
                 {largeAttachmentPreview}
                 {selectedTextSnippetPreview}
                 {browserAnnotationPreview}
                 {steerPreview}
                 {sessionGoalStatusBar}
-                {activeSkillContextRow}
                 {renderMentionTextarea({
                   rows: narrow ? 1 : 2,
                   placeholder: textareaPlaceholder,
@@ -4358,12 +4358,12 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
             </>
           ) : (
             <>
+              {activeSkillContextRow}
               {largeAttachmentPreview}
               {selectedTextSnippetPreview}
               {browserAnnotationPreview}
               {steerPreview}
               {sessionGoalStatusBar}
-              {activeSkillContextRow}
               {renderMentionTextarea({
                 rows: isCompact ? 1 : 2,
                 placeholder: textareaPlaceholder,
