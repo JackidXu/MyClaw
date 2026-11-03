@@ -2893,6 +2893,7 @@ const getOpenClawConfigSync = (): OpenClawConfigSync => {
       getSecondBrainCallbackUrl: () => getMcpRuntime().getSecondBrainCallbackUrl(),
       getWebSearchCallbackUrl: () => getMcpRuntime().getWebSearchCallbackUrl(),
       getAudioTranscribeCallbackUrl: () => getMcpRuntime().getAudioTranscribeCallbackUrl(),
+      getAudioTtsCallbackUrl: () => getMcpRuntime().getAudioTtsCallbackUrl(),
       getDecisionCallbackUrl: () => getMcpRuntime().getDecisionCallbackUrl(),
       isDecisionModelActive: () => isDecisionModelFeatureActive(getStore()),
       getBrowserCallbackUrl: () => getMcpRuntime().getBrowserCallbackUrl(),

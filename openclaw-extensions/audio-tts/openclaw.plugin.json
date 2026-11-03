@@ -1,0 +1,25 @@
+{
+  "id": "audio-tts",
+  "name": "AudioTTS",
+  "description": "Text-to-speech audio synthesis powered by HeyClaw and Volcano Engine Doubao TTS 2.0.",
+  "contracts": {
+    "tools": [
+      "heyclaw_audio_tts"
+    ]
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "callbackUrl": {
+        "type": "string",
+        "description": "HeyClaw HTTP callback URL for audio TTS requests"
+      },
+      "secret": {
+        "type": "string",
+        "description": "Shared secret for callback authentication"
+      }
+    }
+  }
+}
+

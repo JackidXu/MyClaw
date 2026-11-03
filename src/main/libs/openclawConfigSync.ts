@@ -475,6 +475,7 @@ const MANAGED_BINARY_FILE_READ_POLICY_PROMPT = [
   '- If you need to read or analyze a spreadsheet (e.g. `.xlsx`, `.xls`, `.csv`), write and execute a Python script to parse it (e.g. using `pandas` or `openpyxl`) and print only the structured summary or schema.',
   '- If you need to read a `.pdf` or extract content from a compressed archive, write and execute a Python script to extract and summarize the text locally.',
   '- **Audio & Voice Recording Files (`.mp3`, `.m4a`, `.wav`, `.ogg`, `.flac`, `.aac` etc.)**: When the user provides an audio file or requests content extraction, meeting minutes, summary, or copywriting based on a recording, ALWAYS call the `heyclaw_audio_transcribe` tool to transcribe speech into text. NEVER attempt to read binary audio files directly.',
+  '- **Text-to-Speech & Voice Narration (TTS)**: When the user asks to generate voice, voiceover, short video narration, or synthesize text into speech, ALWAYS call the `heyclaw_audio_tts` tool to produce high-fidelity MP3 audio files with word-level timestamps directly.',
   '- If you violate this rule and attempt to call file-reading tools on binary files directly, the tool execution will be blocked and will return an error.',
 ].join('\n');
 
@@ -2102,6 +2103,7 @@ type OpenClawConfigSyncDeps = {
   getSecondBrainCallbackUrl?: () => string | null;
   getWebSearchCallbackUrl?: () => string | null;
   getAudioTranscribeCallbackUrl?: () => string | null;
+  getAudioTtsCallbackUrl?: () => string | null;
   getDecisionCallbackUrl?: () => string | null;
   /** The experimental decision model is switched on and has a usable key. */
   isDecisionModelActive?: () => boolean;
@@ -2146,6 +2148,7 @@ export class OpenClawConfigSync {
   private readonly getSecondBrainCallbackUrl?: () => string | null;
   private readonly getWebSearchCallbackUrl?: () => string | null;
   private readonly getAudioTranscribeCallbackUrl?: () => string | null;
+  private readonly getAudioTtsCallbackUrl?: () => string | null;
   private readonly getDecisionCallbackUrl?: () => string | null;
   private readonly isDecisionModelActive?: () => boolean;
   private readonly getBrowserCallbackUrl?: () => string | null;
@@ -2187,6 +2190,7 @@ export class OpenClawConfigSync {
     this.getSecondBrainCallbackUrl = deps.getSecondBrainCallbackUrl;
     this.getWebSearchCallbackUrl = deps.getWebSearchCallbackUrl;
     this.getAudioTranscribeCallbackUrl = deps.getAudioTranscribeCallbackUrl;
+    this.getAudioTtsCallbackUrl = deps.getAudioTtsCallbackUrl;
     this.getDecisionCallbackUrl = deps.getDecisionCallbackUrl;
     this.isDecisionModelActive = deps.isDecisionModelActive;
     this.getBrowserCallbackUrl = deps.getBrowserCallbackUrl;
@@ -2668,6 +2672,7 @@ export class OpenClawConfigSync {
     const hasSecondBrainPlugin = isBundledPluginAvailable('second-brain');
     const hasWebSearchPlugin = isBundledPluginAvailable('web-search');
     const hasAudioTranscribePlugin = isBundledPluginAvailable('audio-transcribe');
+    const hasAudioTtsPlugin = isBundledPluginAvailable('audio-tts');
     const hasContextPrunePlugin = isBundledPluginAvailable('lobsterai-context-prune');
     const hasModelRoutingPlugin = isBundledPluginAvailable('lobster-model-routing');
     const hasDecisionPlugin = isBundledPluginAvailable(DECISION_MODEL_PLUGIN_ID);
@@ -2932,6 +2937,7 @@ export class OpenClawConfigSync {
           ...(hasSecondBrainPlugin ? { 'second-brain': { enabled: true } } : {}),
           ...(hasWebSearchPlugin ? { 'web-search': { enabled: true } } : {}),
           ...(hasAudioTranscribePlugin ? { 'audio-transcribe': { enabled: true } } : {}),
+          ...(hasAudioTtsPlugin ? { 'audio-tts': { enabled: true } } : {}),
           ...(hasContextPrunePlugin ? { 'lobsterai-context-prune': { enabled: true } } : {}),
           ...(hasModelRoutingPlugin ? {
             'lobster-model-routing': getOpenClawTokenProxyPort() ? {
@@ -2998,6 +3004,7 @@ export class OpenClawConfigSync {
           ...(hasSecondBrainPlugin ? ['second-brain'] : []),
           ...(hasWebSearchPlugin ? ['web-search'] : []),
           ...(hasAudioTranscribePlugin ? ['audio-transcribe'] : []),
+          ...(hasAudioTtsPlugin ? ['audio-tts'] : []),
           ...(hasContextPrunePlugin ? ['lobsterai-context-prune'] : []),
           ...(hasModelRoutingPlugin ? ['lobster-model-routing'] : []),
           ...(hasModelCompatConfig
@@ -3172,6 +3179,20 @@ export class OpenClawConfigSync {
         enabled: true,
         config: {
           callbackUrl: audioTranscribeCallbackUrl,
+          secret: '${LOBSTER_MCP_BRIDGE_SECRET}',
+        },
+      };
+    }
+
+    // Sync AudioTts plugin config
+    const audioTtsCallbackUrl = this.getAudioTtsCallbackUrl?.();
+    if (hasAudioTtsPlugin && audioTtsCallbackUrl && managedConfig.plugins) {
+      const plugins = managedConfig.plugins as Record<string, unknown>;
+      const entries = plugins.entries as Record<string, Record<string, unknown>>;
+      entries['audio-tts'] = {
+        enabled: true,
+        config: {
+          callbackUrl: audioTtsCallbackUrl,
           secret: '${LOBSTER_MCP_BRIDGE_SECRET}',
         },
       };

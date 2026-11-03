@@ -14,6 +14,7 @@ import type {
 } from '../../shared/media/confirmation';
 import { MediaConfirmationReason } from '../../shared/media/confirmation';
 import { executeAudioTranscribe } from '../audioTranscribe/audioTranscribeBridge';
+import { executeAudioTts } from '../audioTts/audioTtsBridge';
 import {
   executeSecondBrainTool,
   fetchSecondBrainPrompt,
@@ -172,6 +173,10 @@ export class McpBridgeServer {
 
   get audioTranscribeCallbackUrl(): string | null {
     return this._port ? `http://127.0.0.1:${this._port}/audio-transcribe/tool` : null;
+  }
+
+  get audioTtsCallbackUrl(): string | null {
+    return this._port ? `http://127.0.0.1:${this._port}/audio-tts/tool` : null;
   }
 
   get browserCallbackUrl(): string | null {
@@ -384,6 +389,11 @@ export class McpBridgeServer {
 
     if (req.url?.startsWith('/audio-transcribe/tool')) {
       await this.handleAudioTranscribe(req, res);
+      return;
+    }
+
+    if (req.url?.startsWith('/audio-tts/tool')) {
+      await this.handleAudioTts(req, res);
       return;
     }
 
@@ -680,6 +690,45 @@ export class McpBridgeServer {
       if (!res.writableEnded) {
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ content: [{ type: 'text', text: `音频转写处理异常: ${errMsg}` }], isError: true }));
+      }
+    }
+  }
+
+  private async handleAudioTts(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    const t0 = Date.now();
+    try {
+      const body = await this.readBody(req);
+      const payload = JSON.parse(body) as {
+        text?: string;
+        outputPath?: string;
+        speaker?: string;
+        speedRatio?: number;
+        loudnessRate?: number;
+        enableSubtitle?: boolean;
+        sessionKey?: string;
+        toolCallId?: string;
+      };
+      log('INFO', `Audio TTS request received: textLength=${payload.text?.length ?? 0} speaker="${payload.speaker ?? ''}" toolCallId=${payload.toolCallId ?? ''}`);
+
+      const result = await executeAudioTts({
+        text: typeof payload.text === 'string' ? payload.text : '',
+        outputPath: typeof payload.outputPath === 'string' ? payload.outputPath : undefined,
+        speaker: typeof payload.speaker === 'string' ? payload.speaker : undefined,
+        speedRatio: typeof payload.speedRatio === 'number' ? payload.speedRatio : undefined,
+        loudnessRate: typeof payload.loudnessRate === 'number' ? payload.loudnessRate : undefined,
+        enableSubtitle: typeof payload.enableSubtitle === 'boolean' ? payload.enableSubtitle : undefined,
+        sessionKey: typeof payload.sessionKey === 'string' ? payload.sessionKey : undefined,
+      });
+
+      log('INFO', `Audio TTS completed in ${Date.now() - t0}ms, isError=${result.isError ?? false}`);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(result));
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      log('ERROR', `Audio TTS request failed after ${Date.now() - t0}ms: ${errMsg}`);
+      if (!res.writableEnded) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ content: [{ type: 'text', text: `语音合成处理异常: ${errMsg}` }], isError: true }));
       }
     }
   }
