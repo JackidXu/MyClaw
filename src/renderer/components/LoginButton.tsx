@@ -89,6 +89,7 @@ const writeAccountMenuRendererLog = (
   }
 };
 
+
 const getPlanUpgradeLogMessage = (
   analytics: AccountPlanAnalyticsContext,
   hasCredits: boolean,
@@ -268,6 +269,7 @@ const PointsStackIcon: React.FC = () => (
     <path d="M6.25 12.25V16.25C6.25 17.63 8.82 18.75 12 18.75C15.18 18.75 17.75 17.63 17.75 16.25V12.25" />
   </svg>
 );
+
 
 interface UserMenuProps {
   onClose: () => void;
@@ -467,6 +469,7 @@ const UserMenu: React.FC<UserMenuProps> = ({
     }
   };
 
+
   const handleCreditsResetActivity = async () => {
     try {
       await openPortalUrl(getPortalCreditsResetActivityUrl());
@@ -616,6 +619,7 @@ const UserMenu: React.FC<UserMenuProps> = ({
             />
           );
         })}
+
         <AccountMenuAction
           icon={<PortalMenuIcon src={inviteCreditsIconUrl} darkInvert />}
           label={i18nService.t('authInviteFriendsForCredits')}
@@ -751,6 +755,10 @@ const LoginButton: React.FC<LoginButtonProps> = ({
       });
       return;
     }
+    await handleLogin();
+  };
+
+  const handleLogin = async () => {
     const loginVariant = useSidebarPromoLogin ? 'sidebar_promo' : 'default';
     writeAccountMenuRendererLog('debug', `login requested variant=${loginVariant}`);
     try {

@@ -4738,7 +4738,7 @@ const Settings: React.FC<SettingsProps> = ({
         );
       case 'experimental':
         return (
-          <div className="space-y-4">
+          <div className="space-y-8">
             <DshExperimentalSettings />
             <DecisionModelExperimentalSettings draftRef={decisionModelDraftRef} />
           </div>

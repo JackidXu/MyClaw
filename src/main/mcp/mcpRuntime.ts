@@ -193,6 +193,9 @@ export class McpRuntime {
   getDecisionCallbackUrl(): string | null {
     return this.bridgeServer?.decisionCallbackUrl ?? null;
   }
+  getHostInfoUrl(): string | null {
+    return this.bridgeServer?.hostInfoUrl ?? null;
+  }
   getBridgeSecret(): string {
     return this.bridgeSecret;
   }
@@ -524,6 +527,7 @@ export class McpRuntime {
       ? resolveComputerUseMcpServer({
         askUserCallbackUrl,
         electronNodePath: electronPath,
+        hostInfoUrl: this.getHostInfoUrl(),
       })
       : null;
     if (computerUseServer) {

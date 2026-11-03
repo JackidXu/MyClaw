@@ -80,3 +80,20 @@ test.each([
   const handler = vi.mocked(ipcMain.handle).mock.calls.find(([name]) => name === channel)![1];
   expect(await handler({} as Electron.IpcMainInvokeEvent)).toEqual({ success: false, error: 'Catalog unavailable' });
 });
+
+test('working directory change hot-reloads OpenClaw config without restarting the gateway', async () => {
+  const sync = vi.fn().mockResolvedValue({ success: true, changed: true });
+  const refreshImSessionWorkingDirectoriesForAgent = vi.fn().mockReturnValue(0);
+  const updateAgent = vi.fn((id: string, updates: { workingDirectory?: string }) => ({ id, ...updates }));
+  vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([]);
+  registerAgentHandlers({
+    getAgentManager: () => ({ getAgent: () => ({ id: 'main', workingDirectory: '/repo/old' }), updateAgent }),
+    refreshImSessionWorkingDirectoriesForAgent,
+    syncOpenClawConfig: sync,
+  } as unknown as AgentHandlerDeps);
+  const handler = vi.mocked(ipcMain.handle).mock.calls.find(([channel]) => channel === AgentIpcChannel.Update)![1];
+  const result = await handler({ sender: { id: 1 } } as unknown as Electron.IpcMainInvokeEvent, 'main', { workingDirectory: '/repo/new' });
+  expect(result).toMatchObject({ success: true });
+  expect(refreshImSessionWorkingDirectoriesForAgent).toHaveBeenCalledExactlyOnceWith('main');
+  expect(sync).toHaveBeenCalledExactlyOnceWith({ reason: 'agent-working-directory-updated' });
+});

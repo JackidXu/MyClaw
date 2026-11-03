@@ -4676,7 +4676,8 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
     }
     try {
       if (await refreshOpenOfficeEditor(selectedArtifact.filePath)) return;
-      if (selectedArtifact.type === ArtifactTypeValue.Html) {
+      // Pages and images load from the file itself; a new version makes them load it again.
+      if (selectedArtifact.type === ArtifactTypeValue.Html || selectedArtifact.type === ArtifactTypeValue.Image) {
         dispatch(addArtifact({
           sessionId: selectedArtifact.sessionId,
           artifact: {
@@ -4688,7 +4689,7 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
         return;
       }
 
-      const isTextType = selectedArtifact.type !== 'image' && selectedArtifact.type !== 'document';
+      const isTextType = selectedArtifact.type !== 'document';
       if (isTextType && window.electron?.dialog?.readTextFile) {
         const result = await window.electron.dialog.readTextFile(selectedArtifact.filePath);
         if (result?.truncated) {
@@ -4720,8 +4721,7 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
 
       const result = await window.electron.dialog.readFileAsDataUrl(selectedArtifact.filePath);
       if (result?.success && result.dataUrl) {
-        const isTextType =
-          selectedArtifact.type !== 'image' && selectedArtifact.type !== 'document';
+        const isTextType = selectedArtifact.type !== 'document';
         let content = result.dataUrl;
         if (isTextType) {
           try {

@@ -936,11 +936,21 @@ export const buildConversationTurns = (
 
 // ── Metadata helpers ─────────────────────────────────────────────────────────
 
-export const getMessageModelLabel = (metadata?: CoworkMessageMetadata | null): string | null => {
+export interface MessageModelLabelParts {
+  /** Preset name when the turn ran on a preset, otherwise the model name. */
+  name: string;
+  /** The model a preset resolved to. */
+  detail: string | null;
+}
+
+export const getMessageModelLabelParts = (metadata?: CoworkMessageMetadata | null): MessageModelLabelParts | null => {
   const modelPresetId = parseModelPresetId(metadata?.modelPresetId);
   const resolved = typeof metadata?.resolvedModelId === 'string' ? metadata.resolvedModelId.trim() : '';
   if (modelPresetId && resolved && !parseModelPresetModelId(resolved)) {
-    return `${modelPresetName(modelPresetId)}（${formatModelDisplayName(resolved.split('/').pop() || resolved)}）`;
+    return {
+      name: modelPresetName(modelPresetId),
+      detail: formatModelDisplayName(resolved.split('/').pop() || resolved),
+    };
   }
   const model = typeof metadata?.model === 'string' ? metadata.model.trim() : '';
   const actualModel = model && !parseModelPresetModelId(model) ? model
@@ -948,7 +958,13 @@ export const getMessageModelLabel = (metadata?: CoworkMessageMetadata | null): s
   if (!actualModel) return null;
   const label = formatModelDisplayName(actualModel.split('/').pop() || actualModel);
   const presetId = modelPresetId ?? parseModelPresetModelId(model);
-  return presetId ? `${modelPresetName(presetId)}（${label}）` : label;
+  return presetId ? { name: modelPresetName(presetId), detail: label } : { name: label, detail: null };
+};
+
+export const getMessageModelLabel = (metadata?: CoworkMessageMetadata | null): string | null => {
+  const parts = getMessageModelLabelParts(metadata);
+  if (!parts) return null;
+  return parts.detail ? `${parts.name}（${parts.detail}）` : parts.name;
 };
 
 /**

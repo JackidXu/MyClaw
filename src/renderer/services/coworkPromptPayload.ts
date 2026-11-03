@@ -1,8 +1,14 @@
 import {
+  COWORK_IMAGE_ATTACHMENT_MODEL_MAX_BYTES,
   COWORK_IMAGE_ATTACHMENT_PREVIEW_FALLBACK_MAX_BYTES,
   type CoworkImageAttachmentPayload,
+  estimateBase64DecodedBytes,
   validateCoworkImageAttachmentSize,
 } from '../../shared/cowork/imageAttachments';
+import {
+  formatPastedTextAttachmentBlocks,
+  isPastedTextAttachment,
+} from '../../shared/cowork/pastedText';
 import type { CoworkSelectedTextSnippet } from '../../shared/cowork/selectedText';
 import {
   computeMediaLabels,
@@ -18,6 +24,7 @@ export interface CoworkPromptAttachment {
   isImage?: boolean;
   isDirectory?: boolean;
   dataUrl?: string;
+  pastedText?: string;
 }
 
 export interface PreparedCoworkPromptPayload {
@@ -52,12 +59,18 @@ interface PrepareCoworkPromptPayloadOptions {
   modelSupportsImage: boolean;
   readFileAsDataUrl?: (path: string) => Promise<{ success: boolean; dataUrl?: string }>;
   createImagePreviewDataUrl?: (dataUrl: string) => Promise<string>;
+  /** Re-encodes an image above the model's per-image limit into a data URL of at most `maxBytes`. */
+  fitImageDataUrl?: (dataUrl: string, maxBytes: number) => Promise<string>;
   fileLabel: string;
   folderLabel: string;
 }
 
 const IMAGE_ATTACHMENT_PREVIEW_MAX_DIMENSION = 512;
 const IMAGE_ATTACHMENT_PREVIEW_QUALITY = 0.78;
+// OpenClaw downsizes model images far below this; the cap only bounds canvas work for huge sources.
+const IMAGE_ATTACHMENT_MODEL_MAX_DIMENSION = 4096;
+const IMAGE_ATTACHMENT_MODEL_QUALITY = 0.9;
+const IMAGE_ATTACHMENT_MODEL_FIT_ATTEMPTS = 6;
 
 export const IMAGE_ATTACHMENT_COMPRESSION_MAX_DIMENSION = 1920;
 export const IMAGE_ATTACHMENT_COMPRESSION_QUALITY = 0.85;
@@ -72,6 +85,13 @@ const extractBase64FromDataUrl = (
   return { mimeType: match[1], base64Data: match[2] };
 };
 
+const loadImage = (dataUrl: string): Promise<HTMLImageElement> => new Promise((resolve, reject) => {
+  const image = new Image();
+  image.onload = () => resolve(image);
+  image.onerror = () => reject(new Error('Failed to load image attachment'));
+  image.src = dataUrl;
+});
+
 export const compressImageAttachmentDataUrl = async (
   dataUrl: string,
   maxDimension = IMAGE_ATTACHMENT_COMPRESSION_MAX_DIMENSION,
@@ -83,12 +103,7 @@ export const compressImageAttachmentDataUrl = async (
 
     const estimatedBytes = Math.round((extracted.base64Data.length * 3) / 4);
 
-    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const image = new Image();
-      image.onload = () => resolve(image);
-      image.onerror = () => reject(new Error('Failed to load image for compression'));
-      image.src = dataUrl;
-    });
+    const img = await loadImage(dataUrl);
 
     const naturalWidth = img.naturalWidth || img.width || 1;
     const naturalHeight = img.naturalHeight || img.height || 1;
@@ -123,12 +138,7 @@ export const compressImageAttachmentDataUrl = async (
 };
 
 const createDefaultImagePreviewDataUrl = async (dataUrl: string): Promise<string> => {
-  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error('Failed to load image preview'));
-    image.src = dataUrl;
-  });
+  const img = await loadImage(dataUrl);
 
   const scale = Math.min(
     1,
@@ -148,12 +158,40 @@ const createDefaultImagePreviewDataUrl = async (dataUrl: string): Promise<string
   return canvas.toDataURL('image/jpeg', IMAGE_ATTACHMENT_PREVIEW_QUALITY);
 };
 
+/** Builds the model's copy only; the original file stays untouched and is still referenced by localPath. */
+const fitDefaultImageDataUrl = async (dataUrl: string, maxBytes: number): Promise<string> => {
+  const img = await loadImage(dataUrl);
+  const sourceWidth = img.naturalWidth || img.width || 1;
+  const sourceHeight = img.naturalHeight || img.height || 1;
+  let scale = Math.min(1, IMAGE_ATTACHMENT_MODEL_MAX_DIMENSION / Math.max(sourceWidth, sourceHeight));
+  for (let attempt = 0; attempt < IMAGE_ATTACHMENT_MODEL_FIT_ATTEMPTS; attempt += 1) {
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(sourceWidth * scale));
+    canvas.height = Math.max(1, Math.round(sourceHeight * scale));
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      throw new Error('Failed to create image attachment canvas');
+    }
+    // JPEG has no alpha channel: flatten transparent areas onto white rather than black.
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const fitted = canvas.toDataURL('image/jpeg', IMAGE_ATTACHMENT_MODEL_QUALITY);
+    const fittedBytes = estimateBase64DecodedBytes(fitted);
+    if (fittedBytes <= maxBytes) return fitted;
+    scale *= Math.min(0.9, Math.sqrt(maxBytes / fittedBytes) * 0.9);
+  }
+  throw new Error('Failed to fit image attachment within the model size limit');
+};
+
 export async function prepareCoworkPromptPayload(
   options: PrepareCoworkPromptPayloadOptions,
 ): Promise<PrepareCoworkPromptPayloadResult> {
   const imageAttachments: CoworkImageAttachmentPayload[] = [];
   const imageAttachmentPathsWithPayload = new Set<string>();
   const createPreview = options.createImagePreviewDataUrl ?? createDefaultImagePreviewDataUrl;
+  const fitImage = options.fitImageDataUrl ?? fitDefaultImageDataUrl;
 
   for (const attachment of options.attachments) {
     let imageDataUrl = attachment.dataUrl;
@@ -178,10 +216,10 @@ export async function prepareCoworkPromptPayload(
     // 上传前自动检测并进行智能等比缩放与压缩，杜绝超大 Base64 导致 V8 调用栈溢出 RangeError
     imageDataUrl = await compressImageAttachmentDataUrl(imageDataUrl);
 
-    const extracted = extractBase64FromDataUrl(imageDataUrl);
+    let extracted = extractBase64FromDataUrl(imageDataUrl);
     if (!extracted) continue;
 
-    const sizeValidation = validateCoworkImageAttachmentSize({
+    let sizeValidation = validateCoworkImageAttachmentSize({
       base64Data: extracted.base64Data,
     });
     if (!sizeValidation.ok) {
@@ -194,6 +232,37 @@ export async function prepareCoworkPromptPayload(
           maxBytes: sizeValidation.maxBytes,
         },
       };
+    }
+
+    if (sizeValidation.sizeBytes > COWORK_IMAGE_ATTACHMENT_MODEL_MAX_BYTES) {
+      const originalSizeBytes = sizeValidation.sizeBytes;
+      let fittedDataUrl: string | undefined;
+      try {
+        fittedDataUrl = await fitImage(imageDataUrl, COWORK_IMAGE_ATTACHMENT_MODEL_MAX_BYTES);
+      } catch (error) {
+        console.warn('[CoworkPromptPayload] Failed to fit image attachment within the model limit:', error);
+      }
+      const fitted = fittedDataUrl ? extractBase64FromDataUrl(fittedDataUrl) : null;
+      const fittedValidation = fitted
+        ? validateCoworkImageAttachmentSize({ base64Data: fitted.base64Data }, COWORK_IMAGE_ATTACHMENT_MODEL_MAX_BYTES)
+        : null;
+      if (!fittedDataUrl || !fitted || !fittedValidation?.ok) {
+        return {
+          success: false,
+          failure: {
+            code: CoworkPromptPayloadFailureCode.ImageTooLarge,
+            attachmentName: attachment.name,
+            sizeBytes: originalSizeBytes,
+            maxBytes: COWORK_IMAGE_ATTACHMENT_MODEL_MAX_BYTES,
+          },
+        };
+      }
+      console.debug(
+        `[CoworkPromptPayload] Re-encoded image attachment for the model: ${originalSizeBytes} -> ${fittedValidation.sizeBytes} bytes.`,
+      );
+      imageDataUrl = fittedDataUrl;
+      extracted = fitted;
+      sizeValidation = fittedValidation;
     }
 
     let previewMimeType: string | undefined;
@@ -234,12 +303,17 @@ export async function prepareCoworkPromptPayload(
     .filter(attachment => (
       !attachment.path.startsWith('inline:')
       && !attachment.imageEdit
+      && !isPastedTextAttachment(attachment)
       && !(attachment.isImage && imageAttachmentPathsWithPayload.has(attachment.path))
     ))
     .map(attachment => `${attachment.isDirectory ? options.folderLabel : options.fileLabel}: ${attachment.path}`)
     .join('\n');
-  let finalPrompt = options.basePrompt
-    ? (attachmentLines ? `${options.basePrompt}\n\n${attachmentLines}` : options.basePrompt)
+  // Pasted-text cards follow the typed prompt in the order they were pasted.
+  const basePrompt = [options.basePrompt, ...formatPastedTextAttachmentBlocks(options.attachments)]
+    .filter(Boolean)
+    .join('\n\n');
+  let finalPrompt = basePrompt
+    ? (attachmentLines ? `${basePrompt}\n\n${attachmentLines}` : basePrompt)
     : attachmentLines;
   const mediaLabels = computeMediaLabels(options.attachments);
   const editLines = mediaLabels.filter(item => item.attachment.imageEdit).map(item =>
