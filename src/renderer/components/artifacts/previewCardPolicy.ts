@@ -12,6 +12,7 @@ export const PreviewCardDisplayKind = {
   Diagram: 'diagram',
   Code: 'code',
   Text: 'text',
+  Audio: 'audio',
   File: 'file',
 } as const;
 export type PreviewCardDisplayKind = typeof PreviewCardDisplayKind[keyof typeof PreviewCardDisplayKind];
@@ -115,6 +116,9 @@ function getDisplayKind(artifact: Artifact, extension: string): PreviewCardDispl
   if (artifact.type === ArtifactTypeValue.Video) {
     return PreviewCardDisplayKind.Video;
   }
+  if (artifact.type === ArtifactTypeValue.Audio) {
+    return PreviewCardDisplayKind.Audio;
+  }
   if (artifact.type === ArtifactTypeValue.Mermaid) {
     return PreviewCardDisplayKind.Diagram;
   }
@@ -161,6 +165,8 @@ function getKindKey(displayKind: PreviewCardDisplayKind): string {
       return 'artifactFileKindCode';
     case PreviewCardDisplayKind.Text:
       return 'artifactFileKindText';
+    case PreviewCardDisplayKind.Audio:
+      return 'artifactFileKindAudio';
     case PreviewCardDisplayKind.File:
     default:
       return 'artifactFileKindFile';

@@ -12,6 +12,7 @@ export const ArtifactTypeValue = {
   Text: 'text',
   Document: 'document',
   LocalService: 'local-service',
+  Audio: 'audio',
 } as const;
 
 export type ArtifactSource = 'inline' | 'tool' | 'file';
@@ -44,6 +45,7 @@ export const PREVIEWABLE_ARTIFACT_TYPES = new Set<ArtifactType>([
   ArtifactTypeValue.Text,
   ArtifactTypeValue.Document,
   ArtifactTypeValue.LocalService,
+  ArtifactTypeValue.Audio,
 ]);
 
 export interface Artifact {

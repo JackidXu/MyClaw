@@ -427,10 +427,17 @@ const EXTENSION_TO_ARTIFACT_TYPE: Record<string, ArtifactType> = {
   '.xlsx': 'document',
   '.pptx': 'document',
   '.pdf': 'document',
+  '.mp3': 'audio',
+  '.wav': 'audio',
+  '.m4a': 'audio',
+  '.aac': 'audio',
+  '.flac': 'audio',
+  '.ogg': 'audio',
 };
 
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.avif']);
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.webm', '.mov']);
+const AUDIO_EXTENSIONS = new Set(['.mp3', '.wav', '.m4a', '.aac', '.flac', '.ogg']);
 const BINARY_DOCUMENT_EXTENSIONS = new Set(['.docx', '.xlsx', '.pptx', '.pdf', '.csv', '.tsv', '.xls']);
 const LOCAL_SERVICE_URL_RE = /\bhttps?:\/\/(?:localhost|127(?:\.\d{1,3}){3}|0\.0\.0\.0|\[::1\])(?::\d{1,5})?(?:\/[^\s<>"'`)\]]*)?/gi;
 const MARKDOWN_LINK_RE = /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/gi;
@@ -451,6 +458,10 @@ export function isImageExtension(ext: string): boolean {
 
 export function isVideoExtension(ext: string): boolean {
   return VIDEO_EXTENSIONS.has(ext.toLowerCase());
+}
+
+export function isAudioExtension(ext: string): boolean {
+  return AUDIO_EXTENSIONS.has(ext.toLowerCase());
 }
 
 export function isBinaryDocumentExtension(ext: string): boolean {
