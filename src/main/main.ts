@@ -2104,8 +2104,8 @@ const isWindows = process.platform === 'win32';
 const DEV_SERVER_URL = developmentLaunchContext.serverUrl;
 const shouldOpenDevTools =
   isDev && (
-    process.env.ELECTRON_OPEN_DEVTOOLS === '1'
-    || process.env.ELECTRON_OPEN_DEVTOOLS === 'true'
+    process.env.ELECTRON_OPEN_DEVTOOLS !== '0'
+    && process.env.ELECTRON_OPEN_DEVTOOLS !== 'false'
   );
 const enableVerboseLogging =
   process.env.ELECTRON_ENABLE_LOGGING === '1' || process.env.ELECTRON_ENABLE_LOGGING === 'true';
@@ -15918,10 +15918,6 @@ if (!gotTheLock) {
     mainWindow.webContents.on('dom-ready', () => {
       setTrafficLogMainWindow(mainWindow);
     });
-
-    if (isDev && shouldOpenDevTools) {
-      mainWindow.webContents.openDevTools();
-    }
 
     // Register failure handling before the first navigation. In development,
     // the controller deduplicates the event and loadURL promise rejection.
