@@ -19,14 +19,14 @@ export interface CompanionSkin {
 
 export const COMPANION_SKINS: readonly CompanionSkin[] = [
   { id: DEFAULT_COMPANION_SKIN, nameKey: 'desktopCompanionSkinLobster', kind: CompanionSkinKind.Brand, asset: null, accent: '#F2482A' },
-  { id: 'ruanruanxia', nameKey: 'desktopCompanionSkinRuanruanxia', kind: CompanionSkinKind.Image, asset: './desktop-companion/skins/ruanruanxia.webp', accent: '#EE3B2F' },
-  { id: 'xingxingxing', nameKey: 'desktopCompanionSkinXingxingxing', kind: CompanionSkinKind.Image, asset: './desktop-companion/skins/xingxingxing.webp', accent: '#F4A62A' },
-  { id: 'shaee', nameKey: 'desktopCompanionSkinShaee', kind: CompanionSkinKind.Image, asset: './desktop-companion/skins/shaee.webp', accent: '#2F8BEA' },
-  { id: 'zhangduoduo', nameKey: 'desktopCompanionSkinZhangduoduo', kind: CompanionSkinKind.Image, asset: './desktop-companion/skins/zhangduoduo.webp', accent: '#E2392F' },
-  { id: 'jingyiming', nameKey: 'desktopCompanionSkinJingyiming', kind: CompanionSkinKind.Image, asset: './desktop-companion/skins/jingyiming.webp', accent: '#2A7FE0' },
-  { id: 'liuliuyu', nameKey: 'desktopCompanionSkinLiuliuyu', kind: CompanionSkinKind.Image, asset: './desktop-companion/skins/liuliuyu.webp', accent: '#F26B1D' },
-  { id: 'danpapa', nameKey: 'desktopCompanionSkinDanpapa', kind: CompanionSkinKind.Image, asset: './desktop-companion/skins/danpapa.webp', accent: '#F2B829' },
-  { id: 'qingqingpiao', nameKey: 'desktopCompanionSkinQingqingpiao', kind: CompanionSkinKind.Image, asset: './desktop-companion/skins/qingqingpiao.webp', accent: '#8C7CF0' },
+  { id: 'ruanruanxia', nameKey: 'desktopCompanionSkinRuanruanxia', kind: CompanionSkinKind.Image, asset: './desktop-companion/skins/ruanruanxia.png', accent: '#EE3B2F' },
+  { id: 'xingxingxing', nameKey: 'desktopCompanionSkinXingxingxing', kind: CompanionSkinKind.Image, asset: './desktop-companion/skins/xingxingxing.png', accent: '#F4A62A' },
+  { id: 'shaee', nameKey: 'desktopCompanionSkinShaee', kind: CompanionSkinKind.Image, asset: './desktop-companion/skins/shaee.png', accent: '#2F8BEA' },
+  { id: 'zhangduoduo', nameKey: 'desktopCompanionSkinZhangduoduo', kind: CompanionSkinKind.Image, asset: './desktop-companion/skins/zhangduoduo.png', accent: '#E2392F' },
+  { id: 'jingyiming', nameKey: 'desktopCompanionSkinJingyiming', kind: CompanionSkinKind.Image, asset: './desktop-companion/skins/jingyiming.png', accent: '#2A7FE0' },
+  { id: 'liuliuyu', nameKey: 'desktopCompanionSkinLiuliuyu', kind: CompanionSkinKind.Image, asset: './desktop-companion/skins/liuliuyu.png', accent: '#F26B1D' },
+  { id: 'danpapa', nameKey: 'desktopCompanionSkinDanpapa', kind: CompanionSkinKind.Image, asset: './desktop-companion/skins/danpapa.png', accent: '#F2B829' },
+  { id: 'qingqingpiao', nameKey: 'desktopCompanionSkinQingqingpiao', kind: CompanionSkinKind.Image, asset: './desktop-companion/skins/qingqingpiao.png', accent: '#8C7CF0' },
 ];
 
 export function normalizeCompanionSkin(value: unknown): string {
