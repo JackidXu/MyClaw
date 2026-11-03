@@ -679,9 +679,7 @@ const App: React.FC = () => {
       let oneapiKey = oneapiConfig?.apiKey?.trim();
       let oneapiBaseUrl = oneapiConfig?.baseUrl?.trim() || 'https://token.chaohui.ai/v1';
 
-      // 仅当本地尚未缓存可用模型列表时（如全新的离线配置恢复），才在冷启动阶段补充拉取模型
-      const currentModels = oneapiConfig?.models || [];
-      if (activated && oneapiKey && currentModels.length === 0) {
+      if (activated && oneapiKey) {
         try {
           mark('oneapi auth validation start');
           const modelRes = await fetchAndFilterOneApiChatModels(oneapiBaseUrl, oneapiKey);
