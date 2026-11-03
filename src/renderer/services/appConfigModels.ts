@@ -17,6 +17,7 @@ export interface ProviderModelOption {
   supportsVideo?: boolean;
   supportsThinking?: boolean;
   thinkingConfig?: any;
+  requestCapabilities?: any;
   contextWindow?: number;
   maxTokens?: number;
   description?: string;
@@ -59,6 +60,7 @@ export function applyAppConfigToStore(log?: (label: string) => void): ProviderMo
             supportsVideo: Boolean(model.supportsVideo),
             supportsThinking: Boolean(model.supportsThinking),
             thinkingConfig: model.thinkingConfig,
+            requestCapabilities: model.requestCapabilities,
             contextWindow: model.contextWindow,
             maxTokens: model.maxTokens,
             description: model.description || undefined,

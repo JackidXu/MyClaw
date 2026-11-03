@@ -153,6 +153,8 @@ export async function fetchAndFilterOneApiChatModels(
             isRecommended: Boolean(m.isRecommended),
             isStrong: Boolean(m.isStrong),
             isDefault: Boolean(m.isDefault),
+            thinkingConfig: m.thinkingConfig,
+            requestCapabilities: m.requestCapabilities,
           };
         });
 
