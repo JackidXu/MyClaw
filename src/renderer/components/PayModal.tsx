@@ -51,7 +51,13 @@ const PayModal: React.FC<PayModalProps> = ({ onClose, onSuccess }) => {
 
   // 2. 发起下单请求
   const handlePay = async (specId: number, payChannel: 1 | 2) => {
-    const userId = localStorage.getItem('heyclaw_user_id');
+    let userId = '';
+    try {
+      const creds = await window.electron.auth.getAuthCredentials();
+      userId = creds?.userId || '';
+    } catch {
+      // 容错
+    }
     if (!userId) {
       setErrorMessage(t('未检测到登录凭证，请重新登录', 'Login credentials missing, please login again'));
       return;

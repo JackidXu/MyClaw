@@ -18,16 +18,42 @@ export const AUTH_STORAGE_KEYS = {
 } as const;
 
 /**
- * 清除本地核心鉴权凭证
+ * 统一设置与更新核心鉴权凭据（写入主进程 SQLite SSOT，同时自动清理渲染层历史残留的 localStorage 敏感凭据）
+ */
+export async function setAuthCredentials(credentials: {
+  session?: string;
+  userId?: string;
+  apiKey?: string;
+}): Promise<void> {
+  // 1. 持久化至主进程 SQLite
+  await window.electron?.auth?.setAuthCredentials?.(credentials);
+
+  // 2. 自动彻底清理历史残留的 localStorage 敏感凭据（收敛于此，业务处无需重复书写）
+  try {
+    localStorage.removeItem(AUTH_STORAGE_KEYS.Session);
+    localStorage.removeItem(AUTH_STORAGE_KEYS.ApiKey);
+    localStorage.removeItem(AUTH_STORAGE_KEYS.UserId);
+  } catch {
+    // 容错
+  }
+}
+
+/**
+ * 清除核心鉴权凭证（统一由主进程清理 SQLite 持久化数据，同时清理本地残留）
  * 注意：保留用户在本地设置的偏好昵称 (heyclaw_user_name) 与头像 (heyclaw_user_avatar)
  */
 export function clearAuthCredentials(): void {
-  localStorage.removeItem(AUTH_STORAGE_KEYS.Session);
-  localStorage.removeItem(AUTH_STORAGE_KEYS.ApiKey);
-  localStorage.removeItem(AUTH_STORAGE_KEYS.UserId);
+  // 清理历史旧版 localStorage 遗留项（若有）
+  try {
+    localStorage.removeItem(AUTH_STORAGE_KEYS.Session);
+    localStorage.removeItem(AUTH_STORAGE_KEYS.ApiKey);
+    localStorage.removeItem(AUTH_STORAGE_KEYS.UserId);
+  } catch {
+    // 容错
+  }
 
-  // 同步通知主进程清理持久化的用户 Token
-  void window.electron?.auth?.syncUserSession?.("");
+  // 通知主进程清理持久化的三要素
+  void window.electron?.auth?.clearAuthCredentials?.();
 }
 
 export interface LogoutOptions {

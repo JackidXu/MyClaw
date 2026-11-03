@@ -131,19 +131,6 @@ class VipService {
    * 应用冷启动时初始化本地 VIP 状态（纯只读读取主进程权威缓存，绝不发网络请求）
    */
   public async initStatus(): Promise<VipStatusState> {
-    const session = localStorage.getItem('heyclaw_session');
-    if (!session) {
-      this.state = {
-        authorized: false,
-        subscriptions: [],
-        permissions: [],
-        loading: false,
-        lastUpdated: Date.now(),
-      };
-      this.notify();
-      return this.state;
-    }
-
     try {
       const data = await window.electron.vip.getStatus();
       this.applyStatusData(data);
@@ -155,20 +142,6 @@ class VipService {
   }
 
   public async refreshStatus(): Promise<VipStatusState> {
-    const session = localStorage.getItem('heyclaw_session');
-
-    if (!session) {
-      this.state = {
-        authorized: false,
-        subscriptions: [],
-        permissions: [],
-        loading: false,
-        lastUpdated: Date.now(),
-      };
-      this.notify();
-      return this.state;
-    }
-
     this.state.loading = true;
     this.notify();
 

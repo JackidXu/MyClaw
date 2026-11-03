@@ -8,7 +8,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux';
 
 import { agentService } from '../services/agent';
-import { logoutAndDeactivate } from '../services/authStorage';
+import { AUTH_STORAGE_KEYS, logoutAndDeactivate } from '../services/authStorage';
 import { configService } from '../services/config';
 import { coworkService } from '../services/cowork';
 import { httpClient } from '../services/httpClient';
@@ -55,7 +55,6 @@ import ReportIssueModal from './ReportIssueModal';
 
 interface SidebarProps {
   onShowSettings: () => void;
-  onShowLogin?: () => void;
   activeView: 'cowork' | 'skills' | 'scheduledTasks' | 'kits' | 'mcp' | 'sites' | 'experts' | 'secondBrain' | 'library' | 'recordingCard';
   expertActiveTab?: 'teams' | 'experts' | 'skills' | 'mcp';
   onShowSkills: () => void;
@@ -189,7 +188,6 @@ const logTaskSearchRequest = (
 
 const Sidebar: React.FC<SidebarProps> = ({
   onShowSettings,
-  onShowLogin,
   activeView,
   expertActiveTab,
   onShowSkills,
@@ -257,9 +255,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
     let cancelled = false;
     const loadPendingCount = () => {
-      const session = localStorage.getItem('heyclaw_session');
-      const userId = localStorage.getItem('heyclaw_user_id');
-      if (!session || !userId || !vipService.hasSecondBrainPermission()) return;
+      if (!vipService.hasSecondBrainPermission()) return;
 
       fetchCognitionStats()
         .then((data) => {
@@ -405,24 +401,12 @@ const Sidebar: React.FC<SidebarProps> = ({
     }
   };
 
-  const onShowLoginRef = useRef(onShowLogin);
-  useEffect(() => {
-    onShowLoginRef.current = onShowLogin;
-  }, [onShowLogin]);
-
   const handleRefreshBalance = useCallback(async (showToast = true) => {
     if (balanceLoadingRef.current) return;
     balanceLoadingRef.current = true;
     setBalanceLoading(true);
     const minDelayPromise = new Promise((resolve) => setTimeout(resolve, 600));
     try {
-      const session = localStorage.getItem('heyclaw_session');
-      if (!session) {
-        await minDelayPromise;
-        onShowLoginRef.current?.();
-        return;
-      }
-
       let remainQuota = 0;
 
       const fetchPromise = (async () => {
@@ -466,33 +450,12 @@ const Sidebar: React.FC<SidebarProps> = ({
     }
   }, [dispatch]);
 
-  // 从 localStorage 加载配置
+  // 初始化用户信息偏好与余额
   useEffect(() => {
-    const apiKey = localStorage.getItem('heyclaw_api_key');
-    const userId = localStorage.getItem('heyclaw_user_id');
-    if (!apiKey || !userId) {
-      onShowLoginRef.current?.();
-      const currentConfig = configService.getConfig();
-      const currentOneapi = (currentConfig.providers?.['oneapi'] || {}) as any;
-      if (currentOneapi.apiKey) {
-        void configService.updateConfig({
-          providers: {
-            ...currentConfig.providers,
-            oneapi: {
-              ...currentOneapi,
-              apiKey: '',
-              enabled: false,
-              baseUrl: currentOneapi.baseUrl || 'https://token.chaohui.ai/v1'
-            }
-          }
-        });
-      }
-    }
-
-    const savedName = localStorage.getItem('heyclaw_user_name') || '';
+    const savedName = localStorage.getItem(AUTH_STORAGE_KEYS.UserName) || '';
     setUserNickname(savedName);
     setEditNickname(savedName);
-    const savedAvatar = localStorage.getItem('heyclaw_user_avatar');
+    const savedAvatar = localStorage.getItem(AUTH_STORAGE_KEYS.UserAvatar);
     if (savedAvatar) {
       setUserAvatar(savedAvatar);
       setEditAvatar(savedAvatar);
@@ -1635,8 +1598,8 @@ const Sidebar: React.FC<SidebarProps> = ({
                 const finalAvatar = editAvatar.trim() || '🐱';
                 setUserNickname(finalName);
                 setUserAvatar(finalAvatar);
-                localStorage.setItem('heyclaw_user_name', finalName);
-                localStorage.setItem('heyclaw_user_avatar', finalAvatar);
+                localStorage.setItem(AUTH_STORAGE_KEYS.UserName, finalName);
+                localStorage.setItem(AUTH_STORAGE_KEYS.UserAvatar, finalAvatar);
                 setIsEditModalOpen(false);
               }}
               className="px-4 py-2 text-sm font-medium rounded-lg bg-primary hover:bg-primary-hover text-white transition-colors"

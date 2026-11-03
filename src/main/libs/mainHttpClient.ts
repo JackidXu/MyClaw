@@ -1,5 +1,6 @@
 import { app, net } from 'electron';
 
+import { AUTH_STORE_KEYS } from '../../shared/auth/constants';
 import type { SqliteStore } from '../sqliteStore';
 import { recordApiTraffic } from './networkInterceptor';
 
@@ -73,7 +74,7 @@ export class MainHttpClient {
     // 自动附带用户长效访问令牌
     if (!options?.skipAuth && !headers['Authorization']) {
       const store = sqliteStoreGetter?.() || null;
-      const token = store?.get<string>('user_access_token');
+      const token = store?.get<string>(AUTH_STORE_KEYS.SessionToken);
       if (token && typeof token === 'string' && token.trim()) {
         headers['Authorization'] = `Bearer ${token.trim()}`;
       }
@@ -85,7 +86,7 @@ export class MainHttpClient {
   private handleAuthFailure(): void {
     try {
       const store = sqliteStoreGetter?.() || null;
-      store?.delete('user_access_token');
+      store?.delete(AUTH_STORE_KEYS.SessionToken);
       unauthorizedBroadcastHandler?.();
     } catch {
       // 容错

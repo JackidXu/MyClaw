@@ -651,8 +651,7 @@ const MediaModelPicker: React.FC<MediaModelPickerProps> = ({ draftKey, disabled,
   const isLoggedIn = useSelector((state: RootState) => state.auth.isLoggedIn);
   const ownerAccountKey = useSelector((state: RootState) => state.auth.ownerAccountKey) || 'heyclaw-default';
   const accountGeneration = useSelector((state: RootState) => state.auth.accountGeneration) || 0;
-  const hasHeyClawSession = Boolean(localStorage.getItem('heyclaw_session'));
-  const effectiveLoggedIn = isLoggedIn || hasHeyClawSession;
+  const effectiveLoggedIn = isLoggedIn;
   const canUseMediaGeneration = true;
   const mediaExposureRef = useRef<string>();
   const reportMedia = useCallback((stage: string, params: Record<string, string | number | boolean | undefined> = {}) => {

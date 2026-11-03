@@ -1652,6 +1652,10 @@ contextBridge.exposeInMainWorld('electron', {
     getAccessToken: () => ipcRenderer.invoke(AuthIpcChannel.GetAccessToken),
     syncUserSession: (session: string) =>
       ipcRenderer.invoke(AuthIpcChannel.SyncUserSession, { session }),
+    getAuthCredentials: () => ipcRenderer.invoke(AuthIpcChannel.GetAuthCredentials),
+    setAuthCredentials: (credentials: { session?: string; userId?: string; apiKey?: string }) =>
+      ipcRenderer.invoke(AuthIpcChannel.SetAuthCredentials, credentials),
+    clearAuthCredentials: () => ipcRenderer.invoke(AuthIpcChannel.ClearAuthCredentials),
     getModels: () => ipcRenderer.invoke(AuthIpcChannel.GetModels),
     getPricingCatalog: async () => ({ success: false, error: 'Pricing catalog offline' }),
     getProfileSummary: () => ipcRenderer.invoke(AuthIpcChannel.GetProfileSummary),

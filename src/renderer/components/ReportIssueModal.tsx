@@ -1,6 +1,7 @@
 import { ArrowPathIcon, CheckIcon, PaperClipIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
+import { AUTH_STORAGE_KEYS } from '../services/authStorage';
 import { httpClient } from '../services/httpClient';
 import Modal from './common/Modal';
 
@@ -145,8 +146,14 @@ const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ onClose }) => {
 
     setSubmitting(true);
     try {
-      const userId = localStorage.getItem('heyclaw_user_id') || '';
-      const nickname = localStorage.getItem('heyclaw_user_name') || '';
+      let userId = '';
+      try {
+        const creds = await window.electron.auth.getAuthCredentials();
+        userId = creds?.userId || '';
+      } catch {
+        // 容错
+      }
+      const nickname = localStorage.getItem(AUTH_STORAGE_KEYS.UserName) || '';
 
       let cleanDiagnostics: Record<string, any> = {};
       if (includeDiagnostics && diagnosticsData) {

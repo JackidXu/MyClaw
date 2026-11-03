@@ -19,6 +19,21 @@ export const AuthIpcChannel = {
   RefreshToken: 'auth:refreshToken',
   SessionChanged: 'auth:sessionChanged',
   SyncUserSession: 'auth:sync-user-session',
+  GetAuthCredentials: 'auth:getAuthCredentials',
+  SetAuthCredentials: 'auth:setAuthCredentials',
+  ClearAuthCredentials: 'auth:clearAuthCredentials',
+} as const;
+
+export interface StoredAuthCredentials {
+  session: string | null;
+  userId: string | null;
+  apiKey: string | null;
+}
+
+export const AUTH_STORE_KEYS = {
+  SessionToken: 'user_access_token',
+  UserId: 'heyclaw_user_id',
+  ApiKey: 'heyclaw_api_key',
 } as const;
 
 export type AuthIpcChannel = typeof AuthIpcChannel[keyof typeof AuthIpcChannel];

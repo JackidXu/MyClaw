@@ -36,7 +36,13 @@ export class RecordingSummaryService {
       };
     }
 
-    const rawApiKey = localStorage.getItem('heyclaw_api_key') || '';
+    let rawApiKey = '';
+    try {
+      const creds = await window.electron.auth.getAuthCredentials();
+      rawApiKey = creds?.apiKey || '';
+    } catch {
+      // 容错
+    }
     const apiKey = rawApiKey.trim();
 
     const res = await httpClient.admin.post<{

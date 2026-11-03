@@ -81,7 +81,7 @@ import { agentService } from './services/agent';
 import { apiService } from './services/api';
 import { applyAppConfigToStore } from './services/appConfigModels';
 import { authService } from './services/auth';
-import { logoutAndDeactivate } from './services/authStorage';
+import { AUTH_STORAGE_KEYS, logoutAndDeactivate, setAuthCredentials } from './services/authStorage';
 import { configService } from './services/config';
 import { coworkService } from './services/cowork';
 import { openExpertDraft } from './services/expertOnboarding';
@@ -631,12 +631,31 @@ const App: React.FC = () => {
         coreStartupServicesInitializedRef.current = true;
       }
 
-      const apiKey = localStorage.getItem('heyclaw_api_key');
-      const userId = localStorage.getItem('heyclaw_user_id');
-      const session = localStorage.getItem('heyclaw_session');
-      if (session) {
-        await window.electron.auth.syncUserSession(session);
+      // 从主进程 SQLite 获取权威凭据
+      let creds = await window.electron.auth.getAuthCredentials();
+      let apiKey = creds?.apiKey;
+      let userId = creds?.userId;
+      let session = creds?.session;
+
+      // 向下兼容迁移：若主进程 SQLite 尚无凭据，但旧版 localStorage 中存在，执行一次性平滑迁移
+      if (!session || !userId || !apiKey) {
+        const legacyApiKey = localStorage.getItem(AUTH_STORAGE_KEYS.ApiKey);
+        const legacyUserId = localStorage.getItem(AUTH_STORAGE_KEYS.UserId);
+        const legacySession = localStorage.getItem(AUTH_STORAGE_KEYS.Session);
+        if (legacyApiKey && legacyUserId && legacySession) {
+          console.log('[App] Migrating legacy auth credentials from localStorage to SQLite SSOT...');
+          await setAuthCredentials({
+            apiKey: legacyApiKey,
+            userId: legacyUserId,
+            session: legacySession,
+          });
+          creds = await window.electron.auth.getAuthCredentials();
+          apiKey = creds.apiKey;
+          userId = creds.userId;
+          session = creds.session;
+        }
       }
+
       // 核心登录三要素凭证：apiKey、userId、session 必须同时具备
       let activated = !!(apiKey && userId && session);
 
@@ -660,7 +679,9 @@ const App: React.FC = () => {
       let oneapiKey = oneapiConfig?.apiKey?.trim();
       let oneapiBaseUrl = oneapiConfig?.baseUrl?.trim() || 'https://token.chaohui.ai/v1';
 
-      if (activated && oneapiKey) {
+      // 仅当本地尚未缓存可用模型列表时（如全新的离线配置恢复），才在冷启动阶段补充拉取模型
+      const currentModels = oneapiConfig?.models || [];
+      if (activated && oneapiKey && currentModels.length === 0) {
         try {
           mark('oneapi auth validation start');
           const modelRes = await fetchAndFilterOneApiChatModels(oneapiBaseUrl, oneapiKey);
@@ -1206,10 +1227,6 @@ const App: React.FC = () => {
       unsubscribe();
     };
   }, [showToast, stopUserInitiatedUpdateFlow]);
-
-  const handleShowLogin = useCallback(() => {
-    setIsActivated(false);
-  }, []);
 
   const runUpdateCheck = useCallback(async (): Promise<boolean> => {
     try {
@@ -2370,16 +2387,6 @@ const App: React.FC = () => {
             }
             syncModelsToRedux();
             setIsActivated(true);
-            // 登录成功切入主应用后，若网关此前处于错误状态，自动触发恢复启动
-            try {
-              const engineStatus = coworkService.getOpenClawEngineStatusSnapshot();
-              if (engineStatus?.phase === 'error') {
-                console.log('[App] Gateway was in error state before login, triggering recovery restart...');
-                void coworkService.restartOpenClawGateway();
-              }
-            } catch (gwErr) {
-              console.warn('[App] Failed to auto-recover gateway on login success:', gwErr);
-            }
           }} 
         />
       </div>
@@ -2457,7 +2464,6 @@ const App: React.FC = () => {
         aria-busy={isUpdateInteractionBlocked}
       >
         <Sidebar
-          onShowLogin={handleShowLogin}
           onShowSettings={handleShowSettings}
           activeView={mainView}
           expertActiveTab={expertActiveTab}

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useDispatch } from 'react-redux';
 
+import { setAuthCredentials } from '../services/authStorage';
 import { configService } from '../services/config';
 import { httpClient } from '../services/httpClient';
 import { fetchAndFilterOneApiChatModels } from '../services/oneapiModels';
@@ -86,15 +87,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
         throw new Error('登录成功，但未解析到有效的对话令牌');
       }
 
-      // 保存用户 ID、长效用户访问令牌 heyclaw_session、大模型 heyclaw_api_key
-      localStorage.setItem('heyclaw_user_id', String(userId));
-      if (session) {
-        localStorage.setItem('heyclaw_session', session);
-        await window.electron.auth.syncUserSession(session);
-      }
-      
       const formattedKey = apiKey.startsWith('sk-') ? apiKey : `sk-${apiKey}`;
-      localStorage.setItem('heyclaw_api_key', formattedKey);
+
+      // 统一持久化至主进程 SQLite (SSOT)，内部自动清理历史残留的 localStorage 敏感凭据
+      await setAuthCredentials({
+        userId: String(userId),
+        session: session || '',
+        apiKey: formattedKey,
+      });
 
       dispatch(setLoggedIn({
         user: {

@@ -1,8 +1,10 @@
 import { BrowserWindow, ipcMain } from 'electron';
 
+import { AUTH_STORE_KEYS } from '../../shared/auth/constants';
 import { VipIpcChannel } from '../../shared/vip/constants';
 import { getDeviceInfo } from '../libs/deviceId';
 import { mainHttpClient } from '../libs/mainHttpClient';
+import type { SqliteStore } from '../sqliteStore';
 
 export interface MainVipSubscription {
   expertId: string;
@@ -30,6 +32,12 @@ type VipStatusChangeListener = (status: MainVipStatus) => void | Promise<void>;
 class MainVipService {
   private status: MainVipStatus = { ...DEFAULT_VIP_STATUS };
   private listeners: Set<VipStatusChangeListener> = new Set();
+  private storeGetter: (() => SqliteStore | null) | null = null;
+
+  /** 注入 SqliteStore 获取器以检验本地 Token */
+  setStoreGetter(getter: () => SqliteStore | null): void {
+    this.storeGetter = getter;
+  }
 
   /**
    * 应用启动时由主进程初始化 VIP 状态（全局权威单源）
@@ -42,6 +50,16 @@ class MainVipService {
    * 主动从服务端拉取最新 VIP 状态并更新主进程内存单源
    */
   async refreshVipStatus(): Promise<MainVipStatus> {
+    const store = this.storeGetter?.() || null;
+    const token = store?.get<string>(AUTH_STORE_KEYS.SessionToken);
+    if (!token || typeof token !== 'string' || !token.trim()) {
+      console.log('[MainVipService] No user_access_token found in store, skip network refresh');
+      this.status = { ...DEFAULT_VIP_STATUS };
+      await this.notifyListeners();
+      this.broadcastStatus();
+      return this.status;
+    }
+
     try {
       const deviceInfo = getDeviceInfo();
       const res = await mainHttpClient.admin.post<{

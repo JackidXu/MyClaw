@@ -54,6 +54,7 @@ import type { ReviewSourceRequest } from '../shared/artifactPreview/reviewSource
 import { buildWorkspaceChangesArtifact } from '../shared/artifactPreview/workspaceChanges';
 import { createAccountOwnerKey } from '../shared/auth/accountOwner';
 import {
+  AUTH_STORE_KEYS,
   AuthIpcChannel,
   type AuthLifecycleEvent,
   AuthLifecycleEventType,
@@ -8649,13 +8650,75 @@ if (!gotTheLock) {
 
   ipcMain.handle(AuthIpcChannel.SyncUserSession, async (_event, { session }: { session: string }) => {
     const store = getStore();
+    const prevToken = store?.get<string>(AUTH_STORE_KEYS.SessionToken);
     if (session) {
-      store?.set('user_access_token', session);
+      store?.set(AUTH_STORE_KEYS.SessionToken, session);
+      // 若 Token 发生变化或当前处于未授权态，立即主动拉取最新 VIP 状态并广播
+      if (prevToken !== session || !mainVipService.getVipStatus().authorized) {
+        void mainVipService.refreshVipStatus();
+      }
     } else {
-      store?.delete('user_access_token');
+      store?.delete(AUTH_STORE_KEYS.SessionToken);
       // 用户登出或凭证清除：重置 VIP 状态为未授权
       mainVipService.resetVipStatus();
     }
+    return { success: true };
+  });
+
+  ipcMain.handle(AuthIpcChannel.GetAuthCredentials, async () => {
+    const store = getStore();
+    return {
+      session: store?.get<string>(AUTH_STORE_KEYS.SessionToken) || null,
+      userId: store?.get<string>(AUTH_STORE_KEYS.UserId) || null,
+      apiKey: store?.get<string>(AUTH_STORE_KEYS.ApiKey) || null,
+    };
+  });
+
+  ipcMain.handle(
+    AuthIpcChannel.SetAuthCredentials,
+    async (_event, credentials: { session?: string; userId?: string; apiKey?: string }) => {
+      const store = getStore();
+      const prevToken = store?.get<string>(AUTH_STORE_KEYS.SessionToken);
+      if (credentials.session !== undefined) {
+        if (credentials.session) {
+          store?.set(AUTH_STORE_KEYS.SessionToken, credentials.session);
+        } else {
+          store?.delete(AUTH_STORE_KEYS.SessionToken);
+        }
+      }
+      if (credentials.userId !== undefined) {
+        if (credentials.userId) {
+          store?.set(AUTH_STORE_KEYS.UserId, credentials.userId);
+        } else {
+          store?.delete(AUTH_STORE_KEYS.UserId);
+        }
+      }
+      if (credentials.apiKey !== undefined) {
+        if (credentials.apiKey) {
+          store?.set(AUTH_STORE_KEYS.ApiKey, credentials.apiKey);
+        } else {
+          store?.delete(AUTH_STORE_KEYS.ApiKey);
+        }
+      }
+
+      const currentToken = store?.get<string>(AUTH_STORE_KEYS.SessionToken);
+      if (currentToken) {
+        if (prevToken !== currentToken || !mainVipService.getVipStatus().authorized) {
+          void mainVipService.refreshVipStatus();
+        }
+      } else {
+        mainVipService.resetVipStatus();
+      }
+      return { success: true };
+    },
+  );
+
+  ipcMain.handle(AuthIpcChannel.ClearAuthCredentials, async () => {
+    const store = getStore();
+    store?.delete(AUTH_STORE_KEYS.SessionToken);
+    store?.delete(AUTH_STORE_KEYS.UserId);
+    store?.delete(AUTH_STORE_KEYS.ApiKey);
+    mainVipService.resetVipStatus();
     return { success: true };
   });
 
@@ -16594,6 +16657,7 @@ if (!gotTheLock) {
     setStoreGetter(() => store);
     // Inject store getter into mainHttpClient (unified for all main process HTTP calls)
     setMainHttpClientStoreGetter(() => store);
+    mainVipService.setStoreGetter(() => store);
     setUnauthorizedBroadcastHandler(() => {
       try {
         mainVipService.resetVipStatus();

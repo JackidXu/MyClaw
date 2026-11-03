@@ -38,14 +38,9 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({ isOpen, onClose, o
     }
 
     setLoading(true);
-    const session = localStorage.getItem('heyclaw_session');
 
     try {
-      if (!session) {
-        throw new Error('未检测到您的登录凭证，请重新登录');
-      }
-
-      // 通过管理后台代理修改密码
+      // 通过管理后台代理修改密码 (httpClient 自动由主进程注入 Authorization)
       const res = await httpClient.admin.post<{
         success: boolean;
         message?: string;

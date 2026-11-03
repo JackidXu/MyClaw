@@ -2332,6 +2332,17 @@ interface IElectronAPI {
     }>;
     getAccessToken: () => Promise<string | null>;
     syncUserSession: (session: string) => Promise<void>;
+    getAuthCredentials: () => Promise<{
+      session: string | null;
+      userId: string | null;
+      apiKey: string | null;
+    }>;
+    setAuthCredentials: (credentials: {
+      session?: string;
+      userId?: string;
+      apiKey?: string;
+    }) => Promise<{ success: boolean }>;
+    clearAuthCredentials: () => Promise<{ success: boolean }>;
     getModels: () => Promise<{
       success: boolean;
       models?: Array<{

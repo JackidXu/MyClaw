@@ -136,7 +136,13 @@ export class HttpClient {
     },
   ): Promise<ApiResponse<T>> {
     // 渲染端如果传入相对路径，由 Electron 统一解析或者走相对路径
-    const session = localStorage.getItem('heyclaw_session');
+    let session = '';
+    try {
+      const creds = await window.electron.auth.getAuthCredentials();
+      session = creds?.session || '';
+    } catch {
+      // 容错读取
+    }
     const headers: Record<string, string> = {
       'Content-Type': file.type || 'application/octet-stream',
       ...(options?.headers || {}),

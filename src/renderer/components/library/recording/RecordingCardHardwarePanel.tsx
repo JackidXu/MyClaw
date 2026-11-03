@@ -175,7 +175,15 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
   // 连接录音卡 (BLE 握手)
   const handleConnectBle = async () => {
     if (bleConnecting) return;
-    const userId = localStorage.getItem('heyclaw_user_id') || 'local_user';
+    let userId = 'local_user';
+    try {
+      const creds = await window.electron.auth.getAuthCredentials();
+      if (creds?.userId) {
+        userId = creds.userId;
+      }
+    } catch {
+      // 容错
+    }
 
     setBleConnecting(true);
     try {
