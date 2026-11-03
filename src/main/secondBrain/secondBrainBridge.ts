@@ -219,3 +219,40 @@ export async function fetchSecondBrainPrompt(sessionKey?: string): Promise<{ pro
     return { prompt: cachedPromptText ?? '' };
   }
 }
+
+export interface ReportChatToSecondBrainParams {
+  chatId: string;
+  name: string;
+  messages: Array<{ user: string; assistant: string }>;
+}
+
+/**
+ * 上报对话至第二大脑（主进程通用入口）
+ * 1. 严格校验第二大脑 VIP 权限；
+ * 2. 异步上报至 PHP 后端 /api/chaohuixie/claw/fmp/chat/report。
+ */
+export async function reportChatToSecondBrain(params: ReportChatToSecondBrainParams): Promise<boolean> {
+  const granted = hasSecondBrainPermission();
+  if (!granted) {
+    return false;
+  }
+
+  try {
+    const res = await mainHttpClient.biz.post<SecondBrainApiResponse<unknown>>(
+      '/api/chaohuixie/claw/fmp/chat/report',
+      params,
+    );
+
+    if (!res.ok) {
+      console.warn('[SecondBrainBridge] reportChatToSecondBrain failed HTTP status:', res.status, res.error);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn('[SecondBrainBridge] reportChatToSecondBrain exception:', message);
+    return false;
+  }
+}
+

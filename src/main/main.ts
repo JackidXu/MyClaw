@@ -687,7 +687,7 @@ import { patchEnabledNspClawguard } from './plugins/nspClawguardCompatibility';
 import { isHiddenUserPluginId } from './plugins/pluginManager';
 import { LocalRecordingStore } from './recordings/localRecordingStore';
 import { secondBrainAutoUploadService } from './secondBrain/secondBrainAutoUploadService';
-import { setSessionSecondBrainEnabledGetter, syncSecondBrainTools } from './secondBrain/secondBrainBridge';
+import { reportChatToSecondBrain, setSessionSecondBrainEnabledGetter, syncSecondBrainTools } from './secondBrain/secondBrainBridge';
 import type { SkillChangeBatch } from './skills/skillChangeDiagnostics';
 import { SkillManager } from './skills/skillManager';
 import { getSkillServiceManager } from './skills/skillServices';
@@ -4221,9 +4221,42 @@ const getCoworkEngineRouter = () => {
               ...event,
             });
           },
-          onChannelRunEnded: (sessionId, runId, startedAt) => (
-            settleCoworkTurnUsage(sessionId, { runIds: [runId], startedAt })
-          ),
+          onChannelRunEnded: (sessionId, runId, startedAt) => {
+            settleCoworkTurnUsage(sessionId, { runIds: [runId], startedAt });
+            try {
+              const imStore = getIMGatewayManager().getIMStore();
+              const mapping = imStore?.getSessionMappingByCoworkSessionId(sessionId);
+              if (mapping?.platform === 'weixin') {
+                const session = getCoworkStore().getSession(sessionId, 50);
+                const messages = session?.messages ?? [];
+                let latestUserText = '';
+                let latestAssistantText = '';
+                for (let i = messages.length - 1; i >= 0; i--) {
+                  const msg = messages[i];
+                  if (!latestAssistantText && msg.type === 'assistant' && msg.content?.trim()) {
+                    latestAssistantText = msg.content.trim();
+                  } else if (latestAssistantText && !latestUserText && msg.type === 'user' && msg.content?.trim()) {
+                    latestUserText = msg.content.trim();
+                    break;
+                  }
+                }
+                if (latestUserText && latestAssistantText) {
+                  const chatId = `chat_${sessionId}`;
+                  const name = Array.from(latestUserText.replace(/\s+/g, ' ').trim()).slice(0, 50).join('').trim() || '微信对话';
+                  void reportChatToSecondBrain({
+                    chatId,
+                    name,
+                    messages: [{
+                      user: latestUserText,
+                      assistant: latestAssistantText,
+                    }],
+                  });
+                }
+              }
+            } catch (err) {
+              console.warn('[Main] failed to auto-report weixin chat to second brain:', err);
+            }
+          },
           onGatewayClientReady: () => {
             getCronJobService().notifyGatewayReady();
             handleGatewaySelfRestartSettled();
