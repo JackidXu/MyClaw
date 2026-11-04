@@ -14,6 +14,7 @@ const TYPE_ICONS: Record<ArtifactType, string> = {
   svg: '🎨',
   image: '🖼',
   video: '🎬',
+  audio: '🎵',
   mermaid: '📊',
   code: '📄',
   markdown: '📝',

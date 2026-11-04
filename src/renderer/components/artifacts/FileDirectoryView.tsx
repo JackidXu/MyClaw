@@ -18,12 +18,13 @@ const TYPE_ORDER: Record<ArtifactType, number> = {
   svg: 1,
   image: 2,
   video: 3,
-  mermaid: 4,
-  document: 5,
-  markdown: 6,
-  text: 7,
-  code: 8,
-  'local-service': 9,
+  audio: 4,
+  mermaid: 5,
+  document: 6,
+  markdown: 7,
+  text: 8,
+  code: 9,
+  'local-service': 10,
 };
 
 const TYPE_LABEL_KEYS: Record<ArtifactType, string> = {
@@ -31,6 +32,7 @@ const TYPE_LABEL_KEYS: Record<ArtifactType, string> = {
   svg: 'artifactTypeSvg',
   image: 'artifactTypeImage',
   video: 'artifactTypeVideo',
+  audio: 'artifactTypeAudio',
   mermaid: 'artifactTypeMermaid',
   document: 'artifactTypeDocument',
   markdown: 'artifactTypeMarkdown',
