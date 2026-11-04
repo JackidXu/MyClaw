@@ -22,6 +22,7 @@ export interface ProviderModelOption {
   maxTokens?: number;
   description?: string;
   isRecommended?: boolean;
+  isDeprecated?: boolean;
   costMultiplier?: number;
   agenticReady?: boolean;
   runtimeProfile?: any;
@@ -65,6 +66,7 @@ export function applyAppConfigToStore(log?: (label: string) => void): ProviderMo
             maxTokens: model.maxTokens,
             description: model.description || undefined,
             isRecommended: Boolean(model.isRecommended),
+            isDeprecated: Boolean(model.isDeprecated),
             costMultiplier: model.costMultiplier,
             agenticReady: model.agenticReady,
             runtimeProfile: model.runtimeProfile,

@@ -3607,6 +3607,7 @@ const Settings: React.FC<SettingsProps> = ({
               contextWindow: model.contextWindow,
               maxTokens: model.maxTokens,
               isRecommended: Boolean(model.isRecommended),
+              isDeprecated: Boolean(model.isDeprecated),
             });
           });
         }

@@ -43,6 +43,7 @@ export interface Model {
   accessible?: boolean; // false = 模型可见但用户无权使用（置灰）
   restrictionHint?: string; // 限制提示（如 "订阅套餐/购买加油包可用"）
   isRecommended?: boolean; // 是否为服务端推荐模型
+  isDeprecated?: boolean; // 是否为即将下线模型
   isAutoModel?: boolean; // true = 智能适配虚拟模型，由主进程根据复杂度路由到实际物理模型
 }
 

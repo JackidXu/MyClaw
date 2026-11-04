@@ -334,6 +334,7 @@ export function hasModelHoverDetails(
     | 'costMultiplier'
     | 'description'
     | 'isServerModel'
+    | 'isDeprecated'
     | 'runtimeProfile'
     | 'supportsImage'
     | 'supportsThinking'
@@ -349,6 +350,7 @@ export function hasModelHoverDetails(
     || !!model.supportsImage
     || !!model.supportsThinking
     || !!model.thinkingConfig
+    || !!model.isDeprecated
     || isModelAgenticBlocked(model);
 }
 
@@ -1156,6 +1158,11 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
               {i18nService.t('modelRecommendedBadge')}
             </span>
           )}
+          {model.isDeprecated && (
+            <span className="shrink-0 rounded-md bg-rose-500/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-rose-600 dark:text-rose-400">
+              {i18nService.t('modelDeprecatedBadge')}
+            </span>
+          )}
           {model.supportsImage && (
             <span className="shrink-0 rounded-md bg-surface-raised px-1.5 py-0.5 text-[10px] font-medium leading-none text-secondary">
               {i18nService.t('modelSupportsImageInputBadge')}
@@ -1251,11 +1258,18 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
           <div className="min-w-0 truncate text-[13px] font-semibold text-foreground leading-5">
             {hoveredModel.presetId ? modelPresetName(hoveredModel.presetId) : hoveredModel.name}
           </div>
-          {hoveredModel.isRecommended && (
-            <span className="shrink-0 rounded-md bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-amber-600 dark:text-amber-400">
-              {i18nService.t('modelRecommendedBadge')}
-            </span>
-          )}
+          <div className="flex items-center gap-1 shrink-0">
+            {hoveredModel.isRecommended && (
+              <span className="rounded-md bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-amber-600 dark:text-amber-400">
+                {i18nService.t('modelRecommendedBadge')}
+              </span>
+            )}
+            {hoveredModel.isDeprecated && (
+              <span className="rounded-md bg-rose-500/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-rose-600 dark:text-rose-400">
+                {i18nService.t('modelDeprecatedBadge')}
+              </span>
+            )}
+          </div>
         </div>
         {hoveredModel.busy && (
           <div className="mt-2 border-t border-border pt-2">

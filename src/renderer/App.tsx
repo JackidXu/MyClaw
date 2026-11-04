@@ -381,6 +381,7 @@ const App: React.FC = () => {
               contextWindow: model.contextWindow,
               maxTokens: model.maxTokens,
               isRecommended: Boolean(model.isRecommended),
+              isDeprecated: Boolean(model.isDeprecated),
             });
           });
         }
@@ -1742,6 +1743,7 @@ const App: React.FC = () => {
               contextWindow: model.contextWindow,
               maxTokens: model.maxTokens,
               isRecommended: Boolean(model.isRecommended),
+              isDeprecated: Boolean(model.isDeprecated),
             });
           });
         }

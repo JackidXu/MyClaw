@@ -23,6 +23,7 @@ export interface OneApiChatModel {
   description?: string;
   isRecommended?: boolean;
   isStrong?: boolean;
+  isDeprecated?: boolean;
   isDefault?: boolean;
   [key: string]: unknown;
 }
@@ -152,6 +153,7 @@ export async function fetchAndFilterOneApiChatModels(
             description: m.description || '',
             isRecommended: Boolean(m.isRecommended),
             isStrong: Boolean(m.isStrong),
+            isDeprecated: Boolean(m.isDeprecated),
             isDefault: Boolean(m.isDefault),
             thinkingConfig: m.thinkingConfig,
             requestCapabilities: m.requestCapabilities,
