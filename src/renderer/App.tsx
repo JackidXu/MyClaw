@@ -352,6 +352,12 @@ const App: React.FC = () => {
     setIsSidebarCollapsed(false);
   }, [newUserOnboardingStep, shouldShowNewUserOnboarding]);
 
+  useEffect(() => {
+    if (mainView !== MainView.Cowork) {
+      void window.electron?.openclaw?.browser?.setHostView({ visible: false });
+    }
+  }, [mainView]);
+
   const syncModelsToRedux = useCallback(() => {
     const config = configService.getConfig();
     const providerModels: Model[] = [];

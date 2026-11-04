@@ -2255,6 +2255,33 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
   const activeArtifactPreviewTab = useSelector((state: RootState) =>
     sessionId ? selectActivePreviewTab(state, sessionId) : null
   );
+  const isAgentBrowserVisible = Boolean(
+    browserDisplayMode === BrowserDisplayMode.InApp
+    && isPanelOpen
+    && isArtifactPanelVisible
+    && !activeArtifactPreviewTab
+    && activeSpecialPreviewTab === ArtifactSpecialTab.AgentBrowser,
+  );
+
+  useEffect(() => {
+    if (!isAgentBrowserVisible && sessionId) {
+      void window.electron?.openclaw?.browser?.setHostView({
+        sessionId,
+        visible: false,
+      });
+    }
+  }, [isAgentBrowserVisible, sessionId]);
+
+  useEffect(() => {
+    return () => {
+      if (sessionId) {
+        void window.electron?.openclaw?.browser?.setHostView({
+          sessionId,
+          visible: false,
+        });
+      }
+    };
+  }, [sessionId]);
   const artifactTabsWithArtifacts = useMemo(() => {
     const artifactsById = new Map(sessionArtifacts.map(artifact => [artifact.id, artifact]));
     return artifactPreviewTabs
@@ -7220,10 +7247,7 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
                 ? (
                     <AgentBrowserInAppPanel
                       sessionId={currentSession.id}
-                      visible={isPanelOpen
-                        && isArtifactPanelVisible
-                        && !activeArtifactPreviewTab
-                        && activeSpecialPreviewTab === ArtifactSpecialTab.AgentBrowser}
+                      visible={isAgentBrowserVisible}
                     />
                   )
                 : undefined}

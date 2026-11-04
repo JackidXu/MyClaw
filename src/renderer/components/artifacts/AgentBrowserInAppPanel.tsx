@@ -130,6 +130,12 @@ const AgentBrowserInAppPanel: React.FC<AgentBrowserInAppPanelProps> = ({
     }
   }, [sessionId, visible]);
 
+  useEffect(() => {
+    return () => {
+      void window.electron?.openclaw?.browser?.setHostView({ sessionId, visible: false });
+    };
+  }, [sessionId]);
+
   const scheduleNativeViewSync = useCallback(() => {
     if (syncFrameRef.current !== null) window.cancelAnimationFrame(syncFrameRef.current);
     syncFrameRef.current = window.requestAnimationFrame(() => {
