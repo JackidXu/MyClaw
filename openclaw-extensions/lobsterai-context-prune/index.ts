@@ -276,6 +276,7 @@ export class LobsterAIContextPruneEngine implements ContextEngine {
     return {
       messages: pruned,
       estimatedTokens: 0,
+      promptAuthority: 'preassembly_may_overflow',
     };
   }
 
