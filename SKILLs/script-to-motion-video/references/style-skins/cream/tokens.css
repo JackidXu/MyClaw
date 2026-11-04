@@ -1,0 +1,11 @@
+/* 皮肤：cream（温和/健康教育/生活日常 · 奶油）
+   机制：浅色暖底，--white 保持纯白卡，强调色换陶土/橄榄。观感变温馨，
+   但结构丰富度（UI mockup / b-roll / 逐元素动效 / 4层景深）与 iwod-light 完全一致。 */
+:root{
+  --bg:#F4EEE4; --paper:#FBF6EC; --ink:#2B2419; --ink-2:#5C5040;
+  --muted:#8A7B66; --line:#E4D9C7; --white:#FFFFFF;
+  --brand:#C2703D; --brand-soft:#F3E4D7;
+  --accent:#A8432E; --accent-soft:#F1DDD5;
+  --green:#5E8C5A; --green-soft:#E4EEE0;
+  --shadow:0 26px 70px rgba(80,60,30,.14);
+}

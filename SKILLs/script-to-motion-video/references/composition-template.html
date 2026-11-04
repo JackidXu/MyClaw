@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<!--
+  composition-template.html — 文案生成动效视频的起手模板（iWOD 级视觉质量）
+
+  这是结构参考 + 设计系统起点，不是填空表格。
+  使用方式：
+  1. 复制此文件为 index.html
+  2. 替换 :root 里的配色变量（--brand / --accent / --green 换成你的品牌色）
+  3. 每个 <section class="scene"> 填入内容：kicker + h1 + b-roll 窗口 + UI mockup 卡片 + 字幕
+  4. 在 styles.css 里为每场景的 UI mockup 写具体样式（参考 .demo-* 类的写法）
+  5. 在 timeline.js 里写 GSAP 动效
+
+  禁止：
+  - 不要删 #paper / #grain / 字幕暗化条
+  - 不要把背景改成深色全屏暗化图（反模式）
+  - 不要删 .vframe 的 veil 层
+  - 不要用 opacity<0.5 的背景图 + 暗化渐变（反模式）
+-->
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1080, initial-scale=1">
+<title>视频标题</title>
+<link rel="stylesheet" href="styles.css">
+<script src="assets/vendor/gsap.min.js"></script>
+</head>
+<body>
+<div id="composition">
+  <!-- L0 底板 + L1 纹理（固定，不要删） -->
+  <div id="paper"></div>
+  <div id="grain"></div>
+
+  <!-- ============ 场景示例（复制此结构改内容） ============ -->
+  <section class="scene" id="s1" data-start="0" data-duration="6.0">
+    <div class="clip">
+      <div class="kicker"><i></i>01 / 痛点</div>
+      <h1 class="h1">主标题<br><span class="brand">强调词</span></h1>
+
+      <!-- b-roll 窗口（每场景至少 1 条 b-roll） -->
+      <div class="vframe" style="left:92px;top:520px;width:896px;height:320px">
+        <video src="bg/your-clip.mp4" data-scene-start="0" muted loop playsinline></video>
+        <div class="veil"></div>
+        <div class="tag">场景标签</div>
+      </div>
+
+      <!-- UI mockup 卡片（每场景至少 1 个具象界面） -->
+      <div class="card" style="left:92px;top:900px;width:896px;padding:30px 34px">
+        <div class="ui-label">界面标题</div>
+        <div class="ui-val">界面内容 <em>强调</em></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 再复制 7-9 个场景，每个场景布局不同 ============ -->
+
+  <!-- 字幕暗化条 + 字幕轨（固定，不要删） -->
+  <div id="sub-scrim"></div>
+  <div id="subtitle-track">
+    <!-- 每场景一个 .subtitle，JS 控制显隐 -->
+    <div class="subtitle" id="sub-01">第一句字幕</div>
+  </div>
+
+  <!-- 音频（每场景一段） -->
+  <audio id="seg01" src="audio/seg01.mp3" preload="auto"></audio>
+</div>
+<script src="timeline.js"></script>
+</body>
+</html>

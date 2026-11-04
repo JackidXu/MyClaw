@@ -1,0 +1,12 @@
+/* 皮肤：editorial-dark（深色编辑风 · 专业/信任/纪实）
+   机制：把 --white 设为深色表面、--ink 设为浅色，整页脚手架自动翻深色；
+   白卡变深卡、文字变浅，无需改任何组件类。仍满足景深4层/UI具象/b-roll窗口。
+   注意：这是「干净深色渐变纸底」，不是 style-variants.md 的「全屏压暗类」旧模版。 */
+:root{
+  --bg:#0E1626; --paper:#13203A; --ink:#F3F6FB; --ink-2:#C7D2E4;
+  --muted:#94A3BC; --line:rgba(255,255,255,.12); --white:#16223A;
+  --brand:#4C8DFF; --brand-soft:#1B2C4D;
+  --accent:#FF6A3D; --accent-soft:#3A1E16;
+  --green:#2FD08A; --green-soft:#10302A;
+  --shadow:0 30px 80px rgba(0,0,0,.5);
+}

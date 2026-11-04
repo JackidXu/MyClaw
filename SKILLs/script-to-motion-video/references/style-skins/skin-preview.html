@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>风格皮肤预览 · 同一结构 4 种皮肤</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:"PingFang SC","Microsoft YaHei",sans-serif;background:#1b1b1f;color:#eee;display:flex;flex-direction:column;align-items:center;padding:18px}
+  h2{font-size:18px;margin:6px 0 2px}
+  p.tip{font-size:13px;color:#9aa;margin-bottom:12px;text-align:center;max-width:680px}
+  .bar{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-bottom:14px}
+  .bar button{font-size:14px;padding:8px 16px;border-radius:20px;border:1px solid #555;background:#2a2a30;color:#ddd;cursor:pointer}
+  .bar button.on{background:#4C8DFF;color:#fff;border-color:#4C8DFF}
+
+  /* 舞台：1080x1920 竖屏，按窗口宽度缩放 */
+  #stage-wrap{width:100%;display:flex;justify-content:center;overflow:auto}
+  #stage{width:1080px;height:1920px;position:relative;transform-origin:top center;flex:none}
+
+  /* ===== 基础脚手架（与 composition-template 同结构，仅作预览，无动画） ===== */
+  #paper{position:absolute;inset:0}
+  #grain{position:absolute;inset:0}
+  .scene{position:absolute;inset:0}
+  .kicker{position:absolute;left:92px;top:206px;display:flex;align-items:center;gap:16px;font-size:25px;font-weight:700;letter-spacing:.18em;color:var(--muted)}
+  .kicker i{display:block;width:44px;height:4px;border-radius:2px;background:var(--brand)}
+  .h1{position:absolute;left:92px;right:92px;top:268px;font-size:86px;font-weight:800;line-height:1.14;letter-spacing:-.025em;color:var(--ink)}
+  .h1 .orange{color:var(--accent)}
+  .vframe{position:absolute;left:92px;top:560px;width:896px;height:330px;border-radius:28px;overflow:hidden;background:linear-gradient(135deg,#22304a,#0c1424);box-shadow:0 30px 80px rgba(10,24,48,.24);display:flex;align-items:center;justify-content:center}
+  .vframe .tag{position:absolute;left:24px;bottom:22px;z-index:3;font-size:24px;font-weight:700;color:#fff;background:rgba(9,16,30,.55);border:1px solid rgba(255,255,255,.22);padding:10px 18px;border-radius:22px}
+  .vframe .ph{font-size:30px;color:rgba(255,255,255,.6);font-weight:700;letter-spacing:.1em}
+  .card{position:absolute;background:var(--white);border:1px solid var(--line);border-radius:30px;box-shadow:var(--shadow);color:var(--ink)}
+  #phone{left:300px;top:760px;width:480px;height:560px;border-radius:44px;padding:26px 28px}
+  .p-top{display:flex;justify-content:space-between;align-items:center;font-size:24px;color:var(--muted)}
+  .p-title{font-size:34px;font-weight:800;margin-top:20px}
+  .p-row{display:flex;justify-content:space-between;align-items:center;margin-top:22px;padding:18px 20px;border-radius:18px;background:var(--brand-soft);border:1px solid var(--line);font-size:28px;font-weight:600}
+  .p-row b{font-weight:800}
+  .stamp{position:absolute;right:-26px;top:330px;transform:rotate(-11deg);border:4px solid var(--accent);color:var(--accent);font-size:34px;font-weight:900;letter-spacing:.08em;padding:12px 20px;border-radius:14px;background:rgba(255,255,255,.92)}
+  #note{left:92px;top:1360px;right:92px;display:flex;gap:18px;align-items:center;padding:24px 28px;border-radius:24px;background:var(--accent-soft);border:1px solid var(--line);color:var(--accent);font-size:30px;font-weight:700}
+
+  /* ===== 4 套皮肤（只换 :root token + 底板光学，结构不变） ===== */
+  body.skin-iwod-light{
+    --bg:#EEF1F5; --paper:#F7F8FA; --ink:#0B1526; --ink-2:#25344B;
+    --muted:#5B6B84; --line:#D9E1EC; --white:#FFFFFF;
+    --brand:#1F5EFF; --brand-soft:#E7EDFF; --accent:#FF5A2B; --accent-soft:#FFEDE7;
+    --green:#0FA36B; --green-soft:#E4F6EE; --shadow:0 26px 70px rgba(12,26,52,.13);
+  }
+  body.skin-iwod-light #paper{background:
+    radial-gradient(900px 600px at 88% 4%, #FFFFFF 0%, rgba(255,255,255,0) 60%),
+    radial-gradient(700px 500px at 4% 96%, #E3E9F2 0%, rgba(227,233,242,0) 65%),
+    linear-gradient(160deg,#F6F8FB 0%,#EDF1F6 55%,#E9EEF5 100%);}
+  body.skin-iwod-light #grain{opacity:.5;background-image:radial-gradient(rgba(20,40,80,.055) 1px,transparent 1px);background-size:5px 5px}
+
+  body.skin-editorial-dark{
+    --bg:#0E1626; --paper:#13203A; --ink:#F3F6FB; --ink-2:#C7D2E4;
+    --muted:#94A3BC; --line:rgba(255,255,255,.12); --white:#16223A;
+    --brand:#4C8DFF; --brand-soft:#1B2C4D; --accent:#FF6A3D; --accent-soft:#3A1E16;
+    --green:#2FD08A; --green-soft:#10302A; --shadow:0 30px 80px rgba(0,0,0,.5);
+  }
+  body.skin-editorial-dark #paper{background:
+    radial-gradient(900px 600px at 85% 6%, #1B2C4D 0%, rgba(27,44,77,0) 60%),
+    radial-gradient(700px 520px at 6% 95%, #0B1220 0%, rgba(11,18,32,0) 65%),
+    linear-gradient(160deg,#13203A 0%,#0E1626 55%,#0A1120 100%);}
+  body.skin-editorial-dark #grain{opacity:.4;background-image:radial-gradient(rgba(255,255,255,.05) 1px,transparent 1px);background-size:5px 5px}
+
+  body.skin-neon{
+    --bg:#05070F; --paper:#0A0F1E; --ink:#EAF2FF; --ink-2:#B7C7E6;
+    --muted:#7E8FB5; --line:rgba(120,180,255,.18); --white:#0E1626;
+    --brand:#22D3EE; --brand-soft:#0B2A33; --accent:#F472B6; --accent-soft:#33122A;
+    --green:#34F5C5; --green-soft:#0B2E28; --shadow:0 0 40px rgba(34,211,238,.22);
+  }
+  body.skin-neon #paper{background:
+    radial-gradient(820px 560px at 84% 8%, rgba(34,211,238,.18) 0%, rgba(34,211,238,0) 60%),
+    radial-gradient(640px 480px at 8% 94%, rgba(244,114,182,.14) 0%, rgba(244,114,182,0) 62%),
+    linear-gradient(160deg,#0A0F1E 0%,#070B16 55%,#05070F 100%);}
+  body.skin-neon #grain{opacity:.35;background-image:radial-gradient(rgba(180,220,255,.06) 1px,transparent 1px);background-size:5px 5px}
+  body.skin-neon .card{box-shadow:0 0 0 1px rgba(120,180,255,.12),0 24px 70px rgba(0,0,0,.55),0 0 36px rgba(34,211,238,.10)}
+  body.skin-neon .kicker i{box-shadow:0 0 12px var(--brand)}
+
+  body.skin-cream{
+    --bg:#F4EEE4; --paper:#FBF6EC; --ink:#2B2419; --ink-2:#5C5040;
+    --muted:#8A7B66; --line:#E4D9C7; --white:#FFFFFF;
+    --brand:#C2703D; --brand-soft:#F3E4D7; --accent:#A8432E; --accent-soft:#F1DDD5;
+    --green:#5E8C5A; --green-soft:#E4EEE0; --shadow:0 26px 70px rgba(80,60,30,.14);
+  }
+  body.skin-cream #paper{background:
+    radial-gradient(900px 600px at 88% 4%, #FFFFFF 0%, rgba(255,255,255,0) 60%),
+    radial-gradient(700px 500px at 4% 96%, #F1E7D6 0%, rgba(241,231,214,0) 65%),
+    linear-gradient(160deg,#FBF6EC 0%,#F6EFE2 55%,#F2E9D8 100%);}
+  body.skin-cream #grain{opacity:.5;background-image:radial-gradient(rgba(90,60,30,.05) 1px,transparent 1px);background-size:5px 5px}
+</style>
+</head>
+<body class="skin-iwod-light">
+  <h2>风格皮肤预览 · 同一结构，4 种皮肤</h2>
+  <p class="tip">下方是同一个 S1 场景结构（kicker + 标题 + 实拍窗 + 手机卡 + 印章 + 提示条）。点按钮切换皮肤——可见结构丰富度完全不变，只有配色与底板光学在变。这就是"换皮不降质"的机制。</p>
+  <div class="bar">
+    <button data-skin="skin-iwod-light" class="on">iwod-light 浅色</button>
+    <button data-skin="skin-editorial-dark">editorial-dark 深色</button>
+    <button data-skin="skin-neon">neon 霓虹</button>
+    <button data-skin="skin-cream">cream 奶油</button>
+  </div>
+  <div id="stage-wrap"><div id="stage">
+    <div id="paper"></div><div id="grain"></div>
+    <section class="scene">
+      <div class="kicker"><i></i>会员真实痛点</div>
+      <h1 class="h1">约完课，<br>却<span class="orange">改不了</span></h1>
+      <div class="vframe"><div class="ph">实拍窗 · b-roll</div><div class="tag">小程序约课 · 现场</div></div>
+      <div class="card" id="phone">
+        <div class="p-top"><span>18:00</span><span>iWOD 小程序</span></div>
+        <div class="p-title">我的预约</div>
+        <div class="p-row"><span>场地</span><b>A 区 · 力量区</b></div>
+        <div class="p-row"><span>时间</span><b>今晚 19:00</b></div>
+        <div class="p-row"><span>教练</span><b>李教练</b></div>
+        <div class="p-row" style="background:var(--accent-soft);border-color:var(--accent)"><span>状态</span><b style="color:var(--accent)">已预约 · 不可修改</b></div>
+        <div class="stamp">改不了</div>
+      </div>
+      <div id="note">⚠ 会员想改时间，系统却锁死——这是流失高发点</div>
+    </section>
+  </div></div>
+<script>
+  const btns=document.querySelectorAll('.bar button');
+  function fit(){const s=Math.min(1,(window.innerWidth-40)/1080);document.getElementById('stage').style.transform='scale('+s+')';document.getElementById('stage-wrap').style.height=(1920*s)+'px';}
+  btns.forEach(b=>b.addEventListener('click',()=>{
+    btns.forEach(x=>x.classList.remove('on'));
+    b.classList.add('on');
+    document.body.className='';
+    document.body.classList.add(b.dataset.skin);
+  }));
+  window.addEventListener('resize',fit);fit();
+</script>
+</body>
+</html>

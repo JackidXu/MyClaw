@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1080, initial-scale=1">
+<title>iWOD 私教改期 · 更换场地</title>
+<link rel="stylesheet" href="styles.css">
+<script src="assets/vendor/gsap.min.js"></script>
+</head>
+<body>
+<div id="composition">
+  <div id="paper"></div><div id="grain"></div>
+
+  <!-- S1 痛点 -->
+  <section class="scene" id="s1" data-start="0" data-duration="11.10">
+    <div class="clip">
+      <div class="kicker orange"><i></i>会员真实痛点</div>
+      <h1 class="h1">约完课，<br>却<span class="orange">改不了</span></h1>
+      <div class="vframe" id="s1-video">
+        <video src="../bg/a-young-man-texting-on-his-smartphone-8075.mp4" data-scene-start="0" muted loop playsinline></video>
+        <div class="veil"></div><div class="tag">小程序约课 · 现场</div>
+      </div>
+      <div class="card" id="s1-phone">
+        <div class="p-top"><span>18:00</span><span>iWOD 小程序</span></div>
+        <div class="p-title">我的预约</div>
+        <div class="p-row"><span>场地</span><b>A 区 · 力量区</b></div>
+        <div class="p-row"><span>时间</span><b>今晚 19:00</b></div>
+        <div class="p-row"><span>教练</span><b>李教练</b></div>
+        <div class="p-row" style="background:#FFF3EF;border-color:#FFD2C4"><span>状态</span><b style="color:#FF5A2B">已预约 · 不可修改</b></div>
+        <div class="stamp">改不了</div>
+      </div>
+      <div id="s1-note"><span>!</span>想换场地、换时间，只能取消重约，会员体验大打折扣</div>
+    </div>
+  </section>
+
+  <!-- S2 更新 -->
+  <section class="scene" id="s2" data-start="11.10" data-duration="5.95">
+    <div class="clip">
+      <div class="kicker"><i></i>iWOD · 功能更新</div>
+      <h1 class="h1 sm">私教改期，<br>支持<span class="blue">更换场地</span></h1>
+      <div id="s2-card">
+        <video src="../bg/adjusting-machine-in-the-gym-3815.mp4" data-scene-start="11.10" muted loop playsinline></video>
+        <div class="grad"></div>
+        <div id="s2-logo">i<span>WOD</span></div>
+        <div id="s2-badge">NEW</div>
+        <div id="s2-big">开课前<em> 1 小时</em><br>都能修改</div>
+        <div id="s2-sub">ADMIN · CHANGE VENUE</div>
+        <div id="s2-new">管理员可操作</div>
+      </div>
+      <div class="lead" id="s2-lead">会员不用再取消重约，场地和时间都能改。</div>
+    </div>
+  </section>
+
+  <!-- S3 改期窗口 -->
+  <section class="scene" id="s3" data-start="17.05" data-duration="8.80">
+    <div class="clip">
+      <div class="kicker"><i></i>改期规则</div>
+      <h1 class="h1 sm">发个消息，<br><span class="blue">开课前 1 小时</span>都能改</h1>
+      <div id="s3-timeline">
+        <div class="tl-line"></div><div class="tl-fill" id="s3-fill"></div>
+        <div class="tl-node on" style="left:60px"></div>
+        <div class="tl-lb" style="left:60px"><b>现在</b>随时发起</div>
+        <div class="tl-node on" style="left:430px"></div>
+        <div class="tl-lb" style="left:430px"><b>开课前 1h</b>最后时点</div>
+        <div class="tl-node red" style="left:800px"></div>
+        <div class="tl-lb" style="left:800px"><b>开课</b>截止</div>
+        <div id="s3-window">可改期窗口</div>
+      </div>
+      <div class="card" id="s3-chat">
+        <div class="msg"><div class="avatar">会</div><div class="bubble">教练，今晚 19:00 的课，<br>能换到 B 区吗？</div></div>
+        <div class="msg me"><div class="avatar">教</div><div class="bubble">可以，开课前 1 小时都能改，<br>我帮你调整。</div></div>
+      </div>
+      <div id="s3-hint">给前台或教练发个消息即可，不用自己反复操作</div>
+    </div>
+  </section>
+
+  <!-- S4 签到限制 -->
+  <section class="scene" id="s4" data-start="25.85" data-duration="4.60">
+    <div class="clip">
+      <div class="kicker orange"><i></i>关键限制</div>
+      <h1 class="h1 sm">已经<span class="orange">签到</span>，<br>就不能再改了</h1>
+      <div class="vframe" id="s4-video">
+        <video src="../bg/sneakers-on-a-step-machine-6641.mp4" data-scene-start="25.85" muted loop playsinline></video>
+        <div class="veil"></div><div class="tag">已到店 · 已签到</div>
+      </div>
+      <div id="s4-list">
+        <div class="status ok"><div class="ico">✓</div><div class="txt"><b>未签到</b><span>开课前 1 小时，可改时间与场地</span></div><div class="tag">可改期</div></div>
+        <div class="status no"><div class="ico">✕</div><div class="txt"><b>已签到</b><span>课程已开始履约，锁定不可修改</span></div><div class="tag">不可改</div></div>
+      </div>
+      <div id="s4-rule">签到即锁定，规则清晰，避免到场后临时换场</div>
+    </div>
+  </section>
+
+  <!-- S5 改期页面 -->
+  <section class="scene" id="s5" data-start="30.45" data-duration="9.95">
+    <div class="clip">
+      <div class="kicker"><i></i>改期页面</div>
+      <h1 class="h1 sm">时间、场地，<br>都能<span class="blue">单独换</span></h1>
+      <div class="card" id="s5-ui">
+        <div class="ui-head">改期申请 <span>订单 #A1024</span></div>
+        <div class="ui-block">
+          <div class="ui-label">上课时间</div>
+          <div class="ui-val"><span>今晚 19:00 → <em>20:00</em></span><span class="ui-change">修改</span></div>
+        </div>
+        <div class="ui-block">
+          <div class="ui-label">上课场地</div>
+          <div class="ui-val"><span>A 区 → <em>B 区 · 自由力量</em></span><span class="ui-change">修改</span></div>
+        </div>
+        <div class="switch-row"><span>只换场地，不改时间</span><span class="switch"></span></div>
+        <div id="s5-load"><span class="spinner"></span>换日期或场地后，可约时段自动重新加载</div>
+      </div>
+      <div class="chip blue" id="s5-chip">支持只换场地 · 保留原时间</div>
+    </div>
+  </section>
+
+  <!-- S6 占用校验 -->
+  <section class="scene" id="s6" data-start="40.40" data-duration="5.20">
+    <div class="clip">
+      <div class="kicker orange"><i></i>冲突校验</div>
+      <h1 class="h1 sm">场地被占用，<br><span class="orange">提交直接拦截</span></h1>
+      <div id="s6-grid">
+        <div class="slot free">18:00<small>可约</small></div>
+        <div class="slot busy">18:30<small>已被占用</small></div>
+        <div class="slot free">19:00<small>可约</small></div>
+        <div class="slot free">19:30<small>可约</small></div>
+        <div class="slot busy">20:00<small>已被占用</small></div>
+        <div class="slot free">20:30<small>可约</small></div>
+      </div>
+      <div id="s6-submit">提交修改</div>
+      <div id="s6-alert"><span>!</span>目标场地已被占用，暂不可提交，请选择其他时段</div>
+      <div id="s6-note" style="position:absolute;left:92px;right:92px;top:1340px;text-align:center;font-size:27px;color:#5B6B84">系统实时校验，避免两个会员撞在同一块场地</div>
+    </div>
+  </section>
+
+  <!-- S7 三端 -->
+  <section class="scene" id="s7" data-start="45.60" data-duration="8.00">
+    <div class="clip">
+      <div class="kicker"><i></i>多路径提交</div>
+      <h1 class="h1 sm">三个端，<br>都能<span class="blue">改约课</span></h1>
+      <div id="s7-devices">
+        <div class="dev"><div class="ico">小</div><div><b>小程序管理端</b><span>前台、店长随时处理</span></div><div class="dot"></div></div>
+        <div class="dev"><div class="ico">教</div><div><b>教练端</b><span>教练课上直接确认</span></div><div class="dot"></div></div>
+        <div class="dev"><div class="ico">网</div><div><b>电脑网页端</b><span>后台集中批量操作</span></div><div class="dot"></div></div>
+      </div>
+      <div id="s7-flow"><b>提交申请</b><span class="arrow">→</span><b>教练确认</b><span class="arrow">→</span><b>会员收到通知</b></div>
+    </div>
+  </section>
+
+  <!-- S8 微信通知 -->
+  <section class="scene" id="s8" data-start="53.60" data-duration="10.25">
+    <div class="clip">
+      <div class="kicker green"><i></i>通知闭环</div>
+      <h1 class="h1 sm">教练确认，<br><span class="green">微信通知会员</span></h1>
+      <div class="vframe" id="s8-video">
+        <video src="../bg/man-gives-a-woman-a-high-five-6508.mp4" data-scene-start="53.60" muted loop playsinline></video>
+        <div class="veil"></div><div class="tag">确认完成 · 服务闭环</div>
+      </div>
+      <div id="s8-wechat">
+        <div class="wx-head"><div class="logo">微</div>iWOD 约课通知</div>
+        <div class="wx-card">
+          <div class="t">您的课程已改期成功</div>
+          <div class="d">时间：今晚 20:00<br>场地：B 区 · 自由力量<br>教练：李教练</div>
+          <div class="go">点击查看改期详情 ›</div>
+        </div>
+      </div>
+      <div id="s8-steps">
+        <div class="step"><b>1. 发起</b><span>会员/前台</span></div>
+        <div class="step"><b>2. 确认</b><span>教练端</span></div>
+        <div class="step"><b>3. 通知</b><span>微信推送</span></div>
+      </div>
+      <div id="s8-note">具体操作流程，点主页公众号就能看</div>
+    </div>
+  </section>
+
+  <!-- S9 信任 -->
+  <section class="scene" id="s9" data-start="63.85" data-duration="11.00">
+    <div class="clip">
+      <div class="kicker"><i></i>关于 iWOD</div>
+      <h1 class="h1 sm"><span class="blue">7000+</span> 场馆，<br>都在用这套系统</h1>
+      <div class="vframe" id="s9-video">
+        <video src="../bg/running-on-the-treadmill-4508.mp4" data-scene-start="63.85" muted loop playsinline></video>
+        <div class="veil"></div><div class="tag">合作场馆 · 日常运营</div>
+      </div>
+      <div id="s9-stats">
+        <div class="stat"><div class="num" id="s9-num">7000<span class="unit">+</span></div><div class="lb">已服务场馆</div></div>
+        <div class="stat"><div class="num">3<span class="unit">端</span></div><div class="lb">小程序 / 教练 / 网页</div></div>
+        <div class="stat"><div class="num">1<span class="unit">套</span></div><div class="lb">约课系统全打通</div></div>
+      </div>
+      <div id="s9-two"><div class="badge">样板店</div><div class="txt">园区样板店即将开业，<em>用的就是我们自己的系统</em></div></div>
+      <div id="s9-note">约课、改期、签到、通知，一套系统全部跑通</div>
+    </div>
+  </section>
+
+  <!-- S10 CTA -->
+  <section class="scene" id="s10" data-start="74.85" data-duration="5.30">
+    <div class="clip">
+      <div class="kicker orange" style="left:92px"><i></i>想了解系统</div>
+      <div id="s10-big"><small>评论区打</small>适用</div>
+      <div id="s10-box">
+        <div class="ph">写下你的评论…</div>
+        <div id="s10-input"><span id="s10-word"></span><span class="cursor"></span></div>
+      </div>
+      <div id="s10-cta">点主页公众号 · 看完整操作流程 <span>›</span></div>
+      <div id="s10-hint">iWOD · 让每一节私教课都约得顺、改得快</div>
+    </div>
+  </section>
+
+  <div id="sub-scrim"></div>
+  <div id="subtitle-track">
+    <div class="subtitle" id="sub-01">约完课想换场地，<br>却发现<em class="hot">无法修改</em></div>
+    <div class="subtitle" id="sub-02"><em>iWOD</em> 更新：私教改期<br>支持管理员<em>更换场地</em></div>
+    <div class="subtitle" id="sub-03">给前台或教练发个消息<br><em>开课前 1 小时</em>都能改</div>
+    <div class="subtitle" id="sub-04">已经<em class="hot">签到</em>的课程<br>就不能再修改了</div>
+    <div class="subtitle" id="sub-05">可改<em>时间</em>和<em>场地</em><br>也能只换场地不改时间</div>
+    <div class="subtitle" id="sub-06">场地<em class="hot">已被占用</em>时<br>提交会被拦截</div>
+    <div class="subtitle" id="sub-07">小程序、教练端、<em>网页端</em><br>三端都能改</div>
+    <div class="subtitle" id="sub-08">教练确认后，<em class="ok">微信通知</em>会员<br>流程方便快捷</div>
+    <div class="subtitle" id="sub-09">已服务 <em>7000+ 场馆</em><br>园区样板店也快开业了</div>
+    <div class="subtitle" id="sub-10">想了解系统<br>评论区打「<em class="hot">适用</em>」</div>
+  </div>
+
+  <audio id="seg01" src="audio/seg01.mp3"></audio>
+  <audio id="seg02" src="audio/seg02.mp3"></audio>
+  <audio id="seg03" src="audio/seg03.mp3"></audio>
+  <audio id="seg04" src="audio/seg04.mp3"></audio>
+  <audio id="seg05" src="audio/seg05.mp3"></audio>
+  <audio id="seg06" src="audio/seg06.mp3"></audio>
+  <audio id="seg07" src="audio/seg07.mp3"></audio>
+  <audio id="seg08" src="audio/seg08.mp3"></audio>
+  <audio id="seg09" src="audio/seg09.mp3"></audio>
+  <audio id="seg10" src="audio/seg10.mp3"></audio>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

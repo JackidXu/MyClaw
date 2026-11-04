@@ -309,6 +309,14 @@
     "talking-head-motion-cut": {
       "order": 10190,
       "enabled": true
+    },
+    "script-to-motion-video": {
+      "order": 10200,
+      "enabled": true
+    },
+    "talking-head-cover": {
+      "order": 10210,
+      "enabled": true
     }
   }
 }

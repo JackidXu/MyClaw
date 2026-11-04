@@ -1,0 +1,126 @@
+/* ===== 文案生成动效视频 · 起手样式（iWOD 级视觉质量） =====
+   使用方式：
+   1. 替换 :root 里的 --brand / --accent / --green 为你的品牌色
+   2. 不要删 #paper / #grain / 字幕暗化条
+   3. 每场景的 UI mockup 在此文件底部追加样式
+   ============================================== */
+
+:root{
+  /* —— 配色（每条视频替换） —— */
+  --bg:#EEF1F5; --paper:#F7F8FA; --ink:#0B1526; --ink-2:#25344B;
+  --muted:#5B6B84; --line:#D9E1EC; --white:#FFFFFF;
+  --brand:#1F5EFF; --brand-soft:#E7EDFF;       /* 主品牌色（功能/正面） */
+  --accent:#FF5A2B; --accent-soft:#FFEDE7;     /* 强调色（问题/警示） */
+  --green:#0FA36B; --green-soft:#E4F6EE;       /* 成功色（确认/完成） */
+  --shadow:0 26px 70px rgba(12,26,52,.13);
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1080px;height:1920px;overflow:hidden}
+body{
+  font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Inter",sans-serif;
+  background:var(--bg); color:var(--ink);
+  -webkit-font-smoothing:antialiased;
+}
+
+/* ===== L0 底板 ===== */
+#composition{position:absolute;inset:0;width:1080px;height:1920px;overflow:hidden}
+#paper{
+  position:absolute;inset:0;
+  background:
+    radial-gradient(900px 600px at 88% 4%, #FFFFFF 0%, rgba(255,255,255,0) 60%),
+    radial-gradient(700px 500px at 4% 96%, #E3E9F2 0%, rgba(227,233,242,0) 65%),
+    linear-gradient(160deg,#F6F8FB 0%,#EDF1F6 55%,#E9EEF5 100%);
+}
+/* L1 纹理：72px 网格 */
+#paper::after{
+  content:'';position:absolute;inset:0;opacity:.55;
+  background-image:
+    linear-gradient(rgba(20,40,80,.045) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(20,40,80,.045) 1px,transparent 1px);
+  background-size:72px 72px;
+}
+/* L1 纹理：5px 颗粒噪点 */
+#grain{position:absolute;inset:0;opacity:.5;pointer-events:none;
+  background-image:radial-gradient(rgba(20,40,80,.055) 1px,transparent 1px);background-size:5px 5px}
+
+/* ===== 进度条 ===== */
+#progress{position:absolute;left:0;top:0;height:4px;width:0;z-index:60;
+  background:linear-gradient(90deg,var(--brand),var(--accent))}
+
+/* ===== 场景容器 ===== */
+.scene{position:absolute;inset:0;opacity:0;visibility:hidden}
+.clip{position:absolute;inset:0}
+
+/* ===== 排版系统（4 级） ===== */
+.kicker{position:absolute;left:92px;top:206px;display:flex;align-items:center;gap:16px;
+  font-size:25px;font-weight:700;letter-spacing:.18em;color:var(--muted)}
+.kicker i{display:block;width:44px;height:4px;border-radius:2px;background:var(--brand)}
+.kicker.orange i{background:var(--accent)}
+.kicker.green i{background:var(--green)}
+
+.h1{position:absolute;left:92px;right:92px;top:268px;
+  font-size:86px;font-weight:800;line-height:1.14;letter-spacing:-.025em}
+.h1.sm{font-size:72px}
+.h1 .brand{color:var(--brand)}
+.h1 .accent{color:var(--accent)}
+.h1 .green{color:var(--green)}
+.h1 .muted{color:var(--muted);font-weight:300}
+
+.lead{position:absolute;left:94px;right:94px;font-size:36px;line-height:1.55;
+  color:var(--muted);font-weight:500}
+
+/* ===== 通用组件 ===== */
+.chip{display:inline-flex;align-items:center;gap:10px;height:52px;padding:0 22px;
+  border-radius:26px;font-size:26px;font-weight:700;background:#fff;
+  border:1px solid var(--line);color:var(--ink-2)}
+.chip.blue{background:var(--brand-soft);border-color:#C9D8FF;color:var(--brand)}
+.chip.red{background:var(--accent-soft);border-color:#FFD2C4;color:var(--accent)}
+.chip.green{background:var(--green-soft);border-color:#BFEBD8;color:var(--green)}
+
+.card{position:absolute;background:var(--white);border:1px solid var(--line);
+  border-radius:30px;box-shadow:var(--shadow)}
+.card.dark{background:#0B1526;border-color:#17233A;color:#fff}
+
+/* b-roll 窗口（每场景至少 1 条） */
+.vframe{position:absolute;border-radius:28px;overflow:hidden;
+  background:#0B1220;box-shadow:0 30px 80px rgba(10,24,48,.24)}
+.vframe video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+  filter:saturate(.92) contrast(1.04) brightness(1.06)}
+.vframe .veil{position:absolute;inset:0;
+  background:linear-gradient(180deg,rgba(8,14,26,.04) 0%,rgba(8,14,26,.18) 56%,rgba(8,14,26,.62) 100%)}
+.vframe .tag{position:absolute;left:24px;bottom:22px;z-index:3;
+  font-size:24px;font-weight:700;color:#fff;letter-spacing:.04em;
+  background:rgba(9,16,30,.45);border:1px solid rgba(255,255,255,.18);
+  padding:8px 16px;border-radius:20px;backdrop-filter:blur(6px)}
+
+/* UI mockup 通用零件 */
+.ui-label{font-size:24px;color:var(--muted);font-weight:700;letter-spacing:.06em}
+.ui-val{display:flex;justify-content:space-between;align-items:center;margin-top:12px;
+  font-size:38px;font-weight:800}
+.ui-val em{font-style:normal;color:var(--brand)}
+
+/* ===== 字幕系统 ===== */
+#sub-scrim{position:absolute;left:0;right:0;bottom:0;height:400px;z-index:40;
+  background:linear-gradient(180deg,rgba(8,13,23,0) 0%,rgba(8,13,23,.55) 58%,rgba(8,13,23,.82) 100%);
+  opacity:0}
+#subtitle-track{position:absolute;left:7%;right:7%;bottom:140px;height:210px;z-index:50}
+.subtitle{position:absolute;inset:0;display:block;text-align:center;
+  font-size:50px;font-weight:700;line-height:1.4;color:#fff;opacity:0;
+  padding:34px 16px 0;text-shadow:0 4px 22px rgba(0,0,0,.5)}
+.subtitle em{font-style:normal;color:#7FB0FF}
+.subtitle .hot{color:#FF8A66}
+.subtitle .ok{color:#4FE0A6}
+
+/* ===== 以下为每场景 UI mockup 的具体样式（AI 在此追加） ===== */
+/* 示例：手机界面卡 */
+.demo-phone{left:300px;top:760px;width:480px;height:560px;border-radius:44px;
+  padding:26px 28px;box-shadow:0 40px 100px rgba(12,26,52,.22)}
+/* 示例：状态行 */
+.demo-row{display:flex;justify-content:space-between;align-items:center;
+  margin-top:22px;padding:18px 20px;border-radius:18px;
+  background:#F4F6FA;border:1px solid #E6EBF3;font-size:28px;font-weight:600}
+/* 示例：印章 */
+.demo-stamp{position:absolute;right:-26px;top:330px;transform:rotate(-11deg);
+  border:4px solid var(--accent);color:var(--accent);font-size:34px;font-weight:900;
+  letter-spacing:.08em;padding:12px 20px;border-radius:14px;background:rgba(255,255,255,.92)}

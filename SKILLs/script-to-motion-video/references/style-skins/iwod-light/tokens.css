@@ -1,0 +1,11 @@
+/* 皮肤：iwod-light（默认 · 浅色 · 已验证达 iWOD 满分）
+   用法：把本文件内容整体替换 composition 的 :root 块。
+   结构（.vframe/.card/.kicker/.h1 + 每场景 UI mockup + b-roll 窗口 + 逐元素动效）保持不变。 */
+:root{
+  --bg:#EEF1F5; --paper:#F7F8FA; --ink:#0B1526; --ink-2:#25344B;
+  --muted:#5B6B84; --line:#D9E1EC; --white:#FFFFFF;
+  --brand:#1F5EFF; --brand-soft:#E7EDFF;
+  --accent:#FF5A2B; --accent-soft:#FFEDE7;
+  --green:#0FA36B; --green-soft:#E4F6EE;
+  --shadow:0 26px 70px rgba(12,26,52,.13);
+}

@@ -1,0 +1,11 @@
+/* 皮肤：neon（科技/数字化/未来感 · 霓虹）
+   机制：同 editorial-dark 的「翻深色」思路（--white 深表面 + --ink 浅文字），
+   再把强调色换成青/品红霓虹，底板加辉光。结构丰富度不变。 */
+:root{
+  --bg:#05070F; --paper:#0A0F1E; --ink:#EAF2FF; --ink-2:#B7C7E6;
+  --muted:#7E8FB5; --line:rgba(120,180,255,.18); --white:#0E1626;
+  --brand:#22D3EE; --brand-soft:#0B2A33;
+  --accent:#F472B6; --accent-soft:#33122A;
+  --green:#34F5C5; --green-soft:#0B2E28;
+  --shadow:0 0 40px rgba(34,211,238,.22);
+}

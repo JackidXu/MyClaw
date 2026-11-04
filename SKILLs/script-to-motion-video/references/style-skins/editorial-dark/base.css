@@ -1,0 +1,9 @@
+/* 皮肤底板：editorial-dark（深色渐变纸底 + 浅颗粒）
+   用法：替换 composition 的 #paper / #grain 定义。 */
+#paper{
+  background:
+    radial-gradient(900px 600px at 85% 6%, #1B2C4D 0%, rgba(27,44,77,0) 60%),
+    radial-gradient(700px 520px at 6% 95%, #0B1220 0%, rgba(11,18,32,0) 65%),
+    linear-gradient(160deg,#13203A 0%,#0E1626 55%,#0A1120 100%);
+}
+#grain{opacity:.4;background-image:radial-gradient(rgba(255,255,255,.05) 1px,transparent 1px);background-size:5px 5px}

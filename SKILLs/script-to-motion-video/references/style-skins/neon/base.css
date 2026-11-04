@@ -1,0 +1,11 @@
+/* 皮肤底板：neon（近黑纸底 + 青/品红辉光 + 卡片外发光）
+   用法：替换 #paper / #grain，并把 .card / .kicker i 的辉光覆盖一并加入。 */
+#paper{
+  background:
+    radial-gradient(820px 560px at 84% 8%, rgba(34,211,238,.18) 0%, rgba(34,211,238,0) 60%),
+    radial-gradient(640px 480px at 8% 94%, rgba(244,114,182,.14) 0%, rgba(244,114,182,0) 62%),
+    linear-gradient(160deg,#0A0F1E 0%,#070B16 55%,#05070F 100%);
+}
+#grain{opacity:.35;background-image:radial-gradient(rgba(180,220,255,.06) 1px,transparent 1px);background-size:5px 5px}
+.card{box-shadow:0 0 0 1px rgba(120,180,255,.12), 0 24px 70px rgba(0,0,0,.55), 0 0 36px rgba(34,211,238,.10)}
+.kicker i{box-shadow:0 0 12px var(--brand)}

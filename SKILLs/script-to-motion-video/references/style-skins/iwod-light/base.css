@@ -1,0 +1,9 @@
+/* 皮肤底板：iwod-light（浅色纸底 + 细网格 + 颗粒）
+   用法：替换 composition 的 #paper / #grain 定义。 */
+#paper{
+  background:
+    radial-gradient(900px 600px at 88% 4%, #FFFFFF 0%, rgba(255,255,255,0) 60%),
+    radial-gradient(700px 500px at 4% 96%, #E3E9F2 0%, rgba(227,233,242,0) 65%),
+    linear-gradient(160deg,#F6F8FB 0%,#EDF1F6 55%,#E9EEF5 100%);
+}
+#grain{opacity:.5;background-image:radial-gradient(rgba(20,40,80,.055) 1px,transparent 1px);background-size:5px 5px}
