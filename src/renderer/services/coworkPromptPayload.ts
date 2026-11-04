@@ -77,7 +77,7 @@ export const IMAGE_ATTACHMENT_COMPRESSION_QUALITY = 0.85;
 /** 当图片尺寸或体积超过该阈值时自动缩放压缩（单图约 1.2MB），彻底避免网关解析大 Base64 栈溢出 */
 export const IMAGE_ATTACHMENT_AUTO_COMPRESS_BYTES_THRESHOLD = 1200 * 1024;
 
-const extractBase64FromDataUrl = (
+export const extractBase64FromDataUrl = (
   dataUrl: string,
 ): { mimeType: string; base64Data: string } | null => {
   const match = /^data:(.+);base64,(.*)$/.exec(dataUrl);
@@ -96,6 +96,7 @@ export const compressImageAttachmentDataUrl = async (
   dataUrl: string,
   maxDimension = IMAGE_ATTACHMENT_COMPRESSION_MAX_DIMENSION,
   quality = IMAGE_ATTACHMENT_COMPRESSION_QUALITY,
+  bytesThreshold = IMAGE_ATTACHMENT_AUTO_COMPRESS_BYTES_THRESHOLD,
 ): Promise<string> => {
   try {
     const extracted = extractBase64FromDataUrl(dataUrl);
@@ -110,7 +111,7 @@ export const compressImageAttachmentDataUrl = async (
     const largestDimension = Math.max(naturalWidth, naturalHeight);
 
     // 如果图片尺寸在上限内且体积未超标，保留原图
-    if (largestDimension <= maxDimension && estimatedBytes <= IMAGE_ATTACHMENT_AUTO_COMPRESS_BYTES_THRESHOLD) {
+    if (largestDimension <= maxDimension && estimatedBytes <= bytesThreshold) {
       return dataUrl;
     }
 
@@ -124,12 +125,18 @@ export const compressImageAttachmentDataUrl = async (
     const ctx = canvas.getContext('2d');
     if (!ctx) return dataUrl;
 
-    ctx.drawImage(img, 0, 0, width, height);
-
     // 默认转换为体积可控的 image/jpeg
     const targetMimeType = extracted.mimeType === 'image/png' && !extracted.mimeType.includes('jpeg')
       ? 'image/jpeg'
       : extracted.mimeType;
+
+    // JPEG 没有透明通道：平铺白色底色，防止透明区域转黑
+    if (targetMimeType === 'image/jpeg') {
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, width, height);
+    }
+
+    ctx.drawImage(img, 0, 0, width, height);
 
     return canvas.toDataURL(targetMimeType, quality);
   } catch {

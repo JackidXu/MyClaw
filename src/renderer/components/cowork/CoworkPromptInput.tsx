@@ -35,6 +35,7 @@ import {
 } from '../../../shared/cowork/goal';
 import {
   CoworkImageAttachmentRole,
+  estimateBase64DecodedBytes,
   formatCoworkImageAttachmentLimit,
   MAX_COWORK_INPUT_IMAGES,
 } from '../../../shared/cowork/imageAttachments';
@@ -58,7 +59,9 @@ import { configService, ConfigServiceEvent } from '../../services/config';
 import { coworkService } from '../../services/cowork';
 import { buildCoworkCapabilitySelection } from '../../services/coworkCapabilitySelection';
 import {
+  compressImageAttachmentDataUrl,
   CoworkPromptPayloadFailureCode,
+  extractBase64FromDataUrl,
   prepareCoworkPromptPayload,
   type PreparedCoworkPromptPayload,
 } from '../../services/coworkPromptPayload';
@@ -2126,12 +2129,21 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
           preparedAnnotations.push(annotation);
           continue;
         }
+        // 批注截图统一进行等比缩放与 JPEG 压缩（强制转为轻量 JPEG），彻底规避多图 Base64 导致网关报文超限或 V8 溢出
+        const effectiveDataUrl = await compressImageAttachmentDataUrl(asset.dataUrl, undefined, undefined, 0);
+        const extracted = extractBase64FromDataUrl(effectiveDataUrl);
+        if (!extracted) {
+          preparedAnnotations.push(annotation);
+          continue;
+        }
+        const extension = extracted.mimeType.includes('jpeg') ? 'jpg' : 'png';
+        const estimatedBytes = estimateBase64DecodedBytes(extracted.base64Data);
         transportImageIndex += 1;
         annotationImages.push({
-          name: `${i18nService.t('artifactBrowserAnnotationImageName')}-${transportImageIndex}.png`,
-          mimeType: annotation.screenshot.asset.mimeType,
-          base64Data: asset.dataUrl.slice(separator + 1),
-          sizeBytes: asset.byteSize,
+          name: `${i18nService.t('artifactBrowserAnnotationImageName')}-${transportImageIndex}.${extension}`,
+          mimeType: extracted.mimeType,
+          base64Data: extracted.base64Data,
+          sizeBytes: estimatedBytes,
           role: CoworkImageAttachmentRole.BrowserAnnotation,
         });
         preparedAnnotations.push({
