@@ -12,18 +12,9 @@ import { delegateCompactionToRuntime } from 'openclaw/plugin-sdk/core';
 
 export const TOOL_RESULT_KEEP_CHARS = 300;
 export const TOOL_RESULT_PRUNED_MARKER = '[工具步骤已折叠';
-export const CURRENT_TURN_ACTIVE_STEPS_KEEP = 3;
-/** 当前轮次工具产出（如 browser / view_image）允许保留的最新视觉截图数量（默认仅保留最新 1 张，用户上传图不限） */
-export const CURRENT_TURN_TOOL_IMAGES_KEEP = 1;
-export const CURRENT_TURN_MAX_IMAGES_KEEP = CURRENT_TURN_TOOL_IMAGES_KEEP;
+/** 当前轮次工具产出（如 browser / view_image）允许保留的最新视觉截图数量（保留最新 3 张，兼顾前后改动对比与视觉 Token 节省） */
+export const CURRENT_TURN_TOOL_IMAGES_KEEP = 3;
 export const IMAGE_PRUNED_TEXT = '[中间步骤截图已折叠，请参考最新界面呈现]';
-
-/** 单轮工具步数弹性熔断配置（放宽至 60 步软预警，70 步硬止损） */
-export const TURN_TOOL_CALL_SOFT_LIMIT = 60;
-export const TURN_TOOL_CALL_HARD_LIMIT = 70;
-
-/** 同工具同参连续尝试熔断阈值（防死磕，避免重复执行完全相同命令） */
-export const SAME_TOOL_CONSECUTIVE_ATTEMPTS_LIMIT = 5;
 
 const IMAGE_BLOCK_TYPES = new Set(['image', 'image_url', 'input_image']);
 
@@ -179,34 +170,11 @@ export function pruneContextMessages(messages: AgentMessage[]): AgentMessage[] {
   }
 
   // 3. 处理当前轮次（index >= max(0, lastUserIndex)）
+  // 核心铁律：当前正在执行的任务轮次内，所有工具文本输出 100% 完整可见（已由源头 10000 字符物理截断兜底），
+  // 严禁在此折叠当前轮中间步骤，彻底杜绝大模型因短时记忆被腰斩而反复重查的“健忘式死循环”！
   const currentTurnStartIndex = Math.max(0, lastUserIndex);
 
-  // 3.1 收集当前轮次的所有 toolResult 索引
-  const currentToolResultIndices: number[] = [];
-  for (let i = currentTurnStartIndex; i < nextMessages.length; i++) {
-    if (nextMessages[i]?.role === 'toolResult') {
-      currentToolResultIndices.push(i);
-    }
-  }
-
-  // 当前轮次滑动窗口折叠：仅保留最近的 CURRENT_TURN_ACTIVE_STEPS_KEEP 步（默认 3 步）
-  if (currentToolResultIndices.length > CURRENT_TURN_ACTIVE_STEPS_KEEP) {
-    const keepStartIndex = currentToolResultIndices.length - CURRENT_TURN_ACTIVE_STEPS_KEEP;
-    const indicesToPrune = new Set(currentToolResultIndices.slice(0, keepStartIndex));
-
-    nextMessages = nextMessages.map((msg, index) => {
-      if (indicesToPrune.has(index)) {
-        const pruned = pruneToolResultMessage(msg, { label: '当前轮中间工具步骤', stripImages: true });
-        if (pruned !== msg) {
-          changed = true;
-          return pruned;
-        }
-      }
-      return msg;
-    });
-  }
-
-  // 3.2 当前轮次图片配额限制：
+  // 3.1 当前轮次图片配额限制：
   // 规则 1：用户主动上传的图片（role === 'user'）代表任务参考标准，在当前轮次全量完整保留，绝不剥离；
   // 规则 2：工具产出（role !== 'user'，如 browser 截图）属于过程消耗品，只保留最新的 CURRENT_TURN_TOOL_IMAGES_KEEP 张（默认 1 张）。
   const toolImageLocations: { messageIndex: number; blockIndex: number }[] = [];
@@ -304,6 +272,7 @@ export class LobsterAIContextPruneEngine implements ContextEngine {
     } else {
       console.log(`[lobsterai-context-prune] assemble called: totalMessages=${rawMessages.length}`);
     }
+
     return {
       messages: pruned,
       estimatedTokens: 0,
@@ -344,132 +313,12 @@ export class LobsterAIContextPruneEngine implements ContextEngine {
   }
 }
 
-/** 单轮工具步数计数跟踪（按 sessionKey 独立维护） */
-export const toolCallCountBySessionKey = new Map<string, number>();
-
-/** 工具调用特征记录（用于检测连续相同参数重复调用，防死磕） */
-export type LastToolInvocation = {
-  signature: string;
-  count: number;
-};
-export const lastToolInvocationBySessionKey = new Map<string, LastToolInvocation>();
-
-export function serializeToolInvocationSignature(toolName: string, params: unknown): string {
-  try {
-    const serialized = JSON.stringify(params, Object.keys(params && typeof params === 'object' ? params : {}).sort());
-    return `${toolName}:${serialized}`;
-  } catch {
-    return `${toolName}:${String(params)}`;
-  }
-}
-
-export function checkAndRecordConsecutiveToolCall(
-  sessionKey: string,
-  toolName: string,
-  params: unknown,
-): { isConsecutiveLoop: boolean; consecutiveCount: number } {
-  const signature = serializeToolInvocationSignature(toolName, params);
-  const last = lastToolInvocationBySessionKey.get(sessionKey);
-
-  if (last && last.signature === signature) {
-    last.count += 1;
-    return {
-      isConsecutiveLoop: last.count >= SAME_TOOL_CONSECUTIVE_ATTEMPTS_LIMIT,
-      consecutiveCount: last.count,
-    };
-  }
-
-  lastToolInvocationBySessionKey.set(sessionKey, { signature, count: 1 });
-  return { isConsecutiveLoop: false, consecutiveCount: 1 };
-}
-
-/**
- * 解析单轮问答（Turn / Run）的独立作用域 Key。
- * 核心机制：用户每次提问或追问，OpenClaw 都会派发全局唯一的 runId。
- * 以 runId 为核心作用域，确保每轮问答拥有纯净独立的步数配额，绝不跨轮次累加，彻底解决追问被锁死的问题。
- */
-export function resolveTurnScopeKey(ctx?: { sessionKey?: string; runId?: string }): string {
-  if (ctx?.runId) {
-    return `${ctx.sessionKey || 'default'}:${ctx.runId}`;
-  }
-  return ctx?.sessionKey || 'default';
-}
-
-export function getSessionKeyTurnToolCount(scopeKey: string): number {
-  return toolCallCountBySessionKey.get(scopeKey) ?? 0;
-}
-
-export function incrementSessionKeyTurnToolCount(scopeKey: string): number {
-  const current = getSessionKeyTurnToolCount(scopeKey);
-  const next = current + 1;
-  toolCallCountBySessionKey.set(scopeKey, next);
-  return next;
-}
-
-export function resetSessionKeyState(scopeKey: string): void {
-  toolCallCountBySessionKey.delete(scopeKey);
-  lastToolInvocationBySessionKey.delete(scopeKey);
-}
-
-// 保持向下兼容导出
-export const resetSessionKeyTurnToolCount = resetSessionKeyState;
-
 export default {
   id: 'lobsterai-context-prune',
   name: 'LobsterAI Context Pruning Engine',
-  description: 'Applies proactive context management, progressive sliding window tool folding, multi-modal image stripping, turn step capping, and circuit breaker protection.',
+  description: 'Applies proactive context management, progressive historical tool folding, and multi-modal image stripping.',
   register(api: OpenClawPluginApi) {
     api.registerContextEngine('lobsterai-context-prune', () => new LobsterAIContextPruneEngine());
     api.logger.info('[lobsterai-context-prune] registered context engine "lobsterai-context-prune".');
-
-    // 问答结束时清理单轮状态，防止常驻内存泄露
-    api.on('agent_end', async (_event, ctx) => {
-      const scopeKey = resolveTurnScopeKey(ctx);
-      resetSessionKeyState(scopeKey);
-      if (ctx?.sessionKey) {
-        resetSessionKeyState(ctx.sessionKey);
-      }
-    });
-
-    // 工具调用前拦截：步数统计、软硬熔断与同工具同参死循环熔断器
-    api.on('before_tool_call', async (event, ctx) => {
-      const sessionKey = ctx?.sessionKey;
-      if (!sessionKey) return;
-      // 以单轮 Turn（RunId）为权威作用域，确保追问时步数天然重置为 0
-      const scopeKey = resolveTurnScopeKey(ctx);
-
-      // 1. 同参连续死磕熔断检查
-      const toolCheck = checkAndRecordConsecutiveToolCall(scopeKey, event.toolName, event.params);
-      if (toolCheck.isConsecutiveLoop) {
-        api.logger.warn(
-          `[lobsterai-context-prune] circuit breaker triggered: tool "${event.toolName}" was called with identical parameters ${toolCheck.consecutiveCount} times consecutively in turn "${scopeKey}". Blocking repeat attempt.`,
-        );
-        return {
-          block: true,
-          blockReason: `[⚠️ 连续失败熔断] 工具 "${event.toolName}" 已使用相同参数连续执行了 ${toolCheck.consecutiveCount} 次！严禁使用相同参数机械无意义重试。请仔细阅读前几次的错误反馈，调整排查思路或更换参数/工具，或直接向用户说明情况并请求协助。`,
-        };
-      }
-
-      // 2. 总步数统计与软硬熔断（按单轮 Turn 计算）
-      const count = incrementSessionKeyTurnToolCount(scopeKey);
-
-      // 硬熔断：达到 70 步彻底拦截并指示模型收手
-      if (count > TURN_TOOL_CALL_HARD_LIMIT) {
-        api.logger.warn(
-          `[lobsterai-context-prune] hard cap reached (${count} > ${TURN_TOOL_CALL_HARD_LIMIT}) for tool "${event.toolName}" in turn "${scopeKey}". Blocking tool call.`,
-        );
-        return {
-          block: true,
-          blockReason: `已达到单轮任务 ${TURN_TOOL_CALL_HARD_LIMIT} 步工具安全上限（当前第 ${count} 步）。已触发系统安全熔断止损，严禁继续调用任何工具！请立即整理已有工作成果，向用户进行阶段性交付汇报并等待用户指令。`,
-        };
-      }
-
-      // 软提示：达到 60 步时在日志中预警
-      if (count >= TURN_TOOL_CALL_SOFT_LIMIT) {
-        api.logger.warn(
-          `[lobsterai-context-prune] soft cap reached (${count}/${TURN_TOOL_CALL_HARD_LIMIT}) for tool "${event.toolName}" in turn "${scopeKey}". Approaching limit.`,
-        );
-      }
-    });
   },
 };
