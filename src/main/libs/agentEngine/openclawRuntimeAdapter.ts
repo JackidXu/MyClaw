@@ -1184,6 +1184,15 @@ function buildPlanModeOutboundReminder(): string {
   ].join('\n');
 }
 
+function buildIncrementalDeliveryReminder(): string {
+  return [
+    '[Delivery & Anti-Loop Reminder]',
+    '1. 阶段性交付优先：以最快速度拿出可运行、可体验的成果（MVP），拒绝暗中追求 100 分完美。',
+    '2. 自检验收最多 2 轮：核心成果（如网页/代码/视频/海报等）落盘后，若需排错或查看渲染效果，整个“检查-微调”自检循环全局最多允许 2 轮（最多修改 2 次代码/文件），严禁无休止微调与切图品鉴。',
+    '3. 满 2 轮强制交付：完成至多 2 轮自检修复后，无论效果是否完全满意，必须立即停止所有工具调用，直接向用户呈现交付物并说明现状，把后续微调定夺权完全交给用户。',
+  ].join('\n');
+}
+
 type FirstResponseTiming = {
   turnStartedAtMs: number;
   gatewayReadyStartedAtMs?: number;
@@ -6508,9 +6517,10 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       if (prompt.trim()) {
         sections.push(`[Current user request]\n${prompt}`);
       }
-      sections.push(buildOpenClawLocalTimeContextPrompt());
       if (planMode) {
         sections.push(buildPlanModeOutboundReminder());
+      } else {
+        sections.push(buildIncrementalDeliveryReminder());
       }
       // Sample after startup/rehydration; retries reuse this completed string.
       sections.push(buildOpenClawLocalTimeContextPrompt());
@@ -6575,9 +6585,10 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     if (prompt.trim()) {
       sections.push(`[Current user request]\n${prompt}`);
     }
-    sections.push(buildOpenClawLocalTimeContextPrompt());
     if (planMode) {
       sections.push(buildPlanModeOutboundReminder());
+    } else {
+      sections.push(buildIncrementalDeliveryReminder());
     }
     // History probes may be slow. Freeze time only when the prompt is ready.
     sections.push(buildOpenClawLocalTimeContextPrompt());

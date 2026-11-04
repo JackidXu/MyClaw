@@ -98,7 +98,7 @@ import {
 } from './openclawConfigTarget';
 import type { OpenClawEngineManager } from './openclawEngineManager';
 import { escapeOpenClawEnvTemplate, escapeOpenClawEnvTemplateRecord } from './openclawEnvTemplate';
-import { repairHeartbeatFile, stripProactiveHeartbeatSection } from './openclawHeartbeatRepair';
+import { repairHeartbeatFile } from './openclawHeartbeatRepair';
 import {
   withManagedOpenClawModelPolicy,
   withoutOpenClawWriteMetadata,
@@ -434,22 +434,13 @@ const MANAGED_WEB_SEARCH_POLICY_PROMPT = [
 const MANAGED_LARGE_FILE_CREATION_POLICY_PROMPT = [
   '## Large File, Webpage & Existing File Modification Policy',
   '',
-  '- **Modifying Existing Files / Webpages**: NEVER use `write` to overwrite an existing HTML or code file when making adjustments or modifications. Using `write` to rewrite large files will hit output token limits, truncate the file, and wipe out all remaining modules. ALWAYS use targeted replacement tools (such as `edit`) to modify only the specific section/component being changed, keeping all other existing content intact.',
-  '- **Long-Form Text & Deep Analysis (>3000 chars / Comprehensive Reports / Large Docs)**: Chat message bubbles have strict single-turn token limits. When generating extensive deliverables (such as in-depth research reports, comprehensive business/marketing plans, multi-chapter books/guides, full project architectures, or complete codebases), ALWAYS first use the `write` tool to save the complete deliverable into a workspace markdown/code file. Then, in the chat response, provide a high-level executive summary, key takeaways, and a clear markdown link (e.g. `[完整报告已生成至 report.md](file://...)`) to the generated file.',
-  '- **Spreadsheet & Tabular Data Delivery**: For structured tabular deliverables (such as topic lists, data summaries, financial tables, catalogs):',
-  '  1. **Preferred Default (CSV)**: Unless the user explicitly requests `.xlsx`, ALWAYS default to saving structured data as UTF-8 encoded `.csv` via the `write` tool. CSV files are lightweight, 100% reliable to write directly, and seamlessly open in Microsoft Excel, WPS, and Apple Numbers.',
-  '  2. **When `.xlsx` Is Explicitly Requested (Strict Separation of Data & Code)**: NEVER attempt to handcraft raw XML files and zip them manually via shell commands. Furthermore, NEVER embed or hardcode large amounts of textual data directly inside Python or Node.js script strings (this frequently triggers quotes mismatch, escaping errors, and fatal SyntaxError). ALWAYS use a two-step pipeline:',
-  '     - **Step A (Save Data First)**: First save the tabular data cleanly as a UTF-8 encoded `.csv` or `.json` file using standard file-writing tools.',
-  '     - **Step B (Convert to XLSX)**: Write and run a minimal, generic script (using pandas, openpyxl, or exceljs) that merely reads the CSV/JSON file from disk and converts it to `.xlsx`.',
-  '  3. **Script Execution Error & Fallback**: If an Excel conversion script encounters syntax or runtime errors, NEVER repeatedly rewrite hundreds of lines of script code from scratch. Promptly fallback to delivering the generated `.csv` file directly to the user (CSV opens seamlessly in Excel/WPS) to avoid endless retry loops and ensure immediate delivery.',
-  '- **Universal File Delivery & Physical Existence Verification**: Regardless of how a deliverable file is generated (via `write`, `edit`, Python/Node scripts, shell commands, or external tools):',
-  '  1. **Strict Ban on Premature Completion Claims**: You are STRICTLY FORBIDDEN from claiming a file is completed/saved (e.g., saying "完成了，文件已产出" or "文案已保存到 xxx") or outputting clickable file links unless the file is verified to physically exist on disk.',
-  '  2. **Mandatory Post-Creation Verification**: Before announcing completion or outputting deliverable links, ALWAYS run a quick existence check (such as `ls` or inspecting file stat) to ensure the target deliverable actually exists on disk and has a file size > 0. If the file is missing or empty, you MUST diagnose and resolve the write error rather than fabricating completion claims.',
-  '- **Large File Generation (>200 lines)**: Never attempt to output very long files (e.g. comprehensive HTML reports, extensive markdown articles) in a single `write` tool call. Large outputs exceed single-turn token limits and will be truncated.',
-  '- **Truncation Recovery**: If an output file is truncated or incomplete:',
-  '  1. Do NOT repeatedly rewrite the entire file from scratch with `write` (it will fail and truncate again).',
-  '  2. Use `edit` to incrementally append and complete the missing sections.',
-  '  3. Alternatively, write a small local Node.js or Python script that compiles and writes the structured report to disk, then execute it via `exec`.',
+  '- **Modifying Existing Files / Webpages**: NEVER use `write` to overwrite an existing HTML or code file. Overwriting large files easily hits single-turn output token limits and truncates content. ALWAYS use targeted replacement tools (such as `edit`) to modify only the specific section/component being changed, keeping all other existing content intact.',
+  '- **Long-Form Text & Deep Analysis (>3000 chars / Large Reports)**: ALWAYS first use the `write` tool to save the complete deliverable into a workspace markdown/code file. Then, in the chat response, provide a high-level executive summary, key takeaways, and a clear markdown link (e.g. `[完整报告已生成至 report.md](file://...)`) to the generated file.',
+  '- **Spreadsheet & Tabular Data Delivery**:',
+  '  1. **Preferred Default (CSV)**: Unless the user explicitly requests `.xlsx`, ALWAYS default to saving structured data as UTF-8 encoded `.csv` via the `write` tool. CSV files are lightweight, 100% reliable to write directly, and seamlessly open in Excel, WPS, and Apple Numbers.',
+  '  2. **When `.xlsx` Is Explicitly Requested**: NEVER handcraft raw XML or embed large text data directly inside script strings. ALWAYS use a two-step pipeline: (A) Save tabular data cleanly as `.csv` or `.json` first; (B) Write and run a minimal script (using pandas, openpyxl, or exceljs) that merely reads the file from disk and converts it to `.xlsx`.',
+  '  3. **Script Execution Error & Fallback**: If an Excel conversion script encounters syntax or runtime errors, promptly fallback to delivering the generated `.csv` file directly to the user to avoid endless retry loops.',
+  '- **Physical Existence Verification**: NEVER claim a file is completed/saved or output clickable file links unless the target file is verified to physically exist on disk with a file size > 0 (via `ls` or stat check).',
 ].join('\n');
 
 const BUNDLED_BROWSER_PLUGIN_ID = 'browser';
@@ -467,15 +458,10 @@ const MANAGED_BROWSER_POLICY_PROMPT = [
 ].join('\n');
 
 const MANAGED_BINARY_FILE_READ_POLICY_PROMPT = [
-  '## Binary File Reading Policy',
+  '## Binary & Document File Reading Policy',
   '',
-  '- Never attempt to directly read the raw text contents of binary or spreadsheet files (such as `.xlsx`, `.xls`, `.pdf`, `.zip`, `.tar`, `.gz`, `.tgz`, `.rar`, `.7z`, `.png`, `.jpg`, `.jpeg`, `.gif`, `.mp3`, `.mp4` etc.) using tools like `view_file` or `read`.',
-  '- Reading raw bytes of binary files will output corrupt/garbled characters and completely explode the conversation context window, leading to critical service errors.',
-  '- If you need to read or analyze a spreadsheet (e.g. `.xlsx`, `.xls`, `.csv`), write and execute a Python script to parse it (e.g. using `pandas` or `openpyxl`) and print only the structured summary or schema.',
-  '- If you need to read a `.pdf` or extract content from a compressed archive, write and execute a Python script to extract and summarize the text locally.',
-  '- **Audio & Voice Recording Files (`.mp3`, `.m4a`, `.wav`, `.ogg`, `.flac`, `.aac` etc.)**: When the user provides an audio file or requests content extraction, meeting minutes, summary, or copywriting based on a recording, ALWAYS call the `heyclaw_audio_transcribe` tool to transcribe speech into text. NEVER attempt to read binary audio files directly.',
-  '- **Text-to-Speech & Voice Narration (TTS)**: When the user asks to generate voice, voiceover, short video narration, or synthesize text into speech, ALWAYS call the `heyclaw_audio_tts` tool to produce high-fidelity MP3 audio files with word-level timestamps directly.',
-  '- If you violate this rule and attempt to call file-reading tools on binary files directly, the tool execution will be blocked and will return an error.',
+  '- Never attempt to directly read raw text contents of binary, archive, or spreadsheet files (such as `.xlsx`, `.xls`, `.pdf`, `.zip`, `.tar`, `.gz`, `.png`, `.jpg`, `.mp3`, `.mp4` etc.) using tools like `view_file` or `read`. Direct reading of binary bytes outputs corrupted characters.',
+  '- If you need to read or analyze a spreadsheet or document (e.g. `.xlsx`, `.pdf`), write and execute a Python script (e.g. using `pandas`, `openpyxl`, or `pypdf`) to parse and extract structured summaries locally.',
 ].join('\n');
 
 const MANAGED_TEMPORARY_FILE_POLICY_PROMPT = [
@@ -707,52 +693,6 @@ const FALLBACK_OPENCLAW_AGENTS_TEMPLATE = [
   '- Prefer cron/scheduled tasks for anything with an exact time or schedule.',
   '- Remove each item as soon as it is done or cancelled. With no items, keep the file empty or comments-only so heartbeats skip without model calls.',
 ].join('\n');
-
-const stripTemplateFrontMatter = (content: string): string => {
-  if (!content.startsWith('---')) {
-    return content.trim();
-  }
-
-  const endIndex = content.indexOf('\n---', 3);
-  if (endIndex < 0) {
-    return content.trim();
-  }
-
-  return content.slice(endIndex + 4).trim();
-};
-
-const resolveBundledOpenClawAgentsTemplatePaths = (): string[] => {
-  const runtimeRoots =
-    app.isPackaged === true
-      ? [path.join(process.resourcesPath, 'cfmind')]
-      : [
-          path.join(app.getAppPath(), 'vendor', 'openclaw-runtime', 'current'),
-          path.join(process.cwd(), 'vendor', 'openclaw-runtime', 'current'),
-        ];
-
-  return runtimeRoots.map(runtimeRoot =>
-    path.join(runtimeRoot, 'docs', 'reference', 'templates', 'AGENTS.md'),
-  );
-};
-
-const readBundledOpenClawAgentsTemplate = (): string => {
-  for (const templatePath of resolveBundledOpenClawAgentsTemplatePaths()) {
-    try {
-      const content = fs.readFileSync(templatePath, 'utf8');
-      const trimmed = stripTemplateFrontMatter(content);
-      if (trimmed) {
-        // The bundled template tells the model to invent periodic checks and
-        // write them into HEARTBEAT.md; strip that section so new workspaces
-        // are not seeded with guidance that contradicts the heartbeat policy.
-        return stripProactiveHeartbeatSection(trimmed);
-      }
-    } catch {
-      // Ignore missing/unreadable bundled templates and fall back below.
-    }
-  }
-
-  return FALLBACK_OPENCLAW_AGENTS_TEMPLATE;
-};
 
 const sessionSnapshotContainsDisabledManagedSkill = (entry: Record<string, unknown>): boolean => {
   const skillsSnapshot = entry.skillsSnapshot;
@@ -2820,6 +2760,8 @@ export class OpenClawConfigSync {
             mode: sandboxMode,
           },
           workspace: path.resolve(mainWorkspacePath),
+          bootstrapMaxChars: 60_000,
+          bootstrapTotalMaxChars: 120_000,
           mediaMaxMb: 30,
           compaction: {
             maxActiveTranscriptBytes: OpenClawTranscriptSafetyLimit.SoftConfigValue,
@@ -4275,33 +4217,38 @@ export class OpenClawConfigSync {
       // Build the managed section
       const sections: string[] = [];
 
-      // Add system prompt if configured — strip MARKER to prevent content corruption
+      // 1. 核心业务交付红线与 SOP 阶段性收敛（最高优先级置顶）
+      sections.push(MANAGED_INCREMENTAL_DELIVERY_POLICY_PROMPT);
+      sections.push(MANAGED_SKILL_EXECUTION_POLICY_PROMPT);
+
+      // 2. 命令执行与交互安全策略
+      sections.push(MANAGED_EXEC_SAFETY_PROMPT);
+
+      // 3. 用户/预设系统提示词
       const systemPrompt = (coworkConfig.systemPrompt || '').trim().replaceAll(MARKER, '');
       if (systemPrompt) {
         sections.push(`## System Prompt\n\n${systemPrompt}`);
       }
 
-      // Skills are now loaded by OpenClaw natively via skills.load.extraDirs
-      // in openclaw.json, so we no longer embed the skills routing prompt here.
+      // 4. 工作区与文件安全策略
+      sections.push(MANAGED_TEMPORARY_FILE_POLICY_PROMPT);
+      sections.push(MANAGED_LARGE_FILE_CREATION_POLICY_PROMPT);
+      sections.push(MANAGED_DELIVERABLE_LINKS_PROMPT);
+      sections.push(MANAGED_BINARY_FILE_READ_POLICY_PROMPT);
 
-      sections.push(MANAGED_SKILL_EXECUTION_POLICY_PROMPT);
+      // 5. 网络检索与浏览器策略
       sections.push(MANAGED_WEB_SEARCH_POLICY_PROMPT);
       sections.push(MANAGED_BROWSER_POLICY_PROMPT);
-      sections.push(MANAGED_LARGE_FILE_CREATION_POLICY_PROMPT);
-      sections.push(MANAGED_BINARY_FILE_READ_POLICY_PROMPT);
-      sections.push(MANAGED_TEMPORARY_FILE_POLICY_PROMPT);
-      sections.push(MANAGED_EXEC_SAFETY_PROMPT);
-      sections.push(MANAGED_INCREMENTAL_DELIVERY_POLICY_PROMPT);
-      sections.push(MANAGED_DELIVERABLE_LINKS_PROMPT);
-      // Office rules and verbose TeX format sections are stripped from global AGENTS.md
-      // to reduce base context token overhead by ~3,000 tokens per turn.
+
+      // 6. 记忆与心跳策略
       sections.push(MANAGED_MEMORY_POLICY_PROMPT);
       sections.push(MANAGED_HEARTBEAT_POLICY_PROMPT);
+
+      // 7. 子任务与技能创建
       sections.push(buildManagedSubagentPolicyPrompt(agentContext?.currentAgent, agentContext?.allAgents));
       sections.push(buildManagedSkillCreationPrompt(resolveSkillCreationPath()));
 
-      // Keep scheduled-task policy after skills so native channel sessions
-      // treat it as the final app-managed override for reminder handling.
+      // 8. 定时任务策略
       const scheduledTaskPrompt = buildScheduledTaskEnginePrompt().replaceAll(MARKER, '');
       if (scheduledTaskPrompt) {
         sections.push(scheduledTaskPrompt);
@@ -4322,7 +4269,7 @@ export class OpenClawConfigSync {
       }
       const userContent =
         markerIdx >= 0 ? existingContent.slice(0, markerIdx).trimEnd() : existingContent.trimEnd();
-      const preservedUserContent = userContent || readBundledOpenClawAgentsTemplate();
+      const preservedUserContent = userContent || FALLBACK_OPENCLAW_AGENTS_TEMPLATE;
 
       if (sections.length === 0) {
         // No managed content — remove the managed section if present,
