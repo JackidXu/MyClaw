@@ -503,10 +503,17 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
     ? `${selectedModel.providerKey ?? ''}:${selectedModel.id}`
     : '';
   const selectedModelUnavailableFallbackLogKeyRef = React.useRef('');
+  const isSelectedModelDeprecated = Boolean(selectedModel?.isDeprecated);
   const triggerMaxWidthClass = triggerMaxWidthClassName
     ?? (compact
-      ? (showCustomProviderName ? 'max-w-[320px]' : isCustomModelSelected ? 'max-w-[260px]' : 'max-w-[220px]')
-      : (showCustomProviderName ? 'max-w-[340px]' : 'max-w-[280px]'));
+      ? (showCustomProviderName
+          ? (isSelectedModelDeprecated ? 'max-w-[380px]' : 'max-w-[320px]')
+          : isCustomModelSelected
+            ? (isSelectedModelDeprecated ? 'max-w-[320px]' : 'max-w-[260px]')
+            : (isSelectedModelDeprecated ? 'max-w-[280px]' : 'max-w-[220px]'))
+      : (showCustomProviderName
+          ? (isSelectedModelDeprecated ? 'max-w-[400px]' : 'max-w-[340px]')
+          : (isSelectedModelDeprecated ? 'max-w-[340px]' : 'max-w-[280px]')));
   const triggerClassName = iconOnly
     ? 'relative h-8 w-8 shrink-0 justify-center rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30'
     : compact
@@ -515,6 +522,9 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
   const triggerLabel = selectedModel?.presetId
     ? modelPresetName(selectedModel.presetId)
     : selectedModel?.name ?? defaultLabel ?? i18nService.t('selectModel');
+  const triggerTooltipContent = isSelectedModelDeprecated
+    ? `${triggerLabel} (${i18nService.t('modelDeprecatedHint')})`
+    : triggerLabel;
   const triggerTextClassName = compact
     ? 'font-normal text-[13px] leading-5'
     : 'font-medium text-sm';
@@ -1484,14 +1494,24 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
 
   return (
     <div ref={containerRef} className={`relative ${disabled ? 'cursor-wait' : 'cursor-pointer'}`}>
-      <Tooltip content={triggerLabel} position={TooltipPosition.Top} delay={300} multiline disabled={!iconOnly || isOpen || Boolean(restrictedPrompt)}>
+      <Tooltip
+        content={triggerTooltipContent}
+        position={TooltipPosition.Top}
+        delay={300}
+        multiline
+        disabled={(iconOnly ? false : !isSelectedModelDeprecated) || isOpen || Boolean(restrictedPrompt)}
+      >
         <button
           type="button"
           disabled={disabled}
           onClick={toggleOpen}
           aria-label={iconOnly ? `${i18nService.t('model')}: ${triggerLabel}` : undefined}
           aria-expanded={isOpen}
-          className={`flex min-w-0 items-center overflow-hidden hover:bg-surface-raised text-foreground transition-colors disabled:opacity-70 disabled:cursor-wait ${triggerClassName} ${selectedModel?.busy ? 'text-secondary opacity-60 grayscale' : ''} ${isOpen ? 'bg-surface-raised' : ''}`}
+          className={`flex min-w-0 items-center overflow-hidden transition-colors disabled:opacity-70 disabled:cursor-wait ${triggerClassName} ${
+            isSelectedModelDeprecated
+              ? 'border border-rose-500/30 bg-rose-500/[0.04] hover:bg-rose-500/[0.08]'
+              : 'hover:bg-surface-raised'
+          } ${selectedModel?.busy ? 'text-secondary opacity-60 grayscale' : ''} ${isOpen ? 'bg-surface-raised' : ''}`}
         >
           {(iconOnly || selectedModel?.isServerModel) && (
             <span className="flex h-[18px] w-[18px] shrink-0 items-center justify-center text-secondary">
@@ -1518,6 +1538,11 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
             </span>
           )}
           <span className={iconOnly ? 'sr-only' : `${triggerTextClassName} min-w-0 truncate`}>{selectedModel?.name ?? defaultLabel ?? ''}</span>
+          {!iconOnly && isSelectedModelDeprecated && (
+            <span className="shrink-0 rounded-md bg-rose-500/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-rose-600 dark:text-rose-400">
+              {i18nService.t('modelDeprecatedBadge')}
+            </span>
+          )}
           {isModelAgenticBlocked(selectedModel) && (
             <ClockIcon
               className={`${iconOnly ? 'absolute right-0 top-0 h-2.5 w-2.5 rounded-full bg-surface' : 'h-3.5 w-3.5 shrink-0'} text-amber-600 dark:text-amber-300`}
