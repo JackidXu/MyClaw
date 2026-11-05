@@ -34,7 +34,6 @@ SKILLs/**/.connection
 SKILLs/**/.server.log
 SKILLs/**/.server.pid
 SKILLs/**/.venv/
-SKILLs/**/package-lock.json
 
 # SKILLs large binaries & models
 SKILLs/whisper-tool/assets/models/ggml-base.bin
