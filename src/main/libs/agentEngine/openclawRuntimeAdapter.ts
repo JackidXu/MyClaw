@@ -4198,7 +4198,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
 
   /** A turn never starts on a model that can no longer run; it falls back to the agent model. */
   private async resolveTurnModelOverride(session: CoworkSession, sessionKey: string): Promise<string> {
-    if (!session.modelOverride || session.modelPresetId) return session.modelOverride;
+    if (!session.modelOverride || session.modelPresetId || isAutoModelRef(session.modelOverride)) return session.modelOverride;
     const modelRef = this.normalizeModelRef(session.modelOverride);
     const availability = this.staleModelOverrides.findStaleReason(modelRef);
     if (!availability) return session.modelOverride;

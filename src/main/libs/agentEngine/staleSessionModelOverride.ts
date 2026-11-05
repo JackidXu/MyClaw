@@ -1,4 +1,5 @@
 import { OpenClawProviderId } from '../../../shared/providers/constants';
+import { isAutoModelRef } from '../modelResolver';
 import { parsePrimaryModelRef, type ProviderModelCatalog } from '../openclawAgentModels';
 
 /**
@@ -25,6 +26,9 @@ export function resolveSessionModelOverrideAvailability(
   modelRef: string,
   catalog: ProviderModelCatalog,
 ): SessionModelOverrideAvailability {
+  if (isAutoModelRef(modelRef)) {
+    return SessionModelOverrideAvailability.Available;
+  }
   const target = parsePrimaryModelRef(modelRef);
   // Plan models come from the signed-in account's catalog, which is empty until
   // it loads; the server model run gate owns that case.
