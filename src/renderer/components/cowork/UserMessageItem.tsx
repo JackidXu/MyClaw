@@ -1,6 +1,7 @@
 import { PhotoIcon } from '@heroicons/react/24/outline';
 import type { CoworkBrowserAnnotationMessageBatch } from '@shared/cowork/browserAnnotations';
 import React, { useCallback, useMemo, useState } from 'react';
+import { useSelector } from 'react-redux';
 
 import { hasGoalSettingMessageMetadata } from '../../../common/goalCommandDisplay';
 import {
@@ -15,6 +16,7 @@ import { i18nService } from '../../services/i18n';
 import { useImageEditSnapshots } from '../../services/imageEditSnapshots';
 import { buildKitReferences } from '../../services/kitCapability';
 import { resolveLocalizedText, skillService } from '../../services/skill';
+import { RootState } from '../../store';
 import type { CoworkImageAttachment, CoworkMessage, CoworkMessageMetadata } from '../../types/cowork';
 import type { MarketplaceKit } from '../../types/kit';
 import type { Skill } from '../../types/skill';
@@ -32,6 +34,12 @@ import BrowserAnnotationAttachmentBadge from './BrowserAnnotationAttachmentBadge
 import BrowserAnnotationMessageAttachments, {
   type BrowserAnnotationAttachmentOpenPayload,
 } from './BrowserAnnotationMessageAttachments';
+import {
+  CONTEXT_CHIP_CLASS,
+  CONTEXT_CHIP_ICON_CLASS,
+  CONTEXT_CHIP_TONE_CLASS,
+  ContextChipTone,
+} from './ContextChip';
 import {
   type ContextChipDetail,
   ContextChipDetailKind,
@@ -197,22 +205,72 @@ const buildKitDetail = (
 
 // Same chips, order and inline placement as the composer, so a sent message
 // reads the way it was typed; clicking one shows what the skill or kit does.
-const renderCapabilityChips = (
-  skills: Skill[],
-  kitReferences: KitReference[],
-  kitSources: KitDetailSources,
-  onOpenKit: (kitId: string) => void,
-): React.ReactNode[] => [
-  ...skills.map(skill => (
-    <ContextChipWithDetails
-      key={`skill:${skill.id}`}
-      icon={SkillIcon}
-      label={skill.name}
-      detail={buildSkillDetail(skill)}
-      className="mr-1.5 align-top"
-    />
-  )),
-  ...kitReferences.map(kitReference => {
+const renderCapabilityChips = ({
+  skills,
+  kitReferences,
+  kitSources,
+  onOpenKit,
+  shouldCollapseSkills,
+  isSkillsExpanded,
+  onToggleSkillsExpanded,
+}: {
+  skills: Skill[];
+  kitReferences: KitReference[];
+  kitSources: KitDetailSources;
+  onOpenKit: (kitId: string) => void;
+  shouldCollapseSkills?: boolean;
+  isSkillsExpanded?: boolean;
+  onToggleSkillsExpanded?: () => void;
+}): React.ReactNode[] => {
+  const skillChips: React.ReactNode[] = [];
+  if (shouldCollapseSkills && !isSkillsExpanded) {
+    skillChips.push(
+      <button
+        type="button"
+        key="skill:collapsed-summary"
+        onClick={onToggleSkillsExpanded}
+        className={`${CONTEXT_CHIP_CLASS} ${CONTEXT_CHIP_TONE_CLASS[ContextChipTone.Reference]} mr-1.5 align-top cursor-pointer transition-colors hover:bg-surface-raised focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30`}
+        title={i18nService.getLanguage() === 'zh' ? '点击展开专家能力' : 'Click to expand capabilities'}
+      >
+        <SkillIcon className={`${CONTEXT_CHIP_ICON_CLASS} text-primary`} />
+        <span className="min-w-0 truncate">
+          {i18nService.getLanguage() === 'zh'
+            ? `${skills.length}个专家能力`
+            : `${skills.length} Expert Capabilities`}
+        </span>
+      </button>
+    );
+  } else {
+    if (shouldCollapseSkills && isSkillsExpanded) {
+      skillChips.push(
+        <button
+          type="button"
+          key="skill:collapse-toggle"
+          onClick={onToggleSkillsExpanded}
+          className={`${CONTEXT_CHIP_CLASS} ${CONTEXT_CHIP_TONE_CLASS[ContextChipTone.Reference]} mr-1.5 align-top cursor-pointer transition-colors hover:bg-surface-raised focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 opacity-80 hover:opacity-100`}
+          title={i18nService.getLanguage() === 'zh' ? '收起专家能力' : 'Collapse capabilities'}
+        >
+          <SkillIcon className={`${CONTEXT_CHIP_ICON_CLASS} text-primary`} />
+          <span className="min-w-0 truncate text-secondary">
+            {i18nService.getLanguage() === 'zh' ? '收起专家能力' : 'Collapse'}
+          </span>
+        </button>
+      );
+    }
+    skills.forEach(skill => {
+      skillChips.push(
+        <ContextChipWithDetails
+          key={`skill:${skill.id}`}
+          icon={SkillIcon}
+          label={skill.name}
+          detail={buildSkillDetail(skill)}
+          className="mr-1.5 align-top"
+        />
+      );
+    });
+  }
+
+  const kitChips = kitReferences.map(kitReference => {
     const label = kitReference.name?.trim() || `@${kitReference.id}`;
     return (
       <ContextChipWithDetails
@@ -224,8 +282,10 @@ const renderCapabilityChips = (
         className="mr-1.5 align-top"
       />
     );
-  }),
-];
+  });
+
+  return [...skillChips, ...kitChips];
+};
 
 // ── MessageImageThumbnail (local) ───────────────────────────────────────────
 
@@ -284,6 +344,9 @@ const UserMessageItem: React.FC<{
 }> = React.memo(({ message, skills, marketplaceKits = [], sessionId, onReEdit, onLocateSelectedText, onOpenAnnotation }) => {
   const [isHovered, setIsHovered] = useState(false);
   const [expandedImage, setExpandedImage] = useState<ImagePreviewSource | null>(null);
+  const [isSkillsExpanded, setIsSkillsExpanded] = useState(false);
+  const currentAgentId = useSelector((state: RootState) => state.agent.currentAgentId);
+  const sessionAgentId = useSelector((state: RootState) => state.cowork.currentSession?.agentId);
   const handleBlur = useCallback((event: React.FocusEvent<HTMLDivElement>) => {
     const nextTarget = event.relatedTarget;
     if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) return;
@@ -345,15 +408,24 @@ const UserMessageItem: React.FC<{
     && !imageEdits.some(snapshot => snapshot.source.filePath === image.localPath)
   );
   const hasCapabilityBadges = messageKitReferences.length > 0 || messageSkills.length > 0;
+  const shouldCollapseSkills = (sessionAgentId || currentAgentId) !== 'main' && messageSkills.length > 0;
   const capabilityChips = hasCapabilityBadges
-    ? renderCapabilityChips(messageSkills, messageKitReferences, {
-      marketplaceKits,
-      installedKits,
-      messageKitSkillIds: messageKitReferences.length === 1
-        ? metadata?.resolvedKitCapabilities?.skillIds ?? []
-        : [],
-      loading: kitCatalogLoading,
-    }, ensureKitLoaded)
+    ? renderCapabilityChips({
+      skills: messageSkills,
+      kitReferences: messageKitReferences,
+      kitSources: {
+        marketplaceKits,
+        installedKits,
+        messageKitSkillIds: messageKitReferences.length === 1
+          ? metadata?.resolvedKitCapabilities?.skillIds ?? []
+          : [],
+        loading: kitCatalogLoading,
+      },
+      onOpenKit: ensureKitLoaded,
+      shouldCollapseSkills,
+      isSkillsExpanded,
+      onToggleSkillsExpanded: () => setIsSkillsExpanded(prev => !prev),
+    })
     : null;
   const hasDisplayText = Boolean(displayContent?.trim());
   const hasPastedTexts = pastedTexts.length > 0;

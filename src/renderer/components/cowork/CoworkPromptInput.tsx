@@ -620,6 +620,18 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     const [showVoiceQuotaPrompt, setShowVoiceQuotaPrompt] = useState(false);
     const [isLargeToolbarCompact, setIsLargeToolbarCompact] = useState(false);
     const [isTemplateHeightLocked, setIsTemplateHeightLocked] = useState(false);
+    const [isSkillsExpanded, setIsSkillsExpanded] = useState(false);
+    const prevDraftKeyRef = useRef(draftKey);
+    const prevAgentIdRef = useRef(currentAgentId);
+
+    useEffect(() => {
+      if (prevDraftKeyRef.current !== draftKey || prevAgentIdRef.current !== currentAgentId) {
+        prevDraftKeyRef.current = draftKey;
+        prevAgentIdRef.current = currentAgentId;
+        setIsSkillsExpanded(false);
+      }
+    }, [draftKey, currentAgentId]);
+
     const [hasSecondBrainPermission, setHasSecondBrainPermission] = useState<boolean>(() => vipService.hasSecondBrainPermission());
 
     useEffect(() => {
@@ -3981,18 +3993,47 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
       onRemove: () => handleDisablePlanMode(),
     });
   }
-  activeSkillIds.forEach((skillId) => {
-    const skill = skills.find(item => item.id === skillId);
-    if (!skill) return;
+  const activeSkills = activeSkillIds
+    .map(id => skills.find(s => s.id === id))
+    .filter((s): s is NonNullable<typeof s> => Boolean(s));
+
+  const shouldCollapseSkills = currentAgentId !== 'main' && activeSkills.length > 0;
+
+  if (shouldCollapseSkills && !isSkillsExpanded) {
     inlineContextChipItems.push({
-      id: `skill:${skill.id}`,
-      label: skill.name,
+      id: 'skill:collapsed-summary',
+      label: i18nService.getLanguage() === 'zh'
+        ? `${activeSkills.length}个专家能力`
+        : `${activeSkills.length} Expert Capabilities`,
       icon: SkillIcon,
-      removeLabel: i18nService.t('clearSkill'),
+      removeLabel: i18nService.getLanguage() === 'zh' ? '点击展开专家能力' : 'Click to expand capabilities',
       tone: ContextChipTone.Reference,
-      onRemove: () => dispatch(toggleActiveSkill(skill.id)),
+      isToggle: true,
+      onRemove: () => setIsSkillsExpanded(true),
     });
-  });
+  } else {
+    if (shouldCollapseSkills && isSkillsExpanded) {
+      inlineContextChipItems.push({
+        id: 'skill:collapse-toggle',
+        label: i18nService.getLanguage() === 'zh' ? '收起专家能力' : 'Collapse',
+        icon: SkillIcon,
+        removeLabel: i18nService.getLanguage() === 'zh' ? '收起专家能力' : 'Collapse capabilities',
+        tone: ContextChipTone.Reference,
+        isToggle: true,
+        onRemove: () => setIsSkillsExpanded(false),
+      });
+    }
+    activeSkills.forEach((skill) => {
+      inlineContextChipItems.push({
+        id: `skill:${skill.id}`,
+        label: skill.name,
+        icon: SkillIcon,
+        removeLabel: i18nService.t('clearSkill'),
+        tone: ContextChipTone.Reference,
+        onRemove: () => dispatch(toggleActiveSkill(skill.id)),
+      });
+    });
+  }
   activeKitIds.forEach((kitId) => {
     const kit = marketplaceKits.find(item => item.id === kitId);
     if (!kit) return;

@@ -24,6 +24,8 @@ export interface InlineContextChipItem {
   removeLabel: string;
   tone: ContextChipTone;
   onRemove: () => void;
+  /** When true, this chip acts as a toggle button (e.g. expand/collapse) rather than a removable item. */
+  isToggle?: boolean;
 }
 
 interface InlineContextChipFrame {
@@ -184,6 +186,9 @@ export function useInlineContextChips({
     }
     event.preventDefault();
     const lastItem = items[items.length - 1];
+    if (lastItem.isToggle) {
+      return false;
+    }
     if (armedChipId === lastItem.id) {
       setArmedId(null);
       lastItem.onRemove();
@@ -228,6 +233,26 @@ const InlineContextChip: React.FC<{
   armed: boolean;
 }> = ({ item, armed }) => {
   const Icon = item.icon;
+  if (item.isToggle) {
+    return (
+      <button
+        type="button"
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={(event) => {
+          event.stopPropagation();
+          item.onRemove();
+        }}
+        className={`${REMOVABLE_CHIP_CLASS} ${REMOVABLE_CHIP_TONE_CLASS[item.tone]}`}
+        title={item.removeLabel}
+        aria-label={item.label}
+      >
+        <span className="relative flex h-[1em] w-[1em] shrink-0 items-center justify-center">
+          <Icon className={`h-[1em] w-[1em] ${CONTEXT_CHIP_ICON_TONE_CLASS[item.tone]}`} />
+        </span>
+        <span className="min-w-0 truncate">{item.label}</span>
+      </button>
+    );
+  }
   return (
     <button
       type="button"
