@@ -1,7 +1,7 @@
 import { parseAgentAvatarImageUrl } from '../shared/agent/avatar';
 import { AgentSource } from '../shared/agent/constants';
 import { usesManagedPresetAvatar } from '../shared/agent/presetAvatar';
-import type { ExpertCatalog, PresetAgent as SharedPresetAgent } from '../shared/agent/presets';
+import type { ExpertCatalog } from '../shared/agent/presets';
 import type { Agent, CoworkStore, CreateAgentRequest, UpdateAgentRequest } from './coworkStore';
 import { getLanguage } from './i18n';
 import { getExpertTeams, getPaidExperts, getPresetExperts } from './libs/expertStore';
@@ -103,6 +103,14 @@ export class AgentManager {
       const deptChanged = preset.department !== undefined && targetDept !== (agent.department || '');
       const levelChanged = preset.level !== undefined && targetLevel !== (agent.level || '');
 
+      // 若当前为专家团，自动补齐缺失的协同子专家
+      if (targetSubagents.length > 0) {
+        const subInstalled = this.ensureSubagentsInstalled(targetSubagents, undefined, expertMap);
+        if (subInstalled > 0) {
+          updatedCount += subInstalled;
+        }
+      }
+
       if (
         nameChanged ||
         descChanged ||
@@ -194,6 +202,58 @@ export class AgentManager {
     return getPresetExperts();
   }
 
+  /**
+   * 确保专家团关联的协同子专家均已入库
+   * 如果子专家尚未入库，则从云端预设字典中读取并创建入库
+   */
+  private ensureSubagentsInstalled(
+    subagentIds: string[],
+    defaultModel?: string,
+    expertMap?: Map<string, any>,
+    visited = new Set<string>(),
+  ): number {
+    if (!subagentIds || subagentIds.length === 0) return 0;
+
+    let installedCount = 0;
+    let map = expertMap;
+    if (!map) {
+      const allExperts: any[] = [...getPresetExperts(), ...getPaidExperts(), ...getExpertTeams()];
+      map = new Map<string, any>(allExperts.filter(e => e && e.id).map(e => [e.id, e]));
+    }
+
+    for (const subId of subagentIds) {
+      const trimmedId = typeof subId === 'string' ? subId.trim() : '';
+      if (!trimmedId || visited.has(trimmedId)) continue;
+      visited.add(trimmedId);
+
+      const existing = this.store.getAgent(trimmedId);
+      if (!existing) {
+        const subPreset = map.get(trimmedId);
+        if (subPreset) {
+          const subCreateReq = presetToCreateRequest(subPreset);
+          const subFinalModel = subCreateReq.model?.trim() || defaultModel?.trim() || '';
+          this.store.createAgent({
+            ...subCreateReq,
+            model: subFinalModel,
+            workingDirectory: '',
+          });
+          installedCount++;
+
+          if (Array.isArray(subPreset.subagentAllowAgentIds) && subPreset.subagentAllowAgentIds.length > 0) {
+            installedCount += this.ensureSubagentsInstalled(
+              subPreset.subagentAllowAgentIds,
+              defaultModel,
+              map,
+              visited,
+            );
+          }
+        }
+      }
+    }
+
+    return installedCount;
+  }
+
   async addPresetAgent(presetId: string, defaultModel?: string): Promise<Agent | null> {
     const allExperts: any[] = [...getPresetExperts(), ...getPaidExperts(), ...getExpertTeams()];
     const preset = allExperts.find(p => p.id === presetId);
@@ -203,16 +263,21 @@ export class AgentManager {
     const existing = this.store.getAgent(preset.id);
     if (existing) {
       this.syncPresetAgentsFromCloud();
+      this.ensureSubagentsInstalled(preset.subagentAllowAgentIds || [], defaultModel);
       return this.getAgent(preset.id) || existing;
     }
 
     const createReq = presetToCreateRequest(preset);
     const finalModel = createReq.model?.trim() || defaultModel?.trim() || '';
 
-    return this.store.createAgent({
+    const agent = this.store.createAgent({
       ...createReq,
       model: finalModel,
       workingDirectory: '',
     });
+
+    this.ensureSubagentsInstalled(preset.subagentAllowAgentIds || [], defaultModel);
+
+    return agent;
   }
 }
