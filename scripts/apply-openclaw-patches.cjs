@@ -795,6 +795,15 @@ const v20260801StrongPatchValidators = {
       snippets: ['adds Anthropic cache-control markers for opted-in compatible providers'],
     },
   ],
+    'openclaw-openai-completions-token-cap-auto-retry.patch': [
+    {
+      file: 'packages/ai/src/transports/openai-completions-transport.ts',
+      snippets: [
+        'extractAllowedTokenCapFromError',
+        'remediation.limit',
+      ],
+    },
+  ],
   'openclaw-openai-completions-output-budget.patch': [
     {
       file: 'packages/ai/src/transports/openai-completions-params.ts',

@@ -1,0 +1,166 @@
+diff --git a/packages/ai/src/transports/openai-completions-transport.test.ts b/packages/ai/src/transports/openai-completions-transport.test.ts
+index bc39569acad..d4300a9391c 100644
+--- a/packages/ai/src/transports/openai-completions-transport.test.ts
++++ b/packages/ai/src/transports/openai-completions-transport.test.ts
+@@ -364,4 +364,78 @@ describe("openai completions transport", () => {
+     expect(request.headers.get("api-version")).toBe("proxy-header");
+     expect(request.headers.get("x-tenant")).toBe("acme");
+   });
++  it("automatically retries with reduced max_completion_tokens when provider returns 400 ceiling error", async () => {
++    let requestCount = 0;
++    const capturedPayloads: any[] = [];
++    const server = createServer((req, res) => {
++      let body = "";
++      req.on("data", (chunk) => { body += chunk; });
++      req.on("end", () => {
++        requestCount += 1;
++        const parsed = JSON.parse(body);
++        capturedPayloads.push(parsed);
++        if (requestCount === 1) {
++          res.writeHead(400, { "content-type": "application/json" });
++          res.end(JSON.stringify({
++            error: {
++              message: "The parameter `max_completion_tokens` specified in the request are not valid: integer above maximum value, expected a value <= 12288, but got 393216 instead. Request id: sha256:8d879a4678ee",
++              type: "invalid_request_error",
++            }
++          }));
++          return;
++        }
++        res.writeHead(200, {
++          "content-type": "text/event-stream",
++          "cache-control": "no-cache",
++          connection: "keep-alive",
++        });
++        res.write(
++          `data: ${JSON.stringify(makeCompletionsChunk({ content: "Recovered successfully" }, "stop"))}\n\n`
++        );
++        res.write("data: [DONE]\n\n");
++        res.end();
++      });
++    });
++
++    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
++    try {
++      const address = server.address();
++      const model = {
++        id: "deepseek-v4.1-flash",
++        name: "DeepSeek Flash",
++        api: "openai-completions",
++        provider: "openai",
++        baseUrl: `http://127.0.0.1:${address.port}/v1`,
++        reasoning: false,
++        input: ["text"],
++        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
++        contextWindow: 1_000_000,
++        maxTokens: 393_216,
++      };
++
++      const stream = createOpenAICompletionsTransportStreamFn()(
++        model as any,
++        {
++          messages: [{ role: "user", content: "hello", timestamp: Date.now() }],
++          tools: [],
++        } as any,
++        { apiKey: "test-key" } as any,
++      );
++
++      let text = "";
++      for await (const event of stream as any) {
++        if (event.type === "text_delta") {
++          text += event.delta ?? "";
++        }
++      }
++
++      expect(requestCount).toBe(2);
++      expect(capturedPayloads[0].max_completion_tokens).toBe(393_216);
++      expect(capturedPayloads[1].max_completion_tokens).toBe(12_288);
++      expect(text).toBe("Recovered successfully");
++    } finally {
++      await new Promise((resolve, reject) => server.close((err) => err ? reject(err) : resolve()));
++    }
++  });
++
+ });
+diff --git a/packages/ai/src/transports/openai-completions-transport.ts b/packages/ai/src/transports/openai-completions-transport.ts
+index 960c3d9fbf4..4f15b99b1f9 100644
+--- a/packages/ai/src/transports/openai-completions-transport.ts
++++ b/packages/ai/src/transports/openai-completions-transport.ts
+@@ -45,6 +45,20 @@ import {
+ 
+ export { buildOpenAICompletionsParams } from "./openai-completions-params.js";
+ 
++
++function extractAllowedTokenCapFromError(error: unknown): { field: "max_completion_tokens" | "max_tokens"; limit: number } | null {
++  const message = error instanceof Error ? error.message : String(error);
++  const match = message.match(/(?:max_completion_tokens|max_tokens)[\s\S]*?expected a value\s*<=\s*(\d+)/i)
++    || message.match(/expected a value\s*<=\s*(\d+)[\s\S]*?(?:max_completion_tokens|max_tokens)/i);
++  if (!match) return null;
++  const limit = parseInt(match[1], 10);
++  if (!Number.isFinite(limit) || limit <= 0) return null;
++  const field = /max_tokens(?![_\w])/i.test(match[0]) && !/max_completion_tokens/i.test(match[0])
++    ? "max_tokens"
++    : "max_completion_tokens";
++  return { field, limit };
++}
++
+ function assertOpenAICompletionsPayloadHasConversationTurn(
+   params: Record<string, unknown>,
+   model: Model,
+@@ -262,16 +276,48 @@ export function createOpenAICompletionsTransportStreamFn(): StreamFn {
+           model as OpenAIModeModel,
+           options as OpenAICompletionsOptions | undefined,
+         );
++        let responseStream: any;
++        let response: any;
+         firstEventAbort = createFirstStreamEventAbortController(options?.signal);
+-        const { data: responseStream, response } = await client.chat.completions
+-          .create(
+-            params as unknown as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming,
+-            buildOpenAISdkRequestOptions(model, firstEventAbort.signal, {
+-              timeoutMs: options?.timeoutMs,
+-              maxRetries: options?.maxRetries,
+-            }),
+-          )
+-          .withResponse();
++        try {
++          const createResult = await client.chat.completions
++            .create(
++              params as unknown as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming,
++              buildOpenAISdkRequestOptions(model, firstEventAbort.signal, {
++                timeoutMs: options?.timeoutMs,
++                maxRetries: options?.maxRetries,
++              }),
++            )
++            .withResponse();
++          responseStream = createResult.data;
++          response = createResult.response;
++        } catch (createError) {
++          const remediation = extractAllowedTokenCapFromError(createError);
++          if (remediation && options?.signal?.aborted !== true) {
++            firstEventAbort?.dispose();
++            firstEventAbort = createFirstStreamEventAbortController(options?.signal);
++            if (remediation.field === "max_tokens") {
++              delete (params as Record<string, unknown>).max_completion_tokens;
++              (params as Record<string, unknown>).max_tokens = remediation.limit;
++            } else {
++              delete (params as Record<string, unknown>).max_tokens;
++              (params as Record<string, unknown>).max_completion_tokens = remediation.limit;
++            }
++            const retryResult = await client.chat.completions
++              .create(
++                params as unknown as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming,
++                buildOpenAISdkRequestOptions(model, firstEventAbort.signal, {
++                  timeoutMs: options?.timeoutMs,
++                  maxRetries: options?.maxRetries,
++                }),
++              )
++              .withResponse();
++            responseStream = retryResult.data;
++            response = retryResult.response;
++          } else {
++            throw createError;
++          }
++        }
+         const hookedResponseStream = withProviderResponseHook({
+           stream: responseStream,
+           signal: firstEventAbort.signal,
