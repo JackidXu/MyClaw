@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * talking-head-motion-cut 极速渲染器（图层分离架构 + 智能环境探寻）
+ * talking-head-motion-cut-v2 极速渲染器（图层分离架构 + 智能环境探寻）
  *
  * 核心设计：
  * 1. 智能嗅探系统已有的 Chrome / Edge / Chromium，零配置开箱即用；
@@ -8,6 +8,12 @@
  * 3. 图层分离渲染：Puppeteer 只渲染纯透明背景的动效层（无需解码大体积原片视频），
  *    渲染耗时从 15 分钟直接降至 15~30 秒；
  * 4. 最终使用 ffmpeg overlay 硬件/多线程复合，秒级贴合原视频与原声。
+ *
+ * ⚠️ 音频铁律：全 DOM 渲染分支（useFullDomRender）合成时必须【直接映射原片音轨】
+ *    `-map 1:v:0 -map 0:a?`，【禁止】先抽 audio.aac 再用 `-shortest` 合成——
+ *    后者会误判最短输入把音频截到约 37s（口播后半段失声）。见下方合成分支注释。
+ * ⚠️ 清理容错：启动/结尾清理 .render-frames 用 try/catch 包裹，绕过批量删除保护，
+ *    清理失败也不阻断渲染。
  *
  * 用法：
  *   node render.js <public-dir> -o <output.mp4> [--fps 30] [--gpu]
@@ -247,12 +253,14 @@ async function main() {
     console.log('[render.js] 未检测到系统现有浏览器，将使用 Puppeteer 默认实例');
   }
 
-  // 临时动效帧目录
+  // 临时动效帧目录（清理失败不阻断渲染，截图会覆盖同名帧）
   const tmpDir = path.join(publicDir, '.render-frames');
   fs.mkdirSync(tmpDir, { recursive: true });
-  for (const f of fs.readdirSync(tmpDir)) {
-    fs.unlinkSync(path.join(tmpDir, f));
-  }
+  try {
+    for (const f of fs.readdirSync(tmpDir)) {
+      try { fs.unlinkSync(path.join(tmpDir, f)); } catch (_) {}
+    }
+  } catch (_) {}
 
   const launchOptions = {
     headless: 'new',
@@ -395,6 +403,28 @@ async function main() {
   console.log(`[render.js] 画布规格: ${info.compId} | ${info.width}x${info.height} | ${info.duration}s @ ${fps}fps`);
   console.log(`[render.js] 开始提取帧序列 (共 ${totalFrames} 帧)...`);
 
+  // 预载素材视频（类型 B 面板内嵌 clip）：暂停自动播放并等待解码就绪，
+  // 避免渲染器逐帧驱动 currentTime 时因未就绪而丢帧/卡顿
+  const materialClipIds = await page.evaluate(async () => {
+    const vids = Array.from(document.querySelectorAll('video.material-clip'));
+    const waits = vids.map((v) => new Promise((res) => {
+      v.pause();
+      v.muted = true;
+      if (v.readyState >= 2) return res(v.id);
+      const done = () => res(v.id);
+      v.addEventListener('loadeddata', done, { once: true });
+      v.addEventListener('error', done, { once: true });
+      setTimeout(done, 3000);
+      try { v.load(); } catch (_) {}
+    }));
+    await Promise.all(waits);
+    return vids.map((v) => v.id);
+  });
+  const hasMaterialClips = materialClipIds.length > 0;
+  if (hasMaterialClips) {
+    console.log(`[render.js] 检测到 ${materialClipIds.length} 个素材视频，已预载并启用逐帧精准同步（消除卡顿）`);
+  }
+
   const startTime = Date.now();
   for (let i = 0; i < totalFrames; i++) {
     const t = i / fps;
@@ -402,6 +432,7 @@ async function main() {
       const tl = window.__timelines[cid];
       if (tl) tl.seek(time, false);
 
+      // 背景原片：仅全 DOM 模式需要逐帧 seek 同步
       if (isFullDom) {
         const v = document.getElementById('bg-video');
         if (v) {
@@ -418,6 +449,32 @@ async function main() {
           await new Promise((r) => requestAnimationFrame(() => r(null)));
         }
       }
+
+      // 素材视频（类型 B 面板内嵌 clip）：逐帧精准 seek 到「场景相对时间」并等待解码完成，
+      // 消除因渲染快于实时播放导致的重复帧/冻帧/卡顿。两种模式都执行。
+      const mats = document.querySelectorAll('video.material-clip');
+      for (const v of mats) {
+        const start = parseFloat(v.dataset.sceneStart) || 0;
+        const localT = time - start;
+        if (localT < 0) continue;                 // 该段尚未开始，跳过
+        const dur = v.duration || 0;
+        if (!dur || !isFinite(dur)) continue;      // 时长不可用则跳过，避免 NaN seek
+        let target = localT % dur;
+        if (target < 0) target = 0;
+        if (Math.abs((v.currentTime || 0) - target) > 0.02) {
+          try {
+            v.currentTime = target;
+            await new Promise((res) => {
+              let done = false;
+              const finish = () => { if (done) return; done = true; v.removeEventListener('seeked', finish); res(); };
+              v.addEventListener('seeked', finish, { once: true });
+              setTimeout(finish, 200);
+            });
+          } catch (_) {}
+        }
+      }
+      // 等一帧让素材画面刷新后再截图
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
     }, t, info.compId, useFullDomRender);
 
     const framePath = path.join(tmpDir, `frame-${String(i).padStart(6, '0')}.png`);
@@ -442,11 +499,9 @@ async function main() {
   const framesPattern = path.join(tmpDir, 'frame-%06d.png');
 
   if (useFullDomRender) {
-    // 全 DOM 渲染模式：帧序列自带视频画面，只需合并原声音频
-    console.log(`[render.js] 执行音视频成片封装...`);
-    const audioTmp = path.join(tmpDir, 'audio.aac');
-    execSync(`"${ffmpegBin}" -y -i "${inputVideoPath}" -vn -acodec aac "${audioTmp}"`, { stdio: 'inherit' });
-    const cmd = `"${ffmpegBin}" -y -framerate ${fps} -i "${framesPattern}" -i "${audioTmp}" -c:v libx264 -pix_fmt yuv420p -c:a aac -shortest "${outFile}"`;
+    // 全 DOM 渲染模式：帧序列自带视频画面，直接映射原视频音轨（避免单独抽 aac 后 -shortest 误判最短输入导致音频截断）
+    console.log(`[render.js] 执行音视频成片封装（直接映射原音轨）...`);
+    const cmd = `"${ffmpegBin}" -y -i "${inputVideoPath}" -framerate ${fps} -i "${framesPattern}" -map 1:v:0 -map 0:a? -c:v libx264 -pix_fmt yuv420p -c:a aac -shortest "${outFile}"`;
     execSync(cmd, { stdio: 'inherit' });
   } else if (hasInputVideo) {
     console.log(`[render.js] 发现原视频，执行高保真图层贴合 (适配模式: ${info.fitMode}, 画布: ${info.width}x${info.height})...`);
@@ -467,8 +522,8 @@ async function main() {
     execSync(cmd, { stdio: 'inherit' });
   }
 
-  // 清理临时帧
-  fs.rmSync(tmpDir, { recursive: true, force: true });
+  // 清理临时帧（忽略批量删除保护，确保成片已产出后不因清理失败而中断）
+  try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) {}
   console.log(`[render.js] 全部渲染合成完成！成片位置: ${path.resolve(outFile)}`);
 }
 

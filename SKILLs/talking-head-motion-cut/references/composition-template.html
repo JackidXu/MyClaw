@@ -1,130 +1,235 @@
 <!doctype html>
 <html lang="zh-CN">
 <!--
-  ════════════════════════════════════════════════════════════════
-  composition-template.html — 口播动效剪辑 HTML composition 骨架
-  ════════════════════════════════════════════════════════════════
-  这是结构骨架，不是填空模板。照骨架搭 HTML，具体动效形式、
-  配色、字号（除字幕）、文案全部由你按 motion-thinking.md 选型
-  自己设计——不要套固定样式，每条视频按口播内容重新设计。
+  ════════════════════════════════════════════════════════════════════════════
+  composition-template.html — 口播动效剪辑 HTML composition 框架模板（v2 框架）
+  ════════════════════════════════════════════════════════════════════════════
+  本模板是「超会AI 动效剪辑」成片效果的参数化框架。框架结构（不能随意改）与
+  动效质量（对齐成片）已锁定；但具体文案 / 时间码 / 步骤数 / 配色 全部由你按
+  口播内容重新填入，模板里不写死任何业务参数。
 
-  使用方式（4 步）：
-  1. 把本文件复制到工作目录 public/index.html
-  2. 把口播原片放到 public/input-video.mp4
-  3. 照骨架结构填你的内容（标题/字幕组/动效卡/总结卡）
-  4. 渲染：node render.js public -o output.mp4 --fps 30
+  ── 本框架的段落模型（STEP MODEL，核心铁律）──────────────────────────────
+  [ 固定开头 ] → 步骤①动效面板 → 步骤②素材展示面板 → 步骤③动效面板
+               → 步骤④背景留白 → [ 固定结尾 ]
+  • 固定区（绝不能省）：开头标题卡(0–4.5s) + 结尾全屏总结卡，两段都保留。
+  • 动效面板 vs 背景留白：每个步骤二选一。目标：背景留白 ≈ 总时长 20%。
+      背景留白 = 不挂任何面板、背景保持清晰（纯真人 + 字幕），制造呼吸感。
+  • 至少保留 1 个「素材展示面板」（类型 B）：嵌入一段素材视频，作为模板演示区。
+  • 节奏对齐（最重要）：面板 start = 该段口播起点，面板 end = 该段口播终点；
+      面板内部元素逐句跟口播弹出（时间点落在讲到对应信息的时刻）。
+      错把面板提前收掉 = 文案还在讲、画面已空，是头号观感 bug。
+  • 风格配色按文案判断：见 references/design-guide.md「内容类型→风格」表，
+      全片选 1 个风格 + 1 边框，把其 :root 重映射块注入本文件顶部 :root。
 
-  ── 骨架规定的（验证过不出错的前提）──────────────────────
-  - 嵌套结构：#stage > .video-wrapper + .card-host > .card > .root
-  - GSAP timeline 机制（paused，存 window.__timelines[compId]）
-  - clip 可见性托管：用 tl.set(H(id),{visibility:"visible"/"hidden"})
-    在 data-start/data-duration 边界切换；动效进出只 tween opacity
-  - track-index 规则：字幕永远最大（10），保证盖在所有动效卡之上
-  - 三层布局分区：视频满屏 + 动效卡顶部约 25% + 字幕底部
-  - 4 种布局可混用：上下结构（竖屏）/ 左右结构（横屏）/ 画中画 / 信箱居中式（横屏源→竖屏成片）
-  - 信箱居中式：横屏源居中 object-fit:contain，上下黑边分别作动效区/字幕区，视频不裁切
-  - 字幕字号 56px（验证过合适，写死）；其他字号你按画幅自己定
-  - 主题色 CSS 变量层：换主题色只改 :root，全局生效
+  ── 使用方式 ─────────────────────────────────────────────────────────────
+  1. 复制本文件到工作目录 public/index.html
+  2. 原片放 public/input-video.mp4（音频保留；render.js 直接映射原音轨，不截断）
+  3. 顶部 :root 注入所选风格的配色（不选则用默认示例琥珀主题）
+  4. 改 HTML 占位文案 + 把步骤时间码 config 块换成 transcript 真实值
+  5. 渲染：node <技能根目录>/render.js public -o output.mp4 --fps 30
 
-  ── 骨架不规定的（你按 motion-thinking 自己设计）─────────
-  - 动效形式（角色卡/对比卡/累积线/时段轴/气泡/流程图…看内容选）
-  - 具体配色（用 :root 变量，可整套换主题色）
-  - 标题/动效卡内/总结卡的字号、间距、圆角
-  - GSAP 曲线参数、错峰间隔
-  - 具体文案、动效元素数量
-
-  ── track-index 分配规则 ──────────────────────────────────
-  视频=1，标题卡=2，动效卡=3-4，全屏总结卡=4，字幕 rail=10
-  字幕永远最大，全屏卡都不能盖住字幕。
-  ════════════════════════════════════════════════════════════════
+  ── 骨架规定（验证过不出错的前提）────────────────────────────────────────
+  • 嵌套：#stage > .video-wrapper(#bg-video) + .dim-veil + .card-host > .card > .root
+  • 背景虚化托管：blurOn(s)/blurOff(s) 控制 #bg-video 的 blur+brightness 与压暗层
+  • 面板显隐：data-start/data-duration + tl.set(H,visibility)；动效进出只 tween opacity
+  • track-index：字幕=10（最顶），标题=2，动效卡=5，总结卡=4，HUD=9
+  • 素材视频：<video class="material-clip" data-scene-start="段落起点秒">，放 public/vid/
+  • 主题色 CSS 变量层：换配色只改 :root 注入块，全局生效
+  ════════════════════════════════════════════════════════════════════════════
 -->
 <head>
   <meta charset="utf-8" />
   <style>
-    /* ── 主题色变量层：换主题色只改这里，全局生效 ── */
+    /* ── 主题色变量层 ──
+       ★ 视觉身份注入点：从 references/styles/<name>.html 顶部「:root 重映射」块
+       拷到下面 :root 里，覆盖默认示例主题，全片配色即统一（每片只选 1 个风格）。
+       配色按文案调性判断，见 references/design-guide.md「内容类型→风格」表。 */
     :root {
-      --c-primary: #a78bfa;       /* 主色：步骤标签/重点字/CTA/圆点 */
-      --c-primary-soft: #c4b5fd;   /* 主色浅版：字幕关键词、次级高亮 */
-      --c-primary-deep: #7c6bff;   /* 主色深版：渐变末端 */
-      --c-accent: #fbbf24;        /* 强调色：数字、金色高亮 */
-      --c-text: #f5f3ff;          /* 默认浅文字 */
-      --c-text-dim: #e9d5ff;      /* 次级浅文字 */
-      --c-bg-deep: #0e0a24;       /* 深底 */
-      --c-bg-card: rgba(15,20,25,0.9); /* 动效卡底 */
+      --c-primary: #ffd400;        /* 主色：步骤标签/重点字/CTA/印章 */
+      --c-primary-soft: #ffe066;   /* 主色浅版：字幕关键词、次级高亮 */
+      --c-primary-deep: #f5a623;   /* 主色深版：渐变末端 */
+      --c-accent: #ffd400;         /* 强调色：数字、金色高亮 */
+      --c-text: #ffffff;           /* 默认浅文字 */
+      --c-text-dim: #aeb6c2;       /* 次级浅文字 */
+      --c-bg-deep: #05070c;        /* 深底 */
+      --c-bg-card: rgba(10,14,20,0.9);
+      --sans: "PingFang SC","Microsoft YaHei",ui-sans-serif,system-ui,sans-serif;
+      --mono: "SF Mono","JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
     }
-
-    /* ★ 视觉身份注入点：从 references/styles/<name>.html 顶部「:root 重映射」拷到这里，
-       覆盖上面默认主题色，全片配色即统一（每片只选 1 个风格）。详见 references/design-guide.md */
-
-    /* 字体：技能自带（assets/fonts/ → 复制到 public/fonts/ 后这里才能加载） */
-    @font-face { font-family: "LXGW WenKai TC"; src: url("fonts/LXGWWenKaiTC-400-latin.woff2") format("woff2"); font-display: block; }
-    @font-face { font-family: "Caveat";        src: url("fonts/Caveat-700-latin.woff2") format("woff2"); font-display: block; }
-    @font-face { font-family: "Inter";         src: url("fonts/Inter-400-latin.woff2") format("woff2"); font-display: block; }
-    @font-face { font-family: "Virgil";        src: url("fonts/Virgil.woff2") format("woff2"); font-display: block; }
-    /* 别名：动效卡/字幕默认用这两个名字，映射到上面的自带字体 */
-    @font-face { font-family: "BodyFont"; src: url("fonts/LXGWWenKaiTC-400-latin.woff2") format("woff2"); font-display: block; }
-    @font-face { font-family: "MonoFont"; src: url("fonts/Inter-700-latin.woff2") format("woff2"); font-display: block; }
 
     * { box-sizing: border-box; }
     html, body { margin:0; padding:0; width:100%; height:100%; overflow:hidden; background:#000;
-      font-family:"BodyFont",ui-sans-serif,system-ui,sans-serif; }
+      font-family: var(--sans); }
     #stage { position:relative; width:100%; height:100%; overflow:hidden; }
 
-    /* 视频默认满屏——画中画模式时用 GSAP 把它缩成角落小窗（见文末画中画说明） */
+    /* 视频满屏（画中画时由 GSAP 缩成角落小窗） */
     .video-wrapper { position:absolute; left:0; top:0; width:1080px; height:1920px; overflow:hidden; }
     .video-wrapper video { width:100%; height:100%; object-fit:cover; }
-    /* ── 信箱居中式（横屏源→竖屏成片）：视频不再满屏，居中 16:9 + object-fit:contain ──
-       .video-wrapper { position:absolute; left:0; top:656px; width:1080px; height:608px; overflow:hidden; }
-       .video-wrapper video { width:100%; height:100%; object-fit:contain; }
-       上方黑边(0–656)作动效区、下方黑边(1264–1920)作字幕区；详见 layout-zones.md 模式 4 */
-    /* 画中画小窗样式（画中画模式时给 #video-wrap 加 .pip-pill 类） */
     .video-wrapper.pip-pill { border-radius:14px;
       box-shadow:0 24px 60px -20px rgba(0,0,0,.45),0 0 0 4px rgba(255,255,255,.7),0 0 0 5px rgba(0,0,0,.18);
       overflow:hidden; }
 
+    /* 压暗蒙版：动效/素材模式下叠在虚化原片之上，制造压暗感（由 bgState.d 控制） */
+    .dim-veil { position:absolute; left:0; top:0; width:1080px; height:1920px; background:#000; opacity:0; pointer-events:none; z-index:2; }
+
     .card-host { position:absolute; pointer-events:none; overflow:hidden; }
     .card-host .card { position:relative; width:100%; height:100%; overflow:hidden; }
-    /* 修复层级Bug：确保字幕轨（track-index=10）始终具有最高 z-index，防止全屏卡遮挡 */
-    .card-host[data-track-index="10"] { z-index:10; }
+    .card-host[data-track-index="10"] { z-index:10; }   /* 字幕永远最顶，防全屏卡遮挡 */
 
-    /* ── 字幕 rail（字号 56px 写死，其他你按画幅调）── */
-    /* 逐句分组、≤2 行、emphasis inline 标色、150-250ms fade */
-    .rail-root { width:100%; height:100%; display:flex; align-items:center; justify-content:center; padding:0 60px; }
-    .rail-pill { display:inline-block; padding:20px 40px; border-radius:18px;
-      background: rgba(0,0,0,0.62); backdrop-filter: blur(8px);
-      color:#fff; font:500 56px/1.45 "BodyFont",serif; text-align:center; max-width:94%; }
-    .hl-key { color:var(--c-primary-soft); font-weight:600; }   /* 关键词 */
-    .hl-num { color:var(--c-accent); font-weight:600; }         /* 数字 */
+    /* ── 字幕 rail：无底框白字 + 暗描边，关键词主色高亮 ── */
+    .rail-root { width:100%; height:100%; display:flex; align-items:center; justify-content:center; padding:0 70px; }
+    .rail-pill { display:inline-block; padding:0; border-radius:0; background:transparent; backdrop-filter:none;
+      color:#fff; font:700 58px/1.5 var(--sans); text-align:center; max-width:94%;
+      text-shadow:0 3px 14px rgba(0,0,0,0.9), 0 0 3px rgba(0,0,0,0.95); }
+    .hl-key { color:var(--c-primary); font-weight:700; }
+    .hl-num { color:var(--c-primary); font-weight:700; }
+
+    /* ── 标题卡：封面式标题，纯文字 + 顶部渐变遮罩，无卡片容器/无错峰动效 ── */
+    .card[data-card-id="title"] .root { width:100%; height:100%; display:flex; flex-direction:column;
+      align-items:center; justify-content:center; gap:22px;
+      background: linear-gradient(180deg, rgba(5,7,12,0.92) 0%, rgba(5,7,12,0.35) 55%, transparent 100%); }
+    .card[data-card-id="title"] .ttl { font:800 84px/1.2 var(--sans); color:#fff; text-align:center; max-width:900px;
+      text-shadow:0 4px 22px rgba(0,0,0,0.7); }
+    .card[data-card-id="title"] .sub { font:600 32px/1 var(--mono); color:var(--c-primary); letter-spacing:1px; }
+
+    /* ════════ 面板通用：景深4层（底板 + 光晕 + 界面卡 + 前景印章） ════════ */
+    .motion-panel, .mat-panel { z-index:5; }
+    .motion-panel .root, .mat-panel .root {
+      position:relative; z-index:1; width:100%; height:100%;
+      display:flex; flex-direction:column; justify-content:center; gap:18px; padding:46px 48px;
+      border-radius:30px; background:rgba(8,12,18,0.78); border:1px solid rgba(255,255,255,0.15);
+      box-shadow:0 40px 110px -30px rgba(0,0,0,0.9), 0 0 80px rgba(255,212,0,0.16), inset 0 1px 0 rgba(255,255,255,0.06), inset 0 0 0 1px rgba(255,212,0,0.10); }
+    .mp-glow { position:absolute; left:50%; top:46%; width:1120px; height:1120px; transform:translate(-50%,-50%);
+      background:radial-gradient(circle, rgba(255,212,0,0.22) 0%, rgba(255,212,0,0.07) 40%, transparent 68%);
+      pointer-events:none; z-index:0; }
+    .mp-badge { position:absolute; right:28px; top:28px; z-index:3; font:900 24px/1 var(--mono); letter-spacing:2px;
+      color:#0a0d12; background:var(--c-primary); padding:10px 16px; border-radius:12px; transform:rotate(-6deg);
+      box-shadow:0 8px 24px rgba(255,212,0,0.35); }
+    .mp-kick { font:700 23px/1 var(--mono); color:var(--c-primary); letter-spacing:3px; }
+    .mp-title { font:800 50px/1.1 var(--sans); color:#fff; }
+    .mp-uline { height:5px; width:120px; margin-top:6px; border-radius:3px;
+      background:linear-gradient(90deg,var(--c-primary),transparent); transform-origin:left; transform:scaleX(0); }
+    .mp-cap { font:600 21px/1 var(--mono); color:var(--c-text-dim); letter-spacing:1px; }
+
+    /* ── 面板类型 A：具象 UI mockup（建智能体界面 + 进度计数）── */
+    .ui-screen { position:relative; width:100%; border-radius:22px; padding:24px 26px; overflow:hidden;
+      background:linear-gradient(160deg, rgba(22,28,40,0.96), rgba(12,16,24,0.96));
+      border:1px solid rgba(255,255,255,0.12); box-shadow:inset 0 1px 0 rgba(255,255,255,0.06); }
+    .ui-screen::before { content:''; position:absolute; inset:0; opacity:.05;
+      background-image:linear-gradient(rgba(255,255,255,.6) 1px,transparent 1px),
+        linear-gradient(90deg,rgba(255,255,255,.6) 1px,transparent 1px); background-size:28px 28px; }
+    .ui-bar { display:flex; align-items:center; gap:8px; position:relative; z-index:1; }
+    .ui-bar .d { width:11px; height:11px; border-radius:50%; background:rgba(255,255,255,0.25); }
+    .ui-bar .d.g { background:#3ad07a; }
+    .ui-bar .t { margin-left:10px; font:600 22px/1 var(--sans); color:var(--c-text-dim); }
+    .ui-head { display:flex; align-items:center; gap:16px; margin-top:18px; position:relative; z-index:1; }
+    .ui-ava { width:64px; height:64px; border-radius:18px; flex:none; position:relative;
+      background:linear-gradient(135deg,var(--c-primary),var(--c-primary-deep));
+      display:flex; align-items:center; justify-content:center; font:800 30px/1 var(--sans); color:#0a0d12;
+      box-shadow:0 0 18px rgba(255,212,0,.4); }
+    .ui-ava .on { position:absolute; right:-2px; bottom:-2px; width:16px; height:16px; border-radius:50%;
+      background:#3ad07a; border:2px solid #0a0d12; }
+    .ui-name { font:800 34px/1.1 var(--sans); color:#fff; }
+    .ui-sub { font:500 20px/1.2 var(--sans); color:var(--c-text-dim); margin-top:4px; }
+    .ui-roles { display:flex; gap:10px; margin-top:16px; position:relative; z-index:1; }
+    .ui-chip { font:600 22px/1 var(--sans); color:var(--c-text-dim); padding:10px 16px; border-radius:14px;
+      background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); }
+    .ui-chip.on { color:#0a0d12; background:var(--c-primary); border-color:var(--c-primary); box-shadow:0 0 18px rgba(255,212,0,.4); }
+    .ui-list { margin-top:18px; display:flex; flex-direction:column; gap:12px; position:relative; z-index:1; }
+    .ui-item { display:flex; align-items:center; gap:14px; font:600 25px/1.2 var(--sans); color:#e7ecf3; }
+    .ui-check { width:34px; height:34px; border-radius:10px; flex:none; background:var(--c-primary);
+      display:flex; align-items:center; justify-content:center; color:#0a0d12; font:800 22px/1 var(--sans);
+      box-shadow:0 0 14px rgba(255,212,0,.4); }
+    .ui-prog { margin-top:18px; position:relative; z-index:1; }
+    .ui-prog .l { font:600 20px/1 var(--mono); color:var(--c-text-dim); letter-spacing:1px; }
+    .ui-track { margin-top:10px; height:10px; border-radius:6px; background:rgba(255,255,255,0.12); overflow:hidden; }
+    .ui-fill { height:100%; width:100%; transform-origin:left; border-radius:6px;
+      background:linear-gradient(90deg,var(--c-primary),var(--c-primary-deep)); }
+
+    /* ── 面板类型 B：素材展示（嵌入素材视频 + 扫描线 + 角标）── 模板素材区 ── */
+    .mat-panel .root { padding:0; background:#000; border:1px solid rgba(255,255,255,0.18);
+      box-shadow:0 40px 110px -30px rgba(0,0,0,0.9); }
+    .mat-panel video { width:100%; height:100%; object-fit:cover; display:block; }
+    .mat-scan { position:absolute; left:0; top:0; width:100%; height:3px; z-index:4;
+      background:linear-gradient(90deg,transparent,rgba(255,212,0,0.95),transparent);
+      box-shadow:0 0 18px rgba(255,212,0,.7); opacity:0; }
+    .mat-chip { position:absolute; display:flex; align-items:center; gap:8px; padding:8px 14px; border-radius:10px;
+      background:rgba(5,7,12,0.66); color:#fff; font:600 22px/1 var(--mono); letter-spacing:1px;
+      backdrop-filter: blur(4px); z-index:5; }
+    .mat-chip.tl { left:18px; top:18px; color:var(--c-primary); }
+    .mat-chip.tr { right:18px; top:18px; }
+    .mat-chip.bl { left:18px; bottom:18px; }
+    .mat-chip.br { right:18px; bottom:18px; }
+    .mat-rec { width:11px; height:11px; border-radius:50%; background:#ff5b5b; box-shadow:0 0 8px #ff5b5b; }
+
+    /* ── 面板类型 C：聊天气泡 ── */
+    .chat { display:flex; flex-direction:column; gap:18px; width:100%; margin-top:6px; }
+    .bubble { max-width:84%; padding:20px 24px; border-radius:20px; font:600 30px/1.42 var(--sans); position:relative; }
+    .bubble.user { align-self:flex-end; background:var(--c-primary); color:#0a0d12; border-bottom-right-radius:6px; }
+    .bubble.ai { align-self:flex-start; background:rgba(255,255,255,0.1); color:#fff;
+      border:1px solid rgba(255,255,255,0.16); border-bottom-left-radius:6px; }
+    .typed { display:inline-block; }
+
+    /* ── 面板类型 D（可选）：记忆/累积（中枢节点 + 卡片）── 视内容启用 ──
+       若某步内容讲「随时间沉淀/经验累积」，可用此类型替掉某个动效面板。
+       结构参考：.mem > .mem-cards(.mem-card×N) + .mem-brain(.mem-ring×3 + .mem-core)。
+       动画写法同 m1/m3（错峰弹出 + 中枢节点 back.out 汇聚），此处不强制启用。 */
+    .mem { display:flex; flex-direction:column; align-items:center; gap:20px; width:100%; margin-top:6px; }
+    .mem-cards { display:flex; gap:14px; justify-content:center; flex-wrap:wrap; }
+    .mem-card { padding:16px 20px; border-radius:16px; background:rgba(255,255,255,0.06);
+      border:1px solid rgba(255,255,255,0.12); font:700 26px/1.2 var(--sans); color:#fff; }
+    .mem-brain { position:relative; width:160px; height:160px; margin-top:4px; }
+    .mem-ring { position:absolute; inset:0; border-radius:50%; border:2px solid rgba(255,212,0,0.4); }
+    .mem-ring.r2 { inset:20px; border-color:rgba(255,212,0,0.25); }
+    .mem-ring.r3 { inset:40px; border-color:rgba(255,212,0,0.14); }
+    .mem-core { position:absolute; inset:56px; border-radius:50%;
+      background:radial-gradient(circle, #ffe066, #f5a623); box-shadow:0 0 40px rgba(255,212,0,.6); }
+
+    /* ── 全屏总结卡 ── */
+    .card[data-card-id="finale"] .root { width:100%; height:100%; display:flex; flex-direction:column;
+      justify-content:center; align-items:center; gap:42px; padding:0 90px;
+      background:linear-gradient(160deg, var(--c-bg-deep) 0%, #000 100%); color:var(--c-text); }
+    .f-h { font:800 110px/1.15 var(--sans); color:#fff; text-align:center; text-shadow:0 6px 30px rgba(0,0,0,0.6); }
+    .f-cta { font:700 42px/1.35 var(--sans); color:var(--c-primary); text-align:center; letter-spacing:1px;
+      text-shadow:0 4px 20px rgba(0,0,0,0.5); }
+    .f-tag { font:600 26px/1 var(--mono); color:var(--c-text-dim); letter-spacing:2px; }
+
+    /* ── 取景器 HUD（常驻覆盖层）── */
+    .hud { position:absolute; left:0; top:0; width:1080px; height:1920px; pointer-events:none; }
+    .bracket { position:absolute; width:54px; height:54px; border:3px solid rgba(255,255,255,0.7); }
+    .bracket.tl { left:28px; top:28px; border-right:none; border-bottom:none; }
+    .bracket.tr { right:28px; top:28px; border-left:none; border-bottom:none; }
+    .bracket.bl { left:28px; bottom:28px; border-right:none; border-top:none; }
+    .bracket.br { right:28px; bottom:28px; border-left:none; border-top:none; }
+    .hud-tl { position:absolute; left:42px; top:34px; font:600 26px/1.3 var(--sans); color:#fff;
+      letter-spacing:.5px; text-shadow:0 2px 6px rgba(0,0,0,0.85); }
+    .hud-tl b { color:var(--c-primary); font-weight:700; }
+    .hud-tr { position:absolute; right:42px; top:36px; font:600 24px/1 var(--mono); color:#fff;
+      text-shadow:0 2px 6px rgba(0,0,0,0.85); }
+    .hud-bl { position:absolute; left:42px; bottom:38px; font:700 24px/1 var(--sans); color:#fff; letter-spacing:1px;
+      text-shadow:0 2px 6px rgba(0,0,0,0.85); }
+    .hud-br { position:absolute; right:42px; bottom:38px; display:flex; align-items:flex-end; gap:5px; }
+    .hud-br .bar { width:5px; background:var(--c-primary); border-radius:2px; opacity:.85; }
+    .rec { position:absolute; right:42px; top:74px; display:flex; align-items:center; gap:8px;
+      font:600 20px/1 var(--mono); color:#ff5b5b; text-shadow:0 2px 6px rgba(0,0,0,0.85); }
+    .rec .dot { width:12px; height:12px; border-radius:50%; background:#ff5b5b; }
   </style>
 </head>
 <body>
-  <!-- ★ data-duration 换成原片实际时长（秒）；data-width/height 换成画幅 -->
-  <!-- ★ data-fit-mode 视频适配模式："cover"（铺满裁剪，默认，用于9:16竖屏源）或 "contain"（信箱居中黑边，用于16:9横屏源转竖屏） -->
-  <div id="stage" data-composition-id="talking-head-motion-cut" data-start="0" data-duration="46.48" data-fps="30" data-width="1080" data-height="1920" data-fit-mode="cover">
+  <!-- ★ 把 data-duration 换成原片实际时长（秒），data-fit-mode: cover=竖屏源铺满 / contain=横屏源转竖屏信箱 -->
+  <div id="stage" data-composition-id="talking-head-motion-cut-v2" data-start="0" data-duration="46.84" data-fps="30" data-width="1080" data-height="1920" data-fit-mode="cover">
 
     <div class="video-wrapper" id="video-wrap">
-      <video id="bg-video" src="input-video.mp4" playsinline data-has-audio="true" data-start="0" data-duration="46.48" data-track-index="1"></video>
+      <video id="bg-video" src="input-video.mp4" playsinline data-has-audio="true" data-start="0" data-duration="46.84" data-track-index="1"></video>
     </div>
+    <div class="dim-veil" id="dim-veil"></div>
 
-    <!-- ════════ 视频标题卡（开头，track-index=2）═════════ -->
-    <!-- ★ 这是【标题卡】，是视频封面式标题，不是动效卡！ -->
-    <!-- ★ 区别：纯文字 + 顶部渐变遮罩，无圆角卡片容器、无 --c-bg-card 背景色块、无元素错峰动效 -->
-    <!-- ★ 标题文字必须是【单独提炼的短标题】，绝不能放口播第一句 / 钩子原文 -->
-    <!-- ★ 不要给 .ttl/.sub 套动效卡样式或做 scale-pop/逐字出场等动效，干净淡入淡出即可 -->
-    <!-- 字号上限：竖屏 1080 宽单行约 96px，超过裁边；横屏按画宽推算 -->
+    <!-- ════════ 视频标题卡（固定开头 0–4.5s，track-index=2）════════ -->
+    <!-- ★ 封面式标题：纯文字 + 顶部渐变遮罩，无卡片容器/无错峰动效；文字须单独提炼（非口播第一句） -->
     <div class="card-host clip" data-card-id="title" data-start="0.0" data-duration="4.5" data-track-index="2"
       style="left:0;top:50px;width:1080px;height:340px;visibility:hidden;opacity:0;">
       <div class="card" data-card-id="title">
-        <style>
-          /* ↓↓↓ 标题卡样式：封面式标题，刻意区别于动效卡（无圆角/无卡片背景）↓↓↓ */
-          .card[data-card-id="title"] .root { width:100%;height:100%;display:flex;flex-direction:column;
-            align-items:center;justify-content:center;gap:30px;
-            background: linear-gradient(180deg, var(--c-bg-deep) 0%, transparent 100%); }
-          .card[data-card-id="title"] .ttl { font:700 96px/1.15 "BodyFont",serif; color:var(--c-text); }
-          .card[data-card-id="title"] .sub { font:600 36px/1 "MonoFont",monospace; color:var(--c-primary-soft); }
-        </style>
         <div class="root">
-          <!-- ↓↓↓ 换成你单独提炼的短标题（不要放口播第一句 / 钩子原文）↓↓↓ -->
           <div class="ttl" id="t-title">视频标题</div>
           <div class="sub" id="t-sub">副标题</div>
         </div>
@@ -132,127 +237,306 @@
     </div>
 
     <!-- ════════ 字幕 rail（逐句，track-index=10 最顶层）════════ -->
-    <!-- ★ track-index=10 保证字幕永远盖在所有动效卡之上 -->
-    <!-- 每组一句，emphasis 词用 .hl-key/.hl-num inline 标色 -->
-    <!-- data-start/duration 对应 transcript.json 时间码 -->
-    <div class="card-host clip" data-card-id="r1a" data-start="0.0" data-duration="2.5" data-track-index="10"
-      style="left:0;top:1300px;width:1080px;height:200px;visibility:hidden;opacity:0;">
-      <div class="card" data-card-id="r1a"><div class="rail-root"><div class="rail-pill">第一句字幕 <span class="hl-key">关键词</span></div></div></div>
+    <!-- 每组一句，emphasis 词用 .hl-key/.hl-num inline 标色；data-start/duration 对齐 transcript -->
+    <!-- ↓↓↓ 按 transcript 段数继续复制 r1..rN，并在脚本 rails 数组同步添加 [id,start,duration] ↓↓↓ -->
+    <div class="card-host clip" data-card-id="r1" data-start="0.0" data-duration="2.4" data-track-index="10"
+      style="left:0;top:1540px;width:1080px;height:200px;visibility:hidden;opacity:0;">
+      <div class="card" data-card-id="r1"><div class="rail-root"><div class="rail-pill">第一句字幕 <span class="hl-key">关键词</span></div></div></div>
     </div>
-    <!-- ↓↓↓ 按你的段数继续加 r2a/r2b/.../rN，每组一句，时间码对齐 transcript ↓↓↓ -->
+    <div class="card-host clip" data-card-id="r2" data-start="2.4" data-duration="2.3" data-track-index="10"
+      style="left:0;top:1540px;width:1080px;height:200px;visibility:hidden;opacity:0;">
+      <div class="card" data-card-id="r2"><div class="rail-root"><div class="rail-pill">第二句字幕</div></div></div>
+    </div>
+    <div class="card-host clip" data-card-id="r3" data-start="5.0" data-duration="0.5" data-track-index="10"
+      style="left:0;top:1540px;width:1080px;height:200px;visibility:hidden;opacity:0;">
+      <div class="card" data-card-id="r3"><div class="rail-root"><div class="rail-pill">过渡短句</div></div></div>
+    </div>
 
-    <!-- ════════ 动效卡（每段一个，按 motion-thinking 选型自己设计）════════ -->
-    <!-- ★ 卡内 4-8 个元素分层错峰出场（不是一次铺字） -->
-    <!-- ★ 卡内只放提取的重点信息，整句交给字幕 -->
-    <!-- ★ 区域越大内容越多（顶部 25% 约 4-8 元素，全屏更多） -->
-    <!-- ★ 这里只给空 root + 占位元素，具体动效形式你按内容选 -->
-    <div class="card-host clip" data-card-id="m1" data-start="5.4" data-duration="10.6" data-track-index="3"
-      style="left:40px;top:30px;width:1000px;height:460px;visibility:hidden;opacity:0;">
+    <!-- ════════ 步骤①动效面板：类型 A 具象UI（含进度计数）════════ -->
+    <!-- data-start/duration 换成该段口播起止（示例 6.6–16.0）；内部元素逐句跟口播弹出 -->
+    <!-- ★ LOCK 几何：下面 inline style 的 left:90px;top:540px;width:900px;height:740px 是 v4 验证过的锁定值，
+         禁止改成顶部窄条 / 侧边窄条，禁止缩小到 <900×740（否则触发「位置错/变小」bug）。只改 data-start/duration 与文案。 -->
+    <div class="card-host clip motion-panel" data-card-id="m1" data-start="6.6" data-duration="9.4" data-track-index="5"
+      style="left:90px;top:540px;width:900px;height:740px;visibility:hidden;opacity:0;">
       <div class="card" data-card-id="m1">
-        <style>
-          /* ↓↓↓ 按你的动效选型设计样式（配色用 :root 变量）↓↓↓ */
-          .card[data-card-id="m1"] .root { width:100%;height:100%;display:flex;flex-direction:column;
-            justify-content:center;gap:28px;padding:26px 44px;border-radius:22px;background:var(--c-bg-card); }
-        </style>
+        <div class="mp-glow" id="m1-glow"></div>
         <div class="root">
-          <!-- ↓↓↓ 按你的动效选型填元素（角色卡/对比卡/累积线/时段轴/气泡/流程图…）↓↓↓ -->
-          <div id="m1-e1">元素 1</div>
-          <div id="m1-e2">元素 2</div>
-          <!-- ↑↑↑ ↑↑↑ -->
+          <div class="mp-badge" id="m1-badge">STEP 01</div>
+          <div class="mp-kick" id="m1-kick">小标题 · EN</div>
+          <div class="mp-title" id="m1-title">步骤一标题</div>
+          <div class="mp-uline" id="m1-uline"></div>
+          <div class="ui-screen">
+            <div class="ui-bar"><span class="d"></span><span class="d"></span><span class="d g"></span><span class="t">界面名</span></div>
+            <div class="ui-head">
+              <div class="ui-ava">AI<span class="on"></span></div>
+              <div><div class="ui-name">数字员工名</div><div class="ui-sub">状态描述</div></div>
+            </div>
+            <div class="ui-roles"><span class="ui-chip on">角色一</span><span class="ui-chip">角色二</span><span class="ui-chip">角色三</span></div>
+            <div class="ui-list">
+              <div class="ui-item"><span class="ui-check">✓</span><span>重点信息①</span></div>
+              <div class="ui-item"><span class="ui-check">✓</span><span>重点信息②</span></div>
+              <div class="ui-item"><span class="ui-check">✓</span><span>重点信息③</span></div>
+            </div>
+            <div class="ui-prog">
+              <div class="ui-prog"><div class="l" id="m1-plab">创建中 · 0%</div></div>
+              <div class="ui-track"><div class="ui-fill" id="m1-fill"></div></div>
+            </div>
+          </div>
+          <div class="mp-cap" id="m1-cap">一句话说明</div>
         </div>
       </div>
     </div>
-    <!-- ↓↓↓ 按你的段数继续加 m2/m3/.../mN ↓↓↓ -->
 
-    <!-- ════════ 全屏总结卡（结尾，track-index=4 < 字幕 10，不盖字幕）════════ -->
-    <div class="card-host clip" data-card-id="finale" data-start="42.7" data-duration="3.78" data-track-index="4"
+    <!-- ════════ 步骤②动效面板：类型 B 素材展示（模板素材区，必保留）════════ -->
+    <!-- ★ LOCK 几何同 m1：left:90px;top:540px;width:900px;height:740px，禁止改小/改位置 -->
+    <!-- ★ 素材必须替换：src 指向按文案语义从免费平台获取的视频（放 public/vid/，方法见 references/material-fetch.md）；
+         严禁直接沿用 material-DEMO.mp4（那是占位演示片，出片必须替换）。data-scene-start=该段起点秒 保留。 -->
+    <div class="card-host clip mat-panel" data-card-id="m2" data-start="17.0" data-duration="8.75" data-track-index="5"
+      style="left:90px;top:540px;width:900px;height:740px;visibility:hidden;opacity:0;">
+      <div class="card" data-card-id="m2">
+        <div class="mp-glow" id="m2-glow"></div>
+        <div class="root">
+          <video class="material-clip" id="m2-video" data-scene-start="17" src="vid/material-DEMO.mp4" muted loop playsinline preload="auto"></video>
+          <div class="mat-scan" id="m2-scan"></div>
+          <div class="mat-chip tl" id="m2-c1">素材标题</div>
+          <div class="mat-chip tr" id="m2-c2"><span class="mat-rec"></span> REC 00:00:17</div>
+          <div class="mat-chip bl" id="m2-c3">状态</div>
+          <div class="mat-chip br" id="m2-c4">规格</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════════ 步骤③动效面板：类型 C 聊天气泡 ═════════ -->
+    <!-- ★ LOCK 几何同 m1/m2：left:90px;top:540px;width:900px;height:740px，禁止改小/改位置 -->
+    <div class="card-host clip motion-panel" data-card-id="m3" data-start="27.0" data-duration="8.5" data-track-index="5"
+      style="left:90px;top:540px;width:900px;height:740px;visibility:hidden;opacity:0;">
+      <div class="card" data-card-id="m3">
+        <div class="mp-glow" id="m3-glow"></div>
+        <div class="root">
+          <div class="mp-badge" id="m3-badge">STEP 03</div>
+          <div class="mp-kick" id="m3-kick">小标题 · EN</div>
+          <div class="mp-title" id="m3-title">步骤三标题</div>
+          <div class="mp-uline" id="m3-uline"></div>
+          <div class="chat">
+            <div class="bubble user" id="m3-u">用户问</div>
+            <div class="bubble ai" id="m3-a"><span class="typed" id="m3-at">AI 答（打字机揭幕）</span></div>
+          </div>
+          <div class="mp-cap" id="m3-cap">一句话说明</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════════ 步骤④背景留白（不挂面板，纯真人+字幕，制造呼吸感）════════ -->
+    <!-- ★ 此处【不要】写任何 .card-host 面板，也不要调用 blurOn。
+         背景承接步骤③的 blurOff 保持清晰，直到结尾总结卡覆盖。HUD 段标签仍显示「04」。
+         这是达成「背景留白≈20%」的关键一段；若想换别的步做留白，把对应面板删掉即可。 -->
+
+    <!-- ════════ 全屏总结卡（固定结尾，track-index=4 < 字幕10）════════ -->
+    <div class="card-host clip" data-card-id="finale" data-start="42.7" data-duration="4.14" data-track-index="4"
       style="left:0;top:0;width:1080px;height:1920px;visibility:hidden;opacity:0;">
       <div class="card" data-card-id="finale">
-        <style>
-          /* ↓↓↓ 按你的总结卡设计样式（配色用 :root 变量）↓↓↓ */
-          .card[data-card-id="finale"] .root { width:100%;height:100%;display:flex;flex-direction:column;
-            justify-content:center;gap:50px;padding:120px 80px;
-            background: linear-gradient(160deg, var(--c-bg-deep) 0%, #000 100%); color:var(--c-text); }
-        </style>
         <div class="root">
-          <!-- ↓↓↓ 换成你的总结重点 + CTA ↓↓↓ -->
-          <div id="f-h">总结标题</div>
-          <div id="f-cta">CTA</div>
+          <div class="f-h" id="f-h">总结标题</div>
+          <div class="f-cta" id="f-cta">CTA</div>
+          <div class="f-tag" id="f-tag">标签 / 品牌署名</div>
         </div>
       </div>
     </div>
 
-    <!-- ════════ 可选：视频边框 / 装饰元素 ══════════ -->
-    <!-- 边框：默认 clean（无装饰）。要加 hairline/polaroid，见 references/frames/，把 .frame-deco 作为 #video-wrap 的兄弟节点放进来。 -->
-    <!-- 装饰元素（表情/气泡/点赞）：来自所选风格本身（如 xhs 的 ❤️💬 行），或按需内联写进卡片，复用 var(--c-primary)；无独立点缀库。 -->
+    <!-- ════════ 取景器 HUD（常驻，track-index=9）════════ -->
+    <!-- ★ LOCK 常驻装饰：四角 .bracket 属于本 HUD 层，data-start="0" 覆盖全片、全程可见。
+         严禁把括号移进任何动效面板、严禁让括号随面板出现/消失；这是 v4 成片「四角固定装饰」的来源。 -->
+    <div class="card-host" data-card-id="hud" data-start="0" data-duration="46.84" data-track-index="9"
+      style="left:0;top:0;width:1080px;height:1920px;visibility:hidden;opacity:0;">
+      <div class="card" data-card-id="hud">
+        <div class="hud">
+          <div class="bracket tl"></div><div class="bracket tr"></div><div class="bracket bl"></div><div class="bracket br"></div>
+          <div class="hud-tl">品牌 <b>//</b> 标语</div>
+          <div class="hud-tr" id="hud-tc">00:00:00:00</div>
+          <div class="rec"><span class="dot"></span>REC</div>
+          <div class="hud-bl" id="hud-seg">01 · 开场</div>
+          <div class="hud-br">
+            <span class="bar" style="height:14px"></span><span class="bar" style="height:26px"></span>
+            <span class="bar" style="height:18px"></span><span class="bar" style="height:32px"></span>
+            <span class="bar" style="height:22px"></span><span class="bar" style="height:12px"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <script src="vendor/gsap.min.js"></script>
     <script>
       (function () {
+        const stageEl = document.getElementById('stage');
+        const D = parseFloat(stageEl.dataset.duration) || 46.84;   // 总时长（取 HTML data-duration）
         const tl = window.gsap.timeline({ paused: true });
-        const Q = (id) => '.card[data-card-id="' + id + '"] ';   // 内部动画选择器 helper
+        const Q = (id) => '.card[data-card-id="' + id + '"] ';      // 内部动画选择器 helper
         const H = (id) => '.card-host[data-card-id="' + id + '"]';
 
-        // ── 动效卡公共进出（只用 opacity，可见性交给 data-start/data-duration）──
-        // ★ 不要 tween visibility/display/autoAlpha，会和可见性托管冲突导致黑屏
-        function motIn(id, s) { tl.set(H(id), { visibility: "visible" }, s);
-          tl.fromTo(H(id), { opacity: 0, y: -16 }, { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" }, s); }
-        function motOut(id, s, d) { tl.to(H(id), { opacity: 0, y: -16, duration: 0.25, ease: "power2.in" }, s + d - 0.25);
-          tl.set(H(id), { visibility: "hidden" }, s + d); }
+        /* ════════ 步骤时间码 config（示例值，⚠️必须按 transcript 替换为真实口播时间码）════════
+           面板 start = 该段口播起点，面板 end = 该段口播终点（面板时长=口播时长，节奏才对齐）。
+           背景留白段（步骤④）不在此列——它不挂面板，背景承接上一段 blurOff 保持清晰。 */
+        const S1 = 6.6,  D1 = 9.4;    // 步骤① 具象UI
+        const S2 = 17.0, D2 = 8.75;   // 步骤② 素材展示
+        const S3 = 27.0, D3 = 8.5;    // 步骤③ 聊天气泡
+        const SF = 42.7;              // 结尾总结卡起点
 
-        // ── 标题卡（封面式标题：只做整体淡入淡出，不要做 scale-pop/逐字出场等动效）──
-        tl.set(H("title"), { visibility: "visible" }, 0);
-        tl.fromTo(H("title"), { opacity: 0, y: -20 }, { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }, 0);
-        tl.to(H("title"), { opacity: 0, y: -20, duration: 0.35, ease: "power2.in" }, 4.1);
-        tl.set(H("title"), { visibility: "hidden" }, 4.5);
+        /* ── 背景虚化控制（blurOn 虚化+压暗 / blurOff 恢复清晰）── */
+        const bgV = document.getElementById('bg-video');
+        const dimVeil = document.getElementById('dim-veil');
+        const bgState = { b: 0, d: 0 };
+        function applyBg() {
+          if (bgV) bgV.style.filter = 'blur(' + bgState.b + 'px) brightness(' + (1 - bgState.b * 0.02) + ')';
+          if (dimVeil) dimVeil.style.opacity = bgState.d;
+        }
+        applyBg();
+        function blurOn(s)  { tl.to(bgState, { b: 16, d: 0.5, duration: 0.35, ease: 'power2.out', onUpdate: applyBg }, s); }
+        function blurOff(s) { tl.to(bgState, { b: 0,  d: 0,   duration: 0.4,  ease: 'power2.in',  onUpdate: applyBg }, s); }
+        function motOut(id, s, d) { tl.to(H(id), { opacity: 0, y: -16, duration: 0.25, ease: 'power2.in' }, s + d - 0.25);
+          tl.set(H(id), { visibility: 'hidden' }, s + d); }
 
-        // ── 字幕逐句（150-250ms fade，无 scale，emphasis inline 标色）──
-        // ★ 时间码 [id, start, duration] 从 transcript.json 取，每组一句
-        const rails = [
-          ["r1a", 0.0, 2.5]
-          // ↓↓↓ 按你的段数继续加 ↓↓↓
-        ];
-        rails.forEach(([id, s, d]) => {
-          tl.set(H(id), { visibility: "visible" }, s);
-          tl.fromTo(H(id), { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.22, ease: "power2.out" }, s);
-          tl.to(H(id), { opacity: 0, y: -8, duration: 0.2, ease: "power2.in" }, s + d - 0.2);
-          tl.set(H(id), { visibility: "hidden" }, s + d);
+        /* ── 素材视频：逐帧 seek 到场景内相对时间并循环（类型 B 用）── */
+        const mats = Array.from(document.querySelectorAll('video.material-clip'));
+        mats.forEach(v => { v.muted = true; v.loop = true; try { v.load(); v.play().catch(()=>{}); } catch (e) {} });
+        tl.eventCallback('onUpdate', () => {
+          const t = tl.time();
+          mats.forEach(v => {
+            const start = parseFloat(v.dataset.sceneStart) || 0;
+            const dur = v.duration || 0;
+            if (dur > 0) { const rt = Math.max(0, t - start); try { v.currentTime = rt % dur; } catch (e) {} }
+          });
         });
 
-        // ── 动效卡内元素错峰出场 ──
-        // ★ 每个元素在卡进场后 0.1-0.5s 依次出现，营造"讲到哪出现对应信息"
-        // ★ 元素要满足动效前提：kinetic-chars 包 span.char，count-up 标 from-to，draw-path 用 SVG path
-        // ★ 时间点落在口播讲到对应信息的时刻
-        motIn("m1", 5.4);
-        // tl.fromTo(Q("m1")+"#m1-e1", {opacity:0,scale:0.6}, {opacity:1,scale:1,duration:0.35,ease:"back.out(1.6)"}, 5.5);
-        // tl.fromTo(Q("m1")+"#m1-e2", {opacity:0,x:-30}, {opacity:1,x:0,duration:0.4,ease:"power2.out"}, 5.75);
-        motOut("m1", 5.4, 10.6);
+        /* ══ 关键：锚定 #video-wrap 触发全 DOM 渲染（背景虚化 + 内嵌视频必须） ══ */
+        tl.to('#video-wrap', { scale: 1, duration: D, ease: 'none' }, 0);
 
-        // ── 全屏总结卡 ──
-        tl.set(H("finale"), { visibility: "visible" }, 42.7);
-        tl.fromTo(H("finale"), { opacity: 0 }, { opacity: 1, duration: 0.35, ease: "power2.out" }, 42.7);
-        // tl.fromTo(Q("finale")+"#f-h", {opacity:0,y:20}, {opacity:1,y:0,duration:0.5,ease:"power2.out"}, 42.85);
-        // tl.fromTo(Q("finale")+"#f-cta", {opacity:0,scale:0.8}, {opacity:1,scale:1,duration:0.45,ease:"back.out(1.6)"}, 44.1);
+        /* ── 标题卡（封面式，干净淡入淡出）── */
+        tl.set(H('title'), { visibility: 'visible' }, 0);
+        tl.fromTo(H('title'), { opacity: 0, y: -20 }, { opacity: 1, y: 0, duration: 0.4, ease: 'power2.out' }, 0);
+        tl.to(H('title'), { opacity: 0, y: -20, duration: 0.35, ease: 'power2.in' }, 4.1);
+        tl.set(H('title'), { visibility: 'hidden' }, 4.5);
 
-        /*
-          ═══ 画中画模式（人物缩成角落圆角小窗）说明 ═══
-          当某段要切画中画（动效卡占满屏 + 人物缩角落），在那段的 motIn 时加：
-            tl.set('#video-wrap', { className:'+=pip-pill' }, START_SEC);
-            tl.to('#video-wrap',
-              { left:738, top:28, width:312, height:555, duration:0.6, ease:'power2.inOut' }, START_SEC);
-          （上面是竖屏 9:16 源在竖屏画布的右上角值；其他画幅见 layout-zones.md）
-          切回满屏人物时反向 tween + 去掉 pip-pill 类。
-        */
+        /* ── 字幕逐句（时间码对齐 transcript；每组一句）── */
+        const rails = [
+          ['r1', 0.0, 2.4], ['r2', 2.4, 2.3], ['r3', 5.0, 0.5]
+          // ↓↓↓ 按 transcript 继续加每组 [id, start, duration] ↓↓↓
+        ];
+        rails.forEach(([id, s, d]) => {
+          tl.set(H(id), { visibility: 'visible' }, s);
+          tl.fromTo(H(id), { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.22, ease: 'power2.out' }, s);
+          tl.to(H(id), { opacity: 0, y: -8, duration: 0.2, ease: 'power2.in' }, s + d - 0.2);
+          tl.set(H(id), { visibility: 'hidden' }, s + d);
+        });
 
-        /*
-          ═══ 信箱居中式（横屏源→竖屏成片）说明 ═══
-          客户给横屏原片、要竖屏成片时，把 .video-wrapper 改成居中信箱（见上面 CSS 注释）：
-            left:0; top:656px; width:1080px; height:608px;  video { object-fit:contain }
-          上方黑边放动效卡（沿用 top:30 height:560 坐标），下方黑边放字幕 rail（top:1300）。
-          视频不裁切，黑边是设计区。其余动效/字幕写法与上下结构一致。
-        */
+        /* ════════════════════════════════════════════════════════════════════
+           ⚠️ 动效类型【绝不写死】——下面 m1 / m2 / m3 只是「示例动效类型」
+           实际每段挂什么面板，必须由该段口播文案语义决定（见 SKILL.md 阶段 2
+           动效选型四步法 + motion-patterns / motion-blueprints / motion-rules /
+           motion-transitions 工具箱）：具象UI / 素材展示 / 聊天气泡 / 数据面板 /
+           对比表 / 流程连线 / 引用卡……任选或自创，无固定清单、无固定顺序。
+
+           复制本模板时，请按你的文案把 m1/m2/m3 换成合适的具象形式；
+           **但务必保留每个面板下面的「A 主元素入场 + B 子元素级联 + C 辅助元素
+           + D 持续微动」丰度骨架，以及 easing 多样化**（back.out / power3.out /
+           sine.inOut / elastic 交替，禁止全片只用 power2.out）。这是对齐参考技能
+           script-to-motion-video 动效质量的关键。禁止退化成单组 fade+translateY。
+           ══════════════════════════════════════════════════════════════════ */
+        /* 步骤① 示例类型：具象UI（含进度计数 0→100%）—— 换成你文案合适的类型即可 */
+        /* 进度计数用 this.progress() 取进度，避免闭包 TDZ 导致计数失效 */
+        blurOn(S1);
+        tl.set(H('m1'), { visibility: 'visible' }, S1);
+        /* 【A 主元素入场】面板主卡弹入 */
+        tl.fromTo(H('m1'), { opacity:0, scale:0.92, y:24 }, { opacity:1, scale:1, y:0, duration:0.5, ease:'power3.out' }, S1);
+        tl.fromTo(Q('m1')+'#m1-glow', { opacity:0, scale:0.6 }, { opacity:1, scale:1, duration:0.7, ease:'sine.out' }, S1+0.05);
+        /* 【C 辅助元素】印章/角标砸下（elastic/back.out 冲击感） */
+        tl.fromTo(Q('m1')+'#m1-badge', { opacity:0, scale:0.4, rotation:-20 }, { opacity:1, scale:1, rotation:-6, duration:0.45, ease:'back.out(2.4)' }, S1+0.18);
+        tl.fromTo(Q('m1')+'#m1-kick', { opacity:0, y:12 }, { opacity:1, y:0, duration:0.35, ease:'power2.out' }, S1+0.32);
+        tl.fromTo(Q('m1')+'#m1-title', { opacity:0, y:14 }, { opacity:1, y:0, duration:0.5, ease:'power4.out' }, S1+0.4);
+        tl.to(Q('m1')+'#m1-uline', { scaleX:1, duration:0.5, ease:'power2.out' }, S1+0.52);
+        /* 【B 子元素级联】卡内项逐条错位入场（时间点落在讲到对应信息处） */
+        tl.fromTo(Q('m1')+'#m1-ava', { opacity:0, scale:0.6 }, { opacity:1, scale:1, duration:0.4, ease:'back.out(1.8)' }, S1+0.74);
+        tl.fromTo(Q('m1')+'#m1-name', { opacity:0, x:-16 }, { opacity:1, x:0, duration:0.35 }, S1+0.84);
+        tl.fromTo(Q('m1')+'#m1-i1', { opacity:0, x:-26 }, { opacity:1, x:0, duration:0.4, ease:'power3.out' }, S1+1.1);
+        tl.fromTo(Q('m1')+'#m1-i2', { opacity:0, x:-26 }, { opacity:1, x:0, duration:0.4, ease:'power3.out' }, S1+2.4);
+        tl.fromTo(Q('m1')+'#m1-i3', { opacity:0, x:-26 }, { opacity:1, x:0, duration:0.4, ease:'power3.out' }, S1+3.4);
+        /* 进度计数 0→100% */
+        tl.fromTo(Q('m1')+'#m1-plab', { opacity:0 }, { opacity:1, duration:0.3 }, S1+0.7);
+        tl.fromTo(Q('m1')+'#m1-fill', { scaleX:0 }, { scaleX:1, duration:2.2, ease:'power2.inOut',
+          onUpdate: function() { var el = document.querySelector(Q('m1')+'#m1-plab'); if (el) el.textContent = '创建中 · ' + Math.round(this.progress()*100) + '%'; }
+        }, S1+0.8);
+        tl.fromTo(Q('m1')+'#m1-cap', { opacity:0, y:10 }, { opacity:1, y:0, duration:0.4 }, S1+1.7);
+        /* 【D 持续微动】入场完成后启动（浮动 / 呼吸 / 光斑漂移，yoyo repeat:-1） */
+        tl.to(Q('m1')+'#m1-glow', { scale:1.12, opacity:0.85, duration:2.2, yoyo:true, repeat:-1, ease:'sine.inOut' }, S1+1.0);
+        motOut('m1', S1, D1); blurOff(S1 + D1 - 0.2);
+
+        /* ════════ 步骤② 类型B 素材展示（模板素材区）════════ */
+        blurOn(S2);
+        tl.set(H('m2'), { visibility: 'visible' }, S2);
+        /* 【A 主元素入场】 */
+        tl.fromTo(H('m2'), { opacity:0, scale:1.06 }, { opacity:1, scale:1, duration:0.5, ease:'power3.out' }, S2);
+        tl.fromTo(Q('m2')+'#m2-glow', { opacity:0, scale:0.6 }, { opacity:1, scale:1, duration:0.7, ease:'sine.out' }, S2+0.05);
+        tl.fromTo(Q('m2')+'#m2-video', { opacity:0, scale:1.08 }, { opacity:1, scale:1, duration:0.6, ease:'power2.out' }, S2+0.12);
+        /* 【B 子元素级联】四角信息卡 stagger 错位入场 */
+        tl.fromTo([Q('m2')+'#m2-c1', Q('m2')+'#m2-c2', Q('m2')+'#m2-c3', Q('m2')+'#m2-c4'],
+          { opacity:0, y:12 }, { opacity:1, y:0, duration:0.35, stagger:0.1, ease:'back.out(1.8)' }, S2+0.4);
+        /* 【C 辅助元素】回复气泡弹入 */
+        tl.fromTo(Q('m2')+'#m2-reply', { opacity:0, y:16, scale:0.9 }, { opacity:1, y:0, scale:1, duration:0.4, ease:'back.out(1.7)' }, S2+4.5);
+        /* 【D 持续微动】扫描线 + 录制点 + 角标浮动 */
+        tl.fromTo(Q('m2')+'#m2-scan', { top:'2%', opacity:0 }, { top:'98%', opacity:1, duration:1.6, ease:'sine.inOut', repeat:-1, yoyo:true }, S2+0.7);
+        tl.to(Q('m2')+'#m2-c2 .mat-rec', { opacity:0.3, scale:0.7, duration:0.7, yoyo:true, repeat:-1, ease:'sine.inOut' }, S2+0.7);
+        tl.to([Q('m2')+'#m2-c1', Q('m2')+'#m2-c2', Q('m2')+'#m2-c3', Q('m2')+'#m2-c4'], { y:-5, duration:2.4, yoyo:true, repeat:-1, ease:'sine.inOut' }, S2+1.0);
+        tl.to(Q('m2')+'#m2-glow', { scale:1.12, opacity:0.85, duration:2.2, yoyo:true, repeat:-1, ease:'sine.inOut' }, S2+1.0);
+        motOut('m2', S2, D2); blurOff(S2 + D2 - 0.2);
+
+        /* ════════ 步骤③ 类型C 聊天气泡 ════════ */
+        blurOn(S3);
+        tl.set(H('m3'), { visibility: 'visible' }, S3);
+        /* 【A 主元素入场】 */
+        tl.fromTo(H('m3'), { opacity:0, scale:0.92, y:24 }, { opacity:1, scale:1, y:0, duration:0.5, ease:'power3.out' }, S3);
+        tl.fromTo(Q('m3')+'#m3-glow', { opacity:0, scale:0.6 }, { opacity:1, scale:1, duration:0.7, ease:'sine.out' }, S3+0.05);
+        tl.fromTo(Q('m3')+'#m3-badge', { opacity:0, scale:0.4, rotation:-20 }, { opacity:1, scale:1, rotation:-6, duration:0.45, ease:'back.out(2.4)' }, S3+0.15);
+        tl.fromTo(Q('m3')+'#m3-kick', { opacity:0, y:12 }, { opacity:1, y:0, duration:0.35, ease:'power2.out' }, S3+0.28);
+        tl.fromTo(Q('m3')+'#m3-u', { opacity:0, y:16, scale:0.85 }, { opacity:1, y:0, scale:1, duration:0.4, ease:'back.out(1.7)' }, S3+0.4);
+        tl.fromTo(Q('m3')+'#m3-a', { opacity:0, y:16 }, { opacity:1, y:0, duration:0.4, ease:'power2.out' }, S3+0.95);
+        tl.fromTo(Q('m3')+'#m3-at', { clipPath:'inset(0 100% 0 0)' }, { clipPath:'inset(0 0% 0 0)', duration:2.6, ease:'none' }, S3+1.05);
+        tl.fromTo(Q('m3')+'#m3-cap', { opacity:0, y:10 }, { opacity:1, y:0, duration:0.4 }, S3+3.0);
+        /* 【D 持续微动】光晕呼吸 + 气泡轻浮 */
+        tl.to(Q('m3')+'#m3-glow', { scale:1.14, opacity:0.85, duration:2.0, yoyo:true, repeat:-1, ease:'sine.inOut' }, S3+0.8);
+        tl.to([Q('m3')+'#m3-u', Q('m3')+'#m3-a'], { y:-6, duration:2.6, yoyo:true, repeat:-1, ease:'sine.inOut' }, S3+0.9);
+        motOut('m3', S3, D3); blurOff(S3 + D3 - 0.2);
+
+        /* ════════ 步骤④ 背景留白（无面板）════════
+           此处不调用 blurOn/不挂 .card-host，背景承接步骤③ blurOff(S3+D3-0.2) 保持清晰，
+           直到 SF 总结卡覆盖。HUD 段标签仍显示「04」，期间纯真人讲述 + 字幕。 */
+
+        /* ── 全屏总结卡 ── */
+        tl.set(H('finale'), { visibility: 'visible' }, SF);
+        tl.fromTo(H('finale'), { opacity: 0 }, { opacity: 1, duration: 0.35, ease: 'power2.out' }, SF);
+        tl.fromTo(Q('finale')+'#f-h', { opacity:0, y:24 }, { opacity:1, y:0, duration:0.5, ease:'power2.out' }, SF+0.15);
+        tl.fromTo(Q('finale')+'#f-cta', { opacity:0, scale:0.85 }, { opacity:1, scale:1, duration:0.45, ease:'back.out(1.6)' }, SF+0.8);
+        tl.fromTo(Q('finale')+'#f-tag', { opacity:0, y:16 }, { opacity:1, y:0, duration:0.4, ease:'power2.out' }, SF+1.4);
+
+        /* ── HUD 常驻 + 时间码/段标签 ── */
+        tl.set(H('hud'), { visibility: 'visible' }, 0);
+        tl.fromTo(H('hud'), { opacity: 0 }, { opacity: 1, duration: 0.3 }, 0);
+        const tcEl = document.getElementById('hud-tc');
+        const segEl = document.getElementById('hud-seg');
+        const segs = [
+          [0, '01 · 开场'], [S1, '01 · 步骤一'], [S2, '02 · 步骤二(素材)'],
+          [S3, '03 · 步骤三'], [S3 + D3, '04 · 步骤四'], [SF, '05 · 行动']
+        ];
+        const hudState = { t: 0 };
+        tl.to(hudState, { t: D, duration: D, ease: 'none', onUpdate: () => {
+          const t = hudState.t;
+          const ss = Math.floor(t) % 60, ff = Math.floor((t % 1) * 30);
+          if (tcEl) tcEl.textContent = '00:00:' + String(ss).padStart(2,'0') + ':' + String(ff).padStart(2,'0');
+          let lb = segs[0][1];
+          for (const g of segs) { if (t >= g[0]) lb = g[1]; }
+          if (segEl) segEl.textContent = lb;
+        } }, 0);
 
         window.__timelines = window.__timelines || {};
-        window.__timelines["talking-head-motion-cut"] = tl;
+        window.__timelines["talking-head-motion-cut-v2"] = tl;
       })();
     </script>
   </div>
