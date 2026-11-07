@@ -201,26 +201,26 @@ const BuiltinExpertsSection: React.FC<BuiltinExpertsSectionProps> = ({
                 }}
                 className="group relative flex flex-col bg-surface border border-border hover:border-amber-500/80 rounded-2xl overflow-hidden transition-all duration-200 cursor-pointer shadow-xs hover:shadow-md will-change-transform text-left outline-none"
               >
-                {/* 封面图片展示区（带兜底封面图，有 scene 时展示微标签） */}
+                {/* 封面图片展示区（纯粹展示封面大图，移除像按钮的浮动标签） */}
                 <div className="relative h-36 w-full overflow-hidden bg-surface-raised border-b border-border/50">
                   <img
                     src={coverImageSrc}
                     alt={expert.name}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                   />
-                  {expert.scene && (
-                    <span className="absolute left-2.5 top-2.5 text-[10.5px] font-bold px-2 py-0.5 rounded-md border backdrop-blur-md shadow-2xs z-10 text-amber-700 dark:text-amber-300 bg-amber-100/80 dark:bg-amber-950/60 border-amber-200/80 dark:border-amber-800">
-                      {expert.scene}
-                    </span>
-                  )}
                 </div>
 
-                {/* 卡片正文（1:1 原型布局：标题 -> 描述 -> 独立产出条 -> 看示例） */}
+                {/* 卡片正文（标题与轻量阶段标签 -> 描述 -> 独立产出条 -> 底部操作栏） */}
                 <div className="p-3.5 sm:p-4 flex-1 flex flex-col gap-2">
-                  <div className="flex items-center gap-1.5">
-                    <h3 className="text-[13.5px] sm:text-sm font-bold text-foreground tracking-tight group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">
+                  <div className="flex items-center justify-between gap-2 min-w-0">
+                    <h3 className="text-[13.5px] sm:text-sm font-bold text-foreground tracking-tight group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors truncate">
                       {expert.name}
                     </h3>
+                    {expert.scene && (
+                      <span className="text-[10px] text-secondary bg-surface-raised border border-border/60 px-1.5 py-0.5 rounded font-normal shrink-0">
+                        {expert.scene}
+                      </span>
+                    )}
                   </div>
                   {expert.description && (
                     <p className="text-[11.8px] text-secondary leading-relaxed line-clamp-2 min-h-[34px]">
@@ -240,9 +240,22 @@ const BuiltinExpertsSection: React.FC<BuiltinExpertsSectionProps> = ({
                     <div className="mt-auto" />
                   )}
 
-                  {/* 查看动作文案（原型文案：看示例 →） */}
-                  <div className="text-[11.5px] font-semibold text-amber-600 dark:text-amber-400 text-left pt-0.5 group-hover:translate-x-0.5 transition-transform">
-                    看示例 →
+                  {/* 底部动作栏：左侧【看示例 →】，右侧【使用】快捷按钮 */}
+                  <div className="flex items-center justify-between gap-2 pt-1">
+                    <span className="text-[11.5px] font-semibold text-amber-600 dark:text-amber-400 group-hover:translate-x-0.5 transition-transform">
+                      看示例 →
+                    </span>
+                    <button
+                      type="button"
+                      disabled={hiringId !== null}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onStartWork(expert);
+                      }}
+                      className="px-3 py-1 rounded-full text-[11px] font-semibold bg-foreground text-background hover:opacity-90 active:scale-95 transition-all shrink-0 cursor-pointer disabled:opacity-50 flex items-center justify-center shadow-2xs"
+                    >
+                      {hiringId === expert.id ? '...' : '使用'}
+                    </button>
                   </div>
                 </div>
               </div>
