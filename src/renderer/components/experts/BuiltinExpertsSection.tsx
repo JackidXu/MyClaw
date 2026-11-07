@@ -11,6 +11,54 @@ interface BuiltinExpertsSectionProps {
   onStartWork: (expert: PresetAgent, initialPrompt?: string) => void;
 }
 
+// 优雅流光骨架屏 + 平滑淡入封面图组件
+const CoverImageWithSkeleton: React.FC<{
+  src: string;
+  alt: string;
+  className?: string;
+  imgClassName?: string;
+  onPreview?: () => void;
+}> = ({ src, alt, className = '', imgClassName = '', onPreview }) => {
+  const [loaded, setLoaded] = useState(false);
+
+  return (
+    <div className={`relative overflow-hidden bg-[#eef1f6] dark:bg-zinc-800 ${className}`}>
+      {/* 真实高光扫光波纹（从左向右持续扫过，清晰流光质感） */}
+      {!loaded && (
+        <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
+          <div className="w-full h-full bg-gradient-to-r from-transparent via-white/80 dark:via-white/20 to-transparent animate-shimmer" />
+        </div>
+      )}
+      <img
+        src={src}
+        alt={alt}
+        loading="lazy"
+        decoding="async"
+        onLoad={() => setLoaded(true)}
+        className={`w-full h-full object-cover transition-opacity duration-500 ease-out ${
+          loaded ? 'opacity-100' : 'opacity-0'
+        } ${imgClassName}`}
+      />
+      {/* 右上角独立放大镜按钮（必须点击该按钮才看大图，防止误触） */}
+      {onPreview && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onPreview();
+          }}
+          className="absolute right-2 top-2 z-10 opacity-0 group-hover:opacity-100 transition-all bg-black/60 hover:bg-black/85 active:scale-95 backdrop-blur-md text-white p-1.5 rounded-full shadow-md cursor-pointer hover:ring-1 hover:ring-white/40"
+          title="查看高清大图"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7" />
+          </svg>
+        </button>
+      )}
+    </div>
+  );
+};
+
 const BuiltinExpertsSection: React.FC<BuiltinExpertsSectionProps> = ({
   presets,
   searchQuery,
@@ -20,6 +68,7 @@ const BuiltinExpertsSection: React.FC<BuiltinExpertsSectionProps> = ({
   const [activeEngine, setActiveEngine] = useState<ExpertEngineType>(ExpertEngineType.Acquisition);
   const [activeScene, setActiveScene] = useState<string>('全部');
   const [selectedExpert, setSelectedExpert] = useState<PresetAgent | null>(null);
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
 
   // 切换引擎时重置场景为“全部”
   const handleSwitchEngine = (engine: ExpertEngineType) => {
@@ -181,7 +230,7 @@ const BuiltinExpertsSection: React.FC<BuiltinExpertsSectionProps> = ({
       {/* ── 专家卡片网格列表 ── */}
       {filteredList.length === 0 ? (
         <div className="flex h-64 flex-col items-center justify-center text-secondary">
-          <p className="text-sm font-medium">该分类下暂无专家，可在管理后台进行配置</p>
+          <p className="text-sm font-medium">该分类下暂无专家</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 min-[1100px]:grid-cols-3 min-[1400px]:grid-cols-4 gap-4">
@@ -201,14 +250,14 @@ const BuiltinExpertsSection: React.FC<BuiltinExpertsSectionProps> = ({
                 }}
                 className="group relative flex flex-col bg-surface border border-border hover:border-amber-500/80 rounded-2xl overflow-hidden transition-all duration-200 cursor-pointer shadow-xs hover:shadow-md will-change-transform text-left outline-none"
               >
-                {/* 封面图片展示区（纯粹展示封面大图，移除像按钮的浮动标签） */}
-                <div className="relative h-36 w-full overflow-hidden bg-surface-raised border-b border-border/50">
-                  <img
-                    src={coverImageSrc}
-                    alt={expert.name}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                  />
-                </div>
+                {/* 封面图片展示区（带微光骨架屏 + 平滑淡入，仅点击右上角独立角标才放大原图） */}
+                <CoverImageWithSkeleton
+                  src={coverImageSrc}
+                  alt={expert.name}
+                  className="h-36 w-full border-b border-border/50"
+                  imgClassName="group-hover:scale-105 transition-transform duration-300"
+                  onPreview={() => setPreviewImageUrl(coverImageSrc)}
+                />
 
                 {/* 卡片正文（标题与轻量阶段标签 -> 描述 -> 独立产出条 -> 底部操作栏） */}
                 <div className="p-3.5 sm:p-4 flex-1 flex flex-col gap-2">
@@ -270,8 +319,8 @@ const BuiltinExpertsSection: React.FC<BuiltinExpertsSectionProps> = ({
           isOpen={true}
           onClose={() => setSelectedExpert(null)}
           onEscape={() => setSelectedExpert(null)}
-          overlayClassName="fixed inset-0 z-50 flex items-center justify-center bg-[#101218]/45 backdrop-blur-[3px] p-6"
-          className="w-full max-w-[860px] max-h-[88vh] bg-surface border border-border rounded-[20px] shadow-[0_30px_80px_rgba(0,0,0,0.25)] overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150 text-left"
+          overlayClassName="fixed inset-0 z-50 flex items-center justify-center bg-[#101218]/45 backdrop-blur-[3px] p-4 sm:p-6"
+          className="w-full max-w-[1020px] max-h-[88vh] bg-surface border border-border rounded-[20px] shadow-[0_30px_80px_rgba(0,0,0,0.25)] overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150 text-left"
         >
           {/* 弹窗头部（1:1 原型内边距与排版：padding 22px 24px 18px） */}
           {(() => {
@@ -295,15 +344,27 @@ const BuiltinExpertsSection: React.FC<BuiltinExpertsSectionProps> = ({
             );
           })()}
 
-          {/* 弹窗主体（左右 1:1 对半分，分割线居中；左侧封面图铺满） */}
-          <div className="grid grid-cols-1 md:grid-cols-2 overflow-y-auto">
-            {/* 左侧整栏（封面图满幅铺满，短边完全展示，长边居中裁剪） */}
-            <div className="relative w-full h-full min-h-[300px] bg-surface-raised md:border-r border-border overflow-hidden flex items-center justify-center">
-              <img
+          {/* 弹窗主体（左侧约 58% 黄金比例宽幅展台，右侧参数清单与开始做按钮） */}
+          <div className="grid grid-cols-1 md:grid-cols-[1.28fr_0.92fr] overflow-y-auto">
+            {/* 左侧整栏（宽幅封面图，短边完全展示，左右裁剪量大幅降低；支持点击放大查看原图） */}
+            <div
+              className="group/cover relative w-full h-full min-h-[320px] bg-surface-raised md:border-r border-border overflow-hidden flex items-center justify-center cursor-zoom-in"
+              onClick={() => setPreviewImageUrl(getExpertCoverImage(selectedExpert))}
+              title="点击查看高清大图"
+            >
+              <CoverImageWithSkeleton
                 src={getExpertCoverImage(selectedExpert)}
                 alt={selectedExpert.name}
-                className="w-full h-full object-cover"
+                className="w-full h-full"
+                imgClassName="group-hover/cover:scale-[1.02] transition-transform duration-300"
               />
+              {/* 浮动小放大镜指示胶囊 */}
+              <div className="absolute right-3.5 bottom-3.5 z-10 opacity-85 group-hover/cover:opacity-100 transition-opacity bg-black/65 hover:bg-black/85 backdrop-blur-md text-white px-3 py-1 rounded-full text-[11px] font-medium flex items-center gap-1.5 shadow-md pointer-events-none">
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7" />
+                </svg>
+                <span>查看大图</span>
+              </div>
             </div>
 
             {/* 右侧业务参数列表与按钮 */}
@@ -359,6 +420,37 @@ const BuiltinExpertsSection: React.FC<BuiltinExpertsSectionProps> = ({
                 {hiringId === selectedExpert.id ? '正在启动...' : '开始做 →'}
               </button>
             </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── 高清封面大图原图预览灯箱（LightBox：点屏幕任意处或按 Esc 立即退出） ── */}
+      {previewImageUrl && (
+        <Modal
+          isOpen={true}
+          onClose={() => setPreviewImageUrl(null)}
+          onEscape={() => setPreviewImageUrl(null)}
+          onClick={() => setPreviewImageUrl(null)}
+          overlayClassName="fixed inset-0 z-[70] flex items-center justify-center bg-black/85 backdrop-blur-md p-4 sm:p-8 cursor-zoom-out select-none"
+          className="relative max-w-[95vw] max-h-[92vh] flex items-center justify-center outline-none cursor-zoom-out"
+        >
+          <div
+            className="relative flex items-center justify-center max-w-full max-h-full cursor-zoom-out"
+            onClick={() => setPreviewImageUrl(null)}
+          >
+            <img
+              src={previewImageUrl}
+              alt="封面大图原图"
+              className="max-w-[92vw] max-h-[88vh] object-contain rounded-xl shadow-2xl border border-white/20 select-none animate-in fade-in zoom-in-95 duration-200 cursor-zoom-out"
+            />
+            <button
+              type="button"
+              onClick={() => setPreviewImageUrl(null)}
+              className="absolute -top-3 -right-3 sm:-top-4 sm:-right-4 w-9 h-9 rounded-full bg-black/75 hover:bg-black text-white border border-white/30 flex items-center justify-center cursor-pointer shadow-lg transition-transform hover:scale-105 text-base"
+              title="点击任意处或按 Esc 关闭"
+            >
+              ✕
+            </button>
           </div>
         </Modal>
       )}
