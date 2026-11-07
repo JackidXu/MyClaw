@@ -16,8 +16,10 @@ import ComposeIcon from '../icons/ComposeIcon';
 import SidebarToggleIcon from '../icons/SidebarToggleIcon';
 import McpManager from '../mcp/McpManager';
 import SkillsManager from '../skills/SkillsManager';
+import { ExpertEngineType } from './builtinExpertData';
+import BuiltinExpertsSection from './BuiltinExpertsSection';
 
-interface PresetAgent {
+export interface PresetAgent {
   id: string;
   name: string;
   avatar?: string;
@@ -28,6 +30,13 @@ interface PresetAgent {
   author?: string;
   tags?: string[];
   helps?: string[];
+  engine?: ExpertEngineType;
+  scene?: string;
+  group?: string;
+  coverImage?: string;
+  input?: string;
+  output?: string;
+  deliver?: string;
 }
 
 interface ExpertsViewProps {
@@ -145,18 +154,6 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
     const result = Array.from(set);
     return result.length > 0 ? ['全部', ...result] : [];
   }, [activeTab, expertSubTab, presets]);
-
-  // 内置专家过滤
-  const filteredPresets = useMemo(() => {
-    return presets.filter((expert) => {
-      const matchDept = selectedDept === '全部' || expert.department === selectedDept;
-      const matchSearch =
-        expert.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        expert.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (expert.identity && expert.identity.toLowerCase().includes(searchQuery.toLowerCase()));
-      return matchDept && matchSearch;
-    });
-  }, [presets, selectedDept, searchQuery]);
 
   // 自定义专家过滤
   const filteredCustom = useMemo(() => {
@@ -344,8 +341,8 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
             </button>
           </div>
 
-          {/* 部门/分类过滤标签 */}
-          {expertSubTab === 'preset' && departments.length > 0 && (
+          {/* 部门/分类过滤标签（仅在自定义专家 Tab 展示） */}
+          {expertSubTab === 'custom' && departments.length > 0 && (
             <div className="overflow-x-auto scrollbar-hidden">
               <div className="flex space-x-2.5">
                 {departments.map((dept) => {
@@ -412,37 +409,13 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
                 </div>
               )
             ) : expertSubTab === 'preset' ? (
-              /* ── 内置专家横排卡片列表（无弹窗，直接召唤） ── */
-              filteredPresets.length === 0 ? (
-                <div className="flex h-64 flex-col items-center justify-center text-secondary">
-                  <p className="text-sm font-medium">该分类下没有专家</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 min-[1240px]:grid-cols-3 gap-4">
-                  {filteredPresets.map((expert) => (
-                    <PrototypeExpertCard
-                      key={expert.id}
-                      expert={expert}
-                      hiringId={hiringId}
-                      isCustom={false}
-                      isSummoned={isAgentSummoned(expert.id)}
-                      onStartWork={handleStartWork}
-                      onEdit={async () => {
-                        let installed = installedAgents.find(
-                          (a) => a.presetId === expert.id || a.id === expert.id
-                        );
-                        if (!installed) {
-                          installed = await window.electron.agents.addPreset(expert.id);
-                          await agentService.loadAgents();
-                        }
-                        if (installed) {
-                          setEditingAgentId(installed.id);
-                        }
-                      }}
-                    />
-                  ))}
-                </div>
-              )
+              /* ── 升级版内置专家区域（双引擎 + 阶段 Chips + 真实图片封面卡片 + 详情弹窗） ── */
+              <BuiltinExpertsSection
+                presets={presets}
+                searchQuery={searchQuery}
+                hiringId={hiringId}
+                onStartWork={handleStartWork}
+              />
             ) : (
               /* ── 我的（自定义）专家列表 ── */
               filteredCustom.length === 0 ? (
