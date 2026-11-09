@@ -53,18 +53,13 @@ jobs:
       - name: Install Dependencies
         run: npm ci || npm install
 
-      # OpenClaw 运行时与补丁/扩展感知增量检查 (纯本地极速闭环)
+      # 设置 OpenClaw runtime (由 dist 脚本内部完整构建，此处仅做存在性检查与提示)
       - name: Setup OpenClaw Runtime
         run: |
-          CURRENT_RUNTIME_HASH=$(git log -1 --format="%h" -- scripts/patches/ src/openclaw-extensions/ package.json)
-          FINGERPRINT_FILE="vendor/openclaw-runtime/.runtime_fingerprint"
-
-          if [ -f "$FINGERPRINT_FILE" ] && [ "$(cat $FINGERPRINT_FILE)" = "$CURRENT_RUNTIME_HASH" ] && [ -d "vendor/openclaw-runtime/current" ]; then
-            echo "✓ OpenClaw runtime, patches and extensions are up to date (hash: $CURRENT_RUNTIME_HASH)"
+          if [ -d "vendor/openclaw-runtime/current" ]; then
+            echo "✓ OpenClaw runtime found"
           else
-            echo "⚠ Runtime definition, patches or extensions changed (hash: $CURRENT_RUNTIME_HASH), rebuilding bundle..."
-            npm run openclaw:patch && npm run openclaw:bundle && npm run openclaw:plugins && npm run openclaw:extensions:local
-            echo "$CURRENT_RUNTIME_HASH" > "$FINGERPRINT_FILE"
+            echo "⚠ OpenClaw runtime not found, build will initialize it automatically"
           fi
 
       # 临时专用钥匙串：自动解锁并设置搜索列表，无弹窗自动化签名
@@ -183,19 +178,14 @@ jobs:
           LOBSTERAI_PORTABLE_PYTHON_ARCHIVE: ${{ secrets.WINDOWS_PYTHON_ARCHIVE }}
         run: npm run setup:python-runtime
 
-      # OpenClaw 运行时与补丁/扩展感知增量检查 (统一 Bash 规范)
+      # 设置 OpenClaw runtime (由 dist 脚本内部完整构建，此处仅做存在性检查与提示)
       - name: Setup OpenClaw Runtime
         shell: bash
         run: |
-          CURRENT_RUNTIME_HASH=$(git log -1 --format="%h" -- scripts/patches/ src/openclaw-extensions/ package.json)
-          FINGERPRINT_FILE="vendor/openclaw-runtime/.runtime_fingerprint"
-
-          if [ -f "$FINGERPRINT_FILE" ] && [ "$(cat $FINGERPRINT_FILE)" = "$CURRENT_RUNTIME_HASH" ] && [ -d "vendor/openclaw-runtime/current" ]; then
-            echo "✓ OpenClaw runtime, patches and extensions are up to date (hash: $CURRENT_RUNTIME_HASH)"
+          if [ -d "vendor/openclaw-runtime/current" ]; then
+            echo "✓ OpenClaw runtime found"
           else
-            echo "⚠ Runtime definition, patches or extensions changed (hash: $CURRENT_RUNTIME_HASH), rebuilding bundle..."
-            npm run openclaw:patch && npm run openclaw:bundle && npm run openclaw:plugins && npm run openclaw:extensions:local
-            echo "$CURRENT_RUNTIME_HASH" > "$FINGERPRINT_FILE"
+            echo "⚠ OpenClaw runtime not found, build will initialize it automatically"
           fi
 
       - name: Determine OSS Path
