@@ -1,9 +1,9 @@
 name: Test Self-Hosted Runner Demo
 
 on:
-  push:
-    paths:
-      - '.github/workflows/test-runner-demo.yml'
+  # push:
+  #   paths:
+  #     - '.github/workflows/test-runner-demo.yml'
   workflow_dispatch:
     inputs:
       test_macos:
