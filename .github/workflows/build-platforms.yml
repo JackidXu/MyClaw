@@ -22,14 +22,14 @@ env:
   NODE_OPTIONS: "--max-old-space-size=8192"
 
 jobs:
-  # ========== macOS 构建 (自建 Runner) ==========
+  # ========== macOS 构建 (自建 Mac Runner) ==========
   build-macos:
     if: ${{ github.event_name == 'push' || inputs.build_macos }}
     runs-on: [self-hosted, macOS]
     strategy:
       fail-fast: false
       matrix:
-        arch: [x64]
+        arch: [x64] # 生产全量发布时可按需扩充为 [arm64, x64]
     steps:
       - uses: actions/checkout@v4
 
@@ -38,10 +38,6 @@ jobs:
           echo "[Clean] Cleaning up untracked artifacts while preserving node_modules and openclaw runtime..."
           git clean -ffdx -e node_modules -e "node_modules/**" -e vendor/openclaw-runtime -e "vendor/openclaw-runtime/**" -e vendor/openclaw-plugins -e "vendor/openclaw-plugins/**" || true
           rm -rf release dist-files oss-dist || true
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24.x'
 
       - name: Ensure pnpm
         run: which pnpm || npm install -g pnpm@10
@@ -57,15 +53,21 @@ jobs:
       - name: Install Dependencies
         run: npm ci || npm install
 
+      # OpenClaw 运行时与补丁/扩展感知增量检查 (纯本地极速闭环)
       - name: Setup OpenClaw Runtime
         run: |
-          if [ -d "vendor/openclaw-runtime/current" ]; then
-            echo "✓ OpenClaw runtime found"
+          CURRENT_RUNTIME_HASH=$(git log -1 --format="%h" -- scripts/patches/ src/openclaw-extensions/ package.json)
+          FINGERPRINT_FILE="vendor/openclaw-runtime/.runtime_fingerprint"
+
+          if [ -f "$FINGERPRINT_FILE" ] && [ "$(cat $FINGERPRINT_FILE)" = "$CURRENT_RUNTIME_HASH" ] && [ -d "vendor/openclaw-runtime/current" ]; then
+            echo "✓ OpenClaw runtime, patches and extensions are up to date (hash: $CURRENT_RUNTIME_HASH)"
           else
-            echo "⚠ OpenClaw runtime not found, build may fail"
+            echo "⚠ Runtime definition, patches or extensions changed (hash: $CURRENT_RUNTIME_HASH), rebuilding bundle..."
+            npm run openclaw:patch && npm run openclaw:bundle && npm run openclaw:plugins && npm run openclaw:extensions:local
+            echo "$CURRENT_RUNTIME_HASH" > "$FINGERPRINT_FILE"
           fi
 
-      # 临时专用钥匙串：自动解锁并设置搜索列表
+      # 临时专用钥匙串：自动解锁并设置搜索列表，无弹窗自动化签名
       - name: Setup macOS Keychain
         env:
           CSC_LINK_B64: ${{ secrets.CSC_LINK }}
@@ -115,7 +117,7 @@ jobs:
           fi
           echo "OSS_PATH=$OSS_PATH" >> $GITHUB_ENV
 
-      # 自建机直传阿里云 OSS（国内/公网高速上传，不走 GitHub 暂存）
+      # 自建机直传阿里云 OSS（国内高速上传，不走 GitHub 暂存）
       - name: Upload DMG to Aliyun OSS
         env:
           OSS_ENDPOINT: ${{ secrets.OSS_ENDPOINT }}
@@ -151,21 +153,15 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Clean Workspace (防脏构建，保留依赖与 OpenClaw 运行时缓存)
-        shell: powershell
+        shell: bash
         run: |
-          Write-Host "[Clean] Cleaning up untracked artifacts while preserving node_modules and openclaw runtime..."
-          git clean -ffdx -e node_modules -e "node_modules/**" -e vendor/openclaw-runtime -e "vendor/openclaw-runtime/**" -e vendor/openclaw-plugins -e "vendor/openclaw-plugins/**"
-          if (Test-Path release) { Remove-Item -Recurse -Force release }
-          if (Test-Path dist-files) { Remove-Item -Recurse -Force dist-files }
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24.x'
+          echo "[Clean] Cleaning up untracked artifacts while preserving node_modules and openclaw runtime..."
+          git clean -ffdx -e node_modules -e "node_modules/**" -e vendor/openclaw-runtime -e "vendor/openclaw-runtime/**" -e vendor/openclaw-plugins -e "vendor/openclaw-plugins/**" || true
+          rm -rf release dist-files oss-dist || true
 
       - name: Ensure pnpm
-        shell: powershell
-        run: |
-          try { pnpm -v } catch { npm install -g pnpm@10 }
+        shell: bash
+        run: which pnpm || npm install -g pnpm@10
 
       # 若是 tag 触发，则在安装依赖前动态修改 package.json 的版本，确保打包后的版本与 tag 统一
       - name: Sync version to package.json
@@ -177,13 +173,30 @@ jobs:
           npm version $VERSION --no-git-version-keyword --no-git-tag-version --allow-same-version || npm version $VERSION --no-git-tag-version --allow-same-version
 
       - name: Install Dependencies
+        shell: bash
         run: npm ci || npm install
 
       # Windows Python 运行时
       - name: Setup Python Runtime
-        run: npm run setup:python-runtime
+        shell: bash
         env:
           LOBSTERAI_PORTABLE_PYTHON_ARCHIVE: ${{ secrets.WINDOWS_PYTHON_ARCHIVE }}
+        run: npm run setup:python-runtime
+
+      # OpenClaw 运行时与补丁/扩展感知增量检查 (统一 Bash 规范)
+      - name: Setup OpenClaw Runtime
+        shell: bash
+        run: |
+          CURRENT_RUNTIME_HASH=$(git log -1 --format="%h" -- scripts/patches/ src/openclaw-extensions/ package.json)
+          FINGERPRINT_FILE="vendor/openclaw-runtime/.runtime_fingerprint"
+
+          if [ -f "$FINGERPRINT_FILE" ] && [ "$(cat $FINGERPRINT_FILE)" = "$CURRENT_RUNTIME_HASH" ] && [ -d "vendor/openclaw-runtime/current" ]; then
+            echo "✓ OpenClaw runtime, patches and extensions are up to date (hash: $CURRENT_RUNTIME_HASH)"
+          else
+            echo "⚠ Runtime definition, patches or extensions changed (hash: $CURRENT_RUNTIME_HASH), rebuilding bundle..."
+            npm run openclaw:patch && npm run openclaw:bundle && npm run openclaw:plugins && npm run openclaw:extensions:local
+            echo "$CURRENT_RUNTIME_HASH" > "$FINGERPRINT_FILE"
+          fi
 
       - name: Determine OSS Path
         shell: bash
@@ -193,39 +206,40 @@ jobs:
           if echo "$BRANCHES" | grep -qE "origin/main$|origin/main "; then
             OSS_PATH="heyclaw/downloads"
           fi
+          echo "Determined OSS Path: $OSS_PATH"
           echo "OSS_PATH=$OSS_PATH" >> $GITHUB_ENV
 
       # 本地 signtool 秒级签名，纯本地打包，彻底不走任何 OSS 中转或远程 node 服务
       - name: Build Windows
         shell: bash
-        run: npm run dist:win -- --publish never
         env:
           WIN_SIGN_CERT_SHA1: "f0d51f084bba92740ced8165475fddfaf0f901e2"
           ELECTRON_BUILDER_HTTP_TIMEOUT: 600000
+        run: npm run dist:win -- --publish never
 
-      # 本地直传阿里云 OSS（内网/同地域专线，几秒完成）
+      # 本地直传阿里云 OSS（统一 Bash 脚本）
       - name: Upload EXE to Aliyun OSS
-        shell: powershell
+        shell: bash
         env:
           OSS_ENDPOINT: ${{ secrets.OSS_ENDPOINT }}
           OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
           OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
           OSS_BUCKET: ${{ secrets.OSS_BUCKET }}
         run: |
-          Write-Host "[Upload] Uploading Windows EXE directly to OSS..."
-          if (-not (Get-Command ossutil64 -ErrorAction SilentlyContinue) -and -not (Get-Command ossutil -ErrorAction SilentlyContinue)) {
-            if (-not (Test-Path "$env:TEMP\ossutil64.exe")) {
-              Invoke-WebRequest -Uri "https://gosspublic.alicdn.com/ossutil/1.7.18/ossutil64.zip" -OutFile "$env:TEMP\ossutil.zip"
-              Expand-Archive -Path "$env:TEMP\ossutil.zip" -DestinationPath "$env:TEMP\ossutil_extracted" -Force
-              $exe = Get-ChildItem -Path "$env:TEMP\ossutil_extracted" -Filter "ossutil64.exe" -Recurse | Select-Object -First 1
-              Copy-Item $exe.FullName "$env:TEMP\ossutil64.exe"
-            }
-            $ossutil = "$env:TEMP\ossutil64.exe"
-          } else {
-            $ossutil = "ossutil64"
-          }
-          $cleanEndpoint = $env:OSS_ENDPOINT -replace '^https?://', ''
-          & $ossutil cp -f -r release/ "oss://$env:OSS_BUCKET/$env:OSS_PATH/" --include "*.exe" -e $cleanEndpoint -i $env:OSS_ACCESS_KEY_ID -k $env:OSS_ACCESS_KEY_SECRET
+          echo "[Upload] Uploading Windows EXE directly to OSS..."
+          CLEAN_ENDPOINT=$(echo "${OSS_ENDPOINT}" | sed -E 's|^https?://||')
+          if ! command -v ossutil64 &> /dev/null && ! command -v ossutil &> /dev/null; then
+            if [ ! -f "$TEMP/ossutil64.exe" ]; then
+              curl -fSL "https://gosspublic.alicdn.com/ossutil/1.7.18/ossutil64.zip" -o "$TEMP/ossutil.zip"
+              unzip -q -o "$TEMP/ossutil.zip" -d "$TEMP/ossutil_extracted"
+              OSSUTIL_EXE=$(find "$TEMP/ossutil_extracted" -name "ossutil64.exe" | head -n 1)
+              cp "$OSSUTIL_EXE" "$TEMP/ossutil64.exe"
+            fi
+            OSSUTIL_BIN="$TEMP/ossutil64.exe"
+          else
+            OSSUTIL_BIN=$(command -v ossutil64 || command -v ossutil)
+          fi
+          "$OSSUTIL_BIN" cp -f -r release/ "oss://${OSS_BUCKET}/${OSS_PATH}/" --include "*.exe" -e "${CLEAN_ENDPOINT}" -i "${OSS_ACCESS_KEY_ID}" -k "${OSS_ACCESS_KEY_SECRET}"
 
   # ========== 更新应用内检测更新元数据 (version.json) ==========
   update-version-manifest:
@@ -241,7 +255,7 @@ jobs:
       - name: Determine OSS Path
         run: |
           OSS_PATH="heyclaw-dev/downloads"
-          BRANCHES=$(git branch -r --contains HEAD)
+          BRANCHES=$(git branch -r --contains HEAD || true)
           if echo "$BRANCHES" | grep -qE "origin/main$|origin/main "; then
             OSS_PATH="heyclaw/downloads"
           fi
@@ -262,17 +276,17 @@ jobs:
           echo "[Manifest] Fetching latest uploaded filenames from OSS..."
           ossutil ls oss://${{ secrets.OSS_BUCKET }}/${{ env.OSS_PATH }}/ > /tmp/oss_list.txt || true
 
-          # 解析对应的文件名
-          WIN_FILE=$(grep -E "${TAG_NAME}.*\.exe" /tmp/oss_list.txt | awk '{print $NF}' | xargs -n 1 basename | head -n 1)
-          MAC_ARM64_FILE=$(grep -E "${TAG_NAME}.*arm64.*\.dmg" /tmp/oss_list.txt | awk '{print $NF}' | xargs -n 1 basename | head -n 1)
-          MAC_X64_FILE=$(grep -E "${TAG_NAME}.*(x64|mac).*\.dmg" /tmp/oss_list.txt | grep -v "arm64" | awk '{print $NF}' | xargs -n 1 basename | head -n 1)
+          # 严密解析对应的文件名 (带空值容错)
+          WIN_FILE=$(grep -E "${TAG_NAME}.*\.exe" /tmp/oss_list.txt | awk '{print $NF}' | xargs -n 1 basename | head -n 1 || true)
+          MAC_ARM64_FILE=$(grep -E "${TAG_NAME}.*arm64.*\.dmg" /tmp/oss_list.txt | awk '{print $NF}' | xargs -n 1 basename | head -n 1 || true)
+          MAC_X64_FILE=$(grep -E "${TAG_NAME}.*(x64|mac).*\.dmg" /tmp/oss_list.txt | grep -v "arm64" | awk '{print $NF}' | xargs -n 1 basename | head -n 1 || true)
 
           CDN_PREFIX="${{ secrets.CDN_URL_PREFIX }}"
           if [ -n "$CDN_PREFIX" ]; then
             CDN_PREFIX="${CDN_PREFIX%/}"
-            WIN_URL="${CDN_PREFIX}/${{ env.OSS_PATH }}/${WIN_FILE}"
-            MAC_ARM64_URL="${CDN_PREFIX}/${{ env.OSS_PATH }}/${MAC_ARM64_FILE}"
-            MAC_X64_URL="${CDN_PREFIX}/${{ env.OSS_PATH }}/${MAC_X64_FILE}"
+            [ -n "$WIN_FILE" ] && WIN_URL="${CDN_PREFIX}/${{ env.OSS_PATH }}/${WIN_FILE}" || WIN_URL=""
+            [ -n "$MAC_ARM64_FILE" ] && MAC_ARM64_URL="${CDN_PREFIX}/${{ env.OSS_PATH }}/${MAC_ARM64_FILE}" || MAC_ARM64_URL=""
+            [ -n "$MAC_X64_FILE" ] && MAC_X64_URL="${CDN_PREFIX}/${{ env.OSS_PATH }}/${MAC_X64_FILE}" || MAC_X64_URL=""
           else
             WIN_URL="${WIN_FILE}"
             MAC_ARM64_URL="${MAC_ARM64_FILE}"
