@@ -1,6 +1,9 @@
 name: Test Self-Hosted Runner Demo
 
 on:
+  push:
+    paths:
+      - '.github/workflows/test-runner-demo.yml'
   workflow_dispatch:
     inputs:
       test_macos:
@@ -17,7 +20,7 @@ on:
 jobs:
   # ========== macOS 自建节点轻量验证 ==========
   test-macos:
-    if: ${{ inputs.test_macos }}
+    if: ${{ github.event_name == 'push' || inputs.test_macos }}
     runs-on: [self-hosted, macOS]
     steps:
       - name: 打印主机环境信息
@@ -57,7 +60,7 @@ jobs:
 
   # ========== Windows 自建节点轻量验证 ==========
   test-windows:
-    if: ${{ inputs.test_windows }}
+    if: ${{ github.event_name == 'push' || inputs.test_windows }}
     runs-on: [self-hosted, Windows]
     steps:
       - name: 打印主机环境信息
