@@ -22,38 +22,30 @@ env:
   NODE_OPTIONS: "--max-old-space-size=8192"
 
 jobs:
-  # ========== macOS 构建 ==========
+  # ========== macOS 构建 (自建 Runner) ==========
   build-macos:
     if: ${{ github.event_name == 'push' || inputs.build_macos }}
-    runs-on: macos-latest
+    runs-on: [self-hosted, macOS]
     strategy:
+      fail-fast: false
       matrix:
         arch: [arm64, x64]
     steps:
       - uses: actions/checkout@v4
-      
-      # 使用 setup-node 自带的 cache 功能，完美托管主应用的 npm 全局依赖
+
+      - name: Clean Workspace (防脏构建，保留依赖与 OpenClaw 运行时缓存)
+        run: |
+          echo "[Clean] Cleaning up untracked artifacts while preserving node_modules and openclaw runtime..."
+          git clean -ffdx -e node_modules -e "node_modules/**" -e vendor/openclaw-runtime -e "vendor/openclaw-runtime/**" -e vendor/openclaw-plugins -e "vendor/openclaw-plugins/**" || true
+          rm -rf release dist-files oss-dist || true
+
       - uses: actions/setup-node@v4
         with:
           node-version: '24.x'
-          cache: 'npm'
-          cache-dependency-path: 'package-lock.json'
-      
-      # 显式安装 pnpm，因为底层的 openclaw 框架需要调用它
-      - name: Install pnpm
-        run: npm install -g pnpm@10
 
-      # 【优化：精准缓存】联合锁死 macOS 下 pnpm 的全局 Store 以及 openclaw 动态下载的本地目录
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/Library/Caches/pnpm
-            vendor/openclaw-runtime
-            vendor/openclaw-plugins
-          key: openclaw-deps-${{ runner.os }}-${{ matrix.arch }}-${{ hashFiles('package-lock.json') }}
-          restore-keys: |
-            openclaw-deps-${{ runner.os }}-${{ matrix.arch }}-
-      
+      - name: Ensure pnpm
+        run: which pnpm || npm install -g pnpm@10
+
       # 若是 tag 触发，则在安装依赖前动态修改 package.json 的版本，确保打包后的版本与 tag 统一
       - name: Sync version to package.json
         if: startsWith(github.ref, 'refs/tags/v')
@@ -61,10 +53,10 @@ jobs:
           TAG_NAME=${GITHUB_REF#refs/tags/}
           VERSION=${TAG_NAME#v}
           npm version $VERSION --no-git-tag-version --allow-same-version
-      
-      - run: npm install
-      
-      # 设置 OpenClaw runtime (如果需要)
+
+      - name: Install Dependencies
+        run: npm ci || npm install
+
       - name: Setup OpenClaw Runtime
         run: |
           if [ -d "vendor/openclaw-runtime/current" ]; then
@@ -72,18 +64,20 @@ jobs:
           else
             echo "⚠ OpenClaw runtime not found, build may fail"
           fi
-      
-      # 使用临时专用钥匙串方案：密码完全确定，codesign 不会触发无人值守弹窗死锁
+
+      # 临时专用钥匙串：自动解锁并设置搜索列表
       - name: Setup macOS Keychain
         env:
           CSC_LINK_B64: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
         run: |
-          # 创建临时专用钥匙串，使用固定密码避免 login.keychain 解锁死锁问题
           KEYCHAIN_PATH=$RUNNER_TEMP/build.keychain
           KEYCHAIN_PASS="heyclaw-ci-$(date +%s)"
           echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> $GITHUB_ENV
           echo "KEYCHAIN_PASS=$KEYCHAIN_PASS" >> $GITHUB_ENV
+
+          # 先尝试删除可能残留的同路径钥匙串
+          security delete-keychain "$KEYCHAIN_PATH" 2>/dev/null || true
 
           security create-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
@@ -94,11 +88,10 @@ jobs:
           security import /tmp/certificate.p12 -k "$KEYCHAIN_PATH" -P "$CSC_KEY_PASSWORD" -T /usr/bin/codesign -T /usr/bin/productbuild
           rm -f /tmp/certificate.p12
 
-
           # 将临时钥匙串加入搜索列表最前面
           security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | xargs)
 
-          # 放行私钥分区（密码已知，不触发弹窗）
+          # 放行私钥分区
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
 
           # 验证证书加载
@@ -107,50 +100,73 @@ jobs:
       - name: Build macOS
         run: npm run dist:mac:${{ matrix.arch }} -- --publish never
         env:
-          # 显式指定证书身份名称（不带 Developer ID Application: 前缀，electron-builder 规范）
           CSC_NAME: "Huizhou Bancheng Media Co., Ltd. (VNH5J9U65J)"
-          # 告知 electron-builder 使用我们的临时专用钥匙串，而非 login.keychain
           CSC_KEYCHAIN: ${{ env.KEYCHAIN_PATH }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
-      
-      - uses: actions/upload-artifact@v4
-        with:
-          name: macos-build-${{ matrix.arch }}
-          path: release/*.dmg
-          retention-days: 7
+      - name: Determine OSS Path
+        run: |
+          OSS_PATH="heyclaw-dev/downloads"
+          BRANCHES=$(git branch -r --contains HEAD || true)
+          if echo "$BRANCHES" | grep -qE "origin/main$|origin/main "; then
+            OSS_PATH="heyclaw/downloads"
+          fi
+          echo "OSS_PATH=$OSS_PATH" >> $GITHUB_ENV
 
-  # ========== Windows 构建 ==========
+      # 自建机直传阿里云 OSS（国内/公网高速上传，不走 GitHub 暂存）
+      - name: Upload DMG to Aliyun OSS
+        env:
+          OSS_ENDPOINT: ${{ secrets.OSS_ENDPOINT }}
+          OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
+          OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+          OSS_BUCKET: ${{ secrets.OSS_BUCKET }}
+        run: |
+          echo "[Upload] Uploading macOS DMG directly to OSS..."
+          if ! command -v ossutil &> /dev/null; then
+            if [ ! -f "/tmp/ossutil" ]; then
+              curl -fSL "https://gosspublic.alicdn.com/ossutil/1.7.18/ossutilmac64" -o /tmp/ossutil
+              chmod +x /tmp/ossutil
+            fi
+            OSSUTIL_BIN="/tmp/ossutil"
+          else
+            OSSUTIL_BIN="ossutil"
+          fi
+          $OSSUTIL_BIN cp -f release/*.dmg oss://${OSS_BUCKET}/${OSS_PATH}/ -e ${OSS_ENDPOINT} -i ${OSS_ACCESS_KEY_ID} -k ${OSS_ACCESS_KEY_SECRET}
+
+      - name: Cleanup macOS Keychain
+        if: always()
+        run: |
+          if [ -n "$KEYCHAIN_PATH" ] && [ -f "$KEYCHAIN_PATH" ]; then
+            echo "[Cleanup] Deleting temporary build keychain..."
+            security delete-keychain "$KEYCHAIN_PATH" || true
+          fi
+
+  # ========== Windows 构建 (自建 Windows 云服务器) ==========
   build-windows:
     if: ${{ github.event_name == 'push' || inputs.build_windows }}
-    runs-on: windows-latest
+    runs-on: [self-hosted, Windows]
     steps:
       - uses: actions/checkout@v4
-      
-      # Windows 端同样激活 setup-node 的 npm 原生缓存
+
+      - name: Clean Workspace (防脏构建，保留依赖与 OpenClaw 运行时缓存)
+        shell: powershell
+        run: |
+          Write-Host "[Clean] Cleaning up untracked artifacts while preserving node_modules and openclaw runtime..."
+          git clean -ffdx -e node_modules -e "node_modules/**" -e vendor/openclaw-runtime -e "vendor/openclaw-runtime/**" -e vendor/openclaw-plugins -e "vendor/openclaw-plugins/**"
+          if (Test-Path release) { Remove-Item -Recurse -Force release }
+          if (Test-Path dist-files) { Remove-Item -Recurse -Force dist-files }
+
       - uses: actions/setup-node@v4
         with:
           node-version: '24.x'
-          cache: 'npm'
-          cache-dependency-path: 'package-lock.json'
-      
-      # Windows 端同样显式安装 pnpm 供 openclaw 底层消费
-      - name: Install pnpm
-        run: npm install -g pnpm@10
-      
-      # 【优化：精准缓存】联合锁死 Windows 端 openclaw 调用 pnpm 时的全局缓存路径与本地目录
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~\AppData\Local\pnpm\Cache
-            vendor/openclaw-runtime
-            vendor/openclaw-plugins
-          key: openclaw-deps-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-          restore-keys: |
-            openclaw-deps-${{ runner.os }}-
-      
+
+      - name: Ensure pnpm
+        shell: powershell
+        run: |
+          try { pnpm -v } catch { npm install -g pnpm@10 }
+
       # 若是 tag 触发，则在安装依赖前动态修改 package.json 的版本，确保打包后的版本与 tag 统一
       - name: Sync version to package.json
         if: startsWith(github.ref, 'refs/tags/v')
@@ -159,110 +175,60 @@ jobs:
           TAG_NAME=${GITHUB_REF#refs/tags/}
           VERSION=${TAG_NAME#v}
           npm version $VERSION --no-git-version-keyword --no-git-tag-version --allow-same-version || npm version $VERSION --no-git-tag-version --allow-same-version
-      
-      - run: npm install
-      
-      # Windows 需要 Python 运行时
+
+      - name: Install Dependencies
+        run: npm ci || npm install
+
+      # Windows Python 运行时
       - name: Setup Python Runtime
         run: npm run setup:python-runtime
         env:
           LOBSTERAI_PORTABLE_PYTHON_ARCHIVE: ${{ secrets.WINDOWS_PYTHON_ARCHIVE }}
 
-      - name: Determine Windows Sign OSS Prefix
+      - name: Determine OSS Path
         shell: bash
         run: |
-          WIN_SIGN_OSS_PREFIX="heyclaw-dev/win-sign"
+          OSS_PATH="heyclaw-dev/downloads"
           BRANCHES=$(git branch -r --contains HEAD || true)
-          echo "Branches containing current commit:"
-          echo "$BRANCHES"
           if echo "$BRANCHES" | grep -qE "origin/main$|origin/main "; then
-            WIN_SIGN_OSS_PREFIX="heyclaw/win-sign"
+            OSS_PATH="heyclaw/downloads"
           fi
-          echo "Determined Windows Sign OSS Prefix: $WIN_SIGN_OSS_PREFIX"
-          echo "WIN_SIGN_OSS_PREFIX=$WIN_SIGN_OSS_PREFIX" >> $GITHUB_ENV
+          echo "OSS_PATH=$OSS_PATH" >> $GITHUB_ENV
 
-      - name: Setup ossutil on Windows
-        shell: bash
-        run: |
-          echo "[Setup] Downloading official ossutil for Windows..."
-          curl -fSL --retry 3 "https://gosspublic.alicdn.com/ossutil/1.7.18/ossutil64.zip" -o ossutil64.zip || true
-          if [ -f ossutil64.zip ]; then
-            unzip -q -o ossutil64.zip || true
-            OSSUTIL_DIR=$(find . -maxdepth 1 -type d -name "ossutil64*" | head -n 1)
-            if [ -n "$OSSUTIL_DIR" ] && [ -d "$OSSUTIL_DIR" ]; then
-              FULL_PATH="$(pwd)/$OSSUTIL_DIR"
-              echo "$FULL_PATH" >> $GITHUB_PATH
-              echo "OSSUTIL_PATH=$FULL_PATH/ossutil64.exe" >> $GITHUB_ENV
-              echo "[Setup] Installed ossutil to PATH: $FULL_PATH"
-              "$FULL_PATH/ossutil64.exe" --version || true
-            fi
-          fi
-
+      # 本地 signtool 秒级签名，纯本地打包，彻底不走任何 OSS 中转或远程 node 服务
       - name: Build Windows
         shell: bash
-        run: |
-          # 如果 WIN_CSC_LINK 既不是有效文件，其长度又明显不是 Base64 证书内容（小于 100 字符），则彻底注销环境变量
-          if [[ ! -f "$WIN_CSC_LINK" && ${#WIN_CSC_LINK} -lt 100 ]]; then
-            echo "[Codesign] 检测到 WIN_CSC_LINK 为无效占位符 (${WIN_CSC_LINK})，彻底注销签名环境变量以跳过签名。"
-            unset WIN_CSC_LINK
-            unset CSC_LINK
-            unset WIN_CSC_KEY_PASSWORD
-            unset CSC_KEY_PASSWORD
-          fi
-          npm run dist:win -- --publish never
+        run: npm run dist:win -- --publish never
         env:
-          CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-          WIN_SIGN_CERT_SHA1: ${{ secrets.WIN_SIGN_CERT_SHA1 }}
-          WIN_SIGN_SERVICE_URL: ${{ secrets.WIN_SIGN_SERVICE_URL }}
-          WIN_SIGN_SERVICE_SECRET: ${{ secrets.WIN_SIGN_SERVICE_SECRET }}
-          WIN_SIGN_OSS_PREFIX: ${{ env.WIN_SIGN_OSS_PREFIX }}
+          WIN_SIGN_CERT_SHA1: "f0d51f084bba92740ced8165475fddfaf0f901e2"
+          ELECTRON_BUILDER_HTTP_TIMEOUT: 600000
+
+      # 本地直传阿里云 OSS（内网/同地域专线，几秒完成）
+      - name: Upload EXE to Aliyun OSS
+        shell: powershell
+        env:
           OSS_ENDPOINT: ${{ secrets.OSS_ENDPOINT }}
           OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
           OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
           OSS_BUCKET: ${{ secrets.OSS_BUCKET }}
-          # electron-builder 下载依赖超时保护（防止大文件下载导致 408）
-          ELECTRON_BUILDER_HTTP_TIMEOUT: 600000
+        run: |
+          Write-Host "[Upload] Uploading Windows EXE directly to OSS..."
+          if (-not (Get-Command ossutil64 -ErrorAction SilentlyContinue) -and -not (Get-Command ossutil -ErrorAction SilentlyContinue)) {
+            if (-not (Test-Path "$env:TEMP\ossutil64.exe")) {
+              Invoke-WebRequest -Uri "https://gosspublic.alicdn.com/ossutil/1.7.18/ossutil64.zip" -OutFile "$env:TEMP\ossutil.zip"
+              Expand-Archive -Path "$env:TEMP\ossutil.zip" -DestinationPath "$env:TEMP\ossutil_extracted" -Force
+              $exe = Get-ChildItem -Path "$env:TEMP\ossutil_extracted" -Filter "ossutil64.exe" -Recurse | Select-Object -First 1
+              Copy-Item $exe.FullName "$env:TEMP\ossutil64.exe"
+            }
+            $ossutil = "$env:TEMP\ossutil64.exe"
+          } else {
+            $ossutil = "ossutil64"
+          }
+          $cleanEndpoint = $env:OSS_ENDPOINT -replace '^https?://', ''
+          & $ossutil cp -f -r release/ "oss://$env:OSS_BUCKET/$env:OSS_PATH/" --include "*.exe" -e $cleanEndpoint -i $env:OSS_ACCESS_KEY_ID -k $env:OSS_ACCESS_KEY_SECRET
 
-      
-      - uses: actions/upload-artifact@v4
-        with:
-          name: windows-build
-          path: release/*.exe
-          retention-days: 7
-
-  # ========== 创建 Release ==========
-  create-release:
-    needs: [build-macos, build-windows]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Download All Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-      
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: |
-            artifacts/macos-build-arm64/*.dmg
-            artifacts/macos-build-x64/*.dmg
-            artifacts/windows-build/*.exe
-          draft: true
-          prerelease: ${{ contains(github.ref, '-beta') || contains(github.ref, '-alpha') || contains(github.ref, '-rc') }}
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  # ========== 自动部署到阿里云 OSS ==========
-  deploy-to-oss:
+  # ========== 更新应用内检测更新元数据 (version.json) ==========
+  update-version-manifest:
     needs: [build-macos, build-windows]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
@@ -274,50 +240,36 @@ jobs:
 
       - name: Determine OSS Path
         run: |
-          # 默认使用测试环境路径
           OSS_PATH="heyclaw-dev/downloads"
-          
-          # 获取包含当前 HEAD 提交的远程分支列表
           BRANCHES=$(git branch -r --contains HEAD)
-          echo "Branches containing current commit:"
-          echo "$BRANCHES"
-          
-          # 检查是否包含 origin/main。如果有，说明属于 main 分支的构建
           if echo "$BRANCHES" | grep -qE "origin/main$|origin/main "; then
             OSS_PATH="heyclaw/downloads"
           fi
-          
-          echo "Determined OSS Path: $OSS_PATH"
           echo "OSS_PATH=$OSS_PATH" >> $GITHUB_ENV
 
-      - name: Download All Artifacts
-        uses: actions/download-artifact@v4
+      - name: Setup OSSUTIL
+        uses: manyuanrong/setup-ossutil@master
         with:
-          path: dist-files
+          endpoint: ${{ secrets.OSS_ENDPOINT }}
+          access-key-id: ${{ secrets.OSS_ACCESS_KEY_ID }}
+          access-key-secret: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
 
-      - name: Flatten Dist Directory & Generate version.json
+      - name: Generate and Upload version.json
         run: |
-          # 创建准备 OSS 上传和大文件寻找的临时目录
-          mkdir -p oss-dist
-          find dist-files/ -type f -name "*.dmg" -exec cp {} oss-dist/ \;
-          find dist-files/ -type f -name "*.exe" -exec cp {} oss-dist/ \;
-          
-          # 提取当前 tag 的版本号
           TAG_NAME=${GITHUB_REF#refs/tags/}
-          
-          # 寻找对应的包文件名
-          WIN_FILE=$(cd oss-dist && ls *.exe | head -n 1)
-          MAC_ARM64_FILE=$(cd oss-dist && ls *arm64*.dmg | head -n 1)
-          MAC_X64_FILE=$(cd oss-dist && ls *x64*.dmg | head -n 1)
-          
-          # 从 Secrets 读取 CDN 前缀
+          mkdir -p meta-dist
+
+          echo "[Manifest] Fetching latest uploaded filenames from OSS..."
+          ossutil ls oss://${{ secrets.OSS_BUCKET }}/${{ env.OSS_PATH }}/ > /tmp/oss_list.txt || true
+
+          # 解析对应的文件名
+          WIN_FILE=$(grep -E "${TAG_NAME}.*\.exe" /tmp/oss_list.txt | awk '{print $NF}' | xargs -n 1 basename | head -n 1)
+          MAC_ARM64_FILE=$(grep -E "${TAG_NAME}.*arm64.*\.dmg" /tmp/oss_list.txt | awk '{print $NF}' | xargs -n 1 basename | head -n 1)
+          MAC_X64_FILE=$(grep -E "${TAG_NAME}.*(x64|mac).*\.dmg" /tmp/oss_list.txt | grep -v "arm64" | awk '{print $NF}' | xargs -n 1 basename | head -n 1)
+
           CDN_PREFIX="${{ secrets.CDN_URL_PREFIX }}"
-          
-          # 如果配置了 CDN 前缀，就使用绝对链接；否则回退为相对路径文件名
           if [ -n "$CDN_PREFIX" ]; then
-            # 去除末尾斜杠
             CDN_PREFIX="${CDN_PREFIX%/}"
-            # 使用动态决定的 OSS_PATH
             WIN_URL="${CDN_PREFIX}/${{ env.OSS_PATH }}/${WIN_FILE}"
             MAC_ARM64_URL="${CDN_PREFIX}/${{ env.OSS_PATH }}/${MAC_ARM64_FILE}"
             MAC_X64_URL="${CDN_PREFIX}/${{ env.OSS_PATH }}/${MAC_X64_FILE}"
@@ -326,9 +278,8 @@ jobs:
             MAC_ARM64_URL="${MAC_ARM64_FILE}"
             MAC_X64_URL="${MAC_X64_FILE}"
           fi
-          
-          # 写入 version.json 到 oss-dist 目录以供一并上传到 OSS
-          cat <<EOF > oss-dist/version.json
+
+          cat <<EOF > meta-dist/version.json
           {
             "version": "${TAG_NAME}",
             "date": "$(date +'%Y-%m-%d')",
@@ -339,17 +290,8 @@ jobs:
             }
           }
           EOF
-          
-          # 打印 oss-dist 目录下的内容进行验证
-          echo "=== Files to upload to OSS (oss-dist) ==="
-          ls -la oss-dist/
 
-      - name: Setup OSSUTIL
-        uses: manyuanrong/setup-ossutil@master
-        with:
-          endpoint: ${{ secrets.OSS_ENDPOINT }}
-          access-key-id: ${{ secrets.OSS_ACCESS_KEY_ID }}
-          access-key-secret: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+          echo "=== Generated version.json ==="
+          cat meta-dist/version.json
 
-      - name: Upload Artifacts to Aliyun OSS
-        run: ossutil cp -f -r oss-dist/ oss://${{ secrets.OSS_BUCKET }}/${{ env.OSS_PATH }}/
+          ossutil cp -f meta-dist/version.json oss://${{ secrets.OSS_BUCKET }}/${{ env.OSS_PATH }}/version.json
