@@ -45,26 +45,13 @@ jobs:
           rm -rf "$TEST_DIR"
           echo "✓ macOS 最小环境验证通过"
 
-      - name: 生成轻量模拟产物
-        run: |
-          mkdir -p test-dist
-          echo "HeyClaw macOS Self-Hosted Runner Build Demo - $(date)" > test-dist/demo-macos-output.txt
-          echo "Arch: $(uname -m)" >> test-dist/demo-macos-output.txt
-
-      - name: 上传测试产物
-        uses: actions/upload-artifact@v4
-        with:
-          name: demo-macos-artifact
-          path: test-dist/demo-macos-output.txt
-          retention-days: 1
-
   # ========== Windows 自建节点轻量验证 ==========
   test-windows:
     if: ${{ github.event_name == 'push' || inputs.test_windows }}
     runs-on: [self-hosted, Windows]
     steps:
       - name: 打印主机环境信息
-        shell: pwsh
+        shell: powershell
         run: |
           Write-Host "=== Windows 节点信息 ==="
           [System.Environment]::OSVersion.VersionString
@@ -74,19 +61,4 @@ jobs:
           try { node -v } catch { Write-Host "未检测到 Node.js" }
           try { pnpm -v } catch { Write-Host "未检测到 pnpm" }
           try { git --version } catch { Write-Host "未检测到 Git" }
-
-      - name: 生成轻量模拟产物
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path test-dist
-          $content = "HeyClaw Windows Self-Hosted Runner Build Demo - $(Get-Date)"
-          Set-Content -Path test-dist\demo-windows-output.txt -Value $content
           Write-Host "✓ Windows 最小环境验证通过"
-
-      - name: 上传测试产物
-        uses: actions/upload-artifact@v4
-        with:
-          name: demo-windows-artifact
-          path: test-dist/demo-windows-output.txt
-          retention-days: 1
-
