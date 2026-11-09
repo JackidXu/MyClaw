@@ -11,10 +11,10 @@ import {
 import { expandPastedTextBlocks, extractPastedTextBlocks } from '../../../shared/cowork/pastedText';
 import type { CoworkSelectedTextSnippet } from '../../../shared/cowork/selectedText';
 import type { InstalledKitRecord, KitReference } from '../../../shared/kit/constants';
-import { copyTextToClipboard } from '../../services/clipboard';
 import { i18nService } from '../../services/i18n';
 import { useImageEditSnapshots } from '../../services/imageEditSnapshots';
 import { buildKitReferences } from '../../services/kitCapability';
+import { copyMessageToClipboard, type MessageImageSource } from '../../services/messageClipboard';
 import { resolveLocalizedText, skillService } from '../../services/skill';
 import { RootState } from '../../store';
 import type { CoworkImageAttachment, CoworkMessage, CoworkMessageMetadata } from '../../types/cowork';
@@ -64,14 +64,15 @@ import UserMessageFileAttachments from './UserMessageFileAttachments';
 
 const CopyButton: React.FC<{
   content: string;
+  images: MessageImageSource[];
   onCopy?: (result: 'success' | 'failed') => void;
   visible: boolean;
-}> = ({ content, onCopy, visible }) => {
+}> = ({ content, images, onCopy, visible }) => {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    const copiedToClipboard = await copyTextToClipboard(content);
+    const copiedToClipboard = await copyMessageToClipboard(content, images);
     if (copiedToClipboard) {
       onCopy?.('success');
       setCopied(true);
@@ -402,10 +403,12 @@ const UserMessageItem: React.FC<{
     ? imageAttachmentPreviews
     : legacyImageAttachments;
   // Annotation transport screenshots already render as numbered annotation
-  // cards; keep them out of the regular attachment row.
-  const displayImageAttachments = allImageAttachments.filter(image =>
+  // cards; keep them out of the regular attachment row and the copied message.
+  const userImageAttachments = allImageAttachments.filter(image =>
     !(browserAnnotationCount > 0 && isBrowserAnnotationTransportImage(image))
-    && !imageEdits.some(snapshot => snapshot.source.filePath === image.localPath)
+  );
+  const displayImageAttachments = userImageAttachments.filter(image =>
+    !imageEdits.some(snapshot => snapshot.source.filePath === image.localPath)
   );
   const hasCapabilityBadges = messageKitReferences.length > 0 || messageSkills.length > 0;
   const shouldCollapseSkills = (sessionAgentId || currentAgentId) !== 'main' && messageSkills.length > 0;
@@ -562,6 +565,7 @@ const UserMessageItem: React.FC<{
                   <span>{formatMessageDateTime(message.timestamp)}</span>
                   <CopyButton
                     content={copyContent}
+                    images={userImageAttachments}
                     onCopy={(result) => reportConversationMessageAction({
                       actionType: 'copy_message',
                       message,
@@ -569,6 +573,7 @@ const UserMessageItem: React.FC<{
                         result,
                         copySource: 'user_message',
                         copiedLength: copyContent.length,
+                        copiedImageCount: userImageAttachments.length,
                       },
                     })}
                     visible={isHovered}

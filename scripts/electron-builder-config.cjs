@@ -35,9 +35,13 @@ for (const envVar of ['WIN_CSC_LINK', 'CSC_LINK']) {
 }
 
 const config = require('../electron-builder.json');
-const { BuildEnv } = require('./build-env.cjs');
+const { BuildEnv, PackagingEnv } = require('./build-env.cjs');
 const { readBuildKeyfrom } = require('./build-keyfrom.cjs');
 const { configureMacWebAuthnEntitlements } = require('./mac-webauthn-entitlements.cjs');
+
+if (process.env[PackagingEnv.OutputDir]) {
+  config.directories = { ...config.directories, output: path.resolve(process.env[PackagingEnv.OutputDir]) };
+}
 
 // Opt-in web installer (small NSIS stub that downloads the app package from a
 // CDN at install time). Default builds are full offline installers; nothing

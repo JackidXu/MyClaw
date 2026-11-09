@@ -47,7 +47,7 @@ import AssistantMessageItem from './AssistantMessageItem';
 import { ActivityEntryVariant } from './constants';
 import { reportConversationBlockAction } from './conversationAnalytics';
 import MediaPollingIndicator from './MediaPollingIndicator';
-import { isMediaTaskSettled } from './MediaTaskCard';
+import { hasRecoveredMediaAssets, isMediaTaskSettled } from './MediaTaskCard';
 import { buildMediaTaskPresentations, isMediaGenerationToolName, type MediaTaskPresentations } from './mediaTaskPresentation';
 import { MessageCopyButton } from './MessageActionButton';
 import {
@@ -69,6 +69,7 @@ import {
   getConsolidatedItemKey,
   getContextCompactionMessageLabel,
   getMediaCompletionDisplayText,
+  getModelReconnectMessageLabel,
   getRetainedMediaPollCount,
   getStreamingTextSignature,
   getThinkingPhaseLabels,
@@ -89,10 +90,12 @@ import {
   isContextCompactionMessage,
   isDuplicateGeneratedVideoAssistantMessage,
   isModelChangeMessage,
+  isModelReconnectMessage,
   type ToolGroupItem,
   withTurnModelPreset,
 } from './messageDisplayUtils';
 import ModelChangeDivider from './ModelChangeDivider';
+import ModelReconnectStatusLine from './ModelReconnectStatusLine';
 import ThinkingBlock from './ThinkingBlock';
 import ToolCallGroup from './ToolCallGroup';
 import TurnUsageChip from './TurnUsageChip';
@@ -547,6 +550,9 @@ const AssistantTurnBlock: React.FC<{
   isStreamingTurn?: boolean;
   /** True while subagents spawned in this turn are still running; keeps the process unfolded. */
   hasRunningSubagents?: boolean;
+  /** Error message whose card offers to continue a turn cut short by a dropped model stream. */
+  streamInterruptedErrorMessageId?: string | null;
+  onContinueAfterStreamInterruption?: () => void;
 }> = ({
   turn,
   mediaTaskPresentations,
@@ -574,6 +580,8 @@ const AssistantTurnBlock: React.FC<{
   searchTargetMessageId,
   isStreamingTurn = false,
   hasRunningSubagents = false,
+  streamInterruptedErrorMessageId,
+  onContinueAfterStreamInterruption,
 }) => {
   const currentSession = useSelector(selectCurrentSession);
   const creditQuotaSnapshot = useSelector((state: RootState) => state.auth.creditQuotaSnapshot);
@@ -704,12 +712,22 @@ const AssistantTurnBlock: React.FC<{
     if (message.id === hiddenSystemMessageId) {
       return null;
     }
+    if (isModelReconnectMessage(message)) {
+      return (
+        <ModelReconnectStatusLine
+          label={getModelReconnectMessageLabel(message)}
+          status={message.metadata?.status}
+        />
+      );
+    }
     const isError = !hasText(message.content) && typeof message.metadata?.error === 'string';
     const rawContent = hasText(message.content)
       ? message.content
       : (typeof message.metadata?.error === 'string' ? message.metadata.error : '');
     if (getMediaCompletionDisplayText(message, rawContent)) {
-      return null;
+      return hasRecoveredMediaAssets(message.metadata?.toolResultDetails as Record<string, unknown> | undefined)
+        ? <p role="status" className="text-xs text-secondary">{i18nService.t('mediaImageSavedToRecovery')}</p>
+        : null;
     }
     const normalizedContent = getScheduledReminderDisplayText(rawContent) ?? rawContent;
     const errorKey = getSystemMessageErrorKey(message, normalizedContent);
@@ -780,6 +798,17 @@ const AssistantTurnBlock: React.FC<{
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
             >
               <span>{i18nService.t('coworkActionRecharge')}</span>
+            </button>
+          </div>
+        )}
+        {onContinueAfterStreamInterruption && message.id === streamInterruptedErrorMessageId && (
+          <div className="mt-2 pl-6">
+            <button
+              type="button"
+              onClick={onContinueAfterStreamInterruption}
+              className="inline-flex h-7 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-surface-raised focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 active:scale-[0.98]"
+            >
+              {i18nService.t('coworkModelReconnectContinueAction')}
             </button>
           </div>
         )}

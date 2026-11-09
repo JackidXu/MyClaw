@@ -20,7 +20,8 @@ const { collectHostPeerLeftovers, measureDirectorySize } = require('./openclaw-p
 const { verifyOpenClawPluginSdkBridge } = require('./openclaw-plugin-sdk-bridge.cjs');
 const { createOpenClawWindowsPayload } = require('./openclaw-windows-payload.cjs');
 const { pruneOpenClawMacPayload } = require('./openclaw-mac-payload.cjs');
-const { configureBetterSqlite3MacPayload } = require('./better-sqlite3-mac-payload.cjs');
+const { configureBetterSqlite3Payload } = require('./better-sqlite3-payload.cjs');
+const { createSkillsPayloadFilter } = require('./skill-payload.cjs');
 const { prepareMacSkills, verifyPackagedMacSkills } = require('./skill-mac-dependencies.cjs');
 
 function isWindowsTarget(context) {
@@ -714,7 +715,7 @@ function writeWindowsPayloadSizeFragment(context) {
 }
 
 async function beforePack(context) {
-  configureBetterSqlite3MacPayload(context);
+  configureBetterSqlite3Payload(context);
   ensureBundledOpenClawRuntime(context);
   if (isMacTarget(context)) {
     prepareMacSkills(context);
@@ -754,6 +755,7 @@ async function beforePack(context) {
         label: 'SKILLs',
         dir: path.join(__dirname, '..', 'SKILLs'),
         prefix: 'SKILLs',
+        filter: createSkillsPayloadFilter(path.join(__dirname, '..', 'SKILLs')),
       },
       {
         label: 'Python runtime',

@@ -2,7 +2,7 @@ import { Type } from '@sinclair/typebox';
 // @ts-expect-error plugin-sdk exists natively inside the openclaw gateway sandbox
 import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
 
-import { MediaRunContexts } from './runContext';
+import { getSharedMediaRunContexts } from './runContext';
 import { isLobsterAiDesktopSessionKey, isLobsterAiMediaSessionKey } from './sessionKey';
 import {
   type MediaStatusPollPolicy,
@@ -203,7 +203,7 @@ async function callMediaBridge(
 ): Promise<MediaToolResponse> {
   const controller = new AbortController();
   // Reserve a separate confirmation budget; it must not consume the submission budget.
-  const confirmationBudget = request.tool === MediaToolName.VideoGenerate
+  const confirmationBudget = (request.tool === MediaToolName.VideoGenerate || request.tool === MediaToolName.ImageGenerate)
     && (request.args.action == null || request.args.action === MediaToolAction.Generate) ? config.confirmationTimeoutMs : 0;
   const timer = setTimeout(() => controller.abort(), config.requestTimeoutMs + confirmationBudget);
 
@@ -410,7 +410,7 @@ const plugin = {
       return;
     }
 
-    const runs = new MediaRunContexts(request => callMediaBridge(
+    const runs = getSharedMediaRunContexts(request => callMediaBridge(
       { ...config, requestTimeoutMs: 10_000 }, request,
     ));
     api.on('before_model_resolve', async (_event, ctx) => {
@@ -501,7 +501,7 @@ const plugin = {
               tool: MediaToolName.ImageGenerate,
               args,
               context: { sessionKey, toolCallId: id, ...runs.forTool(sessionKey, id) },
-            });
+            }, signal);
             api.logger.info(`[lobster-media-generation] image tool (${action}) completed: toolCallId=${id} elapsedMs=${Date.now() - startedAt} isError=${result.isError === true}`);
             return result;
           } catch (error) {
