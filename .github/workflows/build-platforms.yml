@@ -22,14 +22,14 @@ env:
   NODE_OPTIONS: "--max-old-space-size=8192"
 
 jobs:
-  # ========== macOS 构建 (自建 Mac Runner，彻底突破 GitHub 10倍高额度消耗) ==========
+  # ========== macOS 构建 (同事 M 系列 Mac 自建 Runner，原生打出双架构) ==========
   build-macos:
     if: ${{ github.event_name == 'push' || inputs.build_macos }}
     runs-on: [self-hosted, macOS]
     strategy:
       fail-fast: false
       matrix:
-        arch: [x64] # 生产全量发布时可按需扩充为 [arm64, x64]
+        arch: [arm64, x64] # 同事 M 芯片凭借 Rosetta 2 原生双架构极速构建
     steps:
       - uses: actions/checkout@v4
 
