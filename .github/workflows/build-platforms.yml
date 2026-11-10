@@ -22,7 +22,7 @@ env:
   NODE_OPTIONS: "--max-old-space-size=8192"
 
 jobs:
-  # ========== macOS 构建 (自建 Mac Runner) ==========
+  # ========== macOS 构建 (自建 Mac Runner，彻底突破 GitHub 10倍高额度消耗) ==========
   build-macos:
     if: ${{ github.event_name == 'push' || inputs.build_macos }}
     runs-on: [self-hosted, macOS]
@@ -140,25 +140,32 @@ jobs:
             security delete-keychain "$KEYCHAIN_PATH" || true
           fi
 
-  # ========== Windows 构建 (自建 Windows 云服务器) ==========
+  # ========== Windows 构建 (恢复官方白板机：128G 高速磁盘，彻底根除 2GB 爆盘与国内丢包) ==========
   build-windows:
     if: ${{ github.event_name == 'push' || inputs.build_windows }}
-    runs-on: [self-hosted, Windows]
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Clean Workspace (防脏构建，保留依赖与 OpenClaw 运行时缓存)
-        shell: bash
-        run: |
-          echo "[Clean] Cleaning up untracked artifacts while preserving node_modules and openclaw runtime..."
-          git clean -ffdx -e node_modules -e "node_modules/**" -e vendor/openclaw-runtime -e "vendor/openclaw-runtime/**" -e vendor/openclaw-plugins -e "vendor/openclaw-plugins/**" || true
-          rm -rf release dist-files oss-dist || true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+          cache: 'npm'
+          cache-dependency-path: 'package-lock.json'
 
-      - name: Ensure pnpm
-        shell: bash
-        run: which pnpm || npm install -g pnpm@10
+      - name: Install pnpm
+        run: npm install -g pnpm@10
 
-      # 若是 tag 触发，则在安装依赖前动态修改 package.json 的版本，确保打包后的版本与 tag 统一
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~\AppData\Local\pnpm\Cache
+            vendor/openclaw-runtime
+            vendor/openclaw-plugins
+          key: openclaw-deps-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            openclaw-deps-${{ runner.os }}-
+
       - name: Sync version to package.json
         if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
@@ -167,26 +174,65 @@ jobs:
           VERSION=${TAG_NAME#v}
           npm version $VERSION --no-git-version-keyword --no-git-tag-version --allow-same-version || npm version $VERSION --no-git-tag-version --allow-same-version
 
-      - name: Install Dependencies
-        shell: bash
-        run: npm ci || npm install
+      - run: npm install
 
-      # Windows Python 运行时
       - name: Setup Python Runtime
-        shell: bash
+        run: npm run setup:python-runtime
         env:
           LOBSTERAI_PORTABLE_PYTHON_ARCHIVE: ${{ secrets.WINDOWS_PYTHON_ARCHIVE }}
-        run: npm run setup:python-runtime
 
-      # 设置 OpenClaw runtime (由 dist 脚本内部完整构建，此处仅做存在性检查与提示)
-      - name: Setup OpenClaw Runtime
+      - name: Determine Windows Sign OSS Prefix
         shell: bash
         run: |
-          if [ -d "vendor/openclaw-runtime/current" ]; then
-            echo "✓ OpenClaw runtime found"
-          else
-            echo "⚠ OpenClaw runtime not found, build will initialize it automatically"
+          WIN_SIGN_OSS_PREFIX="heyclaw-dev/win-sign"
+          BRANCHES=$(git branch -r --contains HEAD || true)
+          if echo "$BRANCHES" | grep -qE "origin/main$|origin/main "; then
+            WIN_SIGN_OSS_PREFIX="heyclaw/win-sign"
           fi
+          echo "WIN_SIGN_OSS_PREFIX=$WIN_SIGN_OSS_PREFIX" >> $GITHUB_ENV
+
+      - name: Setup ossutil on Windows
+        shell: bash
+        run: |
+          echo "[Setup] Downloading official ossutil for Windows..."
+          curl -fSL --retry 3 "https://gosspublic.alicdn.com/ossutil/1.7.18/ossutil64.zip" -o ossutil64.zip || true
+          if [ -f ossutil64.zip ]; then
+            unzip -q -o ossutil64.zip || true
+            OSSUTIL_DIR=$(find . -maxdepth 1 -type d -name "ossutil64*" | head -n 1)
+            if [ -n "$OSSUTIL_DIR" ] && [ -d "$OSSUTIL_DIR" ]; then
+              FULL_PATH="$(pwd)/$OSSUTIL_DIR"
+              echo "$FULL_PATH" >> $GITHUB_PATH
+              echo "OSSUTIL_PATH=$FULL_PATH/ossutil64.exe" >> $GITHUB_ENV
+              echo "[Setup] Installed ossutil to PATH: $FULL_PATH"
+              "$FULL_PATH/ossutil64.exe" --version || true
+            fi
+          fi
+
+      - name: Build Windows
+        shell: bash
+        run: |
+          if [[ ! -f "$WIN_CSC_LINK" && ${#WIN_CSC_LINK} -lt 100 ]]; then
+            echo "[Codesign] 检测到 WIN_CSC_LINK 为无效占位符 (${WIN_CSC_LINK})，彻底注销签名环境变量以跳过签名。"
+            unset WIN_CSC_LINK
+            unset CSC_LINK
+            unset WIN_CSC_KEY_PASSWORD
+            unset CSC_KEY_PASSWORD
+          fi
+          npm run dist:win -- --publish never
+        env:
+          CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          WIN_SIGN_CERT_SHA1: ${{ secrets.WIN_SIGN_CERT_SHA1 }}
+          WIN_SIGN_SERVICE_URL: ${{ secrets.WIN_SIGN_SERVICE_URL }}
+          WIN_SIGN_SERVICE_SECRET: ${{ secrets.WIN_SIGN_SERVICE_SECRET }}
+          WIN_SIGN_OSS_PREFIX: ${{ env.WIN_SIGN_OSS_PREFIX }}
+          OSS_ENDPOINT: ${{ secrets.OSS_ENDPOINT }}
+          OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
+          OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+          OSS_BUCKET: ${{ secrets.OSS_BUCKET }}
+          ELECTRON_BUILDER_HTTP_TIMEOUT: 600000
 
       - name: Determine OSS Path
         shell: bash
@@ -196,18 +242,9 @@ jobs:
           if echo "$BRANCHES" | grep -qE "origin/main$|origin/main "; then
             OSS_PATH="heyclaw/downloads"
           fi
-          echo "Determined OSS Path: $OSS_PATH"
           echo "OSS_PATH=$OSS_PATH" >> $GITHUB_ENV
 
-      # 本地 signtool 秒级签名，纯本地打包，彻底不走任何 OSS 中转或远程 node 服务
-      - name: Build Windows
-        shell: bash
-        env:
-          WIN_SIGN_CERT_SHA1: "f0d51f084bba92740ced8165475fddfaf0f901e2"
-          ELECTRON_BUILDER_HTTP_TIMEOUT: 600000
-        run: npm run dist:win -- --publish never
-
-      # 本地直传阿里云 OSS（统一 Bash 脚本）
+      # 官方机直传阿里云 OSS（不走 GitHub 中转，链路极短）
       - name: Upload EXE to Aliyun OSS
         shell: bash
         env:
@@ -218,18 +255,7 @@ jobs:
         run: |
           echo "[Upload] Uploading Windows EXE directly to OSS..."
           CLEAN_ENDPOINT=$(echo "${OSS_ENDPOINT}" | sed -E 's|^https?://||')
-          if ! command -v ossutil64 &> /dev/null && ! command -v ossutil &> /dev/null; then
-            if [ ! -f "$TEMP/ossutil64.exe" ]; then
-              curl -fSL "https://gosspublic.alicdn.com/ossutil/1.7.18/ossutil64.zip" -o "$TEMP/ossutil.zip"
-              unzip -q -o "$TEMP/ossutil.zip" -d "$TEMP/ossutil_extracted"
-              OSSUTIL_EXE=$(find "$TEMP/ossutil_extracted" -name "ossutil64.exe" | head -n 1)
-              cp "$OSSUTIL_EXE" "$TEMP/ossutil64.exe"
-            fi
-            OSSUTIL_BIN="$TEMP/ossutil64.exe"
-          else
-            OSSUTIL_BIN=$(command -v ossutil64 || command -v ossutil)
-          fi
-          "$OSSUTIL_BIN" cp -f -r release/ "oss://${OSS_BUCKET}/${OSS_PATH}/" --include "*.exe" -e "${CLEAN_ENDPOINT}" -i "${OSS_ACCESS_KEY_ID}" -k "${OSS_ACCESS_KEY_SECRET}"
+          ossutil64 cp -f -r release/ "oss://${OSS_BUCKET}/${OSS_PATH}/" --include "*.exe" -e "${CLEAN_ENDPOINT}" -i "${OSS_ACCESS_KEY_ID}" -k "${OSS_ACCESS_KEY_SECRET}"
 
   # ========== 更新应用内检测更新元数据 (version.json) ==========
   update-version-manifest:
