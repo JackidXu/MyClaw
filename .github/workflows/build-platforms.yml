@@ -53,14 +53,14 @@ jobs:
       - name: Install Dependencies
         run: npm ci || npm install
 
-      # 设置 OpenClaw runtime (由 dist 脚本内部完整构建，此处仅做存在性检查与提示)
-      - name: Setup OpenClaw Runtime
-        run: |
-          if [ -d "vendor/openclaw-runtime/current" ]; then
-            echo "✓ OpenClaw runtime found"
-          else
-            echo "⚠ OpenClaw runtime not found, build will initialize it automatically"
-          fi
+      # 检查并恢复 OpenClaw 云端缓存 (若 OSS 命中则秒级恢复，彻底跳过原生编译与网络拉取)
+      - name: Restore OpenClaw Cloud Assets
+        env:
+          OSS_ENDPOINT: ${{ secrets.OSS_ENDPOINT }}
+          OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
+          OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+          OSS_BUCKET: ${{ secrets.OSS_BUCKET }}
+        run: node scripts/ensure-cloud-assets.cjs mac-${{ matrix.arch }}
 
       # 临时专用钥匙串：自动解锁并设置搜索列表，无弹窗自动化签名
       - name: Setup macOS Keychain
@@ -102,6 +102,16 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      # 若本次构建产生了新的权威资产，自动上传不可变缓存至 OSS
+      - name: Publish OpenClaw Cloud Assets (if updated)
+        if: success()
+        env:
+          OSS_ENDPOINT: ${{ secrets.OSS_ENDPOINT }}
+          OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
+          OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+          OSS_BUCKET: ${{ secrets.OSS_BUCKET }}
+        run: node scripts/publish-cloud-assets.cjs mac-${{ matrix.arch }}
 
       - name: Determine OSS Path
         run: |
@@ -181,16 +191,6 @@ jobs:
         env:
           LOBSTERAI_PORTABLE_PYTHON_ARCHIVE: ${{ secrets.WINDOWS_PYTHON_ARCHIVE }}
 
-      - name: Determine Windows Sign OSS Prefix
-        shell: bash
-        run: |
-          WIN_SIGN_OSS_PREFIX="heyclaw-dev/win-sign"
-          BRANCHES=$(git branch -r --contains HEAD || true)
-          if echo "$BRANCHES" | grep -qE "origin/main$|origin/main "; then
-            WIN_SIGN_OSS_PREFIX="heyclaw/win-sign"
-          fi
-          echo "WIN_SIGN_OSS_PREFIX=$WIN_SIGN_OSS_PREFIX" >> $GITHUB_ENV
-
       - name: Setup ossutil on Windows
         shell: bash
         run: |
@@ -207,6 +207,26 @@ jobs:
               "$FULL_PATH/ossutil64.exe" --version || true
             fi
           fi
+
+      # 检查并恢复 OpenClaw 云端缓存 (若 OSS 命中则秒级恢复，彻底跳过原生编译与网络拉取)
+      - name: Restore OpenClaw Cloud Assets
+        shell: bash
+        env:
+          OSS_ENDPOINT: ${{ secrets.OSS_ENDPOINT }}
+          OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
+          OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+          OSS_BUCKET: ${{ secrets.OSS_BUCKET }}
+        run: node scripts/ensure-cloud-assets.cjs win-x64
+
+      - name: Determine Windows Sign OSS Prefix
+        shell: bash
+        run: |
+          WIN_SIGN_OSS_PREFIX="heyclaw-dev/win-sign"
+          BRANCHES=$(git branch -r --contains HEAD || true)
+          if echo "$BRANCHES" | grep -qE "origin/main$|origin/main "; then
+            WIN_SIGN_OSS_PREFIX="heyclaw/win-sign"
+          fi
+          echo "WIN_SIGN_OSS_PREFIX=$WIN_SIGN_OSS_PREFIX" >> $GITHUB_ENV
 
       - name: Build Windows
         shell: bash
@@ -233,6 +253,17 @@ jobs:
           OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
           OSS_BUCKET: ${{ secrets.OSS_BUCKET }}
           ELECTRON_BUILDER_HTTP_TIMEOUT: 600000
+
+      # 若本次构建产生了新的权威资产，自动上传不可变缓存至 OSS
+      - name: Publish OpenClaw Cloud Assets (if updated)
+        if: success()
+        shell: bash
+        env:
+          OSS_ENDPOINT: ${{ secrets.OSS_ENDPOINT }}
+          OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
+          OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+          OSS_BUCKET: ${{ secrets.OSS_BUCKET }}
+        run: node scripts/publish-cloud-assets.cjs win-x64
 
       - name: Determine OSS Path
         shell: bash

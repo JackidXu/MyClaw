@@ -38,6 +38,11 @@ const {
   NIM_PLUGIN_PACKAGE_ID,
   prepareOpenClawNimPackage,
 } = require('./openclaw-plugin-preparers/nim-channel.cjs');
+const {
+  CLAWEMAIL_PACKAGE_ID,
+  CLAWEMAIL_PACKAGE_NAME,
+  prepareOpenClawClawEmailPackage,
+} = require('./openclaw-plugin-preparers/clawemail.cjs');
 const { prepareHostPeerPackage } = require('./openclaw-plugin-preparers/host-peer.cjs');
 const { QQ_PACKAGE_NAME, configureQQRuntimeEntry, prepareQQPackage } = require('./openclaw-plugin-preparers/qqbot.cjs');
 const { pruneHostPeerLeftovers } = require('./openclaw-plugin-host-peer-leftovers.cjs');
@@ -763,6 +768,11 @@ function main() {
 
         if (npmSpec === QQ_PACKAGE_NAME) {
           installSpec = prepareQQPackage(installSpec, stagingDir);
+        }
+
+        if (id === CLAWEMAIL_PACKAGE_ID || npmSpec === CLAWEMAIL_PACKAGE_NAME) {
+          log('  Preparing clawemail package (locking mailparser dependency)...');
+          installSpec = prepareOpenClawClawEmailPackage(installSpec, stagingDir, { log });
         }
 
         if (fs.existsSync(installSpec) && fs.statSync(installSpec).isFile()) {
