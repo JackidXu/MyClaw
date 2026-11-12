@@ -125,10 +125,22 @@ import {
 } from '../openclawChannelSessionSync';
 import { ConfigWorkloadState } from '../openclawConfigObservation';
 import {
+  OPENCLAW_AGENT_SOFT_TIMEOUT_SECONDS,
   OPENCLAW_AGENT_TIMEOUT_SECONDS,
   type OpenClawProviderModelSource,
   resolveModelSourceForOpenClawProvider,
 } from '../openclawConfigSync';
+
+/**
+ * 通用软超时收拢提示词：在单次任务耗时接近上限时向大模型注入，
+ * 指示大模型立即停止长耗时等待并盘点现有阶段性成果向用户交付。
+ * 严禁包含特定业务工具名或局部 Case 专用词，保持 100% 通用自适应。
+ */
+export const AGENT_SOFT_TIMEOUT_STEER_PROMPT =
+  '[系统调度通知]：当前任务执行时间已接近单次会话上限。请严格执行以下收拢动作：\n' +
+  '1. 立即停止对任何尚未完成的耗时任务、后台进程或外部轮询的等待，禁止发起新的耗时调用；\n' +
+  '2. 盘点当前工作区中已生成的所有阶段性成果、中间文件或数据结论；\n' +
+  '3. 基于目前已完成的成果向用户进行阶段性交付汇报，说明已完成部分及后续可继续处理的建议，正常结束本次回复。';
 import {
   OpenClawEngineManager,
   type OpenClawEngineStatus,
@@ -852,6 +864,10 @@ type ActiveTurn = {
   bufferedAgentPayloads: BufferedAgentEvent[];
   /** Client-side timeout watchdog timer (fallback for missing gateway abort events). */
   timeoutTimer?: ReturnType<typeof setTimeout>;
+  /** Client-side soft timeout timer (steers the model to wrap up gracefully before hard timeout). */
+  softTimeoutTimer?: ReturnType<typeof setTimeout>;
+  /** True if the soft timeout steer message has already been injected for this turn. */
+  softTimeoutTriggered?: boolean;
   /** Lifecycle-end fallback while waiting for chat.final or an OpenClaw retry path. */
   lifecycleEndFallbackTimer?: ReturnType<typeof setTimeout>;
   /** Error fallback belongs to one execution, not every run in this user turn. */
@@ -2830,6 +2846,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
    * so LobsterAI can recover even when the gateway fails to deliver the abort event.
    */
   agentTimeoutSeconds = OPENCLAW_AGENT_TIMEOUT_SECONDS;
+  agentSoftTimeoutSeconds = OPENCLAW_AGENT_SOFT_TIMEOUT_SECONDS;
   private static readonly CLIENT_TIMEOUT_GRACE_MS = 30_000;
 
   private contextWindowCache: Map<string, number> = new Map();
@@ -12935,6 +12952,10 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
         clearTimeout(turn.timeoutTimer);
         turn.timeoutTimer = undefined;
       }
+      if (turn.softTimeoutTimer) {
+        clearTimeout(turn.softTimeoutTimer);
+        turn.softTimeoutTimer = undefined;
+      }
       if (turn.lifecycleEndFallbackTimer) {
         clearTimeout(turn.lifecycleEndFallbackTimer);
         turn.lifecycleEndFallbackTimer = undefined;
@@ -13040,13 +13061,37 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
   }
 
   /**
-   * Start a client-side timeout watchdog for a turn.
+   * Start client-side timeout watchdogs for a turn (soft warning steer + hard abort watchdog).
    * Fires after the server-side timeout + grace period, recovering the UI
    * if the gateway fails to deliver the abort/final event.
    */
   private startTurnTimeoutWatchdog(sessionId: string): void {
     const turn = this.activeTurns.get(sessionId);
     if (!turn) return;
+
+    if (this.agentSoftTimeoutSeconds > 0 && this.agentSoftTimeoutSeconds < this.agentTimeoutSeconds) {
+      const softTimeoutMs = this.agentSoftTimeoutSeconds * 1000;
+      turn.softTimeoutTimer = setTimeout(async () => {
+        const currentTurn = this.activeTurns.get(sessionId);
+        if (!currentTurn || currentTurn.turnToken !== turn.turnToken || currentTurn.softTimeoutTriggered) return;
+        currentTurn.softTimeoutTriggered = true;
+        const elapsedSec = ((Date.now() - currentTurn.startedAtMs) / 1000).toFixed(1);
+        console.warn(
+          `[OpenClawRuntime] soft timeout reached, injecting wrap-up steer message:`,
+          `sessionId=${sessionId}`,
+          `runId=${currentTurn.runId}`,
+          `elapsed=${elapsedSec}s`,
+          `softTimeoutSec=${this.agentSoftTimeoutSeconds}`,
+        );
+        try {
+          const steerId = `soft-timeout-${currentTurn.runId || sessionId}-${Date.now()}`;
+          await this.submitSteer(sessionId, AGENT_SOFT_TIMEOUT_STEER_PROMPT, steerId);
+        } catch (error) {
+          console.error('[OpenClawRuntime] Failed to inject soft timeout steer message:', error);
+        }
+      }, softTimeoutMs);
+    }
+
     const timeoutMs = this.agentTimeoutSeconds * 1000
       + OpenClawRuntimeAdapter.CLIENT_TIMEOUT_GRACE_MS;
     turn.timeoutTimer = setTimeout(() => {
