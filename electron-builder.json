@@ -184,7 +184,11 @@
           "!**/*.spec.*",
           "!**/tests/**",
           "!**/test/**",
-          "!**/__tests__/**"
+          "!**/__tests__/**",
+          "!**/node_modules/@anthropic-ai/claude-agent-sdk-*/**",
+          "!**/node_modules/@trycua/**",
+          "!gateway.asar",
+          "!gateway-bundle.mjs"
         ]
       },
       {
@@ -286,7 +290,11 @@
           "!**/*.spec.*",
           "!**/tests/**",
           "!**/test/**",
-          "!**/__tests__/**"
+          "!**/__tests__/**",
+          "!**/node_modules/@anthropic-ai/claude-agent-sdk-*/**",
+          "!**/node_modules/@trycua/**",
+          "!gateway.asar",
+          "!gateway-bundle.mjs"
         ]
       }
     ],
