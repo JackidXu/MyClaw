@@ -168,6 +168,13 @@ export function omitPluginIndexManagedKeys(plugins: unknown): Record<string, unk
  * Also used by the runtime adapter's client-side timeout watchdog.
  */
 export const OPENCLAW_AGENT_TIMEOUT_SECONDS = 3600;
+
+/**
+ * Agent soft timeout in seconds.
+ * Fires slightly before the hard timeout (55 minutes) to steer the model
+ * into wrapping up and delivering partial results gracefully.
+ */
+export const OPENCLAW_AGENT_SOFT_TIMEOUT_SECONDS = 3300;
 export const OPENCLAW_LOBSTERAI_MODEL_TIMEOUT_SECONDS = 330;
 export const OPENCLAW_DEFAULT_PROVIDER_TIMEOUT_SECONDS = 600;
 export const OPENCLAW_MODEL_SELECTION_SCOPE = 'session';
