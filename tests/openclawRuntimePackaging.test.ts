@@ -32,7 +32,7 @@ function makeTempDir(prefix: string): string {
 
 test('only Discord opts into the official runtime-bundled preinstall layout', () => {
   expect(openclaw.plugins.filter((plugin: { runtimeBundled?: boolean }) => plugin.runtimeBundled === true))
-    .toEqual([{ id: 'discord', npm: '@openclaw/discord', version: '2026.8.1', runtimeBundled: true }]);
+    .toEqual([{ id: 'discord', npm: '@openclaw/discord', version: '2026.8.1', runtimeBundled: true, optional: true }]);
   for (const plugin of openclaw.plugins) {
     if (plugin.runtimeBundled === true) expect(shouldKeepBundledExtension(plugin.id)).toBe(true);
     expect(resolvePreinstalledPluginDir('/runtime', plugin)).toBe(path.join('/runtime',
