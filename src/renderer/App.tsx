@@ -358,48 +358,6 @@ const App: React.FC = () => {
     }
   }, [mainView]);
 
-  const syncModelsToRedux = useCallback(() => {
-    const config = configService.getConfig();
-    const providerModels: Model[] = [];
-    if (config.providers) {
-      Object.entries(config.providers).forEach(([providerName, providerConfig]) => {
-        if (providerConfig.enabled && providerConfig.models) {
-          const openClawProviderId = ProviderRegistry.getOpenClawProviderIdForConfig(providerName, providerConfig);
-          providerConfig.models.forEach((model: any) => {
-            providerModels.push({
-              id: model.id,
-              name: model.name,
-              provider: getProviderDisplayName(providerName, providerConfig),
-              providerKey: providerName,
-              openClawProviderId,
-              supportsImage: model.supportsImage ?? false,
-              supportsVideo: Boolean(model.supportsVideo),
-              supportsThinking: Boolean(model.supportsThinking),
-              thinkingConfig: model.thinkingConfig,
-              requestCapabilities: model.requestCapabilities,
-              description: model.description || undefined,
-              contextWindow: model.contextWindow,
-              maxTokens: model.maxTokens,
-              isRecommended: Boolean(model.isRecommended),
-              isDeprecated: Boolean(model.isDeprecated),
-            });
-          });
-        }
-      });
-    }
-    dispatch(setAvailableModels(providerModels));
-    if (providerModels.length > 0) {
-      const preferredModel = providerModels.find(
-        model => model.id === config.model.defaultModel
-          && (!config.model.defaultModelProvider || model.providerKey === config.model.defaultModelProvider)
-      ) ?? providerModels.find(model => model.isRecommended);
-      if (preferredModel) {
-        dispatch(setDefaultSelectedModel(preferredModel));
-      }
-    }
-    return providerModels;
-  }, [dispatch]);
-
   useEffect(() => {
     let isCurrent = true;
     const resolveOverlayVisible = (phase?: string | null) =>
@@ -2393,7 +2351,6 @@ const App: React.FC = () => {
             } catch (err) {
               console.error('[App] Failed to fetch enterprise config on login success:', err);
             }
-            syncModelsToRedux();
             setIsActivated(true);
           }} 
         />

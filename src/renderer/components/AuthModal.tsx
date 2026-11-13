@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useDispatch } from 'react-redux';
 
+import { applyAppConfigToStore } from '../services/appConfigModels';
 import { setAuthCredentials } from '../services/authStorage';
 import { configService } from '../services/config';
 import { httpClient } from '../services/httpClient';
@@ -150,6 +151,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
                 : currentConfig.model?.availableModels,
             }
           });
+
+          // 核心闭环：模型配置写入完成后，立即同步刷新 Redux Store 内存态，彻底消除时序竞争
+          applyAppConfigToStore();
 
           await vipService.refreshStatus();
         } catch (postLoginErr) {
