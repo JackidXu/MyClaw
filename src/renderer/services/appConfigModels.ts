@@ -81,7 +81,7 @@ export function applyAppConfigToStore(log?: (label: string) => void): ProviderMo
     const preferredModel = allModels.find(
       model => model.id === config.model.defaultModel
         && (!config.model.defaultModelProvider || model.providerKey === config.model.defaultModelProvider)
-    ) ?? allModels[0];
+    ) ?? allModels.find(model => model.isRecommended) ?? allModels[0];
     store.dispatch(setDefaultSelectedModel(preferredModel));
   }
   return providerModels;
