@@ -7,6 +7,7 @@
 
 import React from 'react';
 
+import { i18nService } from '../../../services/i18n';
 import { showToast } from '../../../utils/localFileActions';
 import { MANAGEMENT_PAGE_TITLE_TEXT } from '../../common/managementTypography';
 import { CoworkUiEvent } from '../../cowork/constants';
@@ -39,7 +40,7 @@ export const RecordingCardView: React.FC<RecordingCardViewProps> = ({
               <button
                 type="button"
                 onClick={onToggleSidebar}
-                aria-label="展开侧边栏"
+                aria-label={i18nService.t('recordingCardExpandSidebar')}
                 className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-secondary hover:bg-surface-raised transition-colors"
               >
                 <SidebarToggleIcon className="h-4 w-4" isCollapsed />
@@ -48,7 +49,7 @@ export const RecordingCardView: React.FC<RecordingCardViewProps> = ({
             </div>
           )}
           <h1 className={`${MANAGEMENT_PAGE_TITLE_TEXT} font-semibold text-foreground`}>
-            录音卡
+            {i18nService.t('recordingCardTitle')}
           </h1>
         </div>
 
@@ -66,7 +67,7 @@ export const RecordingCardView: React.FC<RecordingCardViewProps> = ({
             <rect x="4" y="10.5" width="16" height="10" rx="2" />
             <path d="M8 10.5V7a4 4 0 0 1 8 0v3.5" />
           </svg>
-          <span>本机资产 · 默认不上传</span>
+          <span>{i18nService.t('recordingCardLocalAssetNote')}</span>
         </div>
       </div>
 

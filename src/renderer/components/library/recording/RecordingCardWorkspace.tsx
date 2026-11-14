@@ -5,12 +5,13 @@
  * 顶部设备卡片已移除自动传输与设置；中栏播放音频直接调用浏览器打开。
  */
 
-import React, { useCallback, useEffect, useRef,useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { LocalRecordingItem } from '../../../../shared/recordingCard/localRecording';
 import { LocalRecordingStatus } from '../../../../shared/recordingCard/localRecording';
 import { asrService } from '../../../services/asrService';
 import { copyTextToClipboard } from '../../../services/clipboard';
+import { i18nService } from '../../../services/i18n';
 import {
   type GeneratedSummaryResult,
   recordingSummaryService,
@@ -149,7 +150,7 @@ export const RecordingCardWorkspace: React.FC<RecordingCardWorkspaceProps> = ({
     setTranscribingIds(prev => new Set(prev).add(item.id));
     setTranscribeProgressMap(prev => ({
       ...prev,
-      [item.id]: '正在恢复转写进度...',
+      [item.id]: i18nService.t('recordingCardStatusResuming'),
     }));
 
     let isCancelled = false;
@@ -214,7 +215,7 @@ export const RecordingCardWorkspace: React.FC<RecordingCardWorkspaceProps> = ({
           await window.electron.localRecordings?.upsertRecord?.(completedItem);
           if (isMountedRef.current) {
             setRecordings(prev => prev.map(r => (r.id === item.id ? completedItem : r)));
-            toast('success', `「${completedItem.title}」转写与智能纪要已生成！`);
+            toast('success', i18nService.t('recordingCardSummaryGeneratedToast', { title: completedItem.title }));
           }
         } catch (sumErr) {
           console.warn('[RecordingCardWorkspace] 自动提炼纪要异常:', sumErr);
@@ -226,7 +227,7 @@ export const RecordingCardWorkspace: React.FC<RecordingCardWorkspaceProps> = ({
       }
     } catch (err: any) {
       if (isCancelled || !isMountedRef.current) return;
-      const errorMsg = err?.message || String(err || '语音转写处理失败');
+      const errorMsg = err?.message || String(err || i18nService.t('recordingCardTranscribeFailDefault'));
       console.warn('[RecordingCardWorkspace] 接力转写异常:', errorMsg);
 
       // 【核心终态保护】：检查最新数据库状态！如果其实已经转写成功了，绝对不可逆向改写为 Failed！
@@ -252,7 +253,7 @@ export const RecordingCardWorkspace: React.FC<RecordingCardWorkspaceProps> = ({
       await window.electron.localRecordings?.upsertRecord?.(failedRecord);
       if (isMountedRef.current) {
         setRecordings(prev => prev.map(r => (r.id === item.id ? failedRecord : r)));
-        toast('error', `转写失败: ${errorMsg}`);
+        toast('error', i18nService.t('recordingCardTranscribeFailedToast', { error: errorMsg }));
       }
     } finally {
       activePollingTasksRef.current.delete(item.id);
@@ -280,7 +281,7 @@ export const RecordingCardWorkspace: React.FC<RecordingCardWorkspaceProps> = ({
   // 2. 外部本地音频导入
   const handleImportFile = async (file: File) => {
     try {
-      toast('info', `正在导入本地音频「${file.name}」...`);
+      toast('info', i18nService.t('recordingCardImportingToast', { name: file.name }));
       const arrayBuffer = await file.arrayBuffer();
 
       // 保存到本地磁盘
@@ -289,7 +290,7 @@ export const RecordingCardWorkspace: React.FC<RecordingCardWorkspaceProps> = ({
         arrayBuffer,
       );
       if (!saveRes?.success || !saveRes.data) {
-        throw new Error(saveRes?.error || '保存音频文件失败');
+        throw new Error(saveRes?.error || i18nService.t('recordingCardSaveAudioFail'));
       }
 
       // 精准解析音频真实时长
@@ -315,11 +316,11 @@ export const RecordingCardWorkspace: React.FC<RecordingCardWorkspaceProps> = ({
       };
 
       await window.electron.localRecordings?.upsertRecord?.(newItem);
-      toast('success', `音频「${file.name}」导入成功，可点击转写`);
+      toast('success', i18nService.t('recordingCardImportSuccessToast', { name: file.name }));
       await loadLocalRecordings();
       setSelectedId(id);
     } catch (err: any) {
-      toast('error', `导入失败: ${err?.message || err}`);
+      toast('error', i18nService.t('recordingCardImportFailToast', { error: err?.message || err }));
     }
   };
 
@@ -341,7 +342,7 @@ export const RecordingCardWorkspace: React.FC<RecordingCardWorkspaceProps> = ({
     setTranscribingIds(prev => new Set(prev).add(currentItem.id));
     setTranscribeProgressMap(prev => ({
       ...prev,
-      [currentItem.id]: '正在准备音频文件...',
+      [currentItem.id]: i18nService.t('recordingCardPreparingAudioStatus'),
     }));
 
     let isCancelled = false;
@@ -355,12 +356,12 @@ export const RecordingCardWorkspace: React.FC<RecordingCardWorkspaceProps> = ({
     try {
       // 步骤 A: 准备音频传输通道；若已就绪则直接复用
       if (!tosUrl || !tosKey) {
-        toast('info', `正在准备录音数据「${currentItem.title || currentItem.name}」...`);
+        toast('info', i18nService.t('recordingCardPreparingAudioToast', { title: currentItem.title || currentItem.name }));
 
         // 通过主进程读取本地音频文件
         const fileData = await window.electron.localRecordings?.getById?.(currentItem.id);
         if (!fileData?.data?.localPath) {
-          throw new Error('未找到本地音频文件路径');
+          throw new Error(i18nService.t('recordingCardAudioPathNotFound'));
         }
 
         // 获取云端预签名上传地址
@@ -369,7 +370,7 @@ export const RecordingCardWorkspace: React.FC<RecordingCardWorkspaceProps> = ({
         // 通过主进程原生 fs 读取音频 ArrayBuffer (彻底避免渲染层 CSP 限制)
         const readRes = await window.electron.localRecordings?.readAudioFile?.(fileData.data.localPath);
         if (!readRes?.success || !readRes.data) {
-          throw new Error(readRes?.error || '读取本地音频文件失败');
+          throw new Error(readRes?.error || i18nService.t('recordingCardAudioReadFailed'));
         }
         const audioBuffer = readRes.data;
 
@@ -402,7 +403,7 @@ export const RecordingCardWorkspace: React.FC<RecordingCardWorkspaceProps> = ({
 
       setTranscribeProgressMap(prev => ({
         ...prev,
-        [item.id]: '音频已就绪，正在启动 AI 智能识别...',
+        [item.id]: i18nService.t('recordingCardAudioReadyStartingStatus'),
       }));
 
       const submitRes = await asrService.submitTask({
@@ -469,7 +470,7 @@ export const RecordingCardWorkspace: React.FC<RecordingCardWorkspaceProps> = ({
           delete next[item.id];
           return next;
         });
-        toast('info', `「${transcribedItem.title}」逐字稿转写完成，正在提炼智能纪要...`);
+        toast('info', i18nService.t('recordingCardTranscribeDoneSummarizingToast', { title: transcribedItem.title }));
       }
 
       // 阶段 2 独立进行：自动调用服务端提炼商业纪要（仅右栏处于 summarizing 状态）
@@ -503,12 +504,12 @@ export const RecordingCardWorkspace: React.FC<RecordingCardWorkspaceProps> = ({
       if (isMountedRef.current) {
         setRecordings(prev => prev.map(r => (r.id === item.id ? finalItem : r)));
         if (summaryResult?.summary) {
-          toast('success', `「${finalItem.title}」智能纪要已生成！`);
+          toast('success', i18nService.t('recordingCardSummaryGeneratedToast', { title: finalItem.title }));
         }
       }
     } catch (err: any) {
       if (isCancelled || !isMountedRef.current) return;
-      const errorMsg = err?.message || String(err || '语音转写处理失败');
+      const errorMsg = err?.message || String(err || i18nService.t('recordingCardTranscribeFailDefault'));
 
       // 【核心终态保护】：检查最新数据库状态！如果其实已经转写成功了，绝对不可逆向改写为 Failed！
       const latestData = await window.electron.localRecordings?.getById?.(item.id);
@@ -532,7 +533,7 @@ export const RecordingCardWorkspace: React.FC<RecordingCardWorkspaceProps> = ({
       await window.electron.localRecordings?.upsertRecord?.(failedRecord);
       if (isMountedRef.current) {
         setRecordings(prev => prev.map(r => (r.id === item.id ? failedRecord : r)));
-        toast('error', `转写失败: ${errorMsg}`);
+        toast('error', i18nService.t('recordingCardTranscribeFailedToast', { error: errorMsg }));
       }
     } finally {
       activeCancelMapRef.current.delete(item.id);
@@ -558,10 +559,10 @@ export const RecordingCardWorkspace: React.FC<RecordingCardWorkspaceProps> = ({
       r => r.status === LocalRecordingStatus.Pending,
     );
     if (pendingList.length === 0) {
-      toast('info', '暂无待转写的录音');
+      toast('info', i18nService.t('recordingCardNoPendingRecordingsToast'));
       return;
     }
-    toast('info', `开始批量转写 ${pendingList.length} 份录音...`);
+    toast('info', i18nService.t('recordingCardStartBatchTranscribeToast', { count: pendingList.length }));
     for (const item of pendingList) {
       await handleTranscribeOne(item);
     }
@@ -570,7 +571,7 @@ export const RecordingCardWorkspace: React.FC<RecordingCardWorkspaceProps> = ({
   // 5. 浏览器播放本地音频
   const handlePlayAudio = async () => {
     if (!selectedItem?.localPath) {
-      toast('error', '未找到本地音频文件路径');
+      toast('error', i18nService.t('recordingCardAudioPathNotFound'));
       return;
     }
     try {
@@ -581,9 +582,9 @@ export const RecordingCardWorkspace: React.FC<RecordingCardWorkspaceProps> = ({
       } else if (shell?.openExternal) {
         await shell.openExternal(`file://${selectedItem.localPath}`);
       }
-      toast('info', '已在浏览器/系统播放器中打开音频');
+      toast('info', i18nService.t('recordingCardOpenInSystemSuccess'));
     } catch (err: any) {
-      toast('error', `打开音频播放失败: ${err?.message || err}`);
+      toast('error', i18nService.t('recordingCardOpenAudioFailedToast', { error: err?.message || err }));
     }
   };
 
@@ -592,7 +593,7 @@ export const RecordingCardWorkspace: React.FC<RecordingCardWorkspaceProps> = ({
     if (!selectedItem?.transcriptText) return;
     setSummarizingId(selectedItem.id);
     try {
-      toast('info', '正在重新提炼会议纪要与决策点...');
+      toast('info', i18nService.t('recordingCardReExtractingSummaryToast'));
       const summaryResult = await recordingSummaryService.generateSummary({
         transcriptText: selectedItem.transcriptText,
         utterances: selectedItem.utterances,
@@ -608,10 +609,10 @@ export const RecordingCardWorkspace: React.FC<RecordingCardWorkspaceProps> = ({
       };
 
       await window.electron.localRecordings?.upsertRecord?.(updated);
-      toast('success', 'AI 总结与决策点已更新！');
+      toast('success', i18nService.t('recordingCardSummaryUpdatedToast'));
       await loadLocalRecordings();
     } catch (err: any) {
-      toast('error', `重新总结失败: ${err?.message || err}`);
+      toast('error', i18nService.t('recordingCardReExtractSummaryFailedToast', { error: err?.message || err }));
     } finally {
       setSummarizingId(null);
     }
@@ -621,7 +622,7 @@ export const RecordingCardWorkspace: React.FC<RecordingCardWorkspaceProps> = ({
   const handleSyncToSecondBrain = async () => {
     if (!selectedItem) return;
     try {
-      toast('info', `正在将「${selectedItem.title}」同步到第二大脑...`);
+      toast('info', i18nService.t('recordingCardSyncingToBrainToast', { title: selectedItem.title }));
 
       let tosUrl = selectedItem.tosUrl;
       let tosKey = selectedItem.tosKey;
@@ -630,12 +631,12 @@ export const RecordingCardWorkspace: React.FC<RecordingCardWorkspaceProps> = ({
       if (!tosUrl || !tosKey) {
         const fileData = await window.electron.localRecordings?.getById?.(selectedItem.id);
         if (!fileData?.data?.localPath) {
-          throw new Error('未找到本地音频文件路径');
+          throw new Error(i18nService.t('recordingCardAudioPathNotFound'));
         }
         const presign = await fetchAudioUploadPresignedUrl();
         const readRes = await window.electron.localRecordings?.readAudioFile?.(fileData.data.localPath);
         if (!readRes?.success || !readRes.data) {
-          throw new Error(readRes?.error || '读取本地音频文件失败');
+          throw new Error(readRes?.error || i18nService.t('recordingCardAudioReadFailed'));
         }
         const ext = selectedItem.name.split('.').pop()?.toLowerCase() || 'ogg';
         const mime = ext === 'ogg' ? 'audio/ogg' : ext === 'mp3' ? 'audio/mpeg' : 'audio/wav';
@@ -660,16 +661,16 @@ export const RecordingCardWorkspace: React.FC<RecordingCardWorkspaceProps> = ({
         updatedAt: Date.now(),
       };
       await window.electron.localRecordings?.upsertRecord?.(updated);
-      toast('success', `「${selectedItem.title}」已成功同步到第二大脑资料库！`);
+      toast('success', i18nService.t('recordingCardSyncSuccessToast', { title: selectedItem.title }));
       await loadLocalRecordings();
     } catch (err: any) {
-      toast('error', `同步到第二大脑失败: ${err?.message || err}`);
+      toast('error', i18nService.t('recordingCardSyncFailToast', { error: err?.message || err }));
     }
   };
 
   const handleSyncBrainBatch = async (targets: LocalRecordingItem[]) => {
     if (targets.length === 0) return;
-    toast('info', `正在批量推送 ${targets.length} 条录音至第二大脑...`);
+    toast('info', i18nService.t('recordingCardBatchSyncingToBrainToast', { count: targets.length }));
     let successCount = 0;
     for (const item of targets) {
       try {
@@ -711,23 +712,26 @@ export const RecordingCardWorkspace: React.FC<RecordingCardWorkspaceProps> = ({
         console.warn('[RecordingCardWorkspace] 批量推送异常:', item.id, e);
       }
     }
-    toast('success', `批量推送完成，已成功 ${successCount} 条`);
+    toast('success', i18nService.t('recordingCardBatchSyncDoneToast', { count: successCount }));
     await loadLocalRecordings();
   };
 
   // 8. 发到聊天框
   const handleSendToChat = () => {
     if (!selectedItem) return;
-    const textToSend = `【${selectedItem.title} · 会议纪要】\n${selectedItem.summary || selectedItem.transcriptText || ''}`;
+    const textToSend = i18nService.t('recordingCardMeetingSummaryPrefix', {
+      title: selectedItem.title,
+      content: selectedItem.summary || selectedItem.transcriptText || '',
+    });
     onSendToChat?.(textToSend);
-    toast('success', '已将录音纪要发送至聊天框');
+    toast('success', i18nService.t('recordingCardSendToChatSuccess'));
   };
 
   // 9. 复制与导出
   const handleCopyTranscript = () => {
     if (!selectedItem?.transcriptText) return;
     copyTextToClipboard(selectedItem.transcriptText);
-    toast('success', '已复制逐字稿全文');
+    toast('success', i18nService.t('recordingCardCopyTranscriptSuccess'));
   };
 
   const handleExportTranscript = () => {
@@ -737,29 +741,29 @@ export const RecordingCardWorkspace: React.FC<RecordingCardWorkspaceProps> = ({
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${selectedItem.title || '录音逐字稿'}.txt`;
+    a.download = `${selectedItem.title || i18nService.t('recordingCardTranscriptDefaultFilename')}.txt`;
     a.click();
     URL.revokeObjectURL(url);
-    toast('success', '已导出逐字稿文本');
+    toast('success', i18nService.t('recordingCardExportTranscriptSuccess'));
   };
 
   const handleCopySummary = () => {
     if (!selectedItem?.summary) return;
     copyTextToClipboard(selectedItem.summary);
-    toast('success', '已复制 AI 总结');
+    toast('success', i18nService.t('recordingCardCopySummarySuccess'));
   };
 
   const handleExportSummary = () => {
     if (!selectedItem) return;
-    const content = `# ${selectedItem.title}\n\n## 会议纪要\n${selectedItem.summary || ''}\n\n## 提炼认知\n${(selectedItem.items || []).map(i => `- [${i.kind}] ${i.text}`).join('\n')}`;
+    const content = `# ${selectedItem.title}\n\n## ${i18nService.t('recordingCardMeetingSummaryTitle')}\n${selectedItem.summary || ''}\n\n## ${i18nService.t('recordingCardExtractedCognitionsTitle')}\n${(selectedItem.items || []).map(i => `- [${i.kind}] ${i.text}`).join('\n')}`;
     const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${selectedItem.title || '会议纪要'}.md`;
+    a.download = `${selectedItem.title || i18nService.t('recordingCardMeetingSummaryDefaultFilename')}.md`;
     a.click();
     URL.revokeObjectURL(url);
-    toast('success', '已导出 Markdown 纪要');
+    toast('success', i18nService.t('recordingCardExportMarkdownSuccess'));
   };
 
   const handleDelete = async (item: LocalRecordingItem) => {
@@ -782,7 +786,7 @@ export const RecordingCardWorkspace: React.FC<RecordingCardWorkspaceProps> = ({
     });
 
     await window.electron.localRecordings?.deleteRecord?.(item.id, true);
-    toast('success', '已删除录音记录与本地音频');
+    toast('success', i18nService.t('recordingCardDeleteRecordSuccess'));
     if (selectedId === item.id) {
       setSelectedId(null);
     }
@@ -797,7 +801,7 @@ export const RecordingCardWorkspace: React.FC<RecordingCardWorkspaceProps> = ({
       updatedAt: Date.now(),
     };
     await window.electron.localRecordings?.upsertRecord?.(updated);
-    toast('success', '纪要内容已保存');
+    toast('success', i18nService.t('recordingCardSummarySavedToast'));
     await loadLocalRecordings();
   };
 
@@ -809,10 +813,10 @@ export const RecordingCardWorkspace: React.FC<RecordingCardWorkspaceProps> = ({
         updatedAt: Date.now(),
       };
       await window.electron.localRecordings?.upsertRecord?.(updated);
-      toast('success', `录音已重命名为「${newTitle}」`);
+      toast('success', i18nService.t('recordingCardRenameSuccessToast', { title: newTitle }));
       await loadLocalRecordings();
     } catch (err: any) {
-      toast('error', `重命名失败: ${err?.message || err}`);
+      toast('error', i18nService.t('recordingCardRenameFailedToast', { error: err?.message || err }));
     }
   };
 
@@ -827,8 +831,8 @@ export const RecordingCardWorkspace: React.FC<RecordingCardWorkspaceProps> = ({
           </svg>
         </span>
         <span>
-          <b className="font-semibold text-[#1c1c1e]">录音卡里的录音会自动传到这台电脑，不会上传。</b>
-          转写后的内容要不要进第二大脑，由你勾选后决定。
+          <b className="font-semibold text-[#1c1c1e]">{i18nService.t('recordingCardTopSecurityNoticeBold')}</b>
+          {i18nService.t('recordingCardTopSecurityNoticeNormal')}
         </span>
       </div>
 

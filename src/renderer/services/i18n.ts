@@ -2,6 +2,11 @@ import { desktopCompanionTranslations } from '../../shared/desktopCompanion/copy
 import { imageEditingTranslations } from '../../shared/imageEditing/copy';
 import { mediaTranslations } from '../../shared/media/copy';
 import { configService } from './config';
+import { authAndBillingTranslations } from './i18n/authAndBilling';
+import { expertsAndCoworkTranslations } from './i18n/expertsAndCowork';
+import { recordingCardI18n } from './i18n/recordingCard';
+import { secondBrainI18n } from './i18n/secondBrain';
+import { settingsAndImTranslations } from './i18n/settingsAndIm';
 
 // 支持的语言类型
 export type LanguageType = 'zh' | 'en';
@@ -9,6 +14,11 @@ export type LanguageType = 'zh' | 'en';
 // 语言文本映射
 const translations: Record<LanguageType, Record<string, string>> = {
   zh: {
+    ...authAndBillingTranslations.zh,
+    ...expertsAndCoworkTranslations.zh,
+    ...settingsAndImTranslations.zh,
+    ...secondBrainI18n.zh,
+    ...recordingCardI18n.zh,
     modelPresetBalanced: '快速',
     modelPresetUltimate: '旗舰',
     modelPresetBalancedDescription: '快速响应，高效胜任日常工作',
@@ -4807,6 +4817,11 @@ const translations: Record<LanguageType, Record<string, string>> = {
     workspaceDiffIncomplete: '部分文件超出读取限额，行数统计不完整。',
   },
   en: {
+    ...authAndBillingTranslations.en,
+    ...expertsAndCoworkTranslations.en,
+    ...settingsAndImTranslations.en,
+    ...secondBrainI18n.en,
+    ...recordingCardI18n.en,
     modelPresetBalanced: 'Fast',
     modelPresetUltimate: 'Flagship',
     modelPresetBalancedDescription: 'Fast responses for efficient everyday work',
@@ -10027,15 +10042,21 @@ class I18nService {
   }
 
   // 获取翻译文本
-  t(key: string): string {
+  t(key: string, params?: Record<string, string | number>): string {
     const translation = translations[this.currentLanguage][key];
-    if (!translation) {
+    let result = translation;
+    if (!result) {
       console.warn(`Translation missing for key: ${key} in language: ${this.currentLanguage}`);
       // 尝试从另一种语言获取
       const fallbackTranslation = translations[this.currentLanguage === 'zh' ? 'en' : 'zh'][key];
-      return fallbackTranslation || key;
+      result = fallbackTranslation || key;
     }
-    return translation;
+    if (params && typeof result === 'string') {
+      return Object.entries(params).reduce((str, [paramKey, val]) => {
+        return str.replace(new RegExp(`\\{${paramKey}\\}`, 'g'), String(val));
+      }, result);
+    }
+    return result;
   }
 
   subscribe(listener: () => void): () => void {

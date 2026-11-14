@@ -5,6 +5,7 @@ import { applyAppConfigToStore } from '../services/appConfigModels';
 import { setAuthCredentials } from '../services/authStorage';
 import { configService } from '../services/config';
 import { httpClient } from '../services/httpClient';
+import { i18nService } from '../services/i18n';
 import { fetchAndFilterOneApiChatModels } from '../services/oneapiModels';
 import { vipService } from '../services/vipService';
 import { setLoggedIn } from '../store/slices/authSlice';
@@ -23,7 +24,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
   
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [loadingText, setLoadingText] = useState('处理中...');
+  const [loadingText, setLoadingText] = useState(i18nService.t('authProcessing'));
   const [errorMsg, setErrorMsg] = useState('');
 
   if (!isOpen) return null;
@@ -31,20 +32,20 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
-    setLoadingText('处理中...');
+    setLoadingText(i18nService.t('authProcessing'));
     setLoading(true);
 
     try {
       if (!username.trim() || !password.trim()) {
-        throw new Error('请输入账号和密码');
+        throw new Error(i18nService.t('authEnterAccountAndPassword'));
       }
 
       if (password.trim().length < 8) {
-        throw new Error('密码长度至少为 8 位');
+        throw new Error(i18nService.t('authPasswordMinLength'));
       }
 
       if (!isLogin && !activeCode.trim()) {
-        throw new Error('注册需要输入有效的激活码');
+        throw new Error(i18nService.t('authActivationCodeRequired'));
       }
 
       if (!isLogin) {
@@ -59,7 +60,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
         );
 
         if (!registerRes.ok || !registerRes.data || !registerRes.data.success) {
-          throw new Error(registerRes.data?.error || registerRes.error || '激活注册失败，请检查激活码或账号');
+          throw new Error(registerRes.data?.error || registerRes.error || i18nService.t('authActivationRegisterFailed'));
         }
       }
 
@@ -77,7 +78,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
       );
 
       if (!loginRes.ok || !loginRes.data || !loginRes.data.success) {
-        throw new Error(loginRes.data?.error || loginRes.error || '登录失败，请检查账号密码');
+        throw new Error(loginRes.data?.error || loginRes.error || i18nService.t('authLoginFailed'));
       }
 
       const userId = loginRes.data.data?.id;
@@ -85,7 +86,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
       const session = loginRes.data.data?.session || '';
 
       if (!userId || !apiKey) {
-        throw new Error('登录成功，但未解析到有效的对话令牌');
+        throw new Error(i18nService.t('authMissingSessionToken'));
       }
 
       const formattedKey = apiKey.startsWith('sk-') ? apiKey : `sk-${apiKey}`;
@@ -109,7 +110,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
       }));
 
       // 登录三凭证已存入，给予积极正向反馈
-      setLoadingText('登录成功，正在进入...');
+      setLoadingText(i18nService.t('authLoginSuccessEntering'));
 
       // 异步触发模型拉取、配置更新与 VIP 刷新（此过程会触发主进程在 ~1 秒内将网关状态切为 starting）
       void (async () => {
@@ -170,7 +171,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
       onSuccess();
     } catch (err: any) {
       console.error('[AuthModal] Auth flow error:', err);
-      setErrorMsg(err.message || '请求处理异常，请检查网络');
+      setErrorMsg(err.message || i18nService.t('authRequestErrorCheckNetwork'));
     } finally {
       setLoading(false);
     }
@@ -183,10 +184,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
         {/* Title */}
         <div className="text-center mb-8">
           <h2 className="text-xl font-bold text-gray-800 tracking-tight">
-            {isLogin ? '登录您的账户' : '注册'}
+            {isLogin ? i18nService.t('authLoginTitle') : i18nService.t('authRegisterTitle')}
           </h2>
           <p className="text-xs text-gray-400 mt-1.5">
-            {isLogin ? '欢迎回来，请输入您的账号凭证' : '请输入激活码以完成账户注册'}
+            {isLogin ? i18nService.t('authLoginSubtitle') : i18nService.t('authRegisterSubtitle')}
           </p>
         </div>
 
@@ -195,13 +196,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
           {!isLogin && (
             <div>
               <label className="block text-xs font-semibold text-gray-500 mb-1.5">
-                激活码
+                {i18nService.t('authActivationCodeLabel')}
               </label>
               <input
                 type="text"
                 value={activeCode}
                 onChange={(e) => setActiveCode(e.target.value)}
-                placeholder="请输入激活码"
+                placeholder={i18nService.t('authActivationCodePlaceholder')}
                 disabled={loading}
                 className="w-full px-3.5 py-2.5 text-sm bg-gray-50/50 border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-primary/50 focus:bg-white transition-all"
                 required
@@ -211,13 +212,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
 
           <div>
             <label className="block text-xs font-semibold text-gray-500 mb-1.5">
-              账号
+              {i18nService.t('authAccountLabel')}
             </label>
             <input
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="请输入您的账号"
+              placeholder={i18nService.t('authAccountPlaceholder')}
               disabled={loading}
               className="w-full px-3.5 py-2.5 text-sm bg-gray-50/50 border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-primary/50 focus:bg-white transition-all"
               required
@@ -226,15 +227,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
 
           <div>
             <label className="block text-xs font-semibold text-gray-500 mb-1.5 flex justify-between">
-              <span>密码</span>
-              <span className="text-[10px] text-gray-400 font-normal">密码长度至少 8 位</span>
+              <span>{i18nService.t('authPasswordLabel')}</span>
+              <span className="text-[10px] text-gray-400 font-normal">{i18nService.t('authPasswordLengthTip')}</span>
             </label>
             <div className="relative">
               <input
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="请输入您的密码（至少8位）"
+                placeholder={i18nService.t('authPasswordPlaceholder')}
                 disabled={loading}
                 className="w-full pl-3.5 pr-10 py-2.5 text-sm bg-gray-50/50 border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-primary/50 focus:bg-white transition-all"
                 required
@@ -243,7 +244,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
                 className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors z-10 cursor-pointer"
-                title={showPassword ? '隐藏密码' : '显示密码'}
+                title={showPassword ? i18nService.t('authHidePassword') : i18nService.t('authShowPassword')}
               >
                 {showPassword ? (
                   <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -272,7 +273,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
             disabled={loading}
             className="w-full py-3 mt-4 text-sm font-semibold text-white bg-primary rounded-xl hover:bg-primary/95 active:scale-[0.99] disabled:opacity-50 disabled:pointer-events-none transition-all shadow-[0_4px_12px_rgba(59,130,246,0.15)]"
           >
-            {loading ? loadingText : isLogin ? '立 即 登 录' : '注册并登录'}
+            {loading ? loadingText : isLogin ? i18nService.t('authLoginButton') : i18nService.t('authRegisterAndLoginButton')}
           </button>
         </form>
 
@@ -287,7 +288,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
               }}
               className="text-xs text-gray-400 hover:text-primary transition-colors hover:underline font-medium"
             >
-              没有账号？去注册
+              {i18nService.t('authGoToRegister')}
             </button>
           ) : (
             <button
@@ -298,7 +299,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
               }}
               className="text-xs text-gray-400 hover:text-primary transition-colors hover:underline font-medium"
             >
-              已有账号？立即登录
+              {i18nService.t('authGoToLogin')}
             </button>
           )}
         </div>

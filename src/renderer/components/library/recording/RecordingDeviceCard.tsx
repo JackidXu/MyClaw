@@ -8,6 +8,8 @@
 
 import React from 'react';
 
+import { i18nService } from '../../../services/i18n';
+
 interface RecordingDeviceCardProps {
   deviceName?: string;
   isConnected: boolean;
@@ -64,27 +66,27 @@ export const RecordingDeviceCard: React.FC<RecordingDeviceCardProps> = ({
             {isConnected ? (
               <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[#1a6ff2] bg-[#eaf2ff] border border-[#cfe0ff] rounded-[6px] px-2 py-0.5 shrink-0">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#1a6ff2]" />
-                蓝牙已连接
+                {i18nService.t('recordingCardBleConnected')}
               </span>
             ) : (
               <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[#6b6b70] bg-[#f4f4f6] border border-[#dfdfe3] rounded-[6px] px-2 py-0.5 shrink-0">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#a6a6ac]" />
-                未连接
+                {i18nService.t('recordingCardBleDisconnected')}
               </span>
             )}
 
             {/* 已连接时展示电量 */}
             {isConnected && battery !== null && (
               <span className="text-[11.5px] text-[#8b8b90] tabular-nums">
-                电量 {battery}%
+                {i18nService.t('recordingCardBattery', { battery })}
               </span>
             )}
 
             {/* 本地真实统计 (.rcd-dm2) */}
             <span className="text-[11px] text-[#8b8b90] font-normal tabular-nums">
-              {isConnected && freeSpace ? `剩余 ${freeSpace} · ` : ''}
-              {isConnected && lastSyncTime ? `上次传输 ${lastSyncTime} · ` : ''}
-              已转写 {localTranscribedCount} 条 · 都只存在本机
+              {isConnected && freeSpace ? i18nService.t('recordingCardFreeSpacePrefix', { space: freeSpace }) : ''}
+              {isConnected && lastSyncTime ? i18nService.t('recordingCardLastSyncPrefix', { time: lastSyncTime }) : ''}
+              {i18nService.t('recordingCardTranscribedCountLocal', { count: localTranscribedCount })}
             </span>
           </div>
         </div>
@@ -98,7 +100,7 @@ export const RecordingDeviceCard: React.FC<RecordingDeviceCardProps> = ({
                 onClick={onDisconnect}
                 className="text-[12.5px] text-[#505055] border border-[#ebebee] bg-white rounded-[9px] px-3.5 py-1.5 hover:border-[#c6c6cc] hover:text-[#1c1c1e] transition-colors cursor-pointer"
               >
-                断开连接
+                {i18nService.t('recordingCardDisconnectBtn')}
               </button>
               {onUnbind && (
                 <button
@@ -106,7 +108,7 @@ export const RecordingDeviceCard: React.FC<RecordingDeviceCardProps> = ({
                   onClick={onUnbind}
                   className="text-[12.5px] text-[#d4380d] border border-[#f3c8ab] bg-[#fff7f4] rounded-[9px] px-3.5 py-1.5 hover:bg-[#ffefe8] transition-colors cursor-pointer"
                 >
-                  解除绑定
+                  {i18nService.t('recordingCardUnbindBtn')}
                 </button>
               )}
             </>
@@ -116,7 +118,7 @@ export const RecordingDeviceCard: React.FC<RecordingDeviceCardProps> = ({
               onClick={onConnect}
               className="text-[12.5px] font-medium text-[#1c1c1e] border border-[#dfdfe3] bg-white rounded-[9px] px-3.5 py-1.5 hover:border-[#c6c6cc] hover:bg-[#fafafb] transition-colors cursor-pointer shadow-xs"
             >
-              连接录音卡
+              {i18nService.t('recordingCardConnectBtn')}
             </button>
           )}
         </div>

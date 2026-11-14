@@ -485,19 +485,26 @@ const EmailSkillConfig: React.FC = () => {
   const buildAskAIPrompt = useCallback((result: EmailConnectivityTestResult | null): string => {
     const account = activeAccount;
     const lines: string[] = [];
-    lines.push('我在配置邮件的 IMAP/SMTP 连接时遇到了问题，请帮我排查并给出解决方案。');
+    lines.push(i18nService.t('emailTroubleshootPromptIntro'));
     if (account) {
-      lines.push(`邮箱账号：${getAccountDisplayName(account)}`);
-      lines.push(`邮箱地址：${account.email}`);
-      lines.push(`IMAP 服务器：${account.imapHost}:${account.imapPort}`);
-      lines.push(`SMTP 服务器：${account.smtpHost}:${account.smtpPort}`);
+      lines.push(i18nService.t('emailTroubleshootPromptAccount', { account: getAccountDisplayName(account) }));
+      lines.push(i18nService.t('emailTroubleshootPromptAddress', { email: account.email }));
+      lines.push(i18nService.t('emailTroubleshootPromptImapServer', { host: account.imapHost, port: account.imapPort }));
+      lines.push(i18nService.t('emailTroubleshootPromptSmtpServer', { host: account.smtpHost, port: account.smtpPort }));
     }
-    lines.push('连接测试失败，错误信息如下：');
+    lines.push(i18nService.t('emailTroubleshootPromptFailureHeader'));
     if (result) {
       result.checks.forEach(check => {
         const label = check.code === 'imap_connection' ? 'IMAP' : 'SMTP';
-        const status = check.level === 'pass' ? '成功' : '失败';
-        lines.push(`- ${label} 连接${status}：${check.message}（耗时 ${check.durationMs}ms）`);
+        const status = check.level === 'pass'
+          ? i18nService.t('emailTroubleshootPromptSuccessStatus')
+          : i18nService.t('emailTroubleshootPromptFailStatus');
+        lines.push(i18nService.t('emailTroubleshootPromptCheckItem', {
+          label,
+          status,
+          message: check.message,
+          durationMs: check.durationMs,
+        }));
       });
     } else if (connectivityError) {
       lines.push(`- ${connectivityError}`);

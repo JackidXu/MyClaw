@@ -531,7 +531,7 @@ const IMSettings: React.FC = () => {
     } catch (err: any) {
       if (!isMountedRef.current) return;
       setFeishuQrStatus('error');
-      setFeishuQrError(err?.message || '获取二维码失败');
+      setFeishuQrError(err?.message || i18nService.t('imFetchQrCodeFailed'));
     }
   };
 

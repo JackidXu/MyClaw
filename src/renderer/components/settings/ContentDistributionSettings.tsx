@@ -67,12 +67,12 @@ const ContentDistributionSettings: React.FC<ContentDistributionSettingsProps> = 
         <div className="mt-4 rounded-lg bg-background p-4 text-xs text-secondary space-y-2 border border-border/50">
           <div className="font-medium text-foreground flex items-center gap-1.5">
             <InformationCircleIcon className="h-4 w-4 text-primary" />
-            <span>如何获取凭据：</span>
+            <span>{i18nService.t('contentDistHowToGetCredentials')}</span>
           </div>
           <ol className="list-decimal list-inside space-y-1 pl-1 leading-normal">
-            <li>打开您电脑上已登录的「蚁小二」客户端；</li>
-            <li>点击客户端左侧导航栏的「CLI」菜单；</li>
-            <li>复制「API Key」与「Client ID」，分别填入下方输入框中，并点击右下角保存。</li>
+            <li>{i18nService.t('contentDistStep1')}</li>
+            <li>{i18nService.t('contentDistStep2')}</li>
+            <li>{i18nService.t('contentDistStep3')}</li>
           </ol>
         </div>
       </div>
@@ -108,7 +108,7 @@ const ContentDistributionSettings: React.FC<ContentDistributionSettingsProps> = 
                 </h4>
                 {checking ? (
                   <span className="rounded-full bg-secondary/10 px-2 py-0.5 text-xs text-secondary">
-                    检测中...
+                    {i18nService.t('contentDistDetecting')}
                   </span>
                 ) : cliStatus.installed ? (
                   <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
@@ -183,14 +183,14 @@ const ContentDistributionSettings: React.FC<ContentDistributionSettingsProps> = 
         {/* API Key */}
         <div className="space-y-1.5">
           <label className="block text-sm font-medium text-foreground">
-            蚁小二 API Key <span className="text-red-500">*</span>
+            {i18nService.t('contentDistApiKeyLabel')} <span className="text-red-500">*</span>
           </label>
           <div className="relative">
             <input
               type={showApiKey ? 'text' : 'password'}
               value={value.apiKey}
               onChange={(e) => onChange({ ...value, apiKey: e.target.value })}
-              placeholder="请输入您的蚁小二 API Key"
+              placeholder={i18nService.t('contentDistApiKeyPlaceholder')}
               className="w-full rounded-lg border border-border bg-background px-3 py-2 pr-10 text-sm text-foreground placeholder:text-secondary/50 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
             />
             <button
@@ -202,25 +202,25 @@ const ContentDistributionSettings: React.FC<ContentDistributionSettingsProps> = 
             </button>
           </div>
           <p className="text-xs text-secondary">
-            用于身份鉴权。重置后旧令牌会失效，请确保与蚁小二客户端中显示一致。
+            {i18nService.t('contentDistApiKeyHelp')}
           </p>
         </div>
 
         {/* Client ID */}
         <div className="space-y-1.5">
           <label className="block text-sm font-medium text-foreground">
-            本机 Client ID
+            {i18nService.t('contentDistClientIdLabel')}
           </label>
           <input
             type="text"
             value={value.clientId}
             onChange={(e) => onChange({ ...value, clientId: e.target.value })}
-            placeholder="例如：_9bvKq... (从蚁小二客户端获取)"
+            placeholder={i18nService.t('contentDistClientIdPlaceholder')}
             className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-secondary/50 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary font-mono"
           />
           <p className="text-xs text-secondary">
-            <span className="font-medium text-foreground">强烈推荐填写：</span>
-            填写后任务将直接由本机蚁小二客户端执行，走您当前的宽带网络发布，天然免风控、账号不掉线。若未显示请确认本机客户端已运行。
+            <span className="font-medium text-foreground">{i18nService.t('contentDistClientIdRecommendPrefix')}</span>
+            {i18nService.t('contentDistClientIdRecommendDesc')}
           </p>
         </div>
       </div>

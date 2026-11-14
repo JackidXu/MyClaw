@@ -1,7 +1,13 @@
 import React, { useMemo, useState } from 'react';
 
+import { i18nService } from '../../services/i18n';
 import Modal from '../common/Modal';
-import { ENGINE_CONFIGS, ExpertEngineType, getExpertCoverImage } from './builtinExpertData';
+import {
+  ENGINE_CONFIGS,
+  ExpertEngineType,
+  getExpertCoverImage,
+  getSceneLabel,
+} from './builtinExpertData';
 import type { PresetAgent } from './ExpertsView';
 
 interface BuiltinExpertsSectionProps {
@@ -48,7 +54,7 @@ const CoverImageWithSkeleton: React.FC<{
             onPreview();
           }}
           className="absolute right-2 top-2 z-10 opacity-0 group-hover:opacity-100 transition-all bg-black/60 hover:bg-black/85 active:scale-95 backdrop-blur-md text-white p-1.5 rounded-full shadow-md cursor-pointer hover:ring-1 hover:ring-white/40"
-          title="查看高清大图"
+          title={i18nService.t('builtinViewHdImage')}
         >
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7" />
@@ -143,14 +149,14 @@ const BuiltinExpertsSection: React.FC<BuiltinExpertsSectionProps> = ({
               <p className="text-xs text-secondary leading-relaxed">{cfg.description}</p>
               <div className="mt-4 flex items-center justify-between text-xs">
                 <span className="text-secondary/80 font-medium">
-                  {acquisitionExperts.length} 位专家 · 定位 → 起盘 → 日常生产
+                  {i18nService.t('builtinEngineAcquisitionPath', { count: acquisitionExperts.length })}
                 </span>
                 <span
                   className={`font-semibold ${
                     isSelected ? 'text-amber-600 dark:text-amber-400' : 'text-secondary/70'
                   }`}
                 >
-                  {isSelected ? '正在看 →' : '切换 →'}
+                  {isSelected ? i18nService.t('builtinEngineViewing') : i18nService.t('builtinEngineSwitch')}
                 </span>
               </div>
             </div>
@@ -186,14 +192,14 @@ const BuiltinExpertsSection: React.FC<BuiltinExpertsSectionProps> = ({
               <p className="text-xs text-secondary leading-relaxed">{cfg.description}</p>
               <div className="mt-4 flex items-center justify-between text-xs">
                 <span className="text-secondary/80 font-medium">
-                  {conversionExperts.length} 位专家 · 破冰 → 挖需 → 报价 → 签约
+                  {i18nService.t('builtinEngineConversionPath', { count: conversionExperts.length })}
                 </span>
                 <span
                   className={`font-semibold ${
                     isSelected ? 'text-blue-600 dark:text-blue-400' : 'text-secondary/70'
                   }`}
                 >
-                  {isSelected ? '正在看 →' : '切换 →'}
+                  {isSelected ? i18nService.t('builtinEngineViewing') : i18nService.t('builtinEngineSwitch')}
                 </span>
               </div>
             </div>
@@ -217,25 +223,29 @@ const BuiltinExpertsSection: React.FC<BuiltinExpertsSectionProps> = ({
                     : 'bg-surface border border-border text-secondary hover:text-foreground hover:border-border/80'
                 }`}
               >
-                {sceneName === '全部' ? '全部专家' : sceneName}
+                {getSceneLabel(sceneName)}
               </button>
             );
           })}
         </div>
         <div className="text-xs text-secondary font-medium shrink-0 ml-auto">
-          {filteredList.length} 位专家
+          {i18nService.t('builtinExpertsCountBadge', { count: filteredList.length })}
         </div>
       </div>
 
       {/* ── 专家卡片网格列表 ── */}
       {filteredList.length === 0 ? (
         <div className="flex h-64 flex-col items-center justify-center text-secondary">
-          <p className="text-sm font-medium">该分类下暂无专家</p>
+          <p className="text-sm font-medium">{i18nService.t('builtinNoExpertsInCategory')}</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 min-[1100px]:grid-cols-3 min-[1400px]:grid-cols-4 gap-4">
           {filteredList.map((expert) => {
             const coverImageSrc = getExpertCoverImage(expert);
+            const isEn = i18nService.getLanguage() === 'en';
+            const expertName = (isEn && expert.nameEn) ? expert.nameEn : expert.name;
+            const expertDesc = (isEn && expert.descriptionEn) ? expert.descriptionEn : expert.description;
+            const expertScene = expert.scene ? getSceneLabel(expert.scene) : '';
 
             return (
               <div
@@ -253,7 +263,7 @@ const BuiltinExpertsSection: React.FC<BuiltinExpertsSectionProps> = ({
                 {/* 封面图片展示区（带微光骨架屏 + 平滑淡入，仅点击右上角独立角标才放大原图） */}
                 <CoverImageWithSkeleton
                   src={coverImageSrc}
-                  alt={expert.name}
+                  alt={expertName}
                   className="h-36 w-full border-b border-border/50"
                   imgClassName="group-hover:scale-105 transition-transform duration-300"
                   onPreview={() => setPreviewImageUrl(coverImageSrc)}
@@ -263,27 +273,27 @@ const BuiltinExpertsSection: React.FC<BuiltinExpertsSectionProps> = ({
                 <div className="p-3.5 sm:p-4 flex-1 flex flex-col gap-2">
                   <div className="flex items-center justify-between gap-2 min-w-0">
                     <h3 className="text-[13.5px] sm:text-sm font-bold text-foreground tracking-tight group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors truncate">
-                      {expert.name}
+                      {expertName}
                     </h3>
-                    {expert.scene && (
+                    {expertScene && (
                       <span className="text-[10px] text-secondary bg-surface-raised border border-border/60 px-1.5 py-0.5 rounded font-normal shrink-0">
-                        {expert.scene}
+                        {expertScene}
                       </span>
                     )}
                   </div>
-                  {expert.description && (
+                  {expertDesc && (
                     <p className="text-[11.8px] text-secondary leading-relaxed line-clamp-2 min-h-[34px]">
-                      {expert.description}
+                      {expertDesc}
                     </p>
                   )}
 
-                  {/* 产出物独立胶囊条（完整展示不截断） */}
-                  {expert.deliver ? (
+                  {/* 产出物独立胶囊条（仅在中文模式且有 deliver 时展示；英文模式隐藏） */}
+                  {!isEn && expert.deliver ? (
                     <div
                       className="mt-auto text-[11px] text-secondary bg-[#fafbfc] dark:bg-surface-raised border border-border/40 rounded-[7px] px-2 py-1 truncate"
-                      title={`产出 · ${expert.deliver}`}
+                      title={i18nService.t('builtinDeliverPrefix', { deliver: expert.deliver })}
                     >
-                      产出 · {expert.deliver}
+                      {i18nService.t('builtinDeliverPrefix', { deliver: expert.deliver })}
                     </div>
                   ) : (
                     <div className="mt-auto" />
@@ -292,7 +302,7 @@ const BuiltinExpertsSection: React.FC<BuiltinExpertsSectionProps> = ({
                   {/* 底部动作栏：左侧【看示例 →】，右侧【使用】快捷按钮 */}
                   <div className="flex items-center justify-between gap-2 pt-1">
                     <span className="text-[11.5px] font-semibold text-amber-600 dark:text-amber-400 group-hover:translate-x-0.5 transition-transform">
-                      看示例 →
+                      {i18nService.t('builtinViewExample')}
                     </span>
                     <button
                       type="button"
@@ -303,7 +313,7 @@ const BuiltinExpertsSection: React.FC<BuiltinExpertsSectionProps> = ({
                       }}
                       className="px-3 py-1 rounded-full text-[11px] font-semibold bg-foreground text-background hover:opacity-90 active:scale-95 transition-all shrink-0 cursor-pointer disabled:opacity-50 flex items-center justify-center shadow-2xs"
                     >
-                      {hiringId === expert.id ? '...' : '使用'}
+                      {hiringId === expert.id ? '...' : i18nService.t('builtinUseExpert')}
                     </button>
                   </div>
                 </div>
@@ -324,11 +334,14 @@ const BuiltinExpertsSection: React.FC<BuiltinExpertsSectionProps> = ({
         >
           {/* 弹窗头部（1:1 原型内边距与排版：padding 22px 24px 18px） */}
           {(() => {
-            const subtitle = [selectedExpert.group, selectedExpert.scene].filter(Boolean).join(' · ');
+            const isEn = i18nService.getLanguage() === 'en';
+            const modalExpertName = (isEn && selectedExpert.nameEn) ? selectedExpert.nameEn : selectedExpert.name;
+            const modalScene = selectedExpert.scene ? getSceneLabel(selectedExpert.scene) : '';
+            const subtitle = [selectedExpert.group, modalScene].filter(Boolean).join(' · ');
             return (
               <div className="flex items-start justify-between gap-3.5 px-6 pt-[22px] pb-[18px] border-b border-border shrink-0">
                 <div>
-                  <h3 className="text-[17px] font-bold tracking-tight text-foreground">{selectedExpert.name}</h3>
+                  <h3 className="text-[17px] font-bold tracking-tight text-foreground">{modalExpertName}</h3>
                   {subtitle && (
                     <p className="text-[12.5px] text-secondary mt-1 leading-normal">{subtitle}</p>
                   )}
@@ -350,11 +363,11 @@ const BuiltinExpertsSection: React.FC<BuiltinExpertsSectionProps> = ({
             <div
               className="group/cover relative w-full h-full min-h-[320px] bg-surface-raised md:border-r border-border overflow-hidden flex items-center justify-center cursor-zoom-in"
               onClick={() => setPreviewImageUrl(getExpertCoverImage(selectedExpert))}
-              title="点击查看高清大图"
+              title={i18nService.t('builtinViewHdImage')}
             >
               <CoverImageWithSkeleton
                 src={getExpertCoverImage(selectedExpert)}
-                alt={selectedExpert.name}
+                alt={i18nService.getLanguage() === 'en' && selectedExpert.nameEn ? selectedExpert.nameEn : selectedExpert.name}
                 className="w-full h-full"
                 imgClassName="group-hover/cover:scale-[1.02] transition-transform duration-300"
               />
@@ -363,7 +376,7 @@ const BuiltinExpertsSection: React.FC<BuiltinExpertsSectionProps> = ({
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7" />
                 </svg>
-                <span>查看大图</span>
+                <span>{i18nService.t('builtinViewLargeImageButton')}</span>
               </div>
             </div>
 
@@ -372,39 +385,41 @@ const BuiltinExpertsSection: React.FC<BuiltinExpertsSectionProps> = ({
               <div className="space-y-0">
                 <div className="flex gap-3 py-2.5 border-b border-dashed border-[#eef0f4] dark:border-border/60 text-[12.5px] leading-relaxed">
                   <span className="shrink-0 w-[34px] h-[20px] rounded-[5px] bg-[#f5f6f9] dark:bg-surface-raised text-secondary text-[11px] flex items-center justify-center mt-0.5 font-medium">
-                    用途
+                    {i18nService.t('builtinPropUsage')}
                   </span>
                   <b className="font-normal text-foreground leading-relaxed break-words flex-1">
-                    {selectedExpert.description || '暂无描述'}
+                    {(i18nService.getLanguage() === 'en' && selectedExpert.descriptionEn ? selectedExpert.descriptionEn : selectedExpert.description) || i18nService.t('builtinNoDescription')}
                   </b>
                 </div>
 
                 <div className="flex gap-3 py-2.5 border-b border-dashed border-[#eef0f4] dark:border-border/60 text-[12.5px] leading-relaxed">
                   <span className="shrink-0 w-[34px] h-[20px] rounded-[5px] bg-[#f5f6f9] dark:bg-surface-raised text-secondary text-[11px] flex items-center justify-center mt-0.5 font-medium">
-                    输入
+                    {i18nService.t('builtinPropInput')}
                   </span>
                   <b className="font-normal text-foreground leading-relaxed break-words flex-1">
-                    {selectedExpert.input || '无需额外输入'}
+                    {selectedExpert.input || i18nService.t('builtinNoExtraInput')}
                   </b>
                 </div>
 
                 <div className="flex gap-3 py-2.5 border-b border-dashed border-[#eef0f4] dark:border-border/60 text-[12.5px] leading-relaxed">
                   <span className="shrink-0 w-[34px] h-[20px] rounded-[5px] bg-[#f5f6f9] dark:bg-surface-raised text-secondary text-[11px] flex items-center justify-center mt-0.5 font-medium">
-                    输出
+                    {i18nService.t('builtinPropOutput')}
                   </span>
                   <b className="font-normal text-foreground leading-relaxed break-words flex-1">
-                    {selectedExpert.output || '标准工作成果'}
+                    {selectedExpert.output || i18nService.t('builtinStandardOutput')}
                   </b>
                 </div>
 
-                <div className="flex gap-3 py-2.5 border-b border-dashed border-[#eef0f4] dark:border-border/60 text-[12.5px] leading-relaxed">
-                  <span className="shrink-0 w-[34px] h-[20px] rounded-[5px] bg-[#f5f6f9] dark:bg-surface-raised text-secondary text-[11px] flex items-center justify-center mt-0.5 font-medium">
-                    交付
-                  </span>
-                  <b className="font-semibold text-foreground leading-relaxed break-words flex-1">
-                    {selectedExpert.deliver || '文档 / 方案'}
-                  </b>
-                </div>
+                {(!i18nService.getLanguage().startsWith('en') || selectedExpert.deliver) && !i18nService.getLanguage().startsWith('en') && (
+                  <div className="flex gap-3 py-2.5 border-b border-dashed border-[#eef0f4] dark:border-border/60 text-[12.5px] leading-relaxed">
+                    <span className="shrink-0 w-[34px] h-[20px] rounded-[5px] bg-[#f5f6f9] dark:bg-surface-raised text-secondary text-[11px] flex items-center justify-center mt-0.5 font-medium">
+                      {i18nService.t('builtinPropDeliver')}
+                    </span>
+                    <b className="font-semibold text-foreground leading-relaxed break-words flex-1">
+                      {selectedExpert.deliver || i18nService.t('builtinDefaultDeliver')}
+                    </b>
+                  </div>
+                )}
               </div>
 
               <button
@@ -417,7 +432,7 @@ const BuiltinExpertsSection: React.FC<BuiltinExpertsSectionProps> = ({
                 }}
                 className="mt-6 w-full bg-[#14161c] hover:bg-black text-white dark:bg-primary dark:text-primary-foreground rounded-[11px] py-3 text-[13px] font-semibold transition-all cursor-pointer shadow-sm disabled:opacity-50 flex items-center justify-center"
               >
-                {hiringId === selectedExpert.id ? '正在启动...' : '开始做 →'}
+                {hiringId === selectedExpert.id ? i18nService.t('builtinStarting') : i18nService.t('builtinStartDoing')}
               </button>
             </div>
           </div>
@@ -440,14 +455,14 @@ const BuiltinExpertsSection: React.FC<BuiltinExpertsSectionProps> = ({
           >
             <img
               src={previewImageUrl}
-              alt="封面大图原图"
+              alt={i18nService.t('builtinHdCoverAlt')}
               className="max-w-[92vw] max-h-[88vh] object-contain rounded-xl shadow-2xl border border-white/20 select-none animate-in fade-in zoom-in-95 duration-200 cursor-zoom-out"
             />
             <button
               type="button"
               onClick={() => setPreviewImageUrl(null)}
               className="absolute -top-3 -right-3 sm:-top-4 sm:-right-4 w-9 h-9 rounded-full bg-black/75 hover:bg-black text-white border border-white/30 flex items-center justify-center cursor-pointer shadow-lg transition-transform hover:scale-105 text-base"
-              title="点击任意处或按 Esc 关闭"
+              title={i18nService.t('builtinLightBoxCloseTip')}
             >
               ✕
             </button>
