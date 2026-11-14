@@ -334,7 +334,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     if (!file) return;
 
     if (file.size > 2 * 1024 * 1024) {
-      window.dispatchEvent(new CustomEvent('app:showToast', { detail: '头像大小不能超过 2MB' }));
+      window.dispatchEvent(new CustomEvent('app:showToast', { detail: i18nService.t('sidebarAvatarSizeExceeded') }));
       return;
     }
 
@@ -366,7 +366,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       const oneapiConfig = config.providers?.['oneapi'];
       const apiKey = oneapiConfig?.apiKey?.trim();
       if (!apiKey) {
-        window.dispatchEvent(new CustomEvent('app:showToast', { detail: '未激活系统，请先输入激活码' }));
+        window.dispatchEvent(new CustomEvent('app:showToast', { detail: i18nService.t('sidebarSystemNotActivated') }));
         return;
       }
       setIsPayModalOpen(true);
@@ -393,7 +393,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     if (avatarClickCountRef.current >= 10) {
       avatarClickCountRef.current = 0;
       void window.electron?.appInfo?.toggleDevTools?.();
-      window.dispatchEvent(new CustomEvent('app:showToast', { detail: '已切换开发者工具' }));
+      window.dispatchEvent(new CustomEvent('app:showToast', { detail: i18nService.t('sidebarDevToolsSwitched') }));
     } else {
       avatarClickTimerRef.current = setTimeout(() => {
         avatarClickCountRef.current = 0;
@@ -429,7 +429,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           const rawAccount = userProfile?.username || userProfile?.displayName || '';
           setAccountUsername(rawAccount);
         } else {
-          const errorMsg = selfResp.data?.error || '获取用户信息失败';
+          const errorMsg = selfResp.data?.error || i18nService.t('sidebarGetUserInfoFailed');
           throw new Error(errorMsg);
         }
       })();
@@ -442,7 +442,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     } catch (err) {
       console.error('[Sidebar] Refresh balance error:', err);
       if (showToast) {
-        window.dispatchEvent(new CustomEvent('app:showToast', { detail: '余额刷新失败，请检查网络' }));
+        window.dispatchEvent(new CustomEvent('app:showToast', { detail: i18nService.t('sidebarBalanceRefreshFailed') }));
       }
     } finally {
       balanceLoadingRef.current = false;
@@ -897,7 +897,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         )}
         {showHeaderRow && (
           <div className="px-4 pt-2 pb-1 flex items-center select-none text-[11px] font-medium tracking-wide text-secondary/60">
-            HeyClaw 增长助手
+            {i18nService.t('sidebarAppGrowthAssistant')}
           </div>
         )}
         <div className="mt-1 space-y-1 px-2.5">
@@ -928,11 +928,11 @@ const Sidebar: React.FC<SidebarProps> = ({
               aria-current={activeView === 'secondBrain' ? 'page' : undefined}
             >
               <BrainIcon className="h-4 w-4 shrink-0" />
-              <span className="min-w-0 truncate">第二大脑</span>
+              <span className="min-w-0 truncate">{i18nService.t('sidebarSecondBrain')}</span>
               {pendingCognitionCount > 0 && (
                 <span className="ml-auto flex items-center gap-1.5 shrink-0 text-[11px] font-medium text-amber-500 dark:text-amber-400">
                   <span className="h-2 w-2 rounded-full bg-amber-500 shrink-0" />
-                  <span>新增 {pendingCognitionCount} 条</span>
+                  <span>{i18nService.t('sidebarNewCountBadge', { count: pendingCognitionCount })}</span>
                 </span>
               )}
             </button>
@@ -969,7 +969,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               aria-expanded={isTeamMenuExpanded}
             >
               <SidebarKitsIcon className="h-4 w-4 shrink-0" />
-              <span className="min-w-0 truncate flex-1 text-left">AI 团队</span>
+              <span className="min-w-0 truncate flex-1 text-left">{i18nService.t('sidebarAiTeam')}</span>
               <ChevronDownIcon
                 className={`h-3.5 w-3.5 text-secondary/70 transition-transform duration-200 shrink-0 ${
                   isTeamMenuExpanded ? 'rotate-180' : ''
@@ -1024,7 +1024,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   }`}
                   aria-current={(activeView === 'experts' && expertActiveTab === 'skills') || activeView === 'skills' ? 'page' : undefined}
                 >
-                  <span className="truncate">技能库</span>
+                  <span className="truncate">{i18nService.t('sidebarSkillsLibrary')}</span>
                 </button>
 
                 <button
@@ -1105,7 +1105,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                     }`}
                     aria-current={activeView === 'library' ? 'page' : undefined}
                   >
-                    <span className="truncate">文档</span>
+                    <span className="truncate">{i18nService.t('sidebarDocuments')}</span>
                   </button>
 
                   {onShowRecordingCard && (
@@ -1123,7 +1123,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                       }`}
                       aria-current={activeView === 'recordingCard' ? 'page' : undefined}
                     >
-                      <span className="truncate">录音卡</span>
+                      <span className="truncate">{i18nService.t('sidebarRecordingCard')}</span>
                       <span className="text-[9px] font-bold text-white bg-amber-500 px-1.5 py-0.5 rounded-full leading-none shrink-0 scale-90">
                         NEW
                       </span>
@@ -1271,7 +1271,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             {/* 昵称与账号名双行展示 */}
             <div className="flex-1 min-w-0 leading-tight">
               <div className="text-[13px] font-semibold text-foreground/90 truncate">
-                {userNickname || <span className="text-secondary font-normal">未设置昵称</span>}
+                {userNickname || <span className="text-secondary font-normal">{i18nService.t('sidebarNoNickname')}</span>}
               </div>
               {accountUsername && (
                 <div className="text-[11px] text-secondary truncate mt-0.5" title={accountUsername}>
@@ -1308,7 +1308,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 </div>
                 <div className="flex-1 min-w-0 leading-tight">
                   <div className="font-bold text-foreground truncate text-sm">
-                    {userNickname || <span className="text-secondary font-normal">未设置昵称</span>}
+                    {userNickname || <span className="text-secondary font-normal">{i18nService.t('sidebarNoNickname')}</span>}
                   </div>
                   {accountUsername && (
                     <div className="text-xs text-secondary truncate mt-0.5" title={accountUsername}>
@@ -1347,7 +1347,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                       const oneapiConfig = config.providers?.['oneapi'];
                       const apiKey = oneapiConfig?.apiKey?.trim();
                       if (!apiKey) {
-                        window.dispatchEvent(new CustomEvent('app:showToast', { detail: '未激活系统，请先输入激活码' }));
+                        window.dispatchEvent(new CustomEvent('app:showToast', { detail: i18nService.t('sidebarSystemNotActivated') }));
                         return;
                       }
                       setIsPayModalOpen(true);
@@ -1358,7 +1358,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                       <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
                       <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
                     </svg>
-                    <span>算力充值</span>
+                    <span>{i18nService.t('sidebarRechargePoints')}</span>
                   </button>
                   <button
                     type="button"
@@ -1376,7 +1376,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                       <line x1="16" y1="17" x2="8" y2="17" />
                       <polyline points="10 9 9 9 8 9" />
                     </svg>
-                    <span>我的账单</span>
+                    <span>{i18nService.t('sidebarMyBilling')}</span>
                   </button>
                 </div>
 
@@ -1397,7 +1397,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                       <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
                       <circle cx="12" cy="7" r="4" />
                     </svg>
-                    <span>编辑资料</span>
+                    <span>{i18nService.t('sidebarEditProfile')}</span>
                   </button>
                   <button
                     type="button"
@@ -1413,7 +1413,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                       <circle cx="12" cy="11" r="2" />
                       <path d="M12 11V7a4 4 0 0 1 4-4h0" />
                     </svg>
-                    <span>修改密码</span>
+                    <span>{i18nService.t('sidebarChangePassword')}</span>
                   </button>
                 </div>
 
@@ -1432,7 +1432,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                       <circle cx="12" cy="12" r="3" />
                       <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06-.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
                     </svg>
-                    <span>设置</span>
+                    <span>{i18nService.t('settings')}</span>
                   </button>
                   <button
                     type="button"
@@ -1448,7 +1448,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                       <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
                       <line x1="12" y1="17" x2="12.01" y2="17" />
                     </svg>
-                    <span>报告问题</span>
+                    <span>{i18nService.t('sidebarReportIssue')}</span>
                   </button>
                 </div>
               </div>
@@ -1469,7 +1469,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                     <polyline points="16 17 21 12 16 7" />
                     <line x1="21" y1="12" x2="9" y2="12" />
                   </svg>
-                  <span>退出登录</span>
+                  <span>{i18nService.t('sidebarLogout')}</span>
                 </button>
               </div>
             </div>
@@ -1535,12 +1535,12 @@ const Sidebar: React.FC<SidebarProps> = ({
           className="w-full max-w-sm mx-4 bg-surface rounded-2xl shadow-xl overflow-hidden border border-border"
         >
           <div className="px-5 py-4 border-b border-border">
-            <h3 className="text-base font-semibold text-foreground">编辑个人资料</h3>
+            <h3 className="text-base font-semibold text-foreground">{i18nService.t('sidebarEditProfileTitle')}</h3>
           </div>
           <div className="p-5 space-y-4">
             {/* 头像编辑 (上传图片) */}
             <div className="flex flex-col items-center space-y-3">
-              <label className="text-xs font-semibold text-secondary tracking-wider uppercase">头像</label>
+              <label className="text-xs font-semibold text-secondary tracking-wider uppercase">{i18nService.t('sidebarAvatarLabel')}</label>
               <div className="flex flex-col items-center space-y-2">
                 <div 
                   onClick={() => fileInputRef.current?.click()}
@@ -1549,7 +1549,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                       ? 'bg-transparent'
                       : 'bg-surface-raised'
                   }`}
-                  title="点击上传头像"
+                  title={i18nService.t('sidebarClickUploadAvatar')}
                 >
                   {renderAvatar(editAvatar, editNickname)}
                 </div>
@@ -1566,7 +1566,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             {/* 登录账号展示（只读） */}
             {accountUsername && (
               <div className="flex flex-col space-y-1.5">
-                <label className="text-xs font-semibold text-secondary tracking-wider uppercase pl-1">当前账号</label>
+                <label className="text-xs font-semibold text-secondary tracking-wider uppercase pl-1">{i18nService.t('sidebarCurrentAccountLabel')}</label>
                 <div className="w-full px-4 py-2 bg-surface-raised/70 border border-border/60 rounded-xl text-sm text-secondary select-all font-mono">
                   {accountUsername}
                 </div>
@@ -1574,15 +1574,15 @@ const Sidebar: React.FC<SidebarProps> = ({
             )}
             {/* 昵称编辑 */}
             <div className="flex flex-col space-y-1.5">
-              <label className="text-xs font-semibold text-secondary tracking-wider uppercase pl-1">自定义昵称</label>
+              <label className="text-xs font-semibold text-secondary tracking-wider uppercase pl-1">{i18nService.t('sidebarCustomNicknameLabel')}</label>
               <input
                 type="text"
                 value={editNickname}
                 onChange={(e) => setEditNickname(e.target.value)}
-                placeholder="未设置昵称（点击设置）"
+                placeholder={i18nService.t('sidebarNicknamePlaceholder')}
                 className="w-full px-4 py-2.5 bg-surface-raised border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary/50 text-sm text-foreground"
               />
-              <p className="text-[11px] text-secondary pl-1">仅保存在当前设备，与登录账号完全独立</p>
+              <p className="text-[11px] text-secondary pl-1">{i18nService.t('sidebarNicknameLocalTip')}</p>
             </div>
           </div>
           <div className="flex items-center justify-end gap-3 px-5 py-4 border-t border-border">
@@ -1590,7 +1590,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               onClick={() => setIsEditModalOpen(false)}
               className="px-4 py-2 text-sm font-medium rounded-lg text-secondary hover:bg-surface-raised transition-colors"
             >
-              取消
+              {i18nService.t('cancel')}
             </button>
             <button
               onClick={() => {
@@ -1604,7 +1604,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               }}
               className="px-4 py-2 text-sm font-medium rounded-lg bg-primary hover:bg-primary-hover text-white transition-colors"
             >
-              保存
+              {i18nService.t('save')}
             </button>
           </div>
         </Modal>
@@ -1622,11 +1622,11 @@ const Sidebar: React.FC<SidebarProps> = ({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
               </svg>
             </div>
-            <h2 className="text-base font-semibold text-foreground">确认退出登录</h2>
+            <h2 className="text-base font-semibold text-foreground">{i18nService.t('sidebarConfirmLogoutTitle')}</h2>
           </div>
           <div className="px-5 py-4">
             <p className="text-sm text-secondary">
-              确定要退出登录当前账号吗？退出后系统需要重新登录才能继续使用。
+              {i18nService.t('sidebarConfirmLogoutDesc')}
             </p>
           </div>
           <div className="flex items-center justify-end gap-3 px-5 py-4 border-t border-border">
@@ -1634,7 +1634,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               onClick={() => setShowConfirmDeactivate(false)}
               className="px-4 py-2 text-sm font-medium rounded-lg text-secondary hover:bg-surface-raised transition-colors"
             >
-              取消
+              {i18nService.t('cancel')}
             </button>
             <button
               onClick={() => {
@@ -1643,7 +1643,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               }}
               className="px-4 py-2 text-sm font-medium rounded-lg bg-red-500 hover:bg-red-600 text-white transition-colors"
             >
-              确认退出
+              {i18nService.t('sidebarConfirmLogoutAction')}
             </button>
           </div>
         </Modal>

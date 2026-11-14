@@ -428,7 +428,7 @@ const tierCredits = (tier: MediaPricingTierConfig): number => {
 
 const formatPixelCount = (pixels: number): string => {
   if (i18nService.getLanguage() === 'zh') {
-    if (pixels >= 10_000) return `${formatCreditAmount(pixels / 10_000)}万`;
+    if (pixels >= 10_000) return i18nService.t('mediaPixelTenThousand', { amount: formatCreditAmount(pixels / 10_000) });
     return formatCreditAmount(pixels);
   }
   if (pixels >= 1_000_000) return `${formatCreditAmount(pixels / 1_000_000)}M`;
@@ -440,23 +440,23 @@ const formatOutputPixelTierLabel = (tier: MediaPricingTierConfig): string => {
   if (tier.label) return tier.label;
   const min = toFiniteNumber(tier.outputPixelsMin);
   const max = toFiniteNumber(tier.outputPixelsMax);
-  const isZh = i18nService.getLanguage() === 'zh';
   if (min != null && max != null) {
-    return isZh
-      ? `输出图${formatPixelCount(min)}-${formatPixelCount(max)}像素`
-      : `Output ${formatPixelCount(min)}-${formatPixelCount(max)} pixels`;
+    return i18nService.t('mediaOutputPixelRange', {
+      min: formatPixelCount(min),
+      max: formatPixelCount(max),
+    });
   }
   if (max != null) {
-    return isZh
-      ? `输出图≤${formatPixelCount(max)}像素`
-      : `Output ≤ ${formatPixelCount(max)} pixels`;
+    return i18nService.t('mediaOutputPixelMax', {
+      max: formatPixelCount(max),
+    });
   }
   if (min != null) {
-    return isZh
-      ? `输出图>${formatPixelCount(min - 1)}像素`
-      : `Output > ${formatPixelCount(min - 1)} pixels`;
+    return i18nService.t('mediaOutputPixelMin', {
+      min: formatPixelCount(min - 1),
+    });
   }
-  return isZh ? '输出图' : 'Output image';
+  return i18nService.t('mediaOutputImage');
 };
 
 const getImageIoOutputTierCredits = (pricing?: MediaPricingConfig): number[] => {
@@ -481,7 +481,7 @@ const getModelPriceLabel = (model: MediaModel): string | null => {
   if (isTokenBillingModel(model)) {
     const estimatedCredits = getEstimatedRequestCredits(model);
     if (!estimatedCredits) return null;
-    return `≈${formatEstimatedCredits(estimatedCredits)} ${i18nService.t('authCreditsUnit')}/${model.unitLabel || '次'}`;
+    return `≈${formatEstimatedCredits(estimatedCredits)} ${i18nService.t('authCreditsUnit')}/${model.unitLabel || i18nService.t('mediaUnitPerTimes')}`;
   }
   if (isImageIoBillingModel(model)) {
     const outputTierCredits = getImageIoOutputTierCredits(getPricingConfig(model));
@@ -491,11 +491,11 @@ const getModelPriceLabel = (model: MediaModel): string | null => {
     const creditRange = minCredits === maxCredits
       ? formatCreditAmount(minCredits)
       : `${formatCreditAmount(minCredits)}-${formatCreditAmount(maxCredits)}`;
-    return `x${creditRange} ${i18nService.t('authCreditsUnit')}/${model.unitLabel || '张输出图'}`;
+    return `x${creditRange} ${i18nService.t('authCreditsUnit')}/${model.unitLabel || i18nService.t('mediaUnitPerOutputImage')}`;
   }
   const unitCredits = toFiniteNumber(model.unitCredits);
   if (!unitCredits || unitCredits <= 0) return null;
-  return `x${formatCreditAmount(unitCredits)} ${i18nService.t('authCreditsUnit')}/${model.unitLabel || '张'}`;
+  return `x${formatCreditAmount(unitCredits)} ${i18nService.t('authCreditsUnit')}/${model.unitLabel || i18nService.t('mediaUnitPerPiece')}`;
 };
 
 const getModelDiscountLabel = (model: MediaModel): string | null => {
@@ -533,19 +533,16 @@ const getImageIoPricingRows = (model: MediaModel): Array<{ label: string; credit
     const freeInputImageCount = getFreeInputImageCount(pricing);
     rows.push({
       label: (() => {
-        const isZh = i18nService.getLanguage() === 'zh';
-        if (freeInputImageCount === 1) return isZh ? '输入图（首张免费）' : 'Input image (first free)';
-        if (freeInputImageCount > 1) return isZh
-          ? `输入图（前${freeInputImageCount}张免费）`
-          : `Input image (first ${freeInputImageCount} free)`;
-        return isZh ? '输入图' : 'Input image';
+        if (freeInputImageCount === 1) return i18nService.t('mediaInputImageFirstFree');
+        if (freeInputImageCount > 1) return i18nService.t('mediaInputImageNFree', { count: freeInputImageCount });
+        return i18nService.t('mediaInputImage');
       })(),
       credits: inputCredits,
-      unitLabel: i18nService.getLanguage() === 'zh' ? '张输入图' : 'input image',
+      unitLabel: i18nService.t('mediaUnitPerInputImage'),
     });
   }
 
-  const outputUnitLabel = model.unitLabel || pricing.unitLabel || (i18nService.getLanguage() === 'zh' ? '张输出图' : 'output image');
+  const outputUnitLabel = model.unitLabel || pricing.unitLabel || i18nService.t('mediaUnitPerOutputImage');
   pricing.tiers?.forEach((tier) => {
     const credits = tierCredits(tier);
     if (credits <= 0) return;
@@ -560,7 +557,7 @@ const getImageIoPricingRows = (model: MediaModel): Array<{ label: string; credit
     const outputCredits = pricingCredits(pricing.outputCredits, pricing.outputCostYuan);
     if (outputCredits != null && outputCredits > 0) {
       rows.push({
-        label: i18nService.getLanguage() === 'zh' ? '输出图' : 'Output image',
+        label: i18nService.t('mediaOutputImage'),
         credits: outputCredits,
         unitLabel: outputUnitLabel,
       });
@@ -569,22 +566,26 @@ const getImageIoPricingRows = (model: MediaModel): Array<{ label: string; credit
   return rows;
 };
 
-const formatChineseEstimateScope = (config: ClientEstimateConfig): string => {
+const formatEstimateScope = (config: ClientEstimateConfig): string => {
+  const isZh = i18nService.getLanguage() === 'zh';
   const parts: string[] = [];
-  if (config.inputImageCount > 0) parts.push(`${config.inputImageCount} 张输入图`);
-  if (config.outputImageCount > 0) parts.push(`${config.outputImageCount} 张输出图`);
-  return parts.length > 0 ? `按 ${parts.join('和 ')}估算` : '按默认参数估算';
-};
-
-const formatEnglishImageCount = (count: number, label: string): string => {
-  return `${count} ${label} image${count === 1 ? '' : 's'}`;
-};
-
-const formatEnglishEstimateScope = (config: ClientEstimateConfig): string => {
-  const parts: string[] = [];
-  if (config.inputImageCount > 0) parts.push(formatEnglishImageCount(config.inputImageCount, 'input'));
-  if (config.outputImageCount > 0) parts.push(formatEnglishImageCount(config.outputImageCount, 'output'));
-  return parts.length > 0 ? `assumes ${parts.join(' and ')}` : 'assumes default parameters';
+  if (config.inputImageCount > 0) {
+    parts.push(
+      isZh
+        ? `${config.inputImageCount} ${i18nService.t('mediaUnitPerInputImage')}`
+        : `${config.inputImageCount} input image${config.inputImageCount === 1 ? '' : 's'}`
+    );
+  }
+  if (config.outputImageCount > 0) {
+    parts.push(
+      isZh
+        ? `${config.outputImageCount} ${i18nService.t('mediaUnitPerOutputImage')}`
+        : `${config.outputImageCount} output image${config.outputImageCount === 1 ? '' : 's'}`
+    );
+  }
+  return parts.length > 0
+    ? i18nService.t('mediaEstimateByParts', { parts: parts.join(i18nService.t('mediaAndSeparator')) })
+    : i18nService.t('mediaEstimateByDefault');
 };
 
 const getTokenBillingEstimateNotes = (model: MediaModel): string[] => {
@@ -598,22 +599,20 @@ const getTokenBillingEstimateNotes = (model: MediaModel): string[] => {
     .map(part => `${formatCreditAmount(part.tokens)}×${formatCreditAmount(part.creditsPerMillion)}/1M`)
     .join(' + ');
 
-  if (i18nService.getLanguage() === 'zh') {
-    const usage = clientEstimate.usageParts
-      .map(part => `${formatCreditAmount(part.tokens)} ${part.zhLabel}`)
-      .join('、');
-    return [
-      `预估计算：${formatChineseEstimateScope(clientEstimate)}，约 ${usage}：${formula} ≈ ${formatEstimatedCredits(clientEstimate.credits)} ${creditsUnit}。`,
-      '实际扣费按本次输入和输出 token 计算，输入图片数量、尺寸、输出复杂度不同，会与预估存在差异。',
-    ];
-  }
-
+  const isZh = i18nService.getLanguage() === 'zh';
   const usage = clientEstimate.usageParts
-    .map(part => `${formatCreditAmount(part.tokens)} ${part.enLabel}`)
-    .join(', ');
+    .map(part => `${formatCreditAmount(part.tokens)} ${isZh ? part.zhLabel : part.enLabel}`)
+    .join(isZh ? '、' : ', ');
+
   return [
-    `Estimate: ${formatEnglishEstimateScope(clientEstimate)}, about ${usage}: ${formula} ≈ ${formatEstimatedCredits(clientEstimate.credits)} ${creditsUnit}.`,
-    'Actual billing is calculated from the request input and output tokens. Image count, size, and output complexity can make actual cost differ from the estimate.',
+    i18nService.t('mediaEstimateTitle', {
+      scope: formatEstimateScope(clientEstimate),
+      usage,
+      formula,
+      credits: formatEstimatedCredits(clientEstimate.credits),
+      creditsUnit,
+    }),
+    i18nService.t('mediaEstimateActualDeductionNote'),
   ];
 };
 
@@ -1061,7 +1060,7 @@ const MediaModelPicker: React.FC<MediaModelPickerProps> = ({ draftKey, disabled,
   const renderHoverCard = () => {
     if (!hoveredModel) return null;
     const desc = normalizeModelDescription(hoveredModel.description || hoveredModel.capabilities || hoveredModel.pricingDescription);
-    const unitLabel = hoveredModel.unitLabel || (hoveredModel.mediaType === 'image' ? '张' : '个');
+    const unitLabel = hoveredModel.unitLabel || (hoveredModel.mediaType === 'image' ? i18nService.t('mediaUnitPerPiece') : i18nService.t('mediaUnitPerItem'));
     const pricing = getPricingConfig(hoveredModel);
     const discountLabel = getModelDiscountLabel(hoveredModel);
     const tiers = pricing?.tiers;
@@ -1075,16 +1074,16 @@ const MediaModelPicker: React.FC<MediaModelPickerProps> = ({ draftKey, disabled,
       if (tier.outputPixelsMin != null || tier.outputPixelsMax != null) return formatOutputPixelTierLabel(tier);
       const parts: string[] = [];
       if (tier.resolution) parts.push(tier.resolution);
-      if (tier.duration) parts.push(`${tier.duration}秒`);
-      if (tier.audio) parts.push('有声音');
-      if (tier.hasVideoInput === true) parts.push('含视频输入');
-      if (tier.hasVideoInput === false) parts.push('不含视频输入');
+      if (tier.duration) parts.push(`${tier.duration}${i18nService.t('mediaUnitSeconds')}`);
+      if (tier.audio) parts.push(i18nService.t('mediaAudioWithSound'));
+      if (tier.hasVideoInput === true) parts.push(i18nService.t('mediaHasVideoInput'));
+      if (tier.hasVideoInput === false) parts.push(i18nService.t('mediaNoVideoInput'));
       return parts.join(' ') || '-';
     };
 
-    const tierUnitSuffix = billingUnit === 'per_second' ? '秒'
-      : billingUnit === 'per_video' ? '个'
-      : billingUnit === 'per_token' ? '百万tokens'
+    const tierUnitSuffix = billingUnit === 'per_second' ? i18nService.t('mediaUnitPerSecond')
+      : billingUnit === 'per_video' ? i18nService.t('mediaUnitPerVideo')
+      : billingUnit === 'per_token' ? i18nService.t('mediaUnitPerMillionTokens')
       : unitLabel;
 
     const hasVideoInputTiers = tiers && tiers.some(t => t.hasVideoInput !== undefined);
@@ -1135,9 +1134,7 @@ const MediaModelPicker: React.FC<MediaModelPickerProps> = ({ draftKey, disabled,
               </tbody>
             </table>
             <div className="mt-1.5 text-[9px] leading-3 text-tertiary">
-              {i18nService.getLanguage() === 'zh'
-                ? '输出图按实际返回的图片尺寸分层计费。'
-                : 'Output image billing is tiered by the actual returned image size.'}
+              {i18nService.t('mediaOutputTierBySizeNote')}
             </div>
           </>
         ) : tokenPricingRows.length > 0 ? (
@@ -1172,8 +1169,8 @@ const MediaModelPicker: React.FC<MediaModelPickerProps> = ({ draftKey, disabled,
               <thead>
                 <tr className="border-b border-border/50">
                   <th className="text-left font-medium py-0.5 pr-1"></th>
-                  <th className="text-right font-medium py-0.5 px-1">含视频输入</th>
-                  <th className="text-right font-medium py-0.5">不含视频输入</th>
+                  <th className="text-right font-medium py-0.5 px-1">{i18nService.t('mediaHasVideoInput')}</th>
+                  <th className="text-right font-medium py-0.5">{i18nService.t('mediaNoVideoInput')}</th>
                 </tr>
               </thead>
               <tbody>

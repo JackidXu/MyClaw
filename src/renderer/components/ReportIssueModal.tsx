@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import { AUTH_STORAGE_KEYS } from '../services/authStorage';
 import { httpClient } from '../services/httpClient';
+import { i18nService } from '../services/i18n';
 import Modal from './common/Modal';
 
 interface ReportIssueModalProps {
@@ -13,16 +14,16 @@ type IssueType = 'bug' | 'ai' | 'billing' | 'suggestion' | 'other';
 
 interface IssueTypeOption {
   key: IssueType;
-  label: string;
+  labelKey: string;
   icon: string;
 }
 
 const ISSUE_TYPES: IssueTypeOption[] = [
-  { key: 'bug', label: '功能故障 / 报错', icon: '🐞' },
-  { key: 'ai', label: 'AI 生成异常', icon: '🤖' },
-  { key: 'billing', label: '账号与算力', icon: '💳' },
-  { key: 'suggestion', label: '体验优化建议', icon: '💡' },
-  { key: 'other', label: '其他问题', icon: '📝' },
+  { key: 'bug', labelKey: 'reportTypeBug', icon: '🐞' },
+  { key: 'ai', labelKey: 'reportTypeAi', icon: '🤖' },
+  { key: 'billing', labelKey: 'reportTypeBilling', icon: '💳' },
+  { key: 'suggestion', labelKey: 'reportTypeSuggestion', icon: '💡' },
+  { key: 'other', labelKey: 'reportTypeOther', icon: '📝' },
 ];
 
 interface UploadedAttachment {
@@ -66,7 +67,7 @@ const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ onClose }) => {
     if (resp.ok && resp.data && resp.data.success && resp.data.url) {
       return resp.data.url;
     }
-    throw new Error(resp.data?.error || `上传失败 [HTTP ${resp.status}]`);
+    throw new Error(resp.data?.error || `${i18nService.t('reportUploadFailed')} [HTTP ${resp.status}]`);
   };
 
   // 处理文件添加
@@ -75,7 +76,7 @@ const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ onClose }) => {
     if (fileArr.length === 0) return;
 
     if (attachments.length + fileArr.length > 5) {
-      window.dispatchEvent(new CustomEvent('app:showToast', { detail: '最多上传 5 个附件' }));
+      window.dispatchEvent(new CustomEvent('app:showToast', { detail: i18nService.t('reportMaxAttachmentsToast') }));
       return;
     }
 
@@ -83,7 +84,7 @@ const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ onClose }) => {
     try {
       for (const file of fileArr) {
         if (file.size > 50 * 1024 * 1024) {
-          window.dispatchEvent(new CustomEvent('app:showToast', { detail: `文件 ${file.name} 超过 50MB 限制` }));
+          window.dispatchEvent(new CustomEvent('app:showToast', { detail: i18nService.t('reportFileSizeLimitToast', { fileName: file.name }) }));
           continue;
         }
 
@@ -103,7 +104,7 @@ const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ onClose }) => {
         }
       }
     } catch (err: any) {
-      window.dispatchEvent(new CustomEvent('app:showToast', { detail: `附件上传失败: ${err?.message || err}` }));
+      window.dispatchEvent(new CustomEvent('app:showToast', { detail: i18nService.t('reportAttachmentUploadFailed', { error: err?.message || err }) }));
     } finally {
       setUploading(false);
     }
@@ -140,7 +141,7 @@ const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ onClose }) => {
   // 提交反馈
   const handleSubmit = async () => {
     if (!content.trim()) {
-      window.dispatchEvent(new CustomEvent('app:showToast', { detail: '请填写问题描述' }));
+      window.dispatchEvent(new CustomEvent('app:showToast', { detail: i18nService.t('reportDescriptionRequiredToast') }));
       return;
     }
 
@@ -199,17 +200,17 @@ const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ onClose }) => {
 
       if (res.ok && res.data?.success) {
         window.dispatchEvent(
-          new CustomEvent('app:showToast', { detail: '反馈已提交，感谢您的反馈！' }),
+          new CustomEvent('app:showToast', { detail: i18nService.t('reportSubmitSuccessToast') }),
         );
         onClose();
       } else {
-        throw new Error(res.data?.error || '提交失败，请重试');
+        throw new Error(res.data?.error || i18nService.t('reportSubmitFailedToast'));
       }
     } catch (err: any) {
       console.error('[ReportIssueModal] Submit feedback error:', err);
       window.dispatchEvent(
         new CustomEvent('app:showToast', {
-          detail: `提交失败: ${err?.message || '网络连接超时'}`,
+          detail: i18nService.t('reportSubmitFailedWithReason', { error: err?.message || i18nService.t('reportNetworkTimeout') }),
         }),
       );
     } finally {
@@ -224,8 +225,8 @@ const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ onClose }) => {
         <div className="flex items-center gap-2">
           <span className="text-xl">🛠️</span>
           <div>
-            <h2 className="text-base font-bold text-foreground">报告问题与产品建议</h2>
-            <p className="text-xs text-secondary mt-0.5">您的反馈将直接送达研发团队，我们会第一时间跟进与优化</p>
+            <h2 className="text-base font-bold text-foreground">{i18nService.t('reportModalTitle')}</h2>
+            <p className="text-xs text-secondary mt-0.5">{i18nService.t('reportModalSubtitle')}</p>
           </div>
         </div>
         <button
@@ -241,7 +242,7 @@ const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ onClose }) => {
       <div className="px-6 py-5 space-y-4 max-h-[75vh] overflow-y-auto [scrollbar-gutter:stable]">
         {/* 问题分类 */}
         <div>
-          <label className="block text-xs font-semibold text-foreground/80 mb-2">问题类型</label>
+          <label className="block text-xs font-semibold text-foreground/80 mb-2">{i18nService.t('reportIssueType')}</label>
           <div className="flex flex-wrap gap-2">
             {ISSUE_TYPES.map((item) => (
               <button
@@ -255,7 +256,7 @@ const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ onClose }) => {
                 }`}
               >
                 <span>{item.icon}</span>
-                <span>{item.label}</span>
+                <span>{i18nService.t(item.labelKey)}</span>
               </button>
             ))}
           </div>
@@ -264,7 +265,7 @@ const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ onClose }) => {
         {/* 问题描述 */}
         <div>
           <label className="block text-xs font-semibold text-foreground/80 mb-1.5">
-            问题描述 <span className="text-red-500">*</span>
+            {i18nService.t('reportDescriptionLabel')} <span className="text-red-500">*</span>
           </label>
           <div className="relative">
             <textarea
@@ -272,7 +273,7 @@ const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ onClose }) => {
               onChange={(e) => setContent(e.target.value)}
               onPaste={handlePaste}
               rows={4}
-              placeholder="请详细描述您遇到的问题现象、复现步骤或优化建议（支持直接截图后 Cmd+V 粘贴到此处）..."
+              placeholder={i18nService.t('reportDescriptionPlaceholder')}
               className="w-full text-xs sm:text-sm p-3 rounded-xl bg-surface border border-border/80 text-foreground placeholder:text-secondary/60 focus:outline-none focus:border-primary transition-all resize-none"
             />
           </div>
@@ -282,8 +283,8 @@ const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ onClose }) => {
         <div>
           <div className="flex items-center justify-between mb-2">
             <label className="text-xs font-semibold text-foreground/80 flex items-center gap-1.5">
-              <span>图片 / 视频截图</span>
-              <span className="text-secondary text-[11px] font-normal">(最多 5 个，支持 MP4/WebM/PNG/JPG)</span>
+              <span>{i18nService.t('reportMediaScreenshotLabel')}</span>
+              <span className="text-secondary text-[11px] font-normal">{i18nService.t('reportMediaScreenshotTip')}</span>
             </label>
             <button
               type="button"
@@ -292,7 +293,7 @@ const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ onClose }) => {
               className="text-xs text-primary font-medium hover:underline inline-flex items-center gap-1 disabled:opacity-50"
             >
               <PaperClipIcon className="w-3.5 h-3.5" />
-              <span>添加附件</span>
+              <span>{i18nService.t('reportAddAttachment')}</span>
             </button>
           </div>
 
@@ -325,7 +326,7 @@ const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ onClose }) => {
                     type="button"
                     onClick={() => removeAttachment(idx)}
                     className="absolute top-2.5 right-2.5 p-1 rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity"
-                    title="删除"
+                    title={i18nService.t('delete')}
                   >
                     <TrashIcon className="w-3.5 h-3.5" />
                   </button>
@@ -342,14 +343,14 @@ const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ onClose }) => {
               }}
               className="border border-dashed border-border/80 hover:border-primary/60 rounded-xl p-3.5 text-center cursor-pointer transition-colors bg-surface/40 hover:bg-surface-raised/40"
             >
-              <p className="text-xs text-secondary">点击或将截图 / 录屏文件拖拽至此处上传</p>
+              <p className="text-xs text-secondary">{i18nService.t('reportDragUploadTip')}</p>
             </div>
           )}
 
           {uploading && (
             <div className="flex items-center gap-2 mt-2 text-xs text-primary font-medium">
               <ArrowPathIcon className="w-3.5 h-3.5 animate-spin" />
-              <span>正在上传附件到云端...</span>
+              <span>{i18nService.t('reportUploadingAttachment')}</span>
             </div>
           )}
         </div>
@@ -364,28 +365,28 @@ const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ onClose }) => {
               className="w-4 h-4 rounded border-border text-primary focus:ring-primary/20 accent-primary"
             />
             <span className="text-xs font-semibold text-foreground/90">
-              自动附带运行诊断信息与日志摘要 <span className="text-[11px] text-emerald-600 font-normal">（推荐）</span>
+              {i18nService.t('reportAutoAttachDiagnostics')} <span className="text-[11px] text-emerald-600 font-normal">{i18nService.t('reportRecommendedBadge')}</span>
             </span>
           </label>
           <div className="text-[11px] text-secondary pl-6 leading-relaxed flex items-center justify-between">
-            <span>包含客户端版本、系统架构以及近期运行日志切片（已自动脱敏）</span>
+            <span>{i18nService.t('reportDiagnosticsHelp')}</span>
             {includeDiagnostics && diagnosticsData && (
               <button
                 type="button"
                 onClick={() => setShowDiagnosticsDetail(!showDiagnosticsDetail)}
                 className="text-primary hover:underline ml-2 shrink-0"
               >
-                {showDiagnosticsDetail ? '收起详情' : '查看数据'}
+                {showDiagnosticsDetail ? i18nService.t('reportHideDetails') : i18nService.t('reportViewData')}
               </button>
             )}
           </div>
 
           {showDiagnosticsDetail && diagnosticsData && (
             <div className="mt-2 pl-6 pt-2 border-t border-border/40 text-[11px] text-secondary/90 font-mono space-y-1 bg-black/5 dark:bg-white/5 p-2 rounded-lg max-h-32 overflow-y-auto">
-              <div>客户端版本: {diagnosticsData.appVersion || '未知'}</div>
-              <div>系统环境: {diagnosticsData.platform} ({diagnosticsData.arch})</div>
+              <div>{i18nService.t('reportAppVersion', { version: diagnosticsData.appVersion || 'unknown' })}</div>
+              <div>{i18nService.t('reportPlatformEnv', { platform: diagnosticsData.platform, arch: diagnosticsData.arch })}</div>
               <div>Node/Electron: {diagnosticsData.nodeVersion} / {diagnosticsData.electronVersion}</div>
-              <div>日志切片行数: {diagnosticsData.recentLogSnippet ? diagnosticsData.recentLogSnippet.split('\n').length : 0} 行</div>
+              <div>{i18nService.t('reportLogSnippetLines', { count: diagnosticsData.recentLogSnippet ? diagnosticsData.recentLogSnippet.split('\n').length : 0 })}</div>
             </div>
           )}
         </div>
@@ -393,13 +394,13 @@ const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ onClose }) => {
         {/* 联系方式 */}
         <div>
           <label className="block text-xs font-semibold text-foreground/80 mb-1.5">
-            联系方式 <span className="text-secondary text-[11px] font-normal">(选填，便于研发人员向您回访与确认)</span>
+            {i18nService.t('reportContactLabel')} <span className="text-secondary text-[11px] font-normal">{i18nService.t('reportContactTip')}</span>
           </label>
           <input
             type="text"
             value={contact}
             onChange={(e) => setContact(e.target.value)}
-            placeholder="微信号 / 手机号 / 邮箱"
+            placeholder={i18nService.t('reportContactPlaceholder')}
             className="w-full text-xs sm:text-sm px-3 py-2 rounded-xl bg-surface border border-border/80 text-foreground placeholder:text-secondary/60 focus:outline-none focus:border-primary transition-all"
           />
         </div>
@@ -412,7 +413,7 @@ const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ onClose }) => {
           onClick={onClose}
           className="px-4 py-2 text-xs sm:text-sm font-medium rounded-xl text-secondary hover:bg-surface hover:text-foreground transition-colors border border-transparent hover:border-border"
         >
-          取消
+          {i18nService.t('cancel')}
         </button>
         <button
           type="button"
@@ -423,12 +424,12 @@ const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ onClose }) => {
           {submitting ? (
             <>
               <ArrowPathIcon className="w-4 h-4 animate-spin" />
-              <span>提交中...</span>
+              <span>{i18nService.t('reportSubmitting')}</span>
             </>
           ) : (
             <>
               <CheckIcon className="w-4 h-4" />
-              <span>提交反馈</span>
+              <span>{i18nService.t('reportSubmit')}</span>
             </>
           )}
         </button>

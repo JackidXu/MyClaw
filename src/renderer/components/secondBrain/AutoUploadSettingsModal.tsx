@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 
+import { i18nService } from '../../services/i18n';
 import { secondBrainAutoUploadService } from '../../services/secondBrainAutoUpload';
 import Modal from '../common/Modal';
 
@@ -56,12 +57,18 @@ export const AutoUploadSettingsModal: React.FC<AutoUploadSettingsModalProps> = (
           setDraftWatchDir(res.config.watchDir || '');
           window.dispatchEvent(
             new CustomEvent('app:showToast', {
-              detail: draftWatchDir ? '已保存同步目录设置' : '已清除同步目录',
+              detail: draftWatchDir
+                ? i18nService.t('secondBrainAutoSyncSavedToast')
+                : i18nService.t('secondBrainAutoSyncClearedToast'),
             }),
           );
         }
       } catch {
-        window.dispatchEvent(new CustomEvent('app:showToast', { detail: '保存目录设置失败' }));
+        window.dispatchEvent(
+          new CustomEvent('app:showToast', {
+            detail: i18nService.t('secondBrainAutoSyncSaveFailToast'),
+          }),
+        );
       } finally {
         setSaveLoading(false);
       }
@@ -82,9 +89,11 @@ export const AutoUploadSettingsModal: React.FC<AutoUploadSettingsModalProps> = (
             📁
           </div>
           <div>
-            <h2 className="text-sm font-bold text-foreground">文档自动同步设置</h2>
+            <h2 className="text-sm font-bold text-foreground">
+              {i18nService.t('secondBrainAutoSyncModalTitle')}
+            </h2>
             <p className="text-[11px] text-secondary">
-              选定本地目录后，系统将自动扫描并将新文档排队上传至第二大脑进行萃取
+              {i18nService.t('secondBrainAutoSyncModalDesc')}
             </p>
           </div>
         </div>
@@ -103,10 +112,12 @@ export const AutoUploadSettingsModal: React.FC<AutoUploadSettingsModalProps> = (
         <div className="p-4 rounded-xl border border-border bg-surface-raised/40 space-y-2.5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-foreground">本地目录</span>
+              <span className="text-xs font-bold text-foreground">
+                {i18nService.t('secondBrainAutoSyncLocalDir')}
+              </span>
               {savedWatchDir && (
                 <span className="text-[10px] px-1.5 py-0.2 rounded bg-green-500/10 text-green-600 dark:text-green-400 font-medium">
-                  每 5 分钟自动扫描
+                  {i18nService.t('secondBrainAutoSyncScanInterval')}
                 </span>
               )}
             </div>
@@ -119,7 +130,7 @@ export const AutoUploadSettingsModal: React.FC<AutoUploadSettingsModalProps> = (
                     onClick={handleSelectDirectory}
                     className="text-xs font-semibold text-primary hover:text-primary/80 transition-colors cursor-pointer disabled:opacity-50"
                   >
-                    更换目录
+                    {i18nService.t('secondBrainAutoSyncChangeDir')}
                   </button>
                   <span className="text-border">|</span>
                   <button
@@ -128,7 +139,7 @@ export const AutoUploadSettingsModal: React.FC<AutoUploadSettingsModalProps> = (
                     onClick={handleClearDirectory}
                     className="text-xs font-semibold text-destructive/80 hover:text-destructive transition-colors cursor-pointer disabled:opacity-50"
                   >
-                    清除
+                    {i18nService.t('secondBrainAutoSyncClearDir')}
                   </button>
                 </>
               ) : (
@@ -138,7 +149,7 @@ export const AutoUploadSettingsModal: React.FC<AutoUploadSettingsModalProps> = (
                   onClick={handleSelectDirectory}
                   className="text-xs font-semibold text-primary hover:text-primary/80 transition-colors cursor-pointer disabled:opacity-50"
                 >
-                  选择目录
+                  {i18nService.t('secondBrainAutoSyncSelectDir')}
                 </button>
               )}
             </div>
@@ -151,11 +162,11 @@ export const AutoUploadSettingsModal: React.FC<AutoUploadSettingsModalProps> = (
                 : 'bg-surface/50 border-dashed border-border text-secondary/70 italic'
             }`}
           >
-            {draftWatchDir || '尚未设置同步目录，请点击上方按钮选择电脑上的文件夹'}
+            {draftWatchDir || i18nService.t('secondBrainAutoSyncPlaceholder')}
           </div>
 
           <div className="text-[11px] text-secondary">
-            设置目录后，系统将持续在后台每 5 分钟自动巡检，发现新文档即刻排队上传。
+            {i18nService.t('secondBrainAutoSyncCardTip')}
           </div>
         </div>
 
@@ -163,11 +174,11 @@ export const AutoUploadSettingsModal: React.FC<AutoUploadSettingsModalProps> = (
         <div className="p-3.5 rounded-xl border border-border/60 bg-surface text-[11px] text-secondary space-y-1">
           <div className="font-semibold text-foreground flex items-center gap-1.5">
             <span>💡</span>
-            <span>同步规则说明</span>
+            <span>{i18nService.t('secondBrainAutoSyncRulesTitle')}</span>
           </div>
           <ul className="list-disc list-inside space-y-0.5 pl-0.5 text-[10.5px]">
-            <li>仅支持 <strong className="text-foreground">.docx</strong>、<strong className="text-foreground">.md</strong>、<strong className="text-foreground">.txt</strong> 格式文档</li>
-            <li>单文件大小不超过 <strong className="text-foreground">2MB</strong>，单批最多批量处理 10 份</li>
+            <li>{i18nService.t('secondBrainAutoSyncRuleFormats')}</li>
+            <li>{i18nService.t('secondBrainAutoSyncRuleLimits')}</li>
           </ul>
         </div>
       </div>
@@ -180,7 +191,7 @@ export const AutoUploadSettingsModal: React.FC<AutoUploadSettingsModalProps> = (
           onClick={handleComplete}
           className="px-5 py-1.5 text-xs font-bold rounded-lg bg-primary hover:bg-primary/90 text-white transition-colors cursor-pointer disabled:opacity-50"
         >
-          {saveLoading ? '保存中…' : '完成'}
+          {saveLoading ? i18nService.t('saving') : i18nService.t('complete')}
         </button>
       </div>
     </Modal>

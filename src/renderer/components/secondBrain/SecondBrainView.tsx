@@ -6,6 +6,7 @@ import {
   SECOND_BRAIN_MAX_FILE_SIZE,
   SECOND_BRAIN_SUPPORTED_EXTENSIONS,
 } from '../../../shared/secondBrain/constants';
+import { i18nService } from '../../services/i18n';
 import {
   adoptCognitionItem,
   batchUploadDocuments,
@@ -50,6 +51,28 @@ interface SecondBrainViewProps {
 const MATERIAL_TABS = ['文档', '对话', '录音'] as const;
 type MaterialTab = typeof MATERIAL_TABS[number];
 
+
+/** 获取层级国际化标签 */
+function getLayerLabel(layer: number): string {
+  switch (layer) {
+    case 0:
+      return i18nService.t('secondBrainLayerModel');
+    case 1:
+      return i18nService.t('secondBrainLayerValue');
+    case 2:
+      return i18nService.t('secondBrainLayerRule');
+    case 3:
+      return i18nService.t('secondBrainLayerMethod');
+    case 4:
+      return i18nService.t('secondBrainLayerIndustry');
+    case 5:
+      return i18nService.t('secondBrainLayerCase');
+    case 6:
+      return i18nService.t('secondBrainLayerExpression');
+    default:
+      return LAYER_LABEL[layer] ?? `Layer ${layer}`;
+  }
+}
 
 /** 秒级时间戳转可读日期时间 */
 function formatTimestamp(ts: string | number): string {
@@ -191,7 +214,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
   /** 触发立即同步操作 */
   const handleTriggerAutoSync = async () => {
     if (!autoUploadWatchDir) {
-      showToast('error', '未设置自动同步目录，请先在“设置”中选择目录');
+      showToast('error', i18nService.t('secondBrainNoSyncDirToast'));
       return;
     }
     if (autoUploadSyncing) return;
@@ -201,15 +224,15 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
       const result = await secondBrainAutoUploadService.triggerSync();
       if (result.success) {
         if (result.count === 0) {
-          showToast('info', '已是最新，暂无可同步文档');
+          showToast('info', i18nService.t('secondBrainAlreadyLatestToast'));
         } else {
-          showToast('success', `已成功同步并提交萃取 ${result.count} 篇文档`);
+          showToast('success', i18nService.t('secondBrainSyncSuccessToast', { count: result.count }));
         }
       } else {
-        showToast('error', '同步扫描失败，请检查目录是否有效');
+        showToast('error', i18nService.t('secondBrainSyncScanFailToast'));
       }
     } catch {
-      showToast('error', '同步执行异常');
+      showToast('error', i18nService.t('secondBrainSyncExecuteErrorToast'));
     } finally {
       setAutoUploadSyncing(false);
     }
@@ -364,10 +387,10 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
       loadTodayAdopted();
       loadTrend();
       loadItems(itemsPage, { silent: true });
-      showToast('success', item.replaces ? '已采纳更新，新萃取认知已覆盖旧认知' : '已采纳该认知，已沉淀至商业第二大脑');
+      showToast('success', item.replaces ? i18nService.t('secondBrainAdoptSuccessOverrideToast') : i18nService.t('secondBrainAdoptSuccessToast'));
     } catch (err: any) {
       console.warn('[SecondBrainView] 采纳失败:', err);
-      showToast('error', `采纳失败: ${err?.message || '未知错误'}`);
+      showToast('error', i18nService.t('secondBrainAdoptFailToast', { msg: err?.message || '' }));
     } finally {
       setActioning(item.node_id, false);
     }
@@ -391,10 +414,10 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
       setItemsTotal((prev) => Math.max(0, prev - 1));
       loadStats();
       loadItems(itemsPage, { silent: true });
-      showToast('success', item.replaces ? '已驳回，维持存量旧认知不变' : '已驳回该认知');
+      showToast('success', item.replaces ? i18nService.t('secondBrainRejectSuccessKeepToast') : i18nService.t('secondBrainRejectSuccessToast'));
     } catch (err: any) {
       console.warn('[SecondBrainView] 驳回失败:', err);
-      showToast('error', `驳回失败: ${err?.message || '未知错误'}`);
+      showToast('error', i18nService.t('secondBrainRejectFailToast', { msg: err?.message || '' }));
     } finally {
       setActioning(item.node_id, false);
     }
@@ -483,9 +506,9 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
       loadItems(itemsPage, { silent: true });
 
       if (failCount === 0) {
-        showToast('success', `已批量采纳 ${successCount} 条认知，已沉淀至商业第二大脑`);
+        showToast('success', i18nService.t('secondBrainBatchAdoptSuccessToast', { count: successCount }));
       } else {
-        showToast('info', `批量采纳完成：成功 ${successCount} 条，失败 ${failCount} 条`);
+        showToast('info', i18nService.t('secondBrainBatchAdoptDoneToast', { success: successCount, fail: failCount }));
       }
     } finally {
       setBatchActionType(null);
@@ -533,9 +556,9 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
       loadItems(itemsPage, { silent: true });
 
       if (failCount === 0) {
-        showToast('success', `已批量驳回 ${successCount} 条认知`);
+        showToast('success', i18nService.t('secondBrainBatchRejectSuccessToast', { count: successCount }));
       } else {
-        showToast('info', `批量驳回完成：成功 ${successCount} 条，失败 ${failCount} 条`);
+        showToast('info', i18nService.t('secondBrainBatchRejectDoneToast', { success: successCount, fail: failCount }));
       }
     } finally {
       setBatchActionType(null);
@@ -585,10 +608,10 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
       });
       setShowPersonaModal(false);
       loadStats();
-      showToast('success', '人设信息修改成功');
+      showToast('success', i18nService.t('secondBrainPersonaSaveSuccessToast'));
     } catch (err: any) {
       console.warn('[SecondBrainView] 保存人设失败:', err);
-      showToast('error', `保存失败: ${err?.message || '未知错误'}`);
+      showToast('error', i18nService.t('secondBrainPersonaSaveFailToast', { msg: err?.message || '' }));
     } finally {
       setSavingPersona(false);
     }
@@ -690,7 +713,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
       const count = customEvt.detail?.count ?? 1;
       loadDocsRef.current('文档', 1);
       loadStatsRef.current();
-      showToastRef.current('success', `自动同步：已成功上传 ${count} 篇新文档并开始 AI 萃取`);
+      showToastRef.current('success', i18nService.t('secondBrainAutoSyncUploadedToast', { count }));
     };
     window.addEventListener('secondBrain:docUploaded', handleDocUploaded);
 
@@ -747,12 +770,15 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
     if (unsupportedFiles.length > 0) {
       showToast(
         'error',
-        `文件 "${unsupportedFiles.join(', ')}" 格式不支持，仅支持 ${SECOND_BRAIN_SUPPORTED_EXTENSIONS.join('、')} 格式文档`,
+        i18nService.t('secondBrainFileFormatUnsupportedToast', {
+          files: unsupportedFiles.join(', '),
+          formats: SECOND_BRAIN_SUPPORTED_EXTENSIONS.join('、'),
+        }),
       );
     }
 
     if (oversizedFiles.length > 0) {
-      showToast('error', `文件 "${oversizedFiles.join(', ')}" 超过 2MB 大小限制，无法上传`);
+      showToast('error', i18nService.t('secondBrainFileSizeExceededToast', { files: oversizedFiles.join(', ') }));
     }
 
     if (validFiles.length === 0) return;
@@ -788,31 +814,42 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
       if (result.truncatedCount > 0) {
         showToast(
           'info',
-          `已成功上传 ${result.realUploadedCount} 份新资料（达到单批 ${SECOND_BRAIN_MAX_BATCH_COUNT} 份上限），剩余 ${result.truncatedCount} 份请稍后分批上传`,
+          i18nService.t('secondBrainUploadMaxBatchToast', {
+            uploaded: result.realUploadedCount,
+            max: SECOND_BRAIN_MAX_BATCH_COUNT,
+            remaining: result.truncatedCount,
+          }),
         );
       } else if (result.realUploadedCount > 0 && result.skippedCount > 0) {
-        showToast('success', `成功上传 ${result.realUploadedCount} 份资料，${result.skippedCount} 份已在库中已跳过`);
+        showToast('success', i18nService.t('secondBrainUploadSuccessSkippedToast', {
+          uploaded: result.realUploadedCount,
+          skipped: result.skippedCount,
+        }));
       } else if (result.realUploadedCount > 0) {
         showToast(
           'success',
           validFiles.length === 1
-            ? `资料 "${validFiles[0].name}" 上传成功，系统正自动萃取中`
-            : `成功上传 ${result.realUploadedCount} 份资料，系统正自动萃取中`,
+            ? i18nService.t('secondBrainUploadSingleSuccessToast', { name: validFiles[0].name })
+            : i18nService.t('secondBrainUploadBatchSuccessToast', { count: result.realUploadedCount }),
         );
       } else if (result.skippedCount > 0) {
         showToast(
           'info',
           validFiles.length === 1
-            ? `资料 "${validFiles[0].name}" 已在库中，无需重复上传`
-            : `所选 ${result.skippedCount} 份资料均已在库中，已跳过上传`,
+            ? i18nService.t('secondBrainUploadAlreadyExistsToast', { name: validFiles[0].name })
+            : i18nService.t('secondBrainUploadAllSkippedToast', { count: result.skippedCount }),
         );
       }
     } else {
       const failSummary = result.failedItems.map((f) => `${f.name} (${f.error})`).join('；');
       if (result.realUploadedCount > 0) {
-        showToast('error', `成功上传 ${result.realUploadedCount} 份，${result.failedItems.length} 份失败：${failSummary}`);
+        showToast('error', i18nService.t('secondBrainUploadPartialFailToast', {
+          uploaded: result.realUploadedCount,
+          failedCount: result.failedItems.length,
+          summary: failSummary,
+        }));
       } else {
-        showToast('error', `资料上传失败：${failSummary}`);
+        showToast('error', i18nService.t('secondBrainUploadFailToast', { summary: failSummary }));
       }
     }
 
@@ -831,11 +868,11 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
         a.target = '_blank';
         a.rel = 'noopener noreferrer';
         a.click();
-        showToast('success', '已开始下载资料');
+        showToast('success', i18nService.t('secondBrainDownloadStartedToast'));
       }
     } catch (err: any) {
       console.warn('[SecondBrainView] 获取下载地址失败:', err);
-      showToast('error', `获取下载地址失败: ${err?.message || '未知错误'}`);
+      showToast('error', i18nService.t('secondBrainDownloadFailToast', { msg: err?.message || '' }));
     } finally {
       setDownloadingId(null);
     }
@@ -853,10 +890,10 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
       }
       loadDocs(materialTab, docsPage);
       loadStats();
-      showToast('success', '已发起重新萃取，系统正自动处理中');
+      showToast('success', i18nService.t('secondBrainReExtractSuccessToast'));
     } catch (err: any) {
       console.warn('[SecondBrainView] 重新萃取失败:', err);
-      showToast('error', `重新萃取失败: ${err?.message || '未知错误'}`);
+      showToast('error', i18nService.t('secondBrainReExtractFailToast', { msg: err?.message || '' }));
     } finally {
       setReExtractingId(null);
     }
@@ -869,6 +906,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
     const docName = deletingDoc.name;
     const isChat = deletingDoc.type === 'chat';
     const isAudio = (deletingDoc.type as any) === 'audio';
+    const typeLabel = isChat ? i18nService.t('secondBrainUnitChat') : isAudio ? i18nService.t('secondBrainUnitAudio') : i18nService.t('secondBrainUnitDoc');
     try {
       if (isChat) {
         await deleteChat(deletingDoc.id);
@@ -880,10 +918,10 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
       setDeletingDoc(null);
       loadDocs(materialTab, docsPage);
       loadStats();
-      showToast('success', `${isChat ? '对话' : isAudio ? '音频' : '资料'} "${docName}" 已成功删除`);
+      showToast('success', i18nService.t('secondBrainDeleteSuccessToast', { type: typeLabel, name: docName }));
     } catch (err: any) {
       console.warn('[SecondBrainView] 删除失败:', err);
-      showToast('error', `删除失败: ${err?.message || '未知错误'}`);
+      showToast('error', i18nService.t('secondBrainDeleteFailToast', { msg: err?.message || '' }));
     } finally {
       setDeleting(false);
     }
@@ -906,7 +944,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
           onClick={() => onPageChange(page - 1)}
           className="min-w-[76px] h-7 px-3 rounded-lg border border-border bg-surface hover:bg-surface-raised font-bold text-secondary hover:text-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          ‹ 上一页
+          {i18nService.t('secondBrainPrevPage')}
         </button>
         <div className="flex items-center gap-1 font-mono">
           <span className="text-[#FF6B35] font-extrabold text-[15px]">{page}</span>
@@ -919,11 +957,17 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
           onClick={() => onPageChange(page + 1)}
           className="min-w-[76px] h-7 px-3 rounded-lg border border-border bg-surface hover:bg-surface-raised font-bold text-secondary hover:text-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          下一页 ›
+          {i18nService.t('secondBrainNextPage')}
         </button>
-        <span className="text-secondary text-[11px] ml-1">
-          共 <b className="text-foreground font-bold">{total}</b> {unitName}
-        </span>
+        <span
+          className="text-secondary text-[11px] ml-1"
+          dangerouslySetInnerHTML={{
+            __html: i18nService.t('secondBrainTotalCount', {
+              count: `<b class="text-foreground font-bold">${total}</b>`,
+              unit: unitName,
+            }),
+          }}
+        />
       </div>
     );
   };
@@ -938,13 +982,13 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
               type="button"
               className="non-draggable p-1.5 text-secondary hover:text-foreground hover:bg-surface-raised rounded-md transition-colors"
               onClick={onToggleSidebar}
-              title="展开侧边栏"
+              title={i18nService.t('secondBrainExpandSidebar')}
             >
               <SidebarToggleIcon className="w-4 h-4" isCollapsed={isSidebarCollapsed ?? false} />
             </button>
           )}
           <h1 className={`${MANAGEMENT_PAGE_TITLE_TEXT} font-semibold text-foreground`}>
-            第二大脑
+            {i18nService.t('secondBrainTitle')}
           </h1>
         </div>
 
@@ -969,7 +1013,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
           <div className="h-full flex items-center justify-center py-20">
             <div className="flex flex-col items-center gap-3 text-secondary text-xs">
               <div className="w-6 h-6 border-2 border-primary/20 border-t-primary rounded-full animate-spin" />
-              <span>正在加载第二大脑...</span>
+              <span>{i18nService.t('secondBrainLoading')}</span>
             </div>
           </div>
         ) : !hasValidPersona ? (
@@ -977,16 +1021,16 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
             <div className="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-3xl">
               🧠
             </div>
-            <h3 className="text-base font-bold text-foreground">请先完善人设信息</h3>
+            <h3 className="text-base font-bold text-foreground">{i18nService.t('secondBrainPersonaModalTitle')}</h3>
             <p className="text-xs text-secondary max-w-sm">
-              第二大脑需要了解您的姓名称呼与主营业务，以提供精准的商业认知与拍板建议
+              {i18nService.t('secondBrainPersonaModalSubtitle')}
             </p>
             <button
               type="button"
               onClick={() => setShowPersonaModal(true)}
               className="mt-2 rounded-xl bg-primary px-5 py-2 text-xs font-semibold text-white hover:bg-primary-hover transition-colors shadow-sm cursor-pointer"
             >
-              完善人设信息
+              {i18nService.t('secondBrainPersonaCompleteBtn')}
             </button>
           </div>
         ) : (
@@ -1002,18 +1046,18 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                 <div className="space-y-0.5">
                   <div className="flex items-center">
                     <h2 className="text-sm md:text-[15px] font-bold text-foreground">
-                      {persona?.name ? `${persona.name}的商业第二大脑` : '老板的商业第二大脑'}
+                      {persona?.name ? i18nService.t('secondBrainUserPersonaTitle', { name: persona.name }) : i18nService.t('secondBrainBossPersonaTitle')}
                     </h2>
                     <button
                       type="button"
                       onClick={() => setShowPersonaModal(true)}
                       className="text-[11.5px] text-secondary hover:text-foreground underline ml-2 font-normal cursor-pointer"
                     >
-                      人设侧写 ✏️
+                      {i18nService.t('secondBrainPersonaProfileBtn')}
                     </button>
                   </div>
                   <p className="text-xs text-secondary">
-                    沉淀你的思维，越来越敢替你拍板 · 已形成 <b className="text-foreground font-bold">{stats?.adopted_count ?? 0}</b> 条标准决策
+                    {i18nService.t('secondBrainPersonaRequiredNotice')} · <span dangerouslySetInnerHTML={{ __html: i18nService.t('secondBrainStatAdoptedCognition', { count: stats?.adopted_count ?? 0 }) }} />
                   </p>
                 </div>
               </div>
@@ -1026,10 +1070,10 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                     onClick={handleUploadClick}
                     className="bg-[#FF6B35] hover:bg-[#e85c27] text-white border-0 rounded-lg px-4 py-2 text-xs font-bold shadow-[0_2px_8px_rgba(255,107,53,0.3)] transition-all whitespace-nowrap disabled:opacity-50 cursor-pointer"
                   >
-                    {uploading ? '上传中…' : '+ 上传文件'}
+                    {uploading ? i18nService.t('secondBrainUploadingBtn') : i18nService.t('secondBrainUploadDocBtn')}
                   </button>
                   <div className="pointer-events-none absolute right-0 bottom-full mb-2 z-20 whitespace-nowrap rounded-xl bg-black/90 dark:bg-black px-3.5 py-1.5 text-xs font-medium text-white shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200">
-                    支持 .docx / .md / .txt（单文件最大 2MB，每批最多 10 个）
+                    {i18nService.t('secondBrainUploadDocTip')}
                   </div>
                 </div>
               </div>
@@ -1039,49 +1083,66 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
               {/* 格子 1：持续学习 */}
               <div className="bg-surface border border-border rounded-xl p-3.5 shadow-2xs transition hover:border-border/80">
-                <div className="text-[11px] text-secondary font-medium mb-1">持续学习</div>
+                <div className="text-[11px] text-secondary font-medium mb-1">{i18nService.t('secondBrainStatContinuousLearn')}</div>
                 <div className="text-[22px] font-extrabold text-foreground leading-tight flex items-baseline">
                   {statsLoading ? '--' : stats?.learning_days ?? 0}
-                  <span className="text-xs font-semibold text-secondary ml-1">天</span>
+                  <span className="text-xs font-semibold text-secondary ml-1">{i18nService.t('secondBrainStatContinuousLearnDays')}</span>
                 </div>
-                <div className="text-[10.5px] text-secondary mt-1.5">
-                  今日被调用 <b className="text-[#FF6B35] font-bold">{stats?.usage_count_today ?? 0}</b> 次
-                </div>
+                <div
+                  className="text-[10.5px] text-secondary mt-1.5"
+                  dangerouslySetInnerHTML={{
+                    __html: i18nService.t('secondBrainStatUsageToday', {
+                      count: `<b class="text-[#FF6B35] font-bold">${stats?.usage_count_today ?? 0}</b>`,
+                    }),
+                  }}
+                />
               </div>
 
               {/* 格子 2：学习资料 */}
               <div className="bg-surface border border-border rounded-xl p-3.5 shadow-2xs transition hover:border-border/80">
-                <div className="text-[11px] text-secondary font-medium mb-1">学习资料</div>
+                <div className="text-[11px] text-secondary font-medium mb-1">{i18nService.t('secondBrainStatMaterials')}</div>
                 <div className="text-[22px] font-extrabold text-foreground leading-tight flex items-baseline">
                   {statsLoading ? '--' : stats?.material_count ?? 0}
-                  <span className="text-xs font-semibold text-secondary ml-1">个</span>
+                  {i18nService.t('secondBrainStatMaterialsCount') && (
+                    <span className="text-xs font-semibold text-secondary ml-1">{i18nService.t('secondBrainStatMaterialsCount')}</span>
+                  )}
                 </div>
-                <div className="text-[10.5px] text-secondary mt-1.5">
-                  近 7 日上传 <b className="text-foreground font-bold">{stats?.material_count_7d ?? 0}</b> 个文件
-                </div>
+                <div
+                  className="text-[10.5px] text-secondary mt-1.5"
+                  dangerouslySetInnerHTML={{
+                    __html: i18nService.t('secondBrainStatUploads7d', {
+                      count: `<b class="text-foreground font-bold">${stats?.material_count_7d ?? 0}</b>`,
+                    }),
+                  }}
+                />
               </div>
 
               {/* 格子 3：已形成认知 */}
               <div className="bg-surface border border-border rounded-xl p-3.5 shadow-2xs transition hover:border-border/80">
-                <div className="text-[11px] text-secondary font-medium mb-1">已形成认知</div>
+                <div className="text-[11px] text-secondary font-medium mb-1">{i18nService.t('secondBrainStatAdoptedCognition', { count: '' }).replace(/<[^>]+>/g, '')}</div>
                 <div className="text-[22px] font-extrabold text-foreground leading-tight flex items-baseline">
                   {statsLoading ? '--' : stats?.adopted_count ?? 0}
-                  <span className="text-xs font-semibold text-secondary ml-1">条</span>
+                  <span className="text-xs font-semibold text-secondary ml-1">{i18nService.t('secondBrainStatAdoptedItems')}</span>
                 </div>
-                <div className="text-[10.5px] text-secondary mt-1.5">
-                  昨日新增 <b className="text-[#2d8a5f] dark:text-emerald-400 font-bold">+{stats?.adopted_count_yesterday ?? 0}</b> 条
-                </div>
+                <div
+                  className="text-[10.5px] text-secondary mt-1.5"
+                  dangerouslySetInnerHTML={{
+                    __html: i18nService.t('secondBrainStatYesterdayNew', {
+                      count: `<b class="text-[#2d8a5f] dark:text-emerald-400 font-bold">${stats?.adopted_count_yesterday ?? 0}</b>`,
+                    }),
+                  }}
+                />
               </div>
 
               {/* 格子 4：待确认认知 */}
               <div className="bg-[#f5a623]/5 border border-[#f5a623]/30 rounded-xl p-3.5 shadow-2xs transition hover:border-[#f5a623]/50">
-                <div className="text-[11px] text-[#f5a623] font-medium mb-1">待确认认知</div>
+                <div className="text-[11px] text-[#f5a623] font-medium mb-1">{i18nService.t('secondBrainStatPendingReview')}</div>
                 <div className="text-[22px] font-extrabold text-[#f5a623] leading-tight flex items-baseline">
                   {statsLoading ? '--' : stats?.pending_count ?? 0}
-                  <span className="text-xs font-semibold text-[#f5a623]/80 ml-1">条</span>
+                  <span className="text-xs font-semibold text-[#f5a623]/80 ml-1">{i18nService.t('secondBrainStatPendingItems')}</span>
                 </div>
                 <div className="text-[10.5px] text-[#f5a623] font-bold mt-1.5">
-                  需你拍板
+                  {i18nService.t('secondBrainStatPendingAction')}
                 </div>
               </div>
             </div>
@@ -1095,7 +1156,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
             >
               <div className="flex items-center gap-2">
                 <span className="text-base">💡</span>
-                <span className="text-xs md:text-sm font-bold text-foreground">今日 AI 自动吸收</span>
+                <span className="text-xs md:text-sm font-bold text-foreground">{i18nService.t('secondBrainDailyBannerCount', { count: '' }).split('{')[0] || '今日 AI 自动吸收'}</span>
                 <span className="text-[10.5px] font-bold bg-[#2d8a5f] text-white px-2 py-0.5 rounded-md">
                   {todayAdoptedList.length}
                 </span>
@@ -1103,14 +1164,14 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
 
               <div className="text-xs text-secondary truncate hidden sm:block">
                 {todayAdoptedLoading
-                  ? '加载中…'
+                  ? i18nService.t('secondBrainExtracting')
                   : todayAdoptedList.length > 0
-                  ? `+${todayAdoptedList.length} 新增 · 今日已自动沉淀到第二大脑`
-                  : '今日暂无自动沉淀，与 AI 专家日常对话后将自动提炼吸收'}
+                  ? i18nService.t('secondBrainDailyBannerCount', { count: todayAdoptedList.length })
+                  : i18nService.t('secondBrainDailyBannerEmpty')}
               </div>
 
               <div className="flex items-center gap-1 text-xs font-bold text-[#2d8a5f] shrink-0">
-                <span>{isUpgradeCollapsed ? '查看详情' : '收起'}</span>
+                <span>{isUpgradeCollapsed ? i18nService.t('secondBrainDailyViewDetails') : i18nService.t('secondBrainDailyCollapse')}</span>
                 <span className={`inline-block transition-transform duration-200 ${isUpgradeCollapsed ? '' : 'rotate-180'}`}>
                   ▾
                 </span>
@@ -1121,11 +1182,11 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
             {!isUpgradeCollapsed && (
               <div className="border-t border-border px-4 py-3.5 bg-background/40 space-y-2.5">
                 {todayAdoptedLoading && (
-                  <div className="py-6 text-center text-xs text-secondary/60">加载今日自动吸收数据中…</div>
+                  <div className="py-6 text-center text-xs text-secondary/60">{i18nService.t('secondBrainTrendsLoading')}</div>
                 )}
                 {!todayAdoptedLoading && todayAdoptedList.length === 0 && (
                   <div className="py-6 text-center text-xs text-secondary">
-                    今日暂无自动吸收的认知，与 AI 专家日常对话后系统将自动提炼沉淀。
+                    {i18nService.t('secondBrainDailyEmptyDesc')}
                   </div>
                 )}
                 {!todayAdoptedLoading && todayAdoptedList.length > 0 && (
@@ -1138,10 +1199,10 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-1.5">
                             <span className="text-[10.5px] font-bold text-[#2d8a5f] bg-[#2d8a5f]/12 px-2 py-0.5 rounded-[6px]">
-                              + 新增
+                              {i18nService.t('secondBrainDailyNewBadge')}
                             </span>
                             <span className="text-[10px] font-bold text-secondary bg-surface-raised border border-border px-1.5 py-0.5 rounded">
-                              {LAYER_LABEL[item.layer] ?? `层级${item.layer}`}
+                              {getLayerLabel(item.layer)}
                             </span>
                           </div>
                           <span className="text-[11px] text-secondary/60">{formatTimestamp(item.create_time)}</span>
@@ -1155,7 +1216,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                           </p>
                         )}
                         <div className="text-[10.5px] text-secondary/70 pt-0.5">
-                          📥 {item.source_type === 1 ? '来自文档' : item.source_type === 2 ? '来自对话' : item.source_type === 3 ? '来自音频' : '来自日常业务'} · 已写入商业第二大脑
+                          📥 {item.source_type === 1 ? i18nService.t('secondBrainPendingSourceDoc') : item.source_type === 2 ? i18nService.t('secondBrainPendingSourceChat') : item.source_type === 3 ? i18nService.t('secondBrainPendingSourceAudio') : i18nService.t('secondBrainPendingSourceGeneral')} · 已写入商业第二大脑
                         </div>
                       </div>
                     ))}
@@ -1163,7 +1224,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                 )}
 
                 <div className="pt-2 border-t border-border/60 text-center text-[11px] text-secondary">
-                  今日 <b>{todayAdoptedList.length}</b> 条自动吸收 · 历史共 <b>{stats?.adopted_count ?? 0}</b> 条沉淀
+                  <span dangerouslySetInnerHTML={{ __html: i18nService.t('secondBrainDailySummaryText', { today: todayAdoptedList.length, total: stats?.adopted_count ?? 0 }) }} />
                 </div>
               </div>
             )}
@@ -1175,7 +1236,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
               <div>
                 <div className="flex items-center gap-2">
                   <h2 className="text-sm font-bold text-foreground">
-                    待审核认知
+                    {i18nService.t('secondBrainPendingTitle')}
                   </h2>
                   {itemsTotal > 0 && (
                     <span className="text-xs font-bold bg-[#f5a623]/15 text-[#f5a623] px-2 py-0.5 rounded-md">
@@ -1184,7 +1245,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                   )}
                 </div>
                 <p className="text-xs text-secondary mt-1">
-                  AI 拿不准的才会出现在这里 · 点「编辑」可直接修正局部信息 · 想补材料就重新上传文档
+                  {i18nService.t('secondBrainPendingSubtitle')}
                 </p>
               </div>
 
@@ -1209,13 +1270,18 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                       disabled={batchActionType !== null}
                       className="rounded border-border text-primary focus:ring-primary h-3.5 w-3.5 cursor-pointer disabled:opacity-50"
                     />
-                    <span>本页全选</span>
+                    <span>{i18nService.t('secondBrainPendingSelectAll')}</span>
                   </label>
 
                   {selectedNodeIds.size > 0 && (
-                    <span className="text-xs text-secondary font-medium">
-                      已选 <b className="text-foreground">{selectedNodeIds.size}</b> 项
-                    </span>
+                    <span
+                      className="text-xs text-secondary font-medium"
+                      dangerouslySetInnerHTML={{
+                        __html: i18nService.t('secondBrainPendingSelectedCount', {
+                          count: `<b class="text-foreground">${selectedNodeIds.size}</b>`,
+                        }),
+                      }}
+                    />
                   )}
 
                   <div className="h-3.5 w-[1px] bg-border/80 mx-0.5" />
@@ -1226,7 +1292,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                     onClick={handleBatchAdopt}
                     className="bg-[#f5a623] hover:bg-[#df9318] text-white font-bold text-xs px-2.5 py-1 rounded-lg border border-[#f5a623] shadow-2xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                   >
-                    {batchActionType === 'adopt' ? '采纳中…' : '批量采纳'}
+                    {batchActionType === 'adopt' ? i18nService.t('secondBrainPendingBatchAdopting') : i18nService.t('secondBrainPendingBatchAdopt')}
                   </button>
 
                   <button
@@ -1235,7 +1301,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                     onClick={handleBatchReject}
                     className="border border-border bg-surface hover:bg-surface-raised text-foreground font-semibold text-xs px-2.5 py-1 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                   >
-                    {batchActionType === 'reject' ? '驳回中…' : '批量驳回'}
+                    {batchActionType === 'reject' ? i18nService.t('secondBrainPendingBatchRejecting') : i18nService.t('secondBrainPendingBatchReject')}
                   </button>
                 </div>
               )}
@@ -1244,7 +1310,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
             {/* 加载中 */}
             {itemsLoading && (
               <div className="flex items-center justify-center py-10">
-                <span className="text-xs text-secondary/60">加载待审核认知中…</span>
+                <span className="text-xs text-secondary/60">{i18nService.t('secondBrainTrendsLoading')}</span>
               </div>
             )}
 
@@ -1254,8 +1320,8 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                 <div className="h-10 w-10 rounded-full bg-surface-raised border border-border flex items-center justify-center mb-2 text-secondary font-bold">
                   ✓
                 </div>
-                <p className="text-xs font-semibold text-foreground">暂无待审核认知</p>
-                <p className="text-[11px] text-secondary mt-0.5">所有认知均已处理完毕</p>
+                <p className="text-xs font-semibold text-foreground">{i18nService.t('secondBrainPendingEmptyCount')}</p>
+                <p className="text-[11px] text-secondary mt-0.5">{i18nService.t('secondBrainPendingEmptySubtitle')}</p>
               </div>
             )}
 
@@ -1292,17 +1358,17 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                             />
                           </label>
                           <span className="text-[10.5px] font-extrabold text-[#9b59b6] bg-[#9b59b6]/12 px-2.5 py-0.5 rounded-[7px]">
-                            {LAYER_LABEL[item.layer] ?? `层级${item.layer}`}
+                            {getLayerLabel(item.layer)}
                           </span>
                           <span className={`text-[11px] font-bold ${isConflict ? 'text-[#f53f3f]' : 'text-secondary'}`}>
-                            {isConflict ? '⚠️ 认知冲突 · 与存量判断不一致' : '📥 候选判断 · 待你确认收编'}
+                            {isConflict ? i18nService.t('secondBrainPendingConflictBadge') : i18nService.t('secondBrainPendingCandidateBadge')}
                           </span>
                         </div>
                         <span className="text-[11px] text-secondary ml-auto">
-                          {item.source_type === 1 && (item.source_name ? `来源：${item.source_name}` : '来源：文档')}
-                          {item.source_type === 2 && (item.source_name ? `来源：${item.source_name}` : '来源：对话')}
-                          {item.source_type === 3 && (item.source_name ? `来源：${item.source_name}` : '来源：音频')}
-                          {item.source_type === 9 && (item.source_name ? `来源：${item.source_name}` : '来源：归纳')}
+                          {item.source_type === 1 && (item.source_name ? i18nService.t('secondBrainPendingSourceNamed', { name: item.source_name }) : i18nService.t('secondBrainPendingSourceDoc'))}
+                          {item.source_type === 2 && (item.source_name ? i18nService.t('secondBrainPendingSourceNamed', { name: item.source_name }) : i18nService.t('secondBrainPendingSourceChat'))}
+                          {item.source_type === 3 && (item.source_name ? i18nService.t('secondBrainPendingSourceNamed', { name: item.source_name }) : i18nService.t('secondBrainPendingSourceAudio'))}
+                          {item.source_type === 9 && (item.source_name ? i18nService.t('secondBrainPendingSourceNamed', { name: item.source_name }) : i18nService.t('secondBrainPendingSourceGeneral'))}
                           {` · ${formatTimestamp(item.create_time)}`}
                         </span>
                       </div>
@@ -1312,26 +1378,26 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                         <div className="space-y-2.5 pt-1">
                           <div>
                             <label className="block text-[11px] font-medium text-secondary mb-1">
-                              认知命题（标题）
+                              {i18nService.t('secondBrainPendingEditTitleLabel')}
                             </label>
                             <input
                               type="text"
                               autoFocus
                               value={editingPropText}
                               onChange={(e) => setEditingPropText(e.target.value)}
-                              placeholder="请输入认知摘要"
+                              placeholder={i18nService.t('secondBrainPendingEditTitlePlaceholder')}
                               className="w-full rounded-lg border border-primary bg-surface px-3 py-2 text-xs font-semibold text-foreground outline-none shadow-2xs focus:ring-1 focus:ring-primary"
                             />
                           </div>
                           <div>
                             <label className="block text-[11px] font-medium text-secondary mb-1">
-                              认知阐述（正文）
+                              {i18nService.t('secondBrainPendingEditContentLabel')}
                             </label>
                             <textarea
                               rows={3}
                               value={editingElabText}
                               onChange={(e) => setEditingElabText(e.target.value)}
-                              placeholder="请输入具体阐述内容"
+                              placeholder={i18nService.t('secondBrainPendingEditContentPlaceholder')}
                               className="w-full rounded-lg border border-primary bg-surface px-3 py-2 text-xs text-foreground outline-none shadow-2xs focus:ring-1 focus:ring-primary resize-none leading-relaxed"
                             />
                           </div>
@@ -1341,14 +1407,14 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                               onClick={cancelEditing}
                               className="rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-xs text-secondary hover:bg-surface transition-colors cursor-pointer"
                             >
-                              取消编辑
+                              {i18nService.t('secondBrainPendingCancelEdit')}
                             </button>
                             <button
                               type="button"
                               onClick={() => saveEditing(item.node_id)}
                               className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-hover transition-colors shadow-2xs cursor-pointer"
                             >
-                              完成编辑
+                              {i18nService.t('secondBrainPendingFinishEdit')}
                             </button>
                           </div>
                         </div>
@@ -1362,13 +1428,13 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                                 {/* 左侧：旧认知 */}
                                 <div className="min-w-0 flex flex-col justify-between bg-[#f5a623]/8 border border-[#f5a623]/30 rounded-xl p-3.5 space-y-2">
                                   <div className="space-y-1.5">
-                                    <div className="text-[11px] font-extrabold text-[#f5a623]">旧认知</div>
+                                    <div className="text-[11px] font-extrabold text-[#f5a623]">{i18nService.t('secondBrainPendingOldCognitionTitle')}</div>
                                     <div className="text-xs md:text-[13px] font-bold text-foreground leading-snug break-words">
-                                      "{item.replaces?.proposition || '存量既有认知'}"
+                                      "{item.replaces?.proposition || i18nService.t('secondBrainPendingOldCognitionDefault')}"
                                     </div>
                                   </div>
-                                  <div className="text-[10.5px] text-secondary bg-surface px-2.5 py-1 rounded-[5px] border-l-2 border-l-[#f5a623] truncate block shadow-2xs" title={item.replaces?.elaboration || '已沉淀判断'}>
-                                    {item.replaces?.elaboration || '已沉淀判断'}
+                                  <div className="text-[10.5px] text-secondary bg-surface px-2.5 py-1 rounded-[5px] border-l-2 border-l-[#f5a623] truncate block shadow-2xs" title={item.replaces?.elaboration || i18nService.t('secondBrainPendingAdoptedTitle')}>
+                                    {item.replaces?.elaboration || i18nService.t('secondBrainPendingAdoptedTitle')}
                                   </div>
                                 </div>
 
@@ -1382,20 +1448,20 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                                 {/* 右侧：新萃取 */}
                                 <div className="min-w-0 flex flex-col justify-between bg-[#4a8fe7]/8 border border-[#4a8fe7]/30 rounded-xl p-3.5 space-y-2">
                                   <div className="space-y-1.5">
-                                    <div className="text-[11px] font-extrabold text-[#4a8fe7]">新萃取</div>
+                                    <div className="text-[11px] font-extrabold text-[#4a8fe7]">{i18nService.t('secondBrainPendingNewCognitionTitle')}</div>
                                     <div className="text-xs md:text-[13px] font-bold text-foreground leading-snug break-words">
                                       "{editedPropositions[item.node_id] ?? item.proposition}"
                                     </div>
                                   </div>
-                                  <div className="text-[10.5px] text-secondary bg-surface px-2.5 py-1 rounded-[5px] border-l-2 border-l-[#4a8fe7] truncate block shadow-2xs" title={item.source_name || '新提取判断'}>
-                                    {item.source_name || '新提取判断'}
+                                  <div className="text-[10.5px] text-secondary bg-surface px-2.5 py-1 rounded-[5px] border-l-2 border-l-[#4a8fe7] truncate block shadow-2xs" title={item.source_name || i18nService.t('secondBrainPendingNewCognitionDefault')}>
+                                    {item.source_name || i18nService.t('secondBrainPendingNewCognitionDefault')}
                                   </div>
                                 </div>
                               </div>
 
                               {/* 提示文案 */}
                               <div className="bg-surface-raised/80 rounded-lg px-3.5 py-2 text-[11.5px] text-secondary leading-relaxed">
-                                采纳后，「新萃取」内容将覆盖旧认知。驳回则维持旧认知不变。
+                                {i18nService.t('secondBrainPendingOverrideTip')}
                               </div>
                             </div>
                           ) : (
@@ -1408,9 +1474,10 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                                   {editedElaborations[item.node_id] ?? item.elaboration}
                                 </p>
                               )}
-                              <div className="text-[11.5px] text-secondary leading-relaxed border-t border-border/60 pt-2">
-                                <b>采纳后影响：</b>直接写入你的第二大脑，影响后续所有对话与方案生成。
-                              </div>
+                              <div
+                                className="text-[11.5px] text-secondary leading-relaxed border-t border-border/60 pt-2"
+                                dangerouslySetInnerHTML={{ __html: i18nService.t('secondBrainPendingImpactTip') }}
+                              />
                             </div>
                           )}
 
@@ -1422,7 +1489,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                               onClick={() => handleAdopt(item)}
                               className="bg-[#f5a623] hover:bg-[#df9318] text-white font-bold text-xs px-4 py-1.5 rounded-lg border border-[#f5a623] shadow-2xs transition-colors disabled:opacity-50 cursor-pointer"
                             >
-                              {actioningIds.has(item.node_id) ? '处理中…' : '采纳'}
+                              {actioningIds.has(item.node_id) ? i18nService.t('secondBrainPendingProcessing') : i18nService.t('secondBrainPendingAdoptBtn')}
                             </button>
                             <button
                               type="button"
@@ -1430,14 +1497,14 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                               onClick={() => handleReject(item)}
                               className="border border-border bg-surface-raised hover:bg-surface text-foreground font-semibold text-xs px-4 py-1.5 rounded-lg transition-colors disabled:opacity-50 cursor-pointer"
                             >
-                              {actioningIds.has(item.node_id) ? '处理中…' : '驳回'}
+                              {actioningIds.has(item.node_id) ? i18nService.t('secondBrainPendingProcessing') : i18nService.t('secondBrainPendingRejectBtn')}
                             </button>
                             <button
                               type="button"
                               onClick={() => startEditing(item)}
                               className="border border-border bg-surface-raised hover:bg-surface text-foreground font-semibold text-xs px-4 py-1.5 rounded-lg transition-colors cursor-pointer"
                             >
-                              编辑
+                              {i18nService.t('secondBrainPendingEditBtn')}
                             </button>
                           </div>
                         </>
@@ -1447,7 +1514,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                 })}
 
                 {/* 分页器 */}
-                {renderPager(itemsPage, itemsLastPage, itemsTotal, setItemsPage, '条待确认认知')}
+                {renderPager(itemsPage, itemsLastPage, itemsTotal, setItemsPage, i18nService.t('secondBrainPendingTitle'))}
               </div>
             )}
           </div>
@@ -1455,27 +1522,30 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
           {/* 4. 学习资料区 (#s-materials) */}
           <div id="s-materials" className="space-y-2">
             <div className="text-[11px] font-bold tracking-wider text-secondary uppercase">
-              学习资料
+              {i18nService.t('secondBrainMaterialsTitle')}
             </div>
 
             <div className="rounded-2xl border border-border bg-surface p-5 md:p-6 shadow-[0_2px_8px_rgba(0,0,0,0.03)] space-y-4">
               {/* Tab 栏 + 上传按钮 (.mtabs) */}
               <div className="flex items-center justify-between border-b border-border">
                 <div className="flex items-end gap-1 -mb-[1px]">
-                  {MATERIAL_TABS.map((tab) => (
-                    <button
-                      key={tab}
-                      type="button"
-                      onClick={() => handleTabChange(tab)}
-                      className={`text-xs md:text-sm px-4 py-2 rounded-t-lg transition-colors cursor-pointer border-b-2 ${
-                        materialTab === tab
-                          ? 'bg-[#FF6B35]/10 text-[#FF6B35] border-b-[#FF6B35] font-bold'
-                          : 'text-secondary hover:text-foreground border-b-transparent font-semibold'
-                      }`}
-                    >
-                      {tab}
-                    </button>
-                  ))}
+                  {MATERIAL_TABS.map((tab) => {
+                    const tabLabel = tab === '文档' ? i18nService.t('secondBrainTabDocument') : tab === '对话' ? i18nService.t('secondBrainTabChat') : i18nService.t('secondBrainTabAudio');
+                    return (
+                      <button
+                        key={tab}
+                        type="button"
+                        onClick={() => handleTabChange(tab)}
+                        className={`text-xs md:text-sm px-4 py-2 rounded-t-lg transition-colors cursor-pointer border-b-2 ${
+                          materialTab === tab
+                            ? 'bg-[#FF6B35]/10 text-[#FF6B35] border-b-[#FF6B35] font-bold'
+                            : 'text-secondary hover:text-foreground border-b-transparent font-semibold'
+                        }`}
+                      >
+                        {tabLabel}
+                      </button>
+                    );
+                  })}
                 </div>
 
                 {/* 仅在文档 Tab 下展示上传与自动同步按钮 */}
@@ -1491,7 +1561,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                         <span className={autoUploadSyncing ? 'animate-spin' : ''}>
                           {autoUploadSyncing ? '🔄' : '📁'}
                         </span>
-                        <span>自动同步</span>
+                        <span>{i18nService.t('secondBrainAutoSyncBtn')}</span>
                         <span className="text-[10px] text-secondary/60 group-hover:text-foreground transition-transform duration-150 group-hover:rotate-180">
                           ▾
                         </span>
@@ -1506,13 +1576,13 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                             className="w-full px-2.5 py-1.5 text-left rounded-lg hover:bg-surface-raised text-foreground transition-colors flex items-center gap-2 cursor-pointer"
                           >
                             <span>⚙️</span>
-                            <span>设置</span>
+                            <span>{i18nService.t('secondBrainAutoSyncSetting')}</span>
                           </button>
                           <button
                             type="button"
                             disabled={!autoUploadWatchDir || autoUploadSyncing}
                             onClick={handleTriggerAutoSync}
-                            title={!autoUploadWatchDir ? '未设置同步目录，请点击设置选择目录' : undefined}
+                            title={!autoUploadWatchDir ? i18nService.t('secondBrainNoSyncDirToast') : undefined}
                             className={`w-full px-2.5 py-1.5 text-left rounded-lg transition-colors flex items-center gap-2 ${
                               !autoUploadWatchDir || autoUploadSyncing
                                 ? 'opacity-40 cursor-not-allowed text-secondary'
@@ -1520,7 +1590,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                             }`}
                           >
                             <span className={autoUploadSyncing ? 'animate-spin' : ''}>🔄</span>
-                            <span>{autoUploadSyncing ? '正在同步…' : '立即同步'}</span>
+                            <span>{autoUploadSyncing ? i18nService.t('secondBrainSyncingBtn') : i18nService.t('secondBrainSyncNowBtn')}</span>
                           </button>
                         </div>
                       </div>
@@ -1535,10 +1605,10 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                         className="bg-[#4a8fe7] hover:bg-[#3b7ed4] text-white font-bold text-xs px-3.5 py-1.5 rounded-lg shadow-2xs transition-colors flex items-center gap-1 disabled:opacity-50 cursor-pointer"
                       >
                         <span>+</span>
-                        <span>{uploading ? '上传中…' : '上传文档'}</span>
+                        <span>{uploading ? i18nService.t('secondBrainUploadingBtn') : i18nService.t('secondBrainUploadDocBtn')}</span>
                       </button>
                       <div className="pointer-events-none absolute right-0 bottom-full mb-2 z-20 whitespace-nowrap rounded-xl bg-black/90 dark:bg-black px-3.5 py-1.5 text-xs font-medium text-white shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200">
-                        支持 .docx / .md / .txt（单文件最大 2MB，每批最多 10 个）
+                        {i18nService.t('secondBrainUploadDocTip')}
                       </div>
                     </div>
                   </div>
@@ -1548,7 +1618,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
               {/* 加载中 */}
               {docsLoading && (
                 <div className="flex items-center justify-center py-10">
-                  <span className="text-xs text-secondary/60">加载资料列表中…</span>
+                  <span className="text-xs text-secondary/60">{i18nService.t('secondBrainTrendsLoading')}</span>
                 </div>
               )}
 
@@ -1569,14 +1639,14 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                           {materialTab === '录音' ? '🎙' : materialTab === '对话' ? '💬' : '📄'}
                         </div>
                         <p className="text-xs font-semibold text-foreground">
-                          {materialTab === '对话' ? '暂无对话' : materialTab === '录音' ? '暂无已沉淀音频' : '暂无资料'}
+                          {materialTab === '对话' ? i18nService.t('secondBrainEmptyChat') : materialTab === '录音' ? i18nService.t('secondBrainEmptyAudio') : i18nService.t('secondBrainEmptyDoc')}
                         </p>
                         <p className="text-[11px] text-secondary mt-0.5">
                           {materialTab === '对话'
-                            ? '与智能体进行日常业务对话，系统将自动从对话中提炼出你的决策逻辑'
+                            ? i18nService.t('secondBrainEmptyChatDesc')
                             : materialTab === '录音'
-                            ? '在「我的文件 - 录音卡」推送音频后，系统将自动转写并萃取决策原则'
-                            : '上传个人笔记、项目总结等第一手资料，系统将自动萃取决策原则'}
+                            ? i18nService.t('secondBrainEmptyAudioDesc')
+                            : i18nService.t('secondBrainEmptyDocDesc')}
                         </p>
                       </div>
                     )}
@@ -1601,18 +1671,18 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                                 <span>{formatDate(doc.create_time)}</span>
                                 <span>·</span>
                                 {doc.extract_status === DOCUMENT_STATUS.Pending && (
-                                  <span className="text-[#f5a623] font-semibold">待萃取</span>
+                                  <span className="text-[#f5a623] font-semibold">{i18nService.t('secondBrainQueued')}</span>
                                 )}
                                 {doc.extract_status === DOCUMENT_STATUS.Processing && (
-                                  <span className="text-[#4a8fe7] font-semibold">萃取中</span>
+                                  <span className="text-[#4a8fe7] font-semibold">{i18nService.t('secondBrainExtracting')}</span>
                                 )}
                                 {doc.extract_status === DOCUMENT_STATUS.Done && (
                                   <span className="text-[#2d8a5f] dark:text-emerald-400 font-semibold">
-                                    已萃取 {doc.extract_count} 条认知
+                                    {i18nService.t('secondBrainExtractedCount', { count: doc.extract_count })}
                                   </span>
                                 )}
                                 {doc.extract_status === DOCUMENT_STATUS.Failed && (
-                                  <span className="text-destructive font-semibold">萃取失败</span>
+                                  <span className="text-destructive font-semibold">{i18nService.t('secondBrainReExtractFailToast', { msg: '' }).split(':')[0]}</span>
                                 )}
                               </div>
                             </div>
@@ -1636,15 +1706,15 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                                     className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs font-semibold text-foreground hover:bg-surface-raised transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                                   >
                                     {reExtractingId === doc.id || doc.extract_status === DOCUMENT_STATUS.Processing
-                                      ? '萃取中…'
+                                      ? i18nService.t('secondBrainExtracting')
                                       : doc.extract_status === DOCUMENT_STATUS.Pending
-                                      ? '排队中…'
-                                      : '重新萃取'}
+                                      ? i18nService.t('secondBrainQueued')
+                                      : i18nService.t('secondBrainReExtractBtn')}
                                   </button>
                                   <div className="pointer-events-none absolute right-0 bottom-full mb-2 z-20 whitespace-nowrap rounded-xl bg-black/90 dark:bg-black px-3.5 py-1.5 text-xs font-medium text-white shadow-lg opacity-0 group-hover/re:opacity-100 transition-all duration-200">
                                     {doc.extract_status === DOCUMENT_STATUS.Pending || doc.extract_status === DOCUMENT_STATUS.Processing
-                                      ? '当前正在处理中，暂不可重新萃取'
-                                      : '将同步删除已萃取的认知'}
+                                      ? i18nService.t('secondBrainProcessingCannotReExtract')
+                                      : i18nService.t('secondBrainDeleteCascadeTip')}
                                   </div>
                                 </div>
                               )}
@@ -1660,7 +1730,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                                     className={`h-7 w-7 inline-flex items-center justify-center rounded-lg border border-border text-xs text-secondary hover:bg-surface-raised hover:text-foreground transition-colors cursor-pointer ${
                                       moreMenuDocId === doc.id ? 'bg-surface-raised text-foreground' : ''
                                     }`}
-                                    title="更多操作"
+                                    title={i18nService.t('secondBrainMoreOps')}
                                   >
                                     ···
                                   </button>
@@ -1678,7 +1748,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                                         }}
                                         className="w-full rounded-lg px-2.5 py-1.5 text-left text-xs text-foreground hover:bg-surface-raised transition-colors disabled:opacity-50 cursor-pointer"
                                       >
-                                        {downloadingId === doc.id ? '获取中…' : '下载'}
+                                        {downloadingId === doc.id ? i18nService.t('secondBrainDownloading') : i18nService.t('secondBrainDownloadBtn')}
                                       </button>
                                       <button
                                         type="button"
@@ -1688,7 +1758,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                                         }}
                                         className="w-full rounded-lg px-2.5 py-1.5 text-left text-xs text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
                                       >
-                                        删除
+                                        {i18nService.t('secondBrainDeleteConfirmBtn')}
                                       </button>
                                     </div>
                                   )}
@@ -1699,7 +1769,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                                   onClick={() => setDeletingDoc(doc)}
                                   className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs font-semibold text-secondary hover:bg-surface-raised hover:text-destructive transition-colors cursor-pointer"
                                 >
-                                  删除
+                                  {i18nService.t('secondBrainDeleteConfirmBtn')}
                                 </button>
                               )}
                             </div>
@@ -1707,7 +1777,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                         ))}
 
                         {/* 分页器 */}
-                        {renderPager(docsPage, docsLastPage, docsTotal, setDocsPage, materialTab === '对话' ? '份对话' : materialTab === '录音' ? '份音频' : '份资料')}
+                        {renderPager(docsPage, docsLastPage, docsTotal, setDocsPage, materialTab === '对话' ? i18nService.t('secondBrainUnitChat') : materialTab === '录音' ? i18nService.t('secondBrainUnitAudio') : i18nService.t('secondBrainUnitDoc'))}
                       </div>
                     )}
                   </>
@@ -1720,11 +1790,17 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
           <div className="rounded-2xl border border-[#FF6B35]/25 bg-gradient-to-b from-[#FF6B35]/[0.02] to-surface bg-surface p-5 md:p-6 shadow-[0_4px_20px_rgba(255,107,53,0.05)] space-y-4">
             <div className="pb-3.5 border-b border-dashed border-[#FF6B35]/20">
               <h2 className="text-sm font-bold text-foreground">
-                大脑词条近况
+                {i18nService.t('secondBrainTrendsTitle')}
               </h2>
-              <p className="text-xs text-secondary mt-1">
-                本周新增 <b className="text-foreground font-bold">{trendWeeks[trendWeeks.length - 1]?.adopted_count ?? 0}</b> 条 · 总沉淀 <b className="text-foreground font-bold">{stats?.adopted_count ?? 0}</b> 条，覆盖价值 · 决策 · 方式 · 案例。
-              </p>
+              <p
+                className="text-xs text-secondary mt-1"
+                dangerouslySetInnerHTML={{
+                  __html: i18nService.t('secondBrainTrendsSubtitle', {
+                    newCount: `<b class="text-foreground font-bold">${trendWeeks[trendWeeks.length - 1]?.adopted_count ?? 0}</b>`,
+                    total: `<b class="text-foreground font-bold">${stats?.adopted_count ?? 0}</b>`,
+                  }),
+                }}
+              />
             </div>
 
             {/* 判断力成长曲线 */}
@@ -1732,16 +1808,16 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <div className="text-xs md:text-[13px] font-bold text-foreground flex items-center gap-1.5">
                   <span>📈</span>
-                  <span>判断力成长曲线</span>
+                  <span>{i18nService.t('secondBrainTrendsCurveTitle')}</span>
                 </div>
                 <div className="flex items-center gap-3 text-[11px] text-secondary">
                   <span className="flex items-center gap-1.5">
                     <span className="h-2 w-2 rounded-full bg-[#2d8a5f]" />
-                    已沉淀判断
+                    {i18nService.t('secondBrainTrendsAdoptedLegend')}
                   </span>
                   <span className="flex items-center gap-1.5">
                     <span className="h-2 w-2 rounded-full bg-[#FF6B35]" />
-                    本周被调用
+                    {i18nService.t('secondBrainTrendsInvokedLegend')}
                   </span>
                 </div>
               </div>
@@ -1749,11 +1825,11 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
               {/* 曲线图 */}
               {trendLoading ? (
                 <div className="h-[120px] flex items-center justify-center text-xs text-secondary/60">
-                  加载趋势数据中…
+                  {i18nService.t('secondBrainTrendsLoading')}
                 </div>
               ) : trendWeeks.length === 0 ? (
                 <div className="h-[120px] flex items-center justify-center text-xs text-secondary/60">
-                  暂无近 8 周趋势数据
+                  {i18nService.t('secondBrainTrendsEmpty')}
                 </div>
               ) : (() => {
                 const count = trendWeeks.length;
@@ -1910,11 +1986,11 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                               <div className="flex items-center gap-3 pt-0.5 text-[10.5px]">
                                 <span className="text-[#FF6B35] font-semibold flex items-center gap-1">
                                   <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#FF6B35]" />
-                                  被调用: <b>{trendWeeks[hoveredWeekIndex].usage_count}</b> 次
+                                  <span dangerouslySetInnerHTML={{ __html: i18nService.t('secondBrainTrendsTooltipInvoked', { count: trendWeeks[hoveredWeekIndex].usage_count }) }} />
                                 </span>
                                 <span className="text-[#2d8a5f] font-semibold flex items-center gap-1">
                                   <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#2d8a5f]" />
-                                  已采纳: <b>{trendWeeks[hoveredWeekIndex].adopted_count}</b> 条
+                                  <span dangerouslySetInnerHTML={{ __html: i18nService.t('secondBrainTrendsTooltipAdopted', { count: trendWeeks[hoveredWeekIndex].adopted_count }) }} />
                                 </span>
                               </div>
                             </div>
@@ -1950,9 +2026,16 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                 );
               })()}
 
-              <div className="text-[11px] text-secondary pt-1">
-                近 {trendWeeks.length || 8} 周 · 已沉淀判断共 <b className="text-[#FF6B35] font-bold">{stats?.adopted_count ?? 0}</b> 条，被调用频次同步攀升（本周 <b className="text-[#FF6B35] font-bold">{trendWeeks[trendWeeks.length - 1]?.usage_count ?? 0}</b> 次）
-              </div>
+              <div
+                className="text-[11px] text-secondary pt-1"
+                dangerouslySetInnerHTML={{
+                  __html: i18nService.t('secondBrainTrendsSummaryFooter', {
+                    weeks: trendWeeks.length || 8,
+                    total: `<b class="text-[#FF6B35] font-bold">${stats?.adopted_count ?? 0}</b>`,
+                    thisWeek: `<b class="text-[#FF6B35] font-bold">${trendWeeks[trendWeeks.length - 1]?.usage_count ?? 0}</b>`,
+                  }),
+                }}
+              />
             </div>
           </div>
 
@@ -1972,10 +2055,10 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
           >
             <div className="space-y-1.5">
               <h3 className="text-sm font-bold text-foreground">
-                确认删除{deletingDoc.type === 'chat' ? '对话' : '资料'}
+                {i18nService.t('secondBrainDeleteConfirmTitle', { type: deletingDoc.type === 'chat' ? i18nService.t('secondBrainTabChat') : i18nService.t('secondBrainTabDocument') })}
               </h3>
               <p className="text-xs text-secondary">
-                确定要删除 "{deletingDoc.name}" 吗？删除后将无法恢复。
+                {i18nService.t('secondBrainDeleteConfirmDesc', { name: deletingDoc.name })}
               </p>
             </div>
             <div className="flex items-center justify-end gap-2">
@@ -1985,7 +2068,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                 onClick={() => setDeletingDoc(null)}
                 className="rounded-lg border border-border px-3.5 py-1.5 text-xs font-semibold text-secondary hover:bg-surface-raised transition-colors disabled:opacity-50 cursor-pointer"
               >
-                取消
+                {i18nService.t('cancel')}
               </button>
               <button
                 type="button"
@@ -1993,7 +2076,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                 onClick={handleConfirmDelete}
                 className="rounded-lg bg-destructive px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-destructive/90 transition-colors disabled:opacity-50 cursor-pointer shadow-2xs"
               >
-                {deleting ? '删除中…' : '确认删除'}
+                {deleting ? i18nService.t('secondBrainDeleteDeletingBtn') : i18nService.t('secondBrainDeleteConfirmBtn')}
               </button>
             </div>
           </div>
@@ -2017,7 +2100,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
           >
             <div className="flex items-center justify-between border-b border-border pb-3">
               <h3 className="text-sm font-bold text-foreground">
-                {hasValidPersona ? '人设信息' : '完善商业人设信息'}
+                {hasValidPersona ? i18nService.t('secondBrainPersonaProfileBtn').replace(/[^\u4e00-\u9fa5A-Za-z]/g, '') : i18nService.t('secondBrainPersonaModalTitle')}
               </h3>
               {hasValidPersona && (
                 <button
@@ -2032,55 +2115,55 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
 
             {!hasValidPersona && (
               <p className="text-xs text-secondary leading-relaxed bg-surface-raised/60 p-2.5 rounded-lg border border-border/80">
-                第二大脑将以您的身份和主营业务为核心视角进行认知萃取与商业决策，请先完善人设信息。
+                {i18nService.t('secondBrainPersonaModalSubtitle')}
               </p>
             )}
 
             <div className="space-y-3 text-xs">
               <div>
                 <label className="block font-medium text-secondary mb-1">
-                  称呼/姓名 <span className="text-destructive">*</span>
+                  {i18nService.t('secondBrainPersonaNameLabel')} <span className="text-destructive">*</span>
                 </label>
                 <input
                   type="text"
                   value={personaForm.name}
                   onChange={(e) => setPersonaForm({ ...personaForm, name: e.target.value })}
-                  placeholder="例如：陈总"
+                  placeholder={i18nService.t('secondBrainPersonaNamePlaceholder')}
                   className="w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground outline-none focus:border-primary"
                 />
               </div>
 
               <div>
                 <label className="block font-medium text-secondary mb-1">
-                  主营业务 <span className="text-destructive">*</span>
+                  {i18nService.t('secondBrainPersonaBusinessLabel')} <span className="text-destructive">*</span>
                 </label>
                 <input
                   type="text"
                   value={personaForm.business}
                   onChange={(e) => setPersonaForm({ ...personaForm, business: e.target.value })}
-                  placeholder="例如：高端美甲加盟与供应链"
+                  placeholder={i18nService.t('secondBrainPersonaBusinessPlaceholder')}
                   className="w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground outline-none focus:border-primary"
                 />
               </div>
 
               <div>
-                <label className="block font-medium text-secondary mb-1">所属行业</label>
+                <label className="block font-medium text-secondary mb-1">{i18nService.t('secondBrainPersonaIndustryLabel')}</label>
                 <input
                   type="text"
                   value={personaForm.industry}
                   onChange={(e) => setPersonaForm({ ...personaForm, industry: e.target.value })}
-                  placeholder="例如：美业 / 消费零售"
+                  placeholder={i18nService.t('secondBrainPersonaIndustryPlaceholder')}
                   className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-foreground outline-none focus:border-primary"
                 />
               </div>
 
               <div>
-                <label className="block font-medium text-secondary mb-1">定位与风格</label>
+                <label className="block font-medium text-secondary mb-1">{i18nService.t('secondBrainPersonaStyleLabel')}</label>
                 <textarea
                   rows={3}
                   value={personaForm.positioning}
                   onChange={(e) => setPersonaForm({ ...personaForm, positioning: e.target.value })}
-                  placeholder="例如：专业实战派，重数据与落地交付，不做网红做生意"
+                  placeholder={i18nService.t('secondBrainPersonaStylePlaceholder')}
                   className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-foreground outline-none focus:border-primary resize-none"
                 />
               </div>
@@ -2094,7 +2177,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                   onClick={() => setShowPersonaModal(false)}
                   className="rounded-lg border border-border px-4 py-1.5 text-xs font-medium text-secondary hover:bg-surface-raised transition-colors"
                 >
-                  取消
+                  {i18nService.t('cancel')}
                 </button>
               )}
               <button
@@ -2103,7 +2186,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                 onClick={handleSavePersona}
                 className="rounded-lg bg-primary px-4 py-1.5 text-xs font-medium text-white hover:bg-primary-hover transition-colors disabled:opacity-50"
               >
-                {savingPersona ? '保存中…' : '保存'}
+                {savingPersona ? i18nService.t('secondBrainUploadingBtn') : i18nService.t('confirm')}
               </button>
             </div>
           </div>

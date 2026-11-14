@@ -135,7 +135,7 @@ const FeishuInstanceSettings: React.FC<FeishuInstanceSettingsProps> = ({
   onTestConnectivity,
   testingPlatform,
   connectivityResults,
-  language,
+  language: _language,
   headerLeading,
 }) => {
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
@@ -215,7 +215,7 @@ const FeishuInstanceSettings: React.FC<FeishuInstanceSettingsProps> = ({
     } catch (err: any) {
       if (!isMountedRef.current) return;
       setQrStatus('error');
-      setQrError(err?.message || '获取二维码失败');
+      setQrError(err?.message || i18nService.t('imFetchQrCodeFailed'));
     }
   };
 
@@ -258,7 +258,7 @@ const FeishuInstanceSettings: React.FC<FeishuInstanceSettingsProps> = ({
             <span
               className="text-sm font-medium text-foreground cursor-pointer hover:text-primary transition-colors truncate border-b border-dashed border-gray-400 dark:border-secondary/50 hover:border-primary pb-px"
               onClick={() => setEditingName(true)}
-              title={language === 'zh' ? '点击重命名' : 'Click to rename'}
+              title={i18nService.t('imClickToRename')}
             >
               {instance.instanceName}
             </span>

@@ -104,7 +104,7 @@ const TelegramInstanceSettings: React.FC<TelegramInstanceSettingsProps> = ({
   onTestConnectivity,
   testingPlatform,
   connectivityResults,
-  language,
+  language: _language,
   headerLeading,
 }) => {
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
@@ -376,7 +376,7 @@ const TelegramInstanceSettings: React.FC<TelegramInstanceSettingsProps> = ({
                     }
                   }}
                   className="block flex-1 rounded-lg bg-surface border-border-subtle border focus:border-primary focus:ring-1 focus:ring-primary/30 text-foreground px-3 py-2 text-sm transition-colors"
-                  placeholder={language === 'zh' ? '输入 Telegram Group ID' : 'Enter Telegram Group ID'}
+                  placeholder={i18nService.t('imEnterTelegramGroupIdPlaceholder')}
                 />
                 <button
                   type="button"

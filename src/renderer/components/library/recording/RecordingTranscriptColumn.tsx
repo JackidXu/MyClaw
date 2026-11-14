@@ -8,6 +8,7 @@ import React from 'react';
 
 import type { LocalRecordingItem } from '../../../../shared/recordingCard/localRecording';
 import { LocalRecordingStatus } from '../../../../shared/recordingCard/localRecording';
+import { i18nService } from '../../../services/i18n';
 
 interface RecordingTranscriptColumnProps {
   item: LocalRecordingItem | null;
@@ -38,8 +39,8 @@ export const RecordingTranscriptColumn: React.FC<RecordingTranscriptColumnProps>
             <path d="M12 19v3" />
           </svg>
         </div>
-        <b className="text-[14px] font-semibold text-[#1c1c1e]">未选择录音</b>
-        <p className="text-[12px] text-[#8b8b90] mt-1">从左侧选择一条录音查看逐字稿与智能纪要</p>
+        <b className="text-[14px] font-semibold text-[#1c1c1e]">{i18nService.t('recordingCardTranscriptEmptyTitle')}</b>
+        <p className="text-[12px] text-[#8b8b90] mt-1">{i18nService.t('recordingCardTranscriptEmptyDesc')}</p>
       </div>
     );
   }
@@ -76,7 +77,7 @@ export const RecordingTranscriptColumn: React.FC<RecordingTranscriptColumnProps>
             {item.title || item.name}
           </b>
           <div className="text-[11px] text-[#8b8b90] mt-0.5 truncate">
-            {item.duration || '00:00'} · 录音文件 · {item.transcriptText ? '原文与智能纪要已完成' : '待转写'}
+            {item.duration || '00:00'} · {i18nService.t('recordingCardTranscriptAudioFileSuffix')} · {item.transcriptText ? i18nService.t('recordingCardTranscriptCompleteStatus') : i18nService.t('recordingCardTranscriptPendingStatus')}
           </div>
         </div>
 
@@ -85,15 +86,15 @@ export const RecordingTranscriptColumn: React.FC<RecordingTranscriptColumnProps>
           onClick={onPlayAudio}
           className="text-[11.5px] text-[#505055] border border-[#ebebee] bg-white rounded-[7px] px-3 py-1 hover:border-[#c6c6cc] hover:text-[#1c1c1e] transition-colors cursor-pointer shrink-0"
         >
-          打开音频
+          {i18nService.t('recordingCardTranscriptOpenAudioBtn')}
         </button>
       </div>
 
       {/* 逐字稿标题栏 (.rct-h) */}
       <div className="flex items-center gap-2 p-[10px_16px] border-b border-[#ebebee] shrink-0">
-        <span className="text-[13.5px] font-semibold text-[#1c1c1e]">逐字稿</span>
+        <span className="text-[13.5px] font-semibold text-[#1c1c1e]">{i18nService.t('recordingCardTranscriptTitle')}</span>
         {sentenceCount > 0 && (
-          <span className="text-[11.5px] text-[#8b8b90]">{sentenceCount} 句</span>
+          <span className="text-[11.5px] text-[#8b8b90]">{i18nService.t('recordingCardTranscriptSentenceCount', { count: sentenceCount })}</span>
         )}
         <span className="flex-1" />
 
@@ -104,14 +105,14 @@ export const RecordingTranscriptColumn: React.FC<RecordingTranscriptColumnProps>
               onClick={onCopyTranscript}
               className="text-[11.5px] text-[#505055] border border-[#ebebee] bg-white rounded-[7px] px-2.5 py-1 hover:border-[#c6c6cc] hover:text-[#1c1c1e] transition-colors cursor-pointer"
             >
-              复制
+              {i18nService.t('copy')}
             </button>
             <button
               type="button"
               onClick={onExportTranscript}
               className="text-[11.5px] text-[#505055] border border-[#ebebee] bg-white rounded-[7px] px-2.5 py-1 hover:border-[#c6c6cc] hover:text-[#1c1c1e] transition-colors cursor-pointer"
             >
-              导出
+              {i18nService.t('export')}
             </button>
           </>
         )}
@@ -122,8 +123,8 @@ export const RecordingTranscriptColumn: React.FC<RecordingTranscriptColumnProps>
         {isTranscribing ? (
           <div className="h-full flex flex-col items-center justify-center text-center p-6 text-[#8b8b90]">
             <div className="w-9 h-9 rounded-full border-2 border-[#f3c8ab] border-t-[#FF6B35] animate-spin mb-3" />
-            <b className="text-[13.5px] text-[#1c1c1e]">正在转写录音内容...</b>
-            <p className="text-[12px] mt-1 text-[#e2531f]">{transcribeProgressText || '请稍候'}</p>
+            <b className="text-[13.5px] text-[#1c1c1e]">{i18nService.t('recordingCardTranscriptTranscribingTitle')}</b>
+            <p className="text-[12px] mt-1 text-[#e2531f]">{transcribeProgressText || i18nService.t('recordingCardTranscriptTranscribingWait')}</p>
           </div>
         ) : item.status === LocalRecordingStatus.Failed ? (
           <div className="h-full flex flex-col items-center justify-center text-center p-8 text-[#8b8b90]">
@@ -134,9 +135,9 @@ export const RecordingTranscriptColumn: React.FC<RecordingTranscriptColumnProps>
                 <line x1="12" y1="16" x2="12.01" y2="16" />
               </svg>
             </div>
-            <b className="text-[13.5px] font-semibold text-[#1c1c1e] mb-1">转写失败</b>
+            <b className="text-[13.5px] font-semibold text-[#1c1c1e] mb-1">{i18nService.t('recordingCardTranscriptFailTitle')}</b>
             <p className="text-[12px] text-[#ef4444] bg-[#fef2f2] border border-[#fecaca] rounded-[6px] px-3 py-1.5 max-w-[360px] break-all mb-4 select-text font-mono">
-              {item.transcribeError || '语音转写处理异常'}
+              {item.transcribeError || i18nService.t('recordingCardTranscriptFailDefault')}
             </p>
             <button
               type="button"
@@ -149,18 +150,18 @@ export const RecordingTranscriptColumn: React.FC<RecordingTranscriptColumnProps>
                 <path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
                 <path d="M3 21v-5h5" />
               </svg>
-              重新提交转写
+              {i18nService.t('recordingCardTranscriptResubmitBtn')}
             </button>
           </div>
         ) : !item.transcriptText ? (
           <div className="h-full flex flex-col items-center justify-center text-center p-8 text-[#8b8b90]">
-            <p className="text-[13px] mb-3">当前录音尚未转写，点击下方按钮开始识别逐字稿</p>
+            <p className="text-[13px] mb-3">{i18nService.t('recordingCardTranscriptPendingNotice')}</p>
             <button
               type="button"
               onClick={onTranscribe}
               className="text-[12.5px] font-medium text-white bg-[#FF6B35] rounded-[8px] px-4 py-2 hover:bg-[#e2531f] transition-colors cursor-pointer shadow-xs"
             >
-              开始转写
+              {i18nService.t('recordingCardTranscriptStartBtn')}
             </button>
           </div>
         ) : (
@@ -173,7 +174,7 @@ export const RecordingTranscriptColumn: React.FC<RecordingTranscriptColumnProps>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <b className="text-[12.5px] font-semibold text-[#e2531f]">
-                        {utt.speaker || `发言人 ${idx + 1}`}
+                        {utt.speaker || i18nService.t('recordingCardTranscriptSpeakerDefault', { index: idx + 1 })}
                       </b>
                       <span className="text-[11.5px] text-[#aeaeae] tabular-nums">
                         {formatMs(utt.startTime)}

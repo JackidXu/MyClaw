@@ -1,5 +1,7 @@
 import React from 'react';
 
+import { i18nService } from '../../services/i18n';
+
 interface PremiumGuideModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -19,8 +21,8 @@ export const PremiumGuideModal: React.FC<PremiumGuideModalProps> = ({
 }) => {
   if (!isOpen) return null;
 
-  const displayTitle = title || (expertName ? `解锁【${expertName}】付费专家` : '解锁付费专家');
-  const displayDescription = description || expertDescription || '解锁高端专有商业情报、竞争洞察与定制 AI 技能。';
+  const displayTitle = title || (expertName ? i18nService.t('premiumUnlockExpertTitle', { name: expertName }) : i18nService.t('premiumUnlockExpertDefaultTitle'));
+  const displayDescription = description || expertDescription || i18nService.t('premiumUnlockExpertDesc');
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-200 select-none">
@@ -43,10 +45,10 @@ export const PremiumGuideModal: React.FC<PremiumGuideModalProps> = ({
         {/* 权益亮点 */}
         <div className="w-full bg-amber-50/60 border border-amber-100/80 rounded-xl p-3.5 mb-6 text-left space-y-2">
           <div className="flex items-center text-xs text-amber-900 font-medium">
-            <span className="text-amber-500 mr-2">✓</span> 包含深度商业情报及竞争洞察 Skill 套件
+            <span className="text-amber-500 mr-2">✓</span> {i18nService.t('premiumFeatureIntel')}
           </div>
           <div className="flex items-center text-xs text-amber-900 font-medium">
-            <span className="text-amber-500 mr-2">✓</span> 一对一专属技术客服与服务支持
+            <span className="text-amber-500 mr-2">✓</span> {i18nService.t('premiumFeatureSupport')}
           </div>
         </div>
 
@@ -55,18 +57,18 @@ export const PremiumGuideModal: React.FC<PremiumGuideModalProps> = ({
           <div className="w-36 h-36 bg-white border border-gray-200 rounded-xl p-1.5 flex items-center justify-center shadow-sm mb-2 overflow-hidden">
             <img
               src="https://scrm0.cdn.banchengyun.com/heyclaw/server-assets/customer-service-qrcode.jpg"
-              alt="客服二维码"
+              alt={i18nService.t('premiumQrCodeAlt')}
               className="w-full h-full object-cover rounded-lg select-none"
             />
           </div>
-          <p className="text-xs text-gray-500 font-medium">请扫码联系专属客服完成开通或续费</p>
+          <p className="text-xs text-gray-500 font-medium">{i18nService.t('premiumScanQrTip')}</p>
         </div>
 
         <button
           onClick={onClose}
           className="w-full py-2.5 bg-gray-900 hover:bg-gray-800 text-white rounded-xl font-medium text-sm transition-colors"
         >
-          我知道了
+          {i18nService.t('premiumGotIt')}
         </button>
 
       </div>
