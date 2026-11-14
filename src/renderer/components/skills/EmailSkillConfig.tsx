@@ -489,8 +489,8 @@ const EmailSkillConfig: React.FC = () => {
     if (account) {
       lines.push(i18nService.t('emailTroubleshootPromptAccount', { account: getAccountDisplayName(account) }));
       lines.push(i18nService.t('emailTroubleshootPromptAddress', { email: account.email }));
-      lines.push(i18nService.t('emailTroubleshootPromptImapServer', { host: account.imapHost, port: account.imapPort }));
-      lines.push(i18nService.t('emailTroubleshootPromptSmtpServer', { host: account.smtpHost, port: account.smtpPort }));
+      lines.push(i18nService.t('emailTroubleshootPromptImapServer', { host: account.imapHost ?? '', port: account.imapPort ?? '' }));
+      lines.push(i18nService.t('emailTroubleshootPromptSmtpServer', { host: account.smtpHost ?? '', port: account.smtpPort ?? '' }));
     }
     lines.push(i18nService.t('emailTroubleshootPromptFailureHeader'));
     if (result) {
