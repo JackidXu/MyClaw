@@ -8,6 +8,11 @@ on:
         required: true
         default: true
         type: boolean
+      build_windows:
+        description: 'Build Windows'
+        required: true
+        default: true
+        type: boolean
   push:
     tags:
       - 'v*'
@@ -89,6 +94,7 @@ jobs:
           security import /tmp/certificate.p12 -k "$KEYCHAIN_PATH" -P "$CSC_KEY_PASSWORD" -T /usr/bin/codesign -T /usr/bin/productbuild
           rm -f /tmp/certificate.p12
 
+
           # 将临时钥匙串加入搜索列表最前面
           security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | xargs)
 
@@ -108,6 +114,7 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
       
       - uses: actions/upload-artifact@v4
         with:
@@ -115,9 +122,120 @@ jobs:
           path: release/*.dmg
           retention-days: 7
 
+  # ========== Windows 构建 ==========
+  build-windows:
+    if: ${{ github.event_name == 'push' || inputs.build_windows }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      # Windows 端同样激活 setup-node 的 npm 原生缓存
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+          cache: 'npm'
+          cache-dependency-path: 'package-lock.json'
+      
+      # Windows 端同样显式安装 pnpm 供 openclaw 底层消费
+      - name: Install pnpm
+        run: npm install -g pnpm@10
+      
+      # 【优化：精准缓存】联合锁死 Windows 端 openclaw 调用 pnpm 时的全局缓存路径与本地目录
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~\AppData\Local\pnpm\Cache
+            vendor/openclaw-runtime
+            vendor/openclaw-plugins
+          key: openclaw-deps-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            openclaw-deps-${{ runner.os }}-
+      
+      # 若是 tag 触发，则在安装依赖前动态修改 package.json 的版本，确保打包后的版本与 tag 统一
+      - name: Sync version to package.json
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+          VERSION=${TAG_NAME#v}
+          npm version $VERSION --no-git-version-keyword --no-git-tag-version --allow-same-version || npm version $VERSION --no-git-tag-version --allow-same-version
+      
+      - run: npm install
+      
+      # Windows 需要 Python 运行时
+      - name: Setup Python Runtime
+        run: npm run setup:python-runtime
+        env:
+          LOBSTERAI_PORTABLE_PYTHON_ARCHIVE: ${{ secrets.WINDOWS_PYTHON_ARCHIVE }}
+
+      - name: Determine Windows Sign OSS Prefix
+        shell: bash
+        run: |
+          WIN_SIGN_OSS_PREFIX="heyclaw-dev/win-sign"
+          BRANCHES=$(git branch -r --contains HEAD || true)
+          echo "Branches containing current commit:"
+          echo "$BRANCHES"
+          if echo "$BRANCHES" | grep -qE "origin/main$|origin/main "; then
+            WIN_SIGN_OSS_PREFIX="heyclaw/win-sign"
+          fi
+          echo "Determined Windows Sign OSS Prefix: $WIN_SIGN_OSS_PREFIX"
+          echo "WIN_SIGN_OSS_PREFIX=$WIN_SIGN_OSS_PREFIX" >> $GITHUB_ENV
+
+      - name: Setup ossutil on Windows
+        shell: bash
+        run: |
+          echo "[Setup] Downloading official ossutil for Windows..."
+          curl -fSL --retry 3 "https://gosspublic.alicdn.com/ossutil/1.7.18/ossutil64.zip" -o ossutil64.zip || true
+          if [ -f ossutil64.zip ]; then
+            unzip -q -o ossutil64.zip || true
+            OSSUTIL_DIR=$(find . -maxdepth 1 -type d -name "ossutil64*" | head -n 1)
+            if [ -n "$OSSUTIL_DIR" ] && [ -d "$OSSUTIL_DIR" ]; then
+              FULL_PATH="$(pwd)/$OSSUTIL_DIR"
+              echo "$FULL_PATH" >> $GITHUB_PATH
+              echo "OSSUTIL_PATH=$FULL_PATH/ossutil64.exe" >> $GITHUB_ENV
+              echo "[Setup] Installed ossutil to PATH: $FULL_PATH"
+              "$FULL_PATH/ossutil64.exe" --version || true
+            fi
+          fi
+
+      - name: Build Windows
+        shell: bash
+        run: |
+          # 如果 WIN_CSC_LINK 既不是有效文件，其长度又明显不是 Base64 证书内容（小于 100 字符），则彻底注销环境变量
+          if [[ ! -f "$WIN_CSC_LINK" && ${#WIN_CSC_LINK} -lt 100 ]]; then
+            echo "[Codesign] 检测到 WIN_CSC_LINK 为无效占位符 (${WIN_CSC_LINK})，彻底注销签名环境变量以跳过签名。"
+            unset WIN_CSC_LINK
+            unset CSC_LINK
+            unset WIN_CSC_KEY_PASSWORD
+            unset CSC_KEY_PASSWORD
+          fi
+          npm run dist:win -- --publish never
+        env:
+          CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          WIN_SIGN_CERT_SHA1: ${{ secrets.WIN_SIGN_CERT_SHA1 }}
+          WIN_SIGN_SERVICE_URL: ${{ secrets.WIN_SIGN_SERVICE_URL }}
+          WIN_SIGN_SERVICE_SECRET: ${{ secrets.WIN_SIGN_SERVICE_SECRET }}
+          WIN_SIGN_OSS_PREFIX: ${{ env.WIN_SIGN_OSS_PREFIX }}
+          OSS_ENDPOINT: ${{ secrets.OSS_ENDPOINT }}
+          OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
+          OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+          OSS_BUCKET: ${{ secrets.OSS_BUCKET }}
+          # electron-builder 下载依赖超时保护（防止大文件下载导致 408）
+          ELECTRON_BUILDER_HTTP_TIMEOUT: 600000
+
+      
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-build
+          path: release/*.exe
+          retention-days: 7
+
   # ========== 创建 Release ==========
   create-release:
-    needs: [build-macos]
+    needs: [build-macos, build-windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -136,6 +254,7 @@ jobs:
           files: |
             artifacts/macos-build-arm64/*.dmg
             artifacts/macos-build-x64/*.dmg
+            artifacts/windows-build/*.exe
           draft: true
           prerelease: ${{ contains(github.ref, '-beta') || contains(github.ref, '-alpha') || contains(github.ref, '-rc') }}
           generate_release_notes: true
@@ -144,7 +263,7 @@ jobs:
 
   # ========== 自动部署到阿里云 OSS ==========
   deploy-to-oss:
-    needs: [build-macos]
+    needs: [build-macos, build-windows]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     steps:
@@ -181,11 +300,13 @@ jobs:
           # 创建准备 OSS 上传和大文件寻找的临时目录
           mkdir -p oss-dist
           find dist-files/ -type f -name "*.dmg" -exec cp {} oss-dist/ \;
+          find dist-files/ -type f -name "*.exe" -exec cp {} oss-dist/ \;
           
           # 提取当前 tag 的版本号
           TAG_NAME=${GITHUB_REF#refs/tags/}
           
           # 寻找对应的包文件名
+          WIN_FILE=$(cd oss-dist && ls *.exe | head -n 1)
           MAC_ARM64_FILE=$(cd oss-dist && ls *arm64*.dmg | head -n 1)
           MAC_X64_FILE=$(cd oss-dist && ls *x64*.dmg | head -n 1)
           
@@ -197,9 +318,11 @@ jobs:
             # 去除末尾斜杠
             CDN_PREFIX="${CDN_PREFIX%/}"
             # 使用动态决定的 OSS_PATH
+            WIN_URL="${CDN_PREFIX}/${{ env.OSS_PATH }}/${WIN_FILE}"
             MAC_ARM64_URL="${CDN_PREFIX}/${{ env.OSS_PATH }}/${MAC_ARM64_FILE}"
             MAC_X64_URL="${CDN_PREFIX}/${{ env.OSS_PATH }}/${MAC_X64_FILE}"
           else
+            WIN_URL="${WIN_FILE}"
             MAC_ARM64_URL="${MAC_ARM64_FILE}"
             MAC_X64_URL="${MAC_X64_FILE}"
           fi
@@ -210,6 +333,7 @@ jobs:
             "version": "${TAG_NAME}",
             "date": "$(date +'%Y-%m-%d')",
             "files": {
+              "windows": "${WIN_URL}",
               "mac_x64": "${MAC_X64_URL}",
               "mac_arm64": "${MAC_ARM64_URL}"
             }
