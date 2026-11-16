@@ -9,6 +9,7 @@ export interface AudioTtsOptions {
   text: string;
   outputPath?: string;
   speaker?: string;
+  language?: string;
   speedRatio?: number;
   loudnessRate?: number;
   enableSubtitle?: boolean;
@@ -90,6 +91,7 @@ export async function executeAudioTts(
     }>('/api/client/tts/synthesize', {
       text,
       speaker: options.speaker || 'zh_female_vv_uranus_bigtts',
+      language: options.language || undefined,
       format: targetFormat,
       sampleRate: 24000,
       speechRate: volcSpeechRate,

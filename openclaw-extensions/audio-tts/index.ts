@@ -11,6 +11,7 @@ type AudioTtsRequest = {
   text: string;
   outputPath?: string;
   speaker?: string;
+  language?: string;
   speedRatio?: number;
   loudnessRate?: number;
   enableSubtitle?: boolean;
@@ -98,11 +99,12 @@ const plugin = {
         name: 'heyclaw_audio_tts',
         label: 'Audio TTS',
         description:
-          '高品质文本转语音合成（TTS）工具。当需要将文案、台词、短视频旁白、演讲稿朗读并导出为高保真语音文件（MP3）时，调用本工具。支持字级别时间戳、调节语速与高自然度情感声线。',
+          '高品质文本转语音合成（TTS）工具。将文案、台词、旁白等文本转换为高保真语音音频（MP3），支持字级别时间戳与多语种发音。',
         parameters: Type.Object({
           text: Type.String({ description: '需要转换为语音的文本内容' }),
           outputPath: Type.Optional(Type.String({ description: '输出音频文件的绝对路径，若不指定则自动在系统生成目录生成 MP3 文件' })),
           speaker: Type.Optional(Type.String({ description: '音色ID，默认使用官方优质女声 zh_female_vv_uranus_bigtts' })),
+          language: Type.Optional(Type.String({ description: '语种代码（如 zh 中文、en 英语、ms 马来语等），用于指定特定语种发音' })),
           speedRatio: Type.Optional(Type.Number({ description: '语速比例，默认 1.0，范围 0.5 到 2.0' })),
           loudnessRate: Type.Optional(Type.Number({ description: '音量调节，默认 0，范围 -50 到 100' })),
           enableSubtitle: Type.Optional(Type.Boolean({ description: '是否生成字级别时间戳，默认 true' })),
@@ -121,6 +123,7 @@ const plugin = {
             text,
             outputPath: typeof params?.outputPath === 'string' ? params.outputPath.trim() : undefined,
             speaker: typeof params?.speaker === 'string' ? params.speaker.trim() : undefined,
+            language: typeof params?.language === 'string' ? params.language.trim() : undefined,
             speedRatio: typeof params?.speedRatio === 'number' ? params.speedRatio : undefined,
             loudnessRate: typeof params?.loudnessRate === 'number' ? params.loudnessRate : undefined,
             enableSubtitle: typeof params?.enableSubtitle === 'boolean' ? params.enableSubtitle : undefined,
