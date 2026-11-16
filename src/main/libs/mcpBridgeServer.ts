@@ -704,18 +704,20 @@ export class McpBridgeServer {
         text?: string;
         outputPath?: string;
         speaker?: string;
+        language?: string;
         speedRatio?: number;
         loudnessRate?: number;
         enableSubtitle?: boolean;
         sessionKey?: string;
         toolCallId?: string;
       };
-      log('INFO', `Audio TTS request received: textLength=${payload.text?.length ?? 0} speaker="${payload.speaker ?? ''}" toolCallId=${payload.toolCallId ?? ''}`);
+      log('INFO', `Audio TTS request received: textLength=${payload.text?.length ?? 0} speaker="${payload.speaker ?? ''}" language="${payload.language ?? ''}" toolCallId=${payload.toolCallId ?? ''}`);
 
       const result = await executeAudioTts({
         text: typeof payload.text === 'string' ? payload.text : '',
         outputPath: typeof payload.outputPath === 'string' ? payload.outputPath : undefined,
         speaker: typeof payload.speaker === 'string' ? payload.speaker : undefined,
+        language: typeof payload.language === 'string' ? payload.language : undefined,
         speedRatio: typeof payload.speedRatio === 'number' ? payload.speedRatio : undefined,
         loudnessRate: typeof payload.loudnessRate === 'number' ? payload.loudnessRate : undefined,
         enableSubtitle: typeof payload.enableSubtitle === 'boolean' ? payload.enableSubtitle : undefined,
