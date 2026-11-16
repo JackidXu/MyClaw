@@ -22,9 +22,12 @@ import BuiltinExpertsSection from './BuiltinExpertsSection';
 export interface PresetAgent {
   id: string;
   name: string;
+  nameEn?: string;
   avatar?: string;
   description: string;
+  descriptionEn?: string;
   identity?: string;
+  identityEn?: string;
   level?: '高级' | '中级' | '初级';
   department?: string;
   author?: string;
@@ -47,6 +50,8 @@ interface ExpertsViewProps {
   initialTab?: 'teams' | 'experts' | 'skills' | 'mcp';
 }
 
+const ALL_DEPT_KEY = '__ALL__';
+
 const ExpertsView: React.FC<ExpertsViewProps> = ({
   isSidebarCollapsed,
   onToggleSidebar,
@@ -54,7 +59,7 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
   updateBadge,
   initialTab = 'teams',
 }) => {
-  const [selectedDept, setSelectedDept] = useState('全部');
+  const [selectedDept, setSelectedDept] = useState(ALL_DEPT_KEY);
   const [searchQuery, setSearchQuery] = useState('');
   const [presets, setPresets] = useState<PresetAgent[]>([]);
   const [expertTeams, setExpertTeams] = useState<ExpertTeam[]>([]);
@@ -66,7 +71,7 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
 
   useEffect(() => {
     setActiveTab(initialTab);
-    setSelectedDept('全部');
+    setSelectedDept(ALL_DEPT_KEY);
     setSearchQuery('');
   }, [initialTab]);
 
@@ -152,7 +157,7 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
       }
     });
     const result = Array.from(set);
-    return result.length > 0 ? ['全部', ...result] : [];
+    return result.length > 0 ? [ALL_DEPT_KEY, ...result] : [];
   }, [activeTab, expertSubTab, presets]);
 
   // 自定义专家过滤
@@ -239,7 +244,7 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
                 type="button"
                 onClick={onToggleSidebar}
                 className="h-8 w-8 inline-flex items-center justify-center rounded-lg text-secondary hover:bg-surface-raised transition-colors"
-                title="展开侧边栏"
+                title={i18nService.t('expand')}
               >
                 <SidebarToggleIcon className="h-4 w-4" isCollapsed={true} />
               </button>
@@ -247,7 +252,7 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
                 type="button"
                 onClick={() => onNewChat?.()}
                 className="h-8 w-8 inline-flex items-center justify-center rounded-lg text-secondary hover:bg-surface-raised transition-colors"
-                title="新建对话"
+                title={i18nService.t('newChat')}
               >
                 <ComposeIcon className="h-4 w-4" />
               </button>
@@ -261,7 +266,7 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
               : activeTab === 'experts'
               ? i18nService.t('expertTabExperts')
               : activeTab === 'skills'
-              ? '技能库'
+              ? i18nService.t('sidebarSkillsLibrary')
               : 'MCP'}
           </h1>
         </div>
@@ -272,7 +277,7 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
             <div className="relative">
               <input
                 type="text"
-                placeholder={activeTab === 'teams' ? '搜索专家团...' : '搜索专家...'}
+                placeholder={activeTab === 'teams' ? i18nService.t('expertsSearchTeamsPlaceholder') : i18nService.t('expertsSearchExpertsPlaceholder')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-64 pl-8 pr-3 py-1.5 rounded-lg border border-border bg-surface text-xs focus:outline-none focus:ring-1 focus:ring-primary/40 focus:border-primary"
@@ -300,7 +305,7 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
                 <svg className="h-3.5 w-3.5 text-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
-                <span>创建专家</span>
+                <span>{i18nService.t('expertsCreateExpert')}</span>
               </button>
             )}
           </div>
@@ -313,7 +318,7 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
           <div className="flex bg-secondary/10 p-0.5 rounded-lg w-fit select-none">
             <button
               type="button"
-              onClick={() => { setExpertSubTab('preset'); setSelectedDept('全部'); }}
+              onClick={() => { setExpertSubTab('preset'); setSelectedDept(ALL_DEPT_KEY); }}
               className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
                 expertSubTab === 'preset'
                   ? 'bg-surface text-foreground shadow-xs'
@@ -327,7 +332,7 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
             </button>
             <button
               type="button"
-              onClick={() => { setExpertSubTab('custom'); setSelectedDept('全部'); }}
+              onClick={() => { setExpertSubTab('custom'); setSelectedDept(ALL_DEPT_KEY); }}
               className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
                 expertSubTab === 'custom'
                   ? 'bg-surface text-foreground shadow-xs'
@@ -358,7 +363,7 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
                           : 'bg-surface-raised hover:bg-secondary/10 text-secondary hover:text-foreground'
                       }`}
                     >
-                      {dept}
+                      {dept === ALL_DEPT_KEY ? i18nService.t('expertsDeptAll') : dept}
                     </button>
                   );
                 })}
@@ -420,7 +425,7 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
               /* ── 我的（自定义）专家列表 ── */
               filteredCustom.length === 0 ? (
                 <div className="flex h-64 flex-col items-center justify-center text-secondary">
-                  <p className="text-sm font-medium">还没有自定义专家</p>
+                  <p className="text-sm font-medium">{i18nService.t('expertsNoCustomExperts')}</p>
                   <button
                     type="button"
                     onClick={() => setIsCreateOpen(true)}
@@ -429,7 +434,7 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
                     <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                     </svg>
-                    创建第一个专家
+                    {i18nService.t('expertsCreateFirstExpert')}
                   </button>
                 </div>
               ) : (
@@ -443,9 +448,9 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
                       +
                     </div>
                     <div className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">
-                      新增专家
+                      {i18nService.t('expertsAddExpertCard')}
                     </div>
-                    <div className="text-xs text-secondary">创建属于你自己的专属专家</div>
+                    <div className="text-xs text-secondary">{i18nService.t('expertsAddExpertCardDesc')}</div>
                   </div>
 
                   {filteredCustom.map((expert) => (
@@ -468,56 +473,61 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
       )}
 
       {/* 专家团详情弹窗（仅点击专家团卡片打开） */}
-      {selectedTeamDetail && (
-        <Modal
-          isOpen={true}
-          onClose={() => setSelectedTeamDetail(null)}
-          className="w-[620px] max-w-[92vw] max-h-[86vh] bg-surface border border-border p-6 rounded-2xl shadow-xl overflow-y-auto animate-in fade-in zoom-in-95 duration-200"
-        >
-          <div className="flex items-start gap-4 pr-6 pb-5 border-b border-border/60">
-            <AgentAvatarIcon
-              avatar={selectedTeamDetail.avatar}
-              className="h-16 w-16 rounded-full shadow-xs shrink-0 ring-2 ring-background ring-offset-2"
-            />
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <h2 className="text-lg font-bold text-foreground truncate">
-                  {selectedTeamDetail.name}
-                </h2>
-                <span className="text-[10px] font-bold text-white bg-amber-500 px-2 py-0.5 rounded-full">
-                  专家团
-                </span>
-              </div>
-              <div className="text-xs text-secondary mt-1">
-                {!!selectedTeamDetail.author && <>作者 · {selectedTeamDetail.author}</>}
-                {selectedTeamDetail.usesCount && (
-                  <span className="ml-3">{selectedTeamDetail.usesCount} 次使用</span>
-                )}
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => handleStartWork(selectedTeamDetail)}
-              disabled={hiringId !== null}
-              className="px-5 py-2.5 rounded-xl bg-foreground text-background text-xs font-bold hover:opacity-90 active:scale-95 transition-all cursor-pointer shrink-0 disabled:opacity-50"
-            >
-              {hiringId === selectedTeamDetail.id ? (
-                <div className="animate-spin rounded-full h-4 w-4 border-2 border-background border-t-transparent"></div>
-              ) : (
-                '🪄 召唤专家团'
-              )}
-            </button>
-          </div>
+      {selectedTeamDetail && (() => {
+        const isEn = i18nService.getLanguage() === 'en';
+        const modalTeamName = (isEn && selectedTeamDetail.nameEn) ? selectedTeamDetail.nameEn : selectedTeamDetail.name;
+        const modalTeamDesc = (isEn && selectedTeamDetail.descriptionEn) ? selectedTeamDetail.descriptionEn : selectedTeamDetail.description;
 
-          <div className="py-5 space-y-5">
-            <div>
-              <div className="text-xs font-bold text-amber-600 tracking-wider uppercase mb-1.5">
-                团队技能定位
+        return (
+          <Modal
+            isOpen={true}
+            onClose={() => setSelectedTeamDetail(null)}
+            className="w-[620px] max-w-[92vw] max-h-[86vh] bg-surface border border-border p-6 rounded-2xl shadow-xl overflow-y-auto animate-in fade-in zoom-in-95 duration-200"
+          >
+            <div className="flex items-start gap-4 pr-6 pb-5 border-b border-border/60">
+              <AgentAvatarIcon
+                avatar={selectedTeamDetail.avatar}
+                className="h-16 w-16 rounded-full shadow-xs shrink-0 ring-2 ring-background ring-offset-2"
+              />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-lg font-bold text-foreground truncate">
+                    {modalTeamName}
+                  </h2>
+                  <span className="text-[10px] font-bold text-white bg-amber-500 px-2 py-0.5 rounded-full">
+                    {i18nService.t('expertsTeamBadge')}
+                  </span>
+                </div>
+                <div className="text-xs text-secondary mt-1">
+                  {!!selectedTeamDetail.author && <>{i18nService.t('expertsAuthorPrefix', { author: selectedTeamDetail.author })}</>}
+                  {selectedTeamDetail.usesCount && (
+                    <span className="ml-3">{i18nService.t('expertsUsesCount', { count: selectedTeamDetail.usesCount })}</span>
+                  )}
+                </div>
               </div>
-              <p className="text-sm text-foreground/90 leading-relaxed text-justify">
-                {selectedTeamDetail.description}
-              </p>
+              <button
+                type="button"
+                onClick={() => handleStartWork(selectedTeamDetail)}
+                disabled={hiringId !== null}
+                className="px-5 py-2.5 rounded-xl bg-foreground text-background text-xs font-bold hover:opacity-90 active:scale-95 transition-all cursor-pointer shrink-0 disabled:opacity-50"
+              >
+                {hiringId === selectedTeamDetail.id ? (
+                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-background border-t-transparent"></div>
+                ) : (
+                  i18nService.t('expertsSummonTeamModalButton')
+                )}
+              </button>
             </div>
+
+            <div className="py-5 space-y-5">
+              <div>
+                <div className="text-xs font-bold text-amber-600 tracking-wider uppercase mb-1.5">
+                  {i18nService.t('expertsTeamSkillPosition')}
+                </div>
+                <p className="text-sm text-foreground/90 leading-relaxed text-justify">
+                  {modalTeamDesc}
+                </p>
+              </div>
 
             {/* 标签 */}
             {selectedTeamDetail.tags && selectedTeamDetail.tags.length > 0 && (
@@ -537,7 +547,7 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
             {selectedTeamDetail.helps && selectedTeamDetail.helps.length > 0 && (
               <div>
                 <div className="text-xs font-bold text-foreground border-l-2 border-amber-500 pl-2 mb-2">
-                  专家帮你做
+                  {i18nService.t('expertsExpertHelpYou')}
                 </div>
                 <div className="space-y-2">
                   {selectedTeamDetail.helps.map((item: string, idx: number) => (
@@ -568,7 +578,7 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
               return (
                 <div>
                   <div className="text-xs font-bold text-foreground flex items-center gap-1.5 mb-2.5">
-                    <span>👥 团队协同专家阵容</span>
+                    <span>{i18nService.t('expertsTeamMembers')}</span>
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
                     {teamMembers.map((member, idx) => (
@@ -584,11 +594,11 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
                           <div className="text-xs font-semibold text-foreground truncate flex items-center gap-1">
                             <span>{member.name}</span>
                             {idx === 0 && (
-                              <span className="text-[9px] bg-amber-500 text-white px-1 py-0.2 rounded-xs font-normal">主理</span>
+                              <span className="text-[9px] bg-amber-500 text-white px-1 py-0.2 rounded-xs font-normal">{i18nService.t('expertsLeadExpertBadge')}</span>
                             )}
                           </div>
                           <div className="text-[10px] text-secondary truncate">
-                            {member.department || '内置专家'}
+                            {member.department || i18nService.t('expertsBuiltinExpertDept')}
                           </div>
                         </div>
                       </div>
@@ -599,7 +609,8 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
             })()}
           </div>
         </Modal>
-      )}
+      );
+    })()}
 
       {/* 创建专家弹窗 */}
       <AgentCreateModal
@@ -625,7 +636,7 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
           </svg>
         </div>
-        <h3 className="text-sm font-semibold text-foreground mb-1">确定要删除该自定义专家吗？</h3>
+        <h3 className="text-sm font-semibold text-foreground mb-1">{i18nService.t('expertsDeleteConfirmTitle')}</h3>
         <p className="text-xs text-secondary mb-5 max-w-[240px] truncate">
           {agentToDelete?.name}
         </p>
@@ -635,7 +646,7 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
             onClick={() => setAgentToDelete(null)}
             className="flex-1 py-1.5 rounded-lg border border-border bg-surface text-foreground text-xs font-medium hover:bg-secondary/10 active:bg-secondary/15 transition-colors cursor-pointer"
           >
-            取消
+            {i18nService.t('cancel')}
           </button>
           <button
             type="button"
@@ -655,7 +666,7 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
             }}
             className="flex-1 py-1.5 rounded-lg bg-red-500 text-white text-xs font-medium hover:bg-red-600 active:bg-red-700 transition-colors cursor-pointer"
           >
-            确定删除
+            {i18nService.t('expertsConfirmDeleteAction')}
           </button>
         </div>
       </Modal>
@@ -672,6 +683,9 @@ const HeroTeamCard: React.FC<{
   onStartWork: (team: ExpertTeam) => void;
   onClick: () => void;
 }> = ({ team, presetExperts, hiringId, onStartWork, onClick }) => {
+  const isEn = i18nService.getLanguage() === 'en';
+  const teamName = (isEn && team.nameEn) ? team.nameEn : team.name;
+  const teamDesc = (isEn && team.descriptionEn) ? team.descriptionEn : team.description;
   const allowAgentIds = team.subagentAllowAgentIds || [];
   const teamMembers = allowAgentIds
     .map((agentId) => presetExperts.find((e) => e.id === agentId))
@@ -686,9 +700,9 @@ const HeroTeamCard: React.FC<{
     >
       {/* 头部标题与专家团Badge */}
       <div className="flex items-center justify-between gap-2">
-        <h3 className="text-base font-extrabold text-foreground tracking-wide">{team.name}</h3>
+        <h3 className="text-base font-extrabold text-foreground tracking-wide">{teamName}</h3>
         <span className="text-[10px] font-bold text-white bg-amber-500 px-2 py-0.5 rounded-full">
-          专家团
+          {i18nService.t('expertsTeamBadge')}
         </span>
       </div>
 
@@ -713,7 +727,7 @@ const HeroTeamCard: React.FC<{
               </div>
             )}
             <div className="text-[11px] opacity-95 mt-1 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-white/15 border border-white/30 font-medium">
-              查看示例 →
+              {i18nService.t('expertsViewExampleLink')}
             </div>
           </div>
         </div>
@@ -734,30 +748,30 @@ const HeroTeamCard: React.FC<{
             </div>
           )}
           {memberCount > 0 && (
-            <span className="font-semibold text-foreground">{memberCount} 位协同专家</span>
+            <span className="font-semibold text-foreground">{i18nService.t('expertsCollabMembersCount', { count: memberCount })}</span>
           )}
         </div>
-        {team.usesCount && <span>{team.usesCount}次使用</span>}
+        {team.usesCount && <span>{i18nService.t('expertsUsesCount', { count: team.usesCount })}</span>}
       </div>
 
       {/* 作者 */}
       {team.author && (
         <div className="text-xs text-secondary px-0.5">
-          作者 · <b className="text-foreground font-semibold">{team.author}</b>
+          {i18nService.t('expertsAuthorPrefix', { author: team.author })}
         </div>
       )}
 
       {/* 技能描述 */}
       <div className="px-0.5 flex-1">
-        <div className="text-[11px] font-bold text-amber-500 tracking-wider mb-1">技能描述</div>
+        <div className="text-[11px] font-bold text-amber-500 tracking-wider mb-1">{i18nService.t('expertsSkillDescriptionTitle')}</div>
         <p className="text-xs text-secondary/90 leading-relaxed line-clamp-2 text-justify">
-          {team.description}
+          {teamDesc}
         </p>
       </div>
 
       {/* 查看作者示例链接 */}
       <div className="text-xs font-semibold text-amber-500 hover:opacity-80 transition-opacity px-0.5 flex items-center gap-1">
-        查看作者示例效果 →
+        {i18nService.t('expertsViewAuthorResultLink')}
       </div>
 
       {/* 召唤专家团按钮 */}
@@ -773,7 +787,7 @@ const HeroTeamCard: React.FC<{
         {hiringId === team.id ? (
           <div className="animate-spin rounded-full h-4 w-4 border-2 border-background border-t-transparent"></div>
         ) : (
-          '召唤专家团'
+          i18nService.t('expertsSummonTeamCardButton')
         )}
       </button>
     </div>
@@ -819,11 +833,11 @@ const PrototypeExpertCard: React.FC<{
               </h4>
               {!isCustom ? (
                 <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/50 border border-amber-200/80 dark:border-amber-900 px-1.5 py-0.2 rounded-full shrink-0">
-                  官方
+                  {i18nService.t('expertsOfficialBadge')}
                 </span>
               ) : (
                 <span className="text-[10px] font-semibold text-blue-600 bg-blue-50 border border-blue-200 px-1.5 py-0.2 rounded-full shrink-0">
-                  自定义
+                  {i18nService.t('expertsCustomBadge')}
                 </span>
               )}
             </div>
@@ -838,7 +852,7 @@ const PrototypeExpertCard: React.FC<{
               disabled={hiringId !== null}
               className="opacity-0 group-hover:opacity-100 transition-opacity px-3 py-1 rounded-full bg-foreground text-background text-xs font-semibold hover:opacity-90 active:scale-95 shrink-0 cursor-pointer disabled:opacity-50"
             >
-              {hiringId === expert.id ? '...' : (isSummoned ? '对话' : '召唤')}
+              {hiringId === expert.id ? '...' : (isSummoned ? i18nService.t('expertsChatAction') : i18nService.t('expertsSummonAction'))}
             </button>
           </div>
 
@@ -847,15 +861,15 @@ const PrototypeExpertCard: React.FC<{
             {isSummoned ? (
               <span className="inline-flex items-center gap-1.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                已召唤
+                {i18nService.t('expertsSummonedStatus')}
               </span>
             ) : (
               <span className="inline-flex items-center gap-1.5 text-[10px] font-medium text-secondary bg-surface-raised border border-border/50 px-2 py-0.5 rounded-full">
                 <span className="w-1.5 h-1.5 rounded-full bg-secondary/40"></span>
-                未召唤
+                {i18nService.t('expertsNotSummonedStatus')}
               </span>
             )}
-            {!!author && <span>作者 · {author}</span>}
+            {!!author && <span>{i18nService.t('expertsAuthorPrefix', { author })}</span>}
           </div>
         </div>
 
@@ -896,14 +910,14 @@ const PrototypeExpertCard: React.FC<{
                   type="button"
                   onClick={(e) => { e.stopPropagation(); onEdit(); }}
                   className="w-full text-left px-3 py-1.5 text-xs text-foreground hover:bg-secondary/15 transition-colors cursor-pointer font-medium"
-                >编辑</button>
+                >{i18nService.t('edit')}</button>
               )}
               {onDelete && (
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); onDelete(); }}
                   className="w-full text-left px-3 py-1.5 text-xs text-red-500 hover:bg-red-50 transition-colors cursor-pointer font-medium"
-                >删除</button>
+                >{i18nService.t('delete')}</button>
               )}
             </div>
           </div>

@@ -104,7 +104,7 @@ const DiscordInstanceSettings: React.FC<DiscordInstanceSettingsProps> = ({
   onTestConnectivity,
   testingPlatform,
   connectivityResults,
-  language,
+  language: _language,
   headerLeading,
 }) => {
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
@@ -441,7 +441,7 @@ const DiscordInstanceSettings: React.FC<DiscordInstanceSettingsProps> = ({
           {/* Per-Guild Settings */}
           <div className="space-y-1.5">
             <label className="block text-xs font-medium text-secondary">
-              {language === 'zh' ? 'Guild 独立配置' : 'Per-Guild Settings'}
+              {i18nService.t('imPerGuildSettings')}
             </label>
             <div className="flex gap-2">
               <input
@@ -516,7 +516,7 @@ const DiscordInstanceSettings: React.FC<DiscordInstanceSettingsProps> = ({
                     {/* Guild-level systemPrompt */}
                     <div className="space-y-1">
                       <label className="text-xs text-secondary">
-                        {language === 'zh' ? '系统提示词' : 'System Prompt'}
+                        {i18nService.t('imGuildSystemPrompt')}
                       </label>
                       <textarea
                         value={guildCfg.systemPrompt ?? ''}
@@ -528,7 +528,7 @@ const DiscordInstanceSettings: React.FC<DiscordInstanceSettingsProps> = ({
                         onBlur={() => void onSave()}
                         rows={2}
                         className="block w-full rounded-lg bg-surface border-border-subtle border focus:border-primary focus:ring-1 focus:ring-primary/30 text-foreground px-3 py-2 text-xs transition-colors resize-y"
-                        placeholder={language === 'zh' ? '该 Guild 专属系统提示词（可选）' : 'Custom system prompt for this guild (optional)'}
+                        placeholder={i18nService.t('imGuildSystemPromptPlaceholder')}
                       />
                     </div>
                   </div>

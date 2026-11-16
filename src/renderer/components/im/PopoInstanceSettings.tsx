@@ -106,7 +106,7 @@ const PopoInstanceSettings: React.FC<PopoInstanceSettingsProps> = ({
   onTestConnectivity,
   testingPlatform,
   connectivityResults,
-  language,
+  language: _language,
   headerLeading,
 }) => {
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
@@ -204,7 +204,7 @@ const PopoInstanceSettings: React.FC<PopoInstanceSettingsProps> = ({
             <span
               className="text-sm font-medium text-foreground cursor-pointer hover:text-primary transition-colors truncate border-b border-dashed border-gray-400 dark:border-secondary/50 hover:border-primary pb-px"
               onClick={() => setEditingName(true)}
-              title={language === 'zh' ? '点击重命名' : 'Click to rename'}
+              title={i18nService.t('imClickToRename')}
             >
               {instance.instanceName}
             </span>
@@ -339,7 +339,7 @@ const PopoInstanceSettings: React.FC<PopoInstanceSettingsProps> = ({
         </div>
         {instance.aesKey && instance.aesKey.length !== 32 && (
           <p className="text-xs text-amber-500">
-            AES Key {language === 'zh' ? '需要为 32 个字符' : 'must be 32 characters'}（{language === 'zh' ? '当前' : 'current'} {instance.aesKey.length}）
+            AES Key {i18nService.t('imAesKeyLengthNotice')}（{i18nService.t('imCurrentCharsNotice', { length: instance.aesKey.length })}）
           </p>
         )}
       </div>
@@ -503,7 +503,7 @@ const PopoInstanceSettings: React.FC<PopoInstanceSettingsProps> = ({
             </div>
             {instance.aesKey && instance.aesKey.length !== 32 && (
               <p className="text-xs text-amber-500">
-                AES Key {language === 'zh' ? '需要为 32 个字符' : 'must be 32 characters'}（{language === 'zh' ? '当前' : 'current'} {instance.aesKey.length}）
+                AES Key {i18nService.t('imAesKeyLengthNotice')}（{i18nService.t('imCurrentCharsNotice', { length: instance.aesKey.length })}）
               </p>
             )}
           </div>

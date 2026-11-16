@@ -39,7 +39,7 @@ const WecomInstanceSettings: React.FC<WecomInstanceSettingsProps> = ({
   quickSetupError,
   testingPlatform,
   connectivityResults,
-  language,
+  language: _language,
   renderPairingSection,
   headerLeading,
 }) => {
@@ -90,7 +90,7 @@ const WecomInstanceSettings: React.FC<WecomInstanceSettingsProps> = ({
             <span
               className="text-sm font-medium text-foreground cursor-pointer hover:text-primary transition-colors truncate border-b border-dashed border-gray-400 dark:border-secondary/50 hover:border-primary pb-px"
               onClick={() => setEditingName(true)}
-              title={language === 'zh' ? '点击重命名' : 'Click to rename'}
+              title={i18nService.t('imClickToRename')}
             >
               {instance.instanceName}
             </span>
@@ -383,7 +383,7 @@ const WecomInstanceSettings: React.FC<WecomInstanceSettingsProps> = ({
                     }
                   }}
                   className="block flex-1 rounded-lg bg-surface border-border-subtle border focus:border-primary focus:ring-1 focus:ring-primary/30 text-foreground px-3 py-2 text-sm transition-colors"
-                  placeholder={language === 'zh' ? '输入群ID' : 'Enter Group ID'}
+                  placeholder={i18nService.t('imEnterGroupIdPlaceholder')}
                 />
                 <button
                   type="button"

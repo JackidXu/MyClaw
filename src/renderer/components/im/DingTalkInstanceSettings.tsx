@@ -135,7 +135,7 @@ const DingTalkInstanceSettings: React.FC<DingTalkInstanceSettingsProps> = ({
   onTestConnectivity,
   testingPlatform,
   connectivityResults,
-  language,
+  language: _language,
   headerLeading,
 }) => {
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
@@ -214,7 +214,7 @@ const DingTalkInstanceSettings: React.FC<DingTalkInstanceSettingsProps> = ({
     } catch (err: unknown) {
       if (!isMountedRef.current) return;
       setQrStatus('error');
-      setQrError((err instanceof Error ? err.message : undefined) || '获取二维码失败');
+      setQrError((err instanceof Error ? err.message : undefined) || i18nService.t('imFetchQrCodeFailed'));
     }
   };
 
@@ -257,7 +257,7 @@ const DingTalkInstanceSettings: React.FC<DingTalkInstanceSettingsProps> = ({
             <span
               className="text-sm font-medium text-foreground cursor-pointer hover:text-primary transition-colors truncate border-b border-dashed border-gray-400 dark:border-secondary/50 hover:border-primary pb-px"
               onClick={() => setEditingName(true)}
-              title={language === 'zh' ? '点击重命名' : 'Click to rename'}
+              title={i18nService.t('imClickToRename')}
             >
               {instance.instanceName}
             </span>

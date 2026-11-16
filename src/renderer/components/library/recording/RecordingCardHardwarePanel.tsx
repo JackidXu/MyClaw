@@ -14,6 +14,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import type { LocalRecordingItem } from '../../../../shared/recordingCard/localRecording';
 import { LocalRecordingStatus } from '../../../../shared/recordingCard/localRecording';
 import { copyTextToClipboard } from '../../../services/clipboard';
+import { i18nService } from '../../../services/i18n';
 import { wrapRawOpusToOgg } from '../../../services/oggOpusEncoder';
 import * as recordingCardBle from '../../../services/recordingCardBle';
 import Modal from '../../common/Modal';
@@ -193,7 +194,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
       });
 
       setBleDevice({
-        name: handshakeInfo.deviceName || 'HeyClaw 录音卡',
+        name: handshakeInfo.deviceName || i18nService.t('recordingCardDefaultDeviceName'),
         sn: handshakeInfo.sn,
         battery: handshakeInfo.battery,
         freeKb: handshakeInfo.freeKb,
@@ -204,7 +205,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
         wifiConnected: false,
       });
 
-      onShowToast('success', '录音卡蓝牙连接成功，正在读取录音列表…');
+      onShowToast('success', i18nService.t('recordingCardConnectSuccessToast'));
       await loadBleFilesViaBle();
     } catch (err: any) {
       const rawMsg = err?.message || String(err);
@@ -213,8 +214,8 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
         rawMsg.includes('no device') ||
         rawMsg.includes('NotFound');
       const tip = isScanTimeout
-        ? '未搜索到录音卡蓝牙信号。若设备刚结束传输，正在重启蓝牙广播，请稍候片刻再试'
-        : `连接录音卡失败: ${rawMsg || '请确认蓝牙已开启并靠近设备'}`;
+        ? i18nService.t('recordingCardScanFailedToast')
+        : i18nService.t('recordingCardConnectFailedToast', { msg: rawMsg || '' });
       onShowToast('error', tip);
     } finally {
       setBleConnecting(false);
@@ -238,7 +239,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
       setBleFiles(list);
       setBleFilesPage(1);
     } catch (err: any) {
-      onShowToast('error', `获取录音卡文件列表失败: ${err?.message || '未知错误'}`);
+      onShowToast('error', i18nService.t('recordingCardFetchFilesFailedToast', { msg: err?.message || '' }));
     } finally {
       setBleLoadingFiles(false);
     }
@@ -251,7 +252,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
     }
     setBleDevice(null);
     setBleFiles([]);
-    onShowToast('info', '已断开录音卡连接');
+    onShowToast('info', i18nService.t('recordingCardDisconnectedToast'));
   };
 
   // 解除绑定
@@ -262,9 +263,9 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
       setBleDevice(null);
       setBleFiles([]);
       setShowUnbindModal(false);
-      onShowToast('success', '已解除录音卡设备绑定');
+      onShowToast('success', i18nService.t('recordingCardUnboundToast'));
     } catch (err: any) {
-      onShowToast('error', `解除绑定失败: ${err?.message || err}`);
+      onShowToast('error', i18nService.t('recordingCardUnbindFailedToast', { msg: err?.message || String(err) }));
     }
   };
 
@@ -312,7 +313,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
 
       const res = await window.electron.recordingCardWifi.downloadFile(file.file);
       if (!res.success || !res.data) {
-        throw new Error(res.error || '下载文件数据为空');
+        throw new Error(res.error || i18nService.t('recordingCardEmptyFileError'));
       }
       setSyncProgress(prev => ({ ...prev, [file.name]: 96 }));
 
@@ -335,7 +336,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
       const saveFilename = `${base}.ogg`;
       const saveRes = await window.electron.localRecordings?.saveAudioFile?.(saveFilename, oggBuffer);
       if (!saveRes?.success || !saveRes.data) {
-        throw new Error(saveRes?.error || '保存音频文件至本地失败');
+        throw new Error(saveRes?.error || i18nService.t('recordingCardSaveAudioLocalFailed'));
       }
 
       // 5. 写入本地 SQLite 表
@@ -361,13 +362,13 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
 
       await window.electron.localRecordings?.upsertRecord?.(newItem);
       setSyncProgress(prev => ({ ...prev, [file.name]: 100 }));
-      onShowToast('success', `录音「${base}」已成功转存到本机，可开始转写！`);
+      onShowToast('success', i18nService.t('recordingCardSaveSingleSuccessToast', { name: base }));
       await onLocalRecordingsChanged();
     } catch (err: any) {
       if (!wifiClosed) {
         await handleCloseWifi();
       }
-      onShowToast('error', `转存失败: ${err?.message || err}`);
+      onShowToast('error', i18nService.t('recordingCardSaveFailedToast', { msg: err?.message || String(err) }));
     } finally {
       if (removeProgressListener) {
         removeProgressListener();
@@ -460,13 +461,13 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
         }
       }
 
-      onShowToast('success', `批量转存完成，已成功转存 ${successCount} 条录音到本机！`);
+      onShowToast('success', i18nService.t('recordingCardBatchSaveSuccessToast', { count: successCount }));
       await onLocalRecordingsChanged();
     } catch (err: any) {
       if (!wifiClosed) {
         await handleCloseWifi();
       }
-      onShowToast('error', `批量转存异常: ${err?.message || err}`);
+      onShowToast('error', i18nService.t('recordingCardBatchSaveExceptionToast', { msg: err?.message || String(err) }));
     } finally {
       if (removeProgressListener) {
         removeProgressListener();
@@ -502,7 +503,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
           try {
             await recordingCardBle.reconnect(2, 1000);
           } catch {
-            throw new Error('录音卡蓝牙连接已中断，请检查设备是否开启或重新连接');
+            throw new Error(i18nService.t('recordingCardBleInterruptedError'));
           }
         }
         await recordingCardBle.openWifi();
@@ -513,7 +514,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
         setShowWifiSyncModal(false);
         isWifiFlowRunningRef.current = false;
         pendingSyncActionRef.current = null;
-        onShowToast('error', `唤醒录音卡 Wi-Fi 失败: ${err?.message || err}`);
+        onShowToast('error', i18nService.t('recordingCardWakeWifiFailedToast', { msg: err?.message || String(err) }));
         return;
       } finally {
         setOpeningWifiAp(false);
@@ -541,7 +542,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
     try {
       const autoRes = await window.electron.recordingCardWifi.autoConnect(ssid, password);
       if (!autoRes.success) {
-        throw new Error(autoRes.error || '系统连接录音卡 Wi-Fi 超时');
+        throw new Error(autoRes.error || i18nService.t('recordingCardWifiConnectTimeoutError'));
       }
 
       const socketDeadline = Date.now() + 16000;
@@ -563,7 +564,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
       }
 
       if (!socketConnected) {
-        throw new Error(lastSocketErr || 'Wi-Fi 关联或录音卡 Socket 通道未就绪');
+        throw new Error(lastSocketErr || i18nService.t('recordingCardWifiSocketNotReadyError'));
       }
 
       isWifiFlowRunningRef.current = false;
@@ -609,7 +610,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
       }
 
       if (!socketConnected) {
-        throw new Error(lastSocketErr || '建立 Wi-Fi 同步连接失败');
+        throw new Error(lastSocketErr || i18nService.t('recordingCardWifiSyncConnectFailedError'));
       }
 
       isWifiFlowRunningRef.current = false;
@@ -623,7 +624,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
       }
     } catch (err: any) {
       isWifiFlowRunningRef.current = false;
-      onShowToast('error', `建立连接失败: ${err?.message || err}`);
+      onShowToast('error', i18nService.t('recordingCardEstablishConnectionFailedToast', { msg: err?.message || String(err) }));
     } finally {
       setWifiConnecting(false);
     }
@@ -647,9 +648,9 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
     try {
       const ok = await recordingCardBle.deleteFileFromDevice(file.name);
       if (!ok) {
-        throw new Error('录音卡拒绝删除或响应失败');
+        throw new Error(i18nService.t('recordingCardHardwareDeleteRefusedError'));
       }
-      onShowToast('success', `录音卡内文件「${file.name}」已永久删除`);
+      onShowToast('success', i18nService.t('recordingCardHardwareFileDeletedToast', { name: file.name }));
       // 从当前列表移除
       setBleFiles(prev => prev.filter(f => f.name !== file.name));
       // 自动刷新硬件存储容量
@@ -660,7 +661,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
         // 容量刷新失败不影响删除结果
       }
     } catch (err: any) {
-      onShowToast('error', `删除卡内文件失败: ${err?.message || err}`);
+      onShowToast('error', i18nService.t('recordingCardDeleteHardwareFileFailedToast', { msg: err?.message || String(err) }));
     } finally {
       setDeletingFileName(null);
       setDeleteConfirmFile(null);
@@ -685,20 +686,24 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
                   <span className="text-[14px] font-bold text-[#1c1c1e] truncate">{bleDevice.name}</span>
                   {bleDevice.wifiConnected ? (
                     <span className="text-[10px] font-semibold text-[#2f9e58] bg-[#eef7f0] border border-[#cfe8d6] px-1.5 py-0.5 rounded-[5px]">
-                      Wi-Fi 极速通道已就绪
+                      {i18nService.t('recordingCardWifiSpeedChannelReady')}
                     </span>
                   ) : bleDevice.wifiApOpened ? (
                     <span className="text-[10px] font-semibold text-[#e2531f] bg-[#fff4ee] border border-[#f8d9c6] px-1.5 py-0.5 rounded-[5px]">
-                      热点已开启 · 待连接
+                      {i18nService.t('recordingCardHotspotActiveWaiting')}
                     </span>
                   ) : (
                     <span className="text-[10px] font-semibold text-[#1a6ff2] bg-[#eaf2ff] border border-[#cfe0ff] px-1.5 py-0.5 rounded-[5px]">
-                      蓝牙已连接
+                      {i18nService.t('recordingCardBleConnected')}
                     </span>
                   )}
                 </div>
                 <div className="text-[11.5px] text-[#8b8b90] mt-0.5 tabular-nums">
-                  电量 {bleDevice.battery}% · 剩余存储 {(bleDevice.freeKb / (1024 * 1024)).toFixed(1)}GB · 总容量 {(bleDevice.totalKb / (1024 * 1024)).toFixed(1)}GB
+                  {i18nService.t('recordingCardDeviceStats', {
+                    battery: bleDevice.battery,
+                    freeGb: (bleDevice.freeKb / (1024 * 1024)).toFixed(1),
+                    totalGb: (bleDevice.totalKb / (1024 * 1024)).toFixed(1),
+                  })}
                 </div>
               </div>
             </div>
@@ -710,12 +715,12 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
                 onClick={() => setShowCardFilesModal(true)}
                 className="rounded-[8px] bg-[#FF6B35] hover:bg-[#e2531f] px-3.5 py-1.5 text-[12px] font-medium text-white shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
               >
-                <span>管理卡内录音</span>
+                <span>{i18nService.t('recordingCardManageRecordingsBtn')}</span>
                 <span className="bg-white/20 px-1.5 py-0.2 rounded-full text-[11px] font-semibold">
                   {bleFiles.length}
                 </span>
                 {unsavedFiles.length > 0 && (
-                  <span className="w-2 h-2 rounded-full bg-yellow-300 animate-pulse" title={`${unsavedFiles.length} 个待转存`} />
+                  <span className="w-2 h-2 rounded-full bg-yellow-300 animate-pulse" title={i18nService.t('recordingCardPendingTransferTooltip', { count: unsavedFiles.length })} />
                 )}
               </button>
 
@@ -724,9 +729,9 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
                   type="button"
                   onClick={handleCloseWifi}
                   className="rounded-[8px] border border-[#ebebee] bg-white px-2.5 py-1.5 text-[12px] font-medium text-[#505055] hover:border-[#c6c6cc] transition-colors cursor-pointer"
-                  title="关闭录音卡热点，恢复低功耗蓝牙模式"
+                  title={i18nService.t('recordingCardCloseWifiTooltip')}
                 >
-                  关闭 Wi-Fi
+                  {i18nService.t('recordingCardCloseWifiBtn')}
                 </button>
               ) : bleDevice.wifiApOpened ? (
                 <button
@@ -734,7 +739,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
                   onClick={() => setShowWifiSyncModal(true)}
                   className="rounded-[8px] border border-[#f3c8ab] bg-[#fff4ee] px-2.5 py-1.5 text-[12px] font-medium text-[#e2531f] hover:bg-[#ffe8db] transition-colors cursor-pointer"
                 >
-                  连接热点
+                  {i18nService.t('recordingCardConnectHotspotBtn')}
                 </button>
               ) : null}
 
@@ -743,7 +748,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
                 onClick={handleDisconnectBle}
                 className="rounded-[8px] border border-[#ebebee] bg-white px-2.5 py-1.5 text-[12px] font-medium text-[#505055] hover:border-[#c6c6cc] hover:text-[#1c1c1e] transition-colors cursor-pointer"
               >
-                断开连接
+                {i18nService.t('recordingCardDisconnectBtn')}
               </button>
 
               <button
@@ -751,7 +756,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
                 onClick={() => setShowUnbindModal(true)}
                 className="rounded-[8px] border border-[#f3c8ab] bg-[#fff7f4] px-2.5 py-1.5 text-[12px] font-medium text-[#d4380d] hover:bg-[#ffefe8] transition-colors cursor-pointer"
               >
-                解除绑定
+                {i18nService.t('recordingCardUnbindBtn')}
               </button>
             </div>
           </div>
@@ -764,9 +769,9 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
               🎙
             </div>
             <div>
-              <div className="text-[13.5px] font-semibold text-[#1c1c1e]">录音卡未连接</div>
+              <div className="text-[13.5px] font-semibold text-[#1c1c1e]">{i18nService.t('recordingCardNotConnectedTitle')}</div>
               <div className="text-[11.5px] text-[#8b8b90] mt-0.5">
-                通过蓝牙读取录音卡文件列表，极速转存至本机电脑并直接转写
+                {i18nService.t('recordingCardNotConnectedDesc')}
               </div>
             </div>
           </div>
@@ -776,7 +781,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
             onClick={handleConnectBle}
             className="rounded-[8px] bg-[#FF6B35] hover:bg-[#e2531f] px-3.5 py-1.5 text-[12.5px] font-medium text-white shadow-xs transition-colors shrink-0 disabled:opacity-50 cursor-pointer"
           >
-            {bleConnecting ? '连接中…' : '连接录音卡'}
+            {bleConnecting ? i18nService.t('recordingCardConnectingBtn') : i18nService.t('recordingCardConnectBtn')}
           </button>
         </div>
       )}
@@ -797,10 +802,9 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
                 🎙
               </div>
               <div>
-                <h3 className="text-[15px] font-semibold text-[#1c1c1e]">录音卡内音频管理</h3>
+                <h3 className="text-[15px] font-semibold text-[#1c1c1e]">{i18nService.t('recordingCardModalTitle')}</h3>
                 <div className="text-[12px] text-[#8b8b90] mt-0.5">
-                  共 <b className="text-[#1c1c1e] font-semibold">{bleFiles.length}</b> 个录音 ·{' '}
-                  <b className="text-[#FF6B35] font-semibold">{unsavedFiles.length}</b> 个待转存
+                  <span dangerouslySetInnerHTML={{ __html: i18nService.t('recordingCardModalStatsText', { total: bleFiles.length, pending: unsavedFiles.length }) }} />
                 </div>
               </div>
             </div>
@@ -811,7 +815,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
                 onClick={loadBleFilesViaBle}
                 className="rounded-[7px] border border-[#ebebee] bg-white px-3 py-1.5 text-[12px] font-medium text-[#505055] hover:border-[#c6c6cc] hover:text-[#1c1c1e] transition-colors disabled:opacity-40 cursor-pointer"
               >
-                {bleLoadingFiles ? '读取中…' : '刷新列表'}
+                {bleLoadingFiles ? i18nService.t('recordingCardModalRefreshingBtn') : i18nService.t('recordingCardModalRefreshBtn')}
               </button>
               <button
                 type="button"
@@ -823,7 +827,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
                     : 'bg-[#FF6B35] hover:bg-[#e2531f] text-white cursor-pointer'
                 }`}
               >
-                {isAnySyncing ? '转存进行中…' : '全部转存本机'}
+                {isAnySyncing ? i18nService.t('recordingCardModalSavingAllBtn') : i18nService.t('recordingCardModalSaveAllBtn')}
               </button>
               <button
                 type="button"
@@ -840,10 +844,10 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
             {bleLoadingFiles ? (
               <div className="py-16 text-center text-[13px] text-[#8b8b90]">
                 <div className="w-6 h-6 border-2 border-[#FF6B35]/20 border-t-[#FF6B35] rounded-full animate-spin mx-auto mb-2" />
-                正在通过蓝牙读取录音卡文件列表中…
+                {i18nService.t('recordingCardModalReadingList')}
               </div>
             ) : bleFiles.length === 0 ? (
-              <div className="py-16 text-center text-[13px] text-[#8b8b90]">录音卡内暂无录音文件</div>
+              <div className="py-16 text-center text-[13px] text-[#8b8b90]">{i18nService.t('recordingCardModalEmptyFiles')}</div>
             ) : (
               paginatedBleFiles.map((file, idx) => {
                 const isSaved = isFileSavedLocally(file.name);
@@ -883,11 +887,11 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
                     <div className="flex items-center gap-2 shrink-0">
                       {isSyncing ? (
                         <span className="text-[11px] font-medium text-[#1a6ff2] bg-[#eaf2ff] border border-[#cfe0ff] px-2.5 py-1 rounded-[6px]">
-                          转存中 {prog}%
+                          {i18nService.t('recordingCardModalTransferringProg', { prog })}
                         </span>
                       ) : isSaved ? (
                         <span className="text-[11px] font-medium text-[#2f9e58] bg-[#eef7f0] border border-[#cfe8d6] px-2.5 py-1 rounded-[6px]">
-                          已转存本机
+                          {i18nService.t('recordingCardModalTransferred')}
                         </span>
                       ) : null}
 
@@ -902,7 +906,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
                               : 'border border-[#f3c8ab] bg-[#fff4ee] text-[#e2531f] hover:bg-[#ffe9dd] cursor-pointer'
                           }`}
                         >
-                          {isSyncing ? '转存中…' : '转存本机'}
+                          {isSyncing ? i18nService.t('recordingCardModalSavingLocalBtn') : i18nService.t('recordingCardModalSaveLocalBtn')}
                         </button>
                       )}
 
@@ -912,7 +916,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
                         disabled={isAnySyncing || deletingFileName === file.name}
                         onClick={() => setDeleteConfirmFile(file)}
                         className="rounded-[7px] border border-[#ebebee] hover:border-[#fca5a5] hover:bg-[#fff5f5] p-1.5 text-[#8b8b90] hover:text-[#dc2626] transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                        title="从录音卡中永久删除此文件"
+                        title={i18nService.t('recordingCardModalDeleteFileTooltip')}
                       >
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <polyline points="3 6 5 6 21 6" />
@@ -932,7 +936,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
           {bleFilesLastPage > 1 && (
             <div className="flex items-center justify-between px-6 py-3 border-t border-[#ebebee] text-[12px] select-none shrink-0 bg-[#fafafb]">
               <span className="text-[#8b8b90] text-[12px]">
-                第 <b className="text-[#1c1c1e] font-semibold">{bleFilesPage}</b> / {bleFilesLastPage} 页
+                <span dangerouslySetInnerHTML={{ __html: i18nService.t('recordingCardModalPageText', { page: bleFilesPage, totalPages: bleFilesLastPage }) }} />
               </span>
               <div className="flex items-center gap-2">
                 <button
@@ -941,7 +945,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
                   onClick={() => setBleFilesPage(p => Math.max(1, p - 1))}
                   className="h-7 px-3 rounded-[7px] border border-[#ebebee] bg-white hover:bg-[#f4f4f6] font-medium text-[#505055] hover:text-[#1c1c1e] transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                 >
-                  ‹ 上一页
+                  {i18nService.t('recordingCardModalPrevPage')}
                 </button>
                 <button
                   type="button"
@@ -949,7 +953,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
                   onClick={() => setBleFilesPage(p => Math.min(bleFilesLastPage, p + 1))}
                   className="h-7 px-3 rounded-[7px] border border-[#ebebee] bg-white hover:bg-[#f4f4f6] font-medium text-[#505055] hover:text-[#1c1c1e] transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                 >
-                  下一页 ›
+                  {i18nService.t('recordingCardModalNextPage')}
                 </button>
               </div>
             </div>
@@ -967,7 +971,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
           className="w-[440px] bg-white rounded-[14px] p-5 shadow-[0_20px_50px_rgba(0,0,0,0.18)] border border-[#ebebee]"
         >
           <div className="flex items-center justify-between pb-3 border-b border-[#ebebee] mb-3">
-            <h4 className="text-[14px] font-semibold text-[#1c1c1e]">录音卡 Wi-Fi 高速转存</h4>
+            <h4 className="text-[14px] font-semibold text-[#1c1c1e]">{i18nService.t('recordingCardWifiModalTitle')}</h4>
             <button
               type="button"
               onClick={handleCancelWifiSync}
@@ -980,7 +984,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
           {openingWifiAp ? (
             <div className="py-8 flex flex-col items-center justify-center gap-3 text-[12px] text-[#8b8b90]">
               <div className="w-6 h-6 border-2 border-[#FF6B35]/20 border-t-[#FF6B35] rounded-full animate-spin" />
-              <span>正在唤醒录音卡高速 Wi-Fi 热点，请稍候…</span>
+              <span>{i18nService.t('recordingCardWifiModalWaking')}</span>
             </div>
           ) : autoConnectingWifi ? (
             <div className="py-3 flex flex-col items-center justify-center gap-3 text-center">
@@ -992,48 +996,48 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
               </div>
               <div className="space-y-0.5">
                 <div className="text-[12px] font-bold text-[#1c1c1e]">
-                  正在尝试自动连接录音卡热点
+                  {i18nService.t('recordingCardWifiModalConnecting')}
                 </div>
                 <div className="text-[11px] text-[#FF6B35] font-mono font-bold">
                   {bleDevice.wifiSsid}
                 </div>
               </div>
               <div className="text-[11px] text-[#8b8b90] leading-relaxed px-4">
-                为实现高速传输，电脑 Wi-Fi 将短暂直连录音卡，转存落地后将立即自动切回原有网络。
+                {i18nService.t('recordingCardWifiModalExplanation')}
               </div>
               <button
                 type="button"
                 onClick={handleCancelWifiSync}
                 className="mt-2 text-[12px] px-3.5 py-1 rounded-[7px] border border-[#ebebee] hover:border-[#c6c6cc] text-[#505055]"
               >
-                取消
+                {i18nService.t('cancel')}
               </button>
             </div>
           ) : (
             <div className="space-y-3.5 text-[12px]">
               {autoConnectFailed && (
                 <div className="p-2.5 rounded-[8px] bg-[#fff4ee] border border-[#f8d9c6] text-[#e2531f] text-[11px] flex items-center justify-between gap-2">
-                  <span>未能自动直连，请在电脑 Wi-Fi 列表中手动连接热点</span>
+                  <span>{i18nService.t('recordingCardWifiModalManualConnectTitle')}</span>
                   <button
                     type="button"
                     onClick={() => void runAutoConnectWifi(bleDevice.wifiSsid, bleDevice.wifiPassword)}
                     className="text-[#FF6B35] underline font-semibold cursor-pointer shrink-0"
                   >
-                    重试
+                    {i18nService.t('retry')}
                   </button>
                 </div>
               )}
               <div className="p-3 rounded-[10px] bg-[#fafafb] border border-[#ebebee] space-y-2">
                 <div className="text-[11.5px] font-semibold text-[#1c1c1e]">
-                  ① 打开电脑 Wi-Fi 设置，连接录音卡热点：
+                  {i18nService.t('recordingCardWifiModalStep1')}
                 </div>
                 <div className="space-y-2">
                   <div className="flex items-center justify-between p-2 rounded-[7px] bg-white border border-[#ebebee]">
-                    <span className="text-[#8b8b90] text-[11px]">Wi-Fi 热点名称 (SSID)</span>
+                    <span className="text-[#8b8b90] text-[11px]">Wi-Fi SSID</span>
                     <span className="font-mono font-bold text-[#1c1c1e] select-all">{bleDevice.wifiSsid}</span>
                   </div>
                   <div className="flex items-center justify-between p-2 rounded-[7px] bg-white border border-[#ebebee]">
-                    <span className="text-[#8b8b90] text-[11px]">Wi-Fi 密码</span>
+                    <span className="text-[#8b8b90] text-[11px]">Wi-Fi Password</span>
                     <div className="flex items-center gap-2">
                       <span className="font-mono font-bold text-[#1c1c1e] select-all">{bleDevice.wifiPassword || '12345678'}</span>
                       <button
@@ -1047,7 +1051,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
                         }}
                         className="text-[11px] font-semibold text-[#FF6B35] hover:underline cursor-pointer"
                       >
-                        {wifiGuideCopied ? '已复制' : '复制密码'}
+                        {wifiGuideCopied ? i18nService.t('recordingCardWifiModalPasswordCopied') : i18nService.t('recordingCardWifiModalCopyPasswordBtn')}
                       </button>
                     </div>
                   </div>
@@ -1055,7 +1059,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
               </div>
 
               <div className="text-[11px] text-[#8b8b90] leading-relaxed">
-                ② 电脑连上热点后，点击下方【开始极速转存】，音频文件将直接存入本机硬盘，完成后自动切回原有网络。
+                {i18nService.t('recordingCardWifiModalStep2')}
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#ebebee]">
@@ -1065,7 +1069,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
                   onClick={handleCancelWifiSync}
                   className="px-3.5 py-1.5 text-[12px] font-medium rounded-[7px] border border-[#ebebee] text-[#505055] hover:border-[#c6c6cc] cursor-pointer"
                 >
-                  暂不转存
+                  {i18nService.t('cancel')}
                 </button>
                 <button
                   type="button"
@@ -1073,7 +1077,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
                   onClick={handleConfirmWifiManual}
                   className="px-4 py-1.5 text-[12px] font-medium rounded-[7px] bg-[#FF6B35] hover:bg-[#e2531f] text-white shadow-xs cursor-pointer flex items-center gap-1.5"
                 >
-                  {wifiConnecting ? '正在建立通道…' : '我已连接热点，开始极速转存'}
+                  {wifiConnecting ? i18nService.t('recordingCardWifiModalManualWaiting') : i18nService.t('recordingCardWifiModalStartTransferBtn')}
                 </button>
               </div>
             </div>
@@ -1089,9 +1093,9 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
           overlayClassName="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-2xs"
           className="w-[340px] bg-white rounded-[14px] p-5 shadow-[0_20px_50px_rgba(0,0,0,0.18)] border border-[#ebebee]"
         >
-          <h4 className="text-[14px] font-semibold text-[#1c1c1e] mb-2">解除设备绑定</h4>
+          <h4 className="text-[14px] font-semibold text-[#1c1c1e] mb-2">{i18nService.t('recordingCardUnbindBtn')}</h4>
           <p className="text-[12px] text-[#8b8b90] leading-relaxed mb-4">
-            解除绑定后将清除录音卡本地配对信息。确定解除绑定吗？
+            {i18nService.t('recordingCardDeleteHardwareModalDesc')}
           </p>
           <div className="flex justify-end gap-2">
             <button
@@ -1099,14 +1103,14 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
               onClick={() => setShowUnbindModal(false)}
               className="text-[12px] px-3.5 py-1.5 rounded-[7px] border border-[#ebebee] hover:border-[#c6c6cc] text-[#505055]"
             >
-              取消
+              {i18nService.t('cancel')}
             </button>
             <button
               type="button"
               onClick={handleUnbind}
               className="text-[12px] font-medium px-4 py-1.5 rounded-[7px] bg-[#d4380d] hover:bg-[#b32b05] text-white"
             >
-              确认解绑
+              {i18nService.t('confirm')}
             </button>
           </div>
         </Modal>
@@ -1124,14 +1128,14 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
             <div className="w-8 h-8 rounded-[8px] bg-[#fff5f5] flex items-center justify-center text-base">
               ⚠️
             </div>
-            <h4 className="text-[14.5px] font-semibold text-[#1c1c1e]">永久删除卡内文件？</h4>
+            <h4 className="text-[14.5px] font-semibold text-[#1c1c1e]">{i18nService.t('recordingCardDeleteHardwareModalTitle')}</h4>
           </div>
           <div className="text-[12.5px] text-[#505055] space-y-2 mb-4 leading-relaxed">
             <p>
-              确定要从录音卡中永久删除文件 <b className="text-[#1c1c1e] font-mono select-all">「{deleteConfirmFile.name}」</b> 吗？
+              <span dangerouslySetInnerHTML={{ __html: i18nService.t('recordingCardDeleteHardwareModalDesc', { name: deleteConfirmFile.name }) }} />
             </p>
             <div className="p-2.5 rounded-[8px] bg-[#f4f4f6] text-[11.5px] text-[#8b8b90]">
-              💡 <b>注意</b>：此操作仅会释放录音卡硬件内的物理存储空间，<b>不会影响</b>你电脑上已转存的音频文件与逐字稿。
+              <span dangerouslySetInnerHTML={{ __html: i18nService.t('recordingCardDeleteHardwareModalNotice') }} />
             </div>
           </div>
           <div className="flex justify-end gap-2">
@@ -1141,7 +1145,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
               onClick={() => setDeleteConfirmFile(null)}
               className="text-[12px] px-3.5 py-1.5 rounded-[7px] border border-[#ebebee] hover:border-[#c6c6cc] text-[#505055] cursor-pointer disabled:opacity-50"
             >
-              取消
+              {i18nService.t('cancel')}
             </button>
             <button
               type="button"
@@ -1149,7 +1153,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
               onClick={() => handleDeleteCardFile(deleteConfirmFile)}
               className="text-[12px] font-medium px-4 py-1.5 rounded-[7px] bg-[#dc2626] hover:bg-[#b91c1c] text-white shadow-xs cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
             >
-              {deletingFileName ? '正在删除…' : '确认删除卡内文件'}
+              {deletingFileName ? i18nService.t('recordingCardDeleteHardwareDeletingBtn') : i18nService.t('confirm')}
             </button>
           </div>
         </Modal>

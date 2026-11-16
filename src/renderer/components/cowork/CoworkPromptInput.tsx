@@ -1972,7 +1972,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
         ...getPromptTextAnalyticsParams(trimmedValue),
         ...getPromptCapabilityAnalyticsParams(),
       });
-      showToast(expiredAt ? `软件账号授权已到期（${expiredAt}），请联系管理员续费` : '软件账号授权已到期，请联系管理员续费');
+      showToast(i18nService.t('coworkExpiredNotice', { date: expiredAt ? `（${expiredAt}）` : '' }));
       return;
     }
 
@@ -3645,7 +3645,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
       <div className="relative group ml-auto flex shrink-0 items-center">
         <div className="inline-flex items-center gap-1.5 rounded-full bg-background px-3 py-1 text-xs text-foreground border border-border/40 shadow-xs transition-colors hover:border-border">
           <BrainIcon className="h-3.5 w-3.5 text-primary shrink-0" />
-          <span className="font-medium select-none text-[12px] text-foreground">我的第二大脑</span>
+          <span className="font-medium select-none text-[12px] text-foreground">{i18nService.t('coworkSecondBrainTitle')}</span>
           <button
             type="button"
             role="switch"
@@ -3678,7 +3678,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
 
         {/* Hover Tooltip */}
         <div className="pointer-events-none absolute right-0 bottom-full mb-2 z-30 whitespace-nowrap rounded-xl bg-black/90 dark:bg-black px-3.5 py-2 text-xs font-medium text-white shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200">
-          启用后，AI 将结合你的长期认知、思考方式和决策习惯回答问题
+          {i18nService.t('coworkSecondBrainTip')}
         </div>
       </div>
     );
@@ -4008,11 +4008,9 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
   if (shouldCollapseSkills && !isSkillsExpanded) {
     inlineContextChipItems.push({
       id: 'skill:collapsed-summary',
-      label: i18nService.getLanguage() === 'zh'
-        ? `${activeSkills.length}个专家能力`
-        : `${activeSkills.length} Expert Capabilities`,
+      label: i18nService.t('coworkCapabilitiesCount', { count: activeSkills.length }),
       icon: SkillIcon,
-      removeLabel: i18nService.getLanguage() === 'zh' ? '点击展开专家能力' : 'Click to expand capabilities',
+      removeLabel: i18nService.t('coworkExpandCapabilities'),
       tone: ContextChipTone.Reference,
       isToggle: true,
       onRemove: () => setIsSkillsExpanded(true),
@@ -4021,9 +4019,9 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     if (shouldCollapseSkills && isSkillsExpanded) {
       inlineContextChipItems.push({
         id: 'skill:collapse-toggle',
-        label: i18nService.getLanguage() === 'zh' ? '收起专家能力' : 'Collapse',
+        label: i18nService.t('coworkCollapseCapabilities'),
         icon: SkillIcon,
-        removeLabel: i18nService.getLanguage() === 'zh' ? '收起专家能力' : 'Collapse capabilities',
+        removeLabel: i18nService.t('coworkCollapseCapabilities'),
         tone: ContextChipTone.Reference,
         isToggle: true,
         onRemove: () => setIsSkillsExpanded(false),

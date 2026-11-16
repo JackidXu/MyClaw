@@ -8,6 +8,7 @@ import React, { useRef, useState } from 'react';
 
 import type { LocalRecordingItem } from '../../../../shared/recordingCard/localRecording';
 import { LocalRecordingStatus } from '../../../../shared/recordingCard/localRecording';
+import { i18nService } from '../../../services/i18n';
 import Modal from '../../common/Modal';
 
 interface RecordingListColumnProps {
@@ -53,7 +54,7 @@ export const RecordingListColumn: React.FC<RecordingListColumnProps> = ({
     if (file) {
       const ext = '.' + (file.name.split('.').pop()?.toLowerCase() || '');
       if (!ALLOWED_EXTS.includes(ext)) {
-        alert('仅支持导入纯音频文件（mp3、wav、m4a、aac、ogg、flac、opus）');
+        alert(i18nService.t('recordingCardListAudioFormatOnlyNotice'));
         e.target.value = '';
         return;
       }
@@ -138,10 +139,10 @@ export const RecordingListColumn: React.FC<RecordingListColumnProps> = ({
         {/* 左侧：主标题 + 副标题（上下排布） */}
         <div className="flex flex-col min-w-0 shrink-0">
           <b className="text-[13px] font-semibold text-[#1c1c1e] leading-tight whitespace-nowrap">
-            录音文件
+            {i18nService.t('recordingCardListHeaderTitle')}
           </b>
           <span className="text-[10px] text-[#8b8b90] leading-tight whitespace-nowrap mt-0.5 tabular-nums">
-            {totalCount} 个文件 · {pendingCount} 待转写
+            {i18nService.t('recordingCardListHeaderSubtitle', { total: totalCount, pending: pendingCount })}
           </span>
         </div>
 
@@ -151,9 +152,9 @@ export const RecordingListColumn: React.FC<RecordingListColumnProps> = ({
             type="button"
             onClick={() => fileInputRef.current?.click()}
             className="text-[11.5px] whitespace-nowrap text-[#505055] border border-[#ebebee] bg-white rounded-[7px] px-2.5 py-1 hover:border-[#c6c6cc] hover:text-[#1c1c1e] transition-colors cursor-pointer shadow-2xs"
-            title="导入电脑本地音频"
+            title={i18nService.t('recordingCardListImportBtn')}
           >
-            导入
+            {i18nService.t('import')}
           </button>
           {/* TODO: 批量管理功能暂不开放，后续视产品需求再行启用 */}
           {/* <button
@@ -169,7 +170,7 @@ export const RecordingListColumn: React.FC<RecordingListColumnProps> = ({
             }`}
             title={isManageMode ? '退出管理模式' : '进入批量管理模式'}
           >
-            {isManageMode ? '完成' : '管理'}
+            {isManageMode ? i18nService.t('recordingCardListFinishBtn') : i18nService.t('recordingCardListManageBtn')}
           </button> */}
         </div>
       </div>
@@ -193,7 +194,7 @@ export const RecordingListColumn: React.FC<RecordingListColumnProps> = ({
           <input
             value={keyword}
             onChange={e => setKeyword(e.target.value)}
-            placeholder="搜索录音"
+            placeholder={i18nService.t('recordingCardListSearchPlaceholder')}
             className="w-full bg-transparent text-[12px] text-[#1c1c1e] placeholder-[#8b8b90] outline-none"
           />
         </div>
@@ -209,7 +210,7 @@ export const RecordingListColumn: React.FC<RecordingListColumnProps> = ({
                 : 'text-[#8b8b90] hover:text-[#1c1c1e]'
             }`}
           >
-            全部
+            {i18nService.t('recordingCardListFilterAll')}
           </button>
           <button
             type="button"
@@ -220,7 +221,7 @@ export const RecordingListColumn: React.FC<RecordingListColumnProps> = ({
                 : 'text-[#8b8b90] hover:text-[#1c1c1e]'
             }`}
           >
-            仅本机
+            {i18nService.t('recordingCardListFilterLocal')}
           </button>
           <button
             type="button"
@@ -231,7 +232,7 @@ export const RecordingListColumn: React.FC<RecordingListColumnProps> = ({
                 : 'text-[#8b8b90] hover:text-[#1c1c1e]'
             }`}
           >
-            已推送
+            {i18nService.t('recordingCardListFilterPushed')}
           </button>
         </div>
       </div>
@@ -254,9 +255,11 @@ export const RecordingListColumn: React.FC<RecordingListColumnProps> = ({
                 <path d="M4 12.5l5 5L20 6.5" />
               </svg>
             </span>
-            全选
+            {i18nService.t('recordingCardListSelectAllBtn')}
           </label>
-          <span className="text-[#8b8b90] text-[11px] tabular-nums">已选 {selectedItemIds.size}</span>
+          <span className="text-[#8b8b90] text-[11px] tabular-nums">
+            {i18nService.t('recordingCardListSelectedCount', { count: selectedItemIds.size })}
+          </span>
           <span className="flex-1" />
           <button
             type="button"
@@ -274,7 +277,7 @@ export const RecordingListColumn: React.FC<RecordingListColumnProps> = ({
             }}
             className="text-[11px] text-[#505055] border border-[#dfdfe3] bg-white rounded-[6px] px-2 py-0.5 hover:border-[#c6c6cc] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
           >
-            转写
+            {i18nService.t('recordingCardListBatchTranscribeBtn')}
           </button>
           <button
             type="button"
@@ -285,7 +288,7 @@ export const RecordingListColumn: React.FC<RecordingListColumnProps> = ({
             }}
             className="text-[11px] text-[#e2531f] border border-[#f3c8ab] bg-[#fff4ee] rounded-[6px] px-2 py-0.5 hover:bg-[#ffe9dd] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
           >
-            推送大脑
+            {i18nService.t('recordingCardListBatchSyncBrainShort')}
           </button>
           <button
             type="button"
@@ -297,7 +300,7 @@ export const RecordingListColumn: React.FC<RecordingListColumnProps> = ({
             }}
             className="text-[11px] text-[#e04838] border border-[#f8d0cb] bg-[#fff5f4] rounded-[6px] px-2 py-0.5 hover:bg-[#ffe9e7] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
           >
-            删除
+            {i18nService.t('delete')}
           </button>
         </div>
       )}
@@ -307,8 +310,8 @@ export const RecordingListColumn: React.FC<RecordingListColumnProps> = ({
         {filteredItems.length === 0 ? (
           <div className="py-12 text-center text-[12.5px] text-[#8b8b90]">
             {items.length === 0
-              ? '录音卡里还没有文件，可从设备拉取或点击上方「导入」'
-              : '没有匹配的录音记录'}
+              ? i18nService.t('recordingCardListEmpty')
+              : i18nService.t('recordingCardListNoMatch')}
           </div>
         ) : (
           filteredItems.map(item => {
@@ -381,24 +384,24 @@ export const RecordingListColumn: React.FC<RecordingListColumnProps> = ({
                 <div className="flex items-center gap-1.5 shrink-0">
                   {isSynced ? (
                     <span className="text-[10.5px] px-2 py-0.5 rounded-[5px] bg-[#edf4ff] text-[#2563eb] select-none cursor-default font-normal">
-                      已推送
+                      {i18nService.t('recordingCardListStatusPushed')}
                     </span>
                   ) : isTranscribed ? (
                     <span className="text-[10.5px] px-2 py-0.5 rounded-[5px] bg-[#f0fdf4] text-[#16a34a] select-none cursor-default font-normal">
-                      已转写
+                      {i18nService.t('recordingCardListStatusTranscribed')}
                     </span>
                   ) : isItemTranscribing ? (
                     <span className="inline-flex items-center gap-1 text-[10.5px] px-2 py-0.5 rounded-[5px] bg-[#fff7ed] text-[#ea580c] select-none cursor-default font-normal">
                       <span className="w-2.5 h-2.5 rounded-full border border-[#ea580c] border-t-transparent animate-spin inline-block" />
-                      转写中...
+                      {i18nService.t('recordingCardListStatusTranscribing')}
                     </span>
                   ) : isFailed ? (
                     <div className="flex items-center gap-1">
                       <span
-                        title={item.transcribeError || '转写失败，点击旁边重试'}
+                        title={item.transcribeError || i18nService.t('recordingCardListStatusFailedTooltip')}
                         className="text-[10.5px] px-1.5 py-0.5 rounded-[5px] bg-[#fef2f2] text-[#ef4444] select-none cursor-help font-normal"
                       >
-                        转写失败
+                        {i18nService.t('recordingCardListStatusFailed')}
                       </span>
                       <button
                         type="button"
@@ -406,7 +409,7 @@ export const RecordingListColumn: React.FC<RecordingListColumnProps> = ({
                           e.stopPropagation();
                           onTranscribeSingle(item);
                         }}
-                        title="重新提交转写"
+                        title={i18nService.t('recordingCardListRetryTooltip')}
                         className="inline-flex items-center gap-0.5 text-[11px] font-medium text-[#FF6B35] bg-white border border-[#FF6B35]/30 rounded-[6px] px-1.5 py-0.5 hover:bg-[#fff4ee] hover:border-[#FF6B35] active:scale-95 cursor-pointer transition-all shadow-2xs"
                       >
                         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -415,7 +418,7 @@ export const RecordingListColumn: React.FC<RecordingListColumnProps> = ({
                           <path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
                           <path d="M3 21v-5h5" />
                         </svg>
-                        重试
+                        {i18nService.t('recordingCardListRetryBtn')}
                       </button>
                     </div>
                   ) : isPending ? (
@@ -427,7 +430,7 @@ export const RecordingListColumn: React.FC<RecordingListColumnProps> = ({
                       }}
                       className="text-[11px] font-medium text-white bg-[#FF6B35] rounded-[6px] px-2.5 py-0.5 hover:bg-[#fa5a20] active:scale-95 cursor-pointer transition-all shadow-2xs shrink-0"
                     >
-                      转写
+                      {i18nService.t('recordingCardListTranscribeBtn')}
                     </button>
                   ) : null}
 
@@ -461,7 +464,7 @@ export const RecordingListColumn: React.FC<RecordingListColumnProps> = ({
                           }}
                           className="px-2.5 py-1.5 rounded-[7px] text-[#1c1c1e] hover:bg-[#f4f4f6] cursor-pointer"
                         >
-                          重命名
+                          {i18nService.t('recordingCardListRenameBtn')}
                         </div>
                         <div
                           onClick={() => {
@@ -470,7 +473,7 @@ export const RecordingListColumn: React.FC<RecordingListColumnProps> = ({
                           }}
                           className="px-2.5 py-1.5 rounded-[7px] text-[#d4380d] hover:bg-[#fff4ef] cursor-pointer"
                         >
-                          删除本机记录
+                          {i18nService.t('recordingCardListDeleteLocalRecordBtn')}
                         </div>
                       </div>
                     )}
@@ -491,7 +494,7 @@ export const RecordingListColumn: React.FC<RecordingListColumnProps> = ({
           overlayClassName="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-2xs"
           className="w-[360px] bg-white rounded-[14px] p-5 shadow-[0_20px_50px_rgba(0,0,0,0.18)] border border-[#ebebee]"
         >
-          <h4 className="text-[14px] font-semibold text-[#1c1c1e] mb-3">重命名录音</h4>
+          <h4 className="text-[14px] font-semibold text-[#1c1c1e] mb-3">{i18nService.t('recordingCardListRenameModalTitle')}</h4>
           <input
             type="text"
             autoFocus
@@ -507,7 +510,7 @@ export const RecordingListColumn: React.FC<RecordingListColumnProps> = ({
               }
             }}
             className="w-full px-3 py-2 text-[13px] border border-[#f3c8ab] rounded-[8px] outline-none focus:border-[#FF6B35]"
-            placeholder="请输入新的录音标题..."
+            placeholder={i18nService.t('recordingCardListRenamePlaceholder')}
           />
           <div className="flex justify-end gap-2 mt-4">
             <button
@@ -515,7 +518,7 @@ export const RecordingListColumn: React.FC<RecordingListColumnProps> = ({
               onClick={() => setRenamingItem(null)}
               className="text-[12px] px-3.5 py-1.5 rounded-[7px] border border-[#ebebee] hover:border-[#c6c6cc] text-[#505055] cursor-pointer"
             >
-              取消
+              {i18nService.t('cancel')}
             </button>
             <button
               type="button"
@@ -529,7 +532,7 @@ export const RecordingListColumn: React.FC<RecordingListColumnProps> = ({
               disabled={!renameText.trim()}
               className="text-[12px] font-medium px-4 py-1.5 rounded-[7px] bg-[#FF6B35] hover:bg-[#e2531f] text-white disabled:opacity-50 cursor-pointer"
             >
-              确认
+              {i18nService.t('confirm')}
             </button>
           </div>
         </Modal>
@@ -548,15 +551,22 @@ export const RecordingListColumn: React.FC<RecordingListColumnProps> = ({
             <div className="w-8 h-8 rounded-[8px] bg-[#fff5f5] flex items-center justify-center text-base">
               🗑
             </div>
-            <h4 className="text-[14.5px] font-semibold text-[#1c1c1e]">删除本机记录</h4>
+            <h4 className="text-[14.5px] font-semibold text-[#1c1c1e]">{i18nService.t('recordingCardListDeleteModalTitle')}</h4>
           </div>
           <div className="text-[12.5px] text-[#505055] space-y-2 mb-4 leading-relaxed">
-            <p>
-              确定要删除录音 <b className="text-[#1c1c1e] select-all">「{deletingLocalItem.title || deletingLocalItem.name}」</b> 吗？
-            </p>
-            <div className="p-2.5 rounded-[8px] bg-[#f4f4f6] text-[11.5px] text-[#8b8b90]">
-              💡 <b>注意</b>：此操作将同时删除本地数据库记录与本机磁盘中的音频文件；<b>不会影响</b>录音卡硬件内的原始文件。
-            </div>
+            <p
+              dangerouslySetInnerHTML={{
+                __html: i18nService.t('recordingCardListDeleteModalDesc', {
+                  title: deletingLocalItem.title || deletingLocalItem.name,
+                }),
+              }}
+            />
+            <div
+              className="p-2.5 rounded-[8px] bg-[#f4f4f6] text-[11.5px] text-[#8b8b90]"
+              dangerouslySetInnerHTML={{
+                __html: i18nService.t('recordingCardListDeleteModalNotice'),
+              }}
+            />
           </div>
           <div className="flex justify-end gap-2">
             <button
@@ -564,7 +574,7 @@ export const RecordingListColumn: React.FC<RecordingListColumnProps> = ({
               onClick={() => setDeletingLocalItem(null)}
               className="text-[12px] px-3.5 py-1.5 rounded-[7px] border border-[#ebebee] hover:border-[#c6c6cc] text-[#505055] cursor-pointer"
             >
-              取消
+              {i18nService.t('cancel')}
             </button>
             <button
               type="button"
@@ -575,7 +585,7 @@ export const RecordingListColumn: React.FC<RecordingListColumnProps> = ({
               }}
               className="text-[12px] font-medium px-4 py-1.5 rounded-[7px] bg-[#dc2626] hover:bg-[#b91c1c] text-white shadow-xs cursor-pointer"
             >
-              确认删除
+              {i18nService.t('confirmDelete')}
             </button>
           </div>
         </Modal>

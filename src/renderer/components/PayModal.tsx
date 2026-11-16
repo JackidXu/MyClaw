@@ -5,11 +5,6 @@ import { i18nService } from '../services/i18n';
 import { createPayOrder, fetchRechargeSpecs, queryPayStatus, RechargeSpecItem } from '../services/tradeService';
 import Modal from './common/Modal';
 
-// 局部的简易双语函数，避免污染全局 i18n
-const t = (zh: string, en: string) => {
-  return i18nService.getLanguage() === 'zh' ? zh : en;
-};
-
 interface PayModalProps {
   onClose: () => void;
   onSuccess: () => void;
@@ -39,11 +34,11 @@ const PayModal: React.FC<PayModalProps> = ({ onClose, onSuccess }) => {
         setSpecs(res.data);
         setSelectedSpec(res.data[0]);
       } else {
-        setErrorMessage(res.error || t('获取充值规格失败', 'Failed to fetch recharge specs'));
+        setErrorMessage(res.error || i18nService.t('payFetchSpecsFailed'));
       }
     } catch (e: any) {
       console.error('[PayModal] fetchSpecs error:', e);
-      setErrorMessage(t('网络请求失败，请检查网络连接', 'Network error, please check connection'));
+      setErrorMessage(i18nService.t('payNetworkError'));
     } finally {
       setLoadingSpecs(false);
     }
@@ -59,7 +54,7 @@ const PayModal: React.FC<PayModalProps> = ({ onClose, onSuccess }) => {
       // 容错
     }
     if (!userId) {
-      setErrorMessage(t('未检测到登录凭证，请重新登录', 'Login credentials missing, please login again'));
+      setErrorMessage(i18nService.t('payMissingCredentials'));
       return;
     }
 
@@ -85,11 +80,11 @@ const PayModal: React.FC<PayModalProps> = ({ onClose, onSuccess }) => {
         setQrcodeUrl(res.data.qrcode_url);
         setOrderId(res.data.order_id);
       } else {
-        setErrorMessage(res.error || t('获取付款码失败，请重试', 'Failed to get payment code, please retry'));
+        setErrorMessage(res.error || i18nService.t('payGetQrCodeFailed'));
       }
     } catch (e: any) {
       console.error('[PayModal] handlePay error:', e);
-      setErrorMessage(t('下单失败，请检查网络', 'Failed to create order, please check network'));
+      setErrorMessage(i18nService.t('payCreateOrderFailed'));
     } finally {
       setLoadingQRCode(false);
     }
@@ -111,7 +106,7 @@ const PayModal: React.FC<PayModalProps> = ({ onClose, onSuccess }) => {
           }
           window.dispatchEvent(
             new CustomEvent('app:showToast', {
-              detail: t('🎉 充值成功！点数已自动刷新。', '🎉 Recharge successful! Balance refreshed.'),
+              detail: i18nService.t('paySuccessToast'),
             }),
           );
           onSuccess();
@@ -194,7 +189,7 @@ const PayModal: React.FC<PayModalProps> = ({ onClose, onSuccess }) => {
           <svg className="w-5 h-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
           </svg>
-          {t('自助充值', 'Wallet Recharge')}
+          {i18nService.t('payWalletRecharge')}
         </h3>
         <button
           onClick={onClose}
@@ -212,7 +207,7 @@ const PayModal: React.FC<PayModalProps> = ({ onClose, onSuccess }) => {
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
             </svg>
-            <span className="text-xs text-secondary">{t('正在载入规格列表...', 'Loading specs list...')}</span>
+            <span className="text-xs text-secondary">{i18nService.t('payLoadingSpecs')}</span>
           </div>
         ) : errorMessage && !specs.length ? (
           <div className="py-8 flex flex-col items-center justify-center text-center space-y-2">
@@ -221,14 +216,14 @@ const PayModal: React.FC<PayModalProps> = ({ onClose, onSuccess }) => {
               onClick={loadSpecs}
               className="text-xs text-primary hover:underline font-medium"
             >
-              {t('重新加载', 'Reload')}
+              {i18nService.t('payReload')}
             </button>
           </div>
         ) : (
           <>
             {/* 充值规格选择 */}
             <div className="space-y-2.5">
-              <div className="text-xs font-semibold text-secondary">{t('选择充值额度', 'Select Amount')}</div>
+              <div className="text-xs font-semibold text-secondary">{i18nService.t('paySelectAmount')}</div>
               <div className="grid grid-cols-3 gap-2.5">
                 {specs.map((spec) => {
                   const isSelected = selectedSpec?.version_id === spec.version_id;
@@ -261,7 +256,7 @@ const PayModal: React.FC<PayModalProps> = ({ onClose, onSuccess }) => {
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                   </svg>
-                  <span className="text-[11px] text-secondary font-medium">{t('正在获取付款码...', 'Generating code...')}</span>
+                  <span className="text-[11px] text-secondary font-medium">{i18nService.t('payGeneratingCode')}</span>
                 </div>
               ) : errorMessage ? (
                 <div className="text-center p-4">
@@ -270,7 +265,7 @@ const PayModal: React.FC<PayModalProps> = ({ onClose, onSuccess }) => {
                     onClick={() => selectedSpec && handlePay(selectedSpec.version_id, payChannel)}
                     className="text-xs text-primary hover:underline mt-2 font-medium block mx-auto"
                   >
-                    {t('重试下单', 'Retry Order')}
+                    {i18nService.t('payRetryOrder')}
                   </button>
                 </div>
               ) : qrcodeUrl ? (
@@ -289,12 +284,12 @@ const PayModal: React.FC<PayModalProps> = ({ onClose, onSuccess }) => {
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
                       <span className="relative inline-flex rounded-full h-2 w-2 bg-primary" />
                     </span>
-                    {t('请使用支付宝扫码支付', 'Please scan with Alipay to pay')}
+                    {i18nService.t('payScanWithAlipay')}
                   </div>
                 </div>
               ) : (
                 <div className="text-xs text-secondary font-medium">
-                  {t('选择上方规格即可开始生成付款码', 'Select a spec above to generate code')}
+                  {i18nService.t('paySelectSpecHint')}
                 </div>
               )}
             </div>

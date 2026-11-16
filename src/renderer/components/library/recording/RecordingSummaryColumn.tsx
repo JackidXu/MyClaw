@@ -11,6 +11,7 @@ import type {
   RecordingExtractedItem,
 } from '../../../../shared/recordingCard/localRecording';
 import { LocalRecordingStatus } from '../../../../shared/recordingCard/localRecording';
+import { i18nService } from '../../../services/i18n';
 import { vipService } from '../../../services/vipService';
 
 interface RecordingSummaryColumnProps {
@@ -56,8 +57,8 @@ export const RecordingSummaryColumn: React.FC<RecordingSummaryColumnProps> = ({
             <path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" />
           </svg>
         </div>
-        <b className="text-[14px] font-semibold text-[#1c1c1e]">AI 智能总结</b>
-        <p className="text-[12px] text-[#8b8b90] mt-1">转写完成后，将自动提炼会议纪要与决策点</p>
+        <b className="text-[14px] font-semibold text-[#1c1c1e]">{i18nService.t('recordingCardSummaryEmptyTitle')}</b>
+        <p className="text-[12px] text-[#8b8b90] mt-1">{i18nService.t('recordingCardSummaryEmptyDesc')}</p>
       </div>
     );
   }
@@ -85,7 +86,7 @@ export const RecordingSummaryColumn: React.FC<RecordingSummaryColumnProps> = ({
             <path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" />
           </svg>
         </div>
-        <span className="text-[13.5px] font-semibold text-[#1c1c1e]">AI 总结</span>
+        <span className="text-[13.5px] font-semibold text-[#1c1c1e]">{i18nService.t('recordingCardSummaryTitle')}</span>
         <span className="flex-1" />
 
         {item.summary && !isEditing && !isBusy && (
@@ -95,28 +96,28 @@ export const RecordingSummaryColumn: React.FC<RecordingSummaryColumnProps> = ({
               onClick={onRegenerateSummary}
               className="text-[11.5px] text-[#505055] border border-[#ebebee] bg-white rounded-[7px] px-2.5 py-1 hover:border-[#c6c6cc] hover:text-[#1c1c1e] transition-colors cursor-pointer"
             >
-              重新总结
+              {i18nService.t('recordingCardSummaryReSummarizeBtn')}
             </button>
             <button
               type="button"
               onClick={handleStartEdit}
               className="text-[11.5px] text-[#505055] border border-[#ebebee] bg-white rounded-[7px] px-2.5 py-1 hover:border-[#c6c6cc] hover:text-[#1c1c1e] transition-colors cursor-pointer"
             >
-              编辑
+              {i18nService.t('edit')}
             </button>
             <button
               type="button"
               onClick={onCopySummary}
               className="text-[11.5px] text-[#505055] border border-[#ebebee] bg-white rounded-[7px] px-2.5 py-1 hover:border-[#c6c6cc] hover:text-[#1c1c1e] transition-colors cursor-pointer"
             >
-              复制
+              {i18nService.t('copy')}
             </button>
             <button
               type="button"
               onClick={onExportMarkdown}
               className="text-[11.5px] text-[#505055] border border-[#ebebee] bg-white rounded-[7px] px-2.5 py-1 hover:border-[#c6c6cc] hover:text-[#1c1c1e] transition-colors cursor-pointer"
             >
-              导出
+              {i18nService.t('export')}
             </button>
           </div>
         )}
@@ -127,19 +128,19 @@ export const RecordingSummaryColumn: React.FC<RecordingSummaryColumnProps> = ({
         {isSummarizing ? (
           <div className="h-full flex flex-col items-center justify-center text-center p-6 text-[#8b8b90]">
             <div className="w-9 h-9 rounded-full border-2 border-[#f3c8ab] border-t-[#FF6B35] animate-spin mb-3" />
-            <b className="text-[13.5px] text-[#1c1c1e]">正在提炼商业纪要与决策点...</b>
-            <p className="text-[12px] mt-1 text-[#e2531f]">智能总结中，请稍候</p>
+            <b className="text-[13.5px] text-[#1c1c1e]">{i18nService.t('recordingCardSummaryExtractingTitle')}</b>
+            <p className="text-[12px] mt-1 text-[#e2531f]">{i18nService.t('recordingCardSummaryExtractingDesc')}</p>
           </div>
         ) : !item.summary ? (
           <div className="h-full flex flex-col items-center justify-center text-center p-8 text-[#8b8b90]">
-            <p className="text-[12.5px] mb-3">逐字稿转写完成后，可一键提炼商业纪要与决策点</p>
+            <p className="text-[12.5px] mb-3">{i18nService.t('recordingCardSummaryIdleDesc')}</p>
             {item.transcriptText && !isTranscribing && (
               <button
                 type="button"
                 onClick={onRegenerateSummary}
                 className="text-[12px] font-medium text-white bg-[#FF6B35] rounded-[8px] px-3.5 py-1.5 hover:bg-[#e2531f] transition-colors cursor-pointer shadow-xs"
               >
-                提炼 AI 纪要
+                {i18nService.t('recordingCardSummaryExtractBtn')}
               </button>
             )}
           </div>
@@ -149,7 +150,7 @@ export const RecordingSummaryColumn: React.FC<RecordingSummaryColumnProps> = ({
               value={editText}
               onChange={e => setEditText(e.target.value)}
               className="flex-1 w-full p-3 text-[13px] leading-[1.8] border border-[#f3c8ab] rounded-[10px] outline-none resize-none font-sans"
-              placeholder="编辑纪要正文..."
+              placeholder={i18nService.t('recordingCardSummaryEditPlaceholder')}
             />
             <div className="flex justify-end gap-2 shrink-0">
               <button
@@ -157,14 +158,14 @@ export const RecordingSummaryColumn: React.FC<RecordingSummaryColumnProps> = ({
                 onClick={() => setIsEditing(false)}
                 className="text-[12px] px-3 py-1.5 rounded-[8px] border border-[#ebebee] hover:border-[#c6c6cc]"
               >
-                取消
+                {i18nService.t('cancel')}
               </button>
               <button
                 type="button"
                 onClick={handleSaveEdit}
                 className="text-[12px] font-medium text-white bg-[#FF6B35] px-4 py-1.5 rounded-[8px] hover:bg-[#e2531f]"
               >
-                保存
+                {i18nService.t('save')}
               </button>
             </div>
           </div>
@@ -173,7 +174,7 @@ export const RecordingSummaryColumn: React.FC<RecordingSummaryColumnProps> = ({
             {/* 会议纪要区块：标题在外，白底卡片在内，原生直接渲染 */}
             <div>
               <span className="block text-[11px] font-medium text-[#8b8b90] uppercase tracking-wider mb-2 px-1">
-                会议纪要
+                {i18nService.t('recordingCardSummaryMeetingNotesSection')}
               </span>
               <div className="bg-white border border-[#ebebee] rounded-[12px] p-[18px_20px] shadow-[0_1px_3px_rgba(28,28,30,0.02)]">
                 <h3 className="text-[16px] font-semibold text-[#1c1c1e] tracking-tight mb-3">
@@ -189,7 +190,7 @@ export const RecordingSummaryColumn: React.FC<RecordingSummaryColumnProps> = ({
             {extractedItems.length > 0 && (
               <div>
                 <span className="block text-[11px] font-medium text-[#8b8b90] uppercase tracking-wider mb-2 px-1">
-                  提炼的决策规则与认知点
+                  {i18nService.t('recordingCardSummaryDecisionsSection')}
                 </span>
                 <div className="space-y-3">
                   {extractedItems.map((pt, idx) => (
@@ -200,7 +201,7 @@ export const RecordingSummaryColumn: React.FC<RecordingSummaryColumnProps> = ({
                       {/* 顶栏：分类小徽章与序号 */}
                       <div className="flex items-center justify-between">
                         <span className="text-[10.5px] font-medium px-2 py-0.5 rounded-[5px] bg-[#fff4ee] text-[#e2531f] border border-[#f8d9c6] shrink-0">
-                          {pt.kind || '核心认知'}
+                          {pt.kind || i18nService.t('recordingCardSummaryDefaultKind')}
                         </span>
                         <span className="text-[11px] text-[#aeaeae] tabular-nums font-medium">
                           #{idx + 1}
@@ -231,14 +232,14 @@ export const RecordingSummaryColumn: React.FC<RecordingSummaryColumnProps> = ({
       {!isBusy && (
         <div className="flex flex-col gap-2.5 p-[12px_16px] border-t border-[#ebebee] bg-white shrink-0 select-none">
           <span className="text-[11.5px] text-[#8b8b90] leading-snug">
-            整条录音一键同步到第二大脑 · 不同步就只存在本机
+            {i18nService.t('recordingCardSummarySyncBrainNotice')}
           </span>
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={onSyncToSecondBrain}
               disabled={!hasSecondBrain || !item.transcriptText}
-              title={!hasSecondBrain ? '当前账号未开通第二大脑权限' : undefined}
+              title={!hasSecondBrain ? i18nService.t('recordingCardSummaryBrainNotAuthorized') : undefined}
               className={`flex-1 text-[12px] font-medium rounded-[8px] py-1.5 transition-colors cursor-pointer text-center shadow-xs ${
                 !hasSecondBrain || !item.transcriptText
                   ? 'bg-[#f4f4f5] text-[#a1a1aa] cursor-not-allowed border border-[#e4e4e7]'
@@ -246,10 +247,10 @@ export const RecordingSummaryColumn: React.FC<RecordingSummaryColumnProps> = ({
               }`}
             >
               {!hasSecondBrain
-                ? '第二大脑未授权'
+                ? i18nService.t('recordingCardSummaryBrainNotAuthorized')
                 : isSynced
-                  ? '再次同步第二大脑'
-                  : '同步到第二大脑'}
+                  ? i18nService.t('recordingCardSummarySyncBrainAgain')
+                  : i18nService.t('recordingCardSummarySyncBrain')}
             </button>
             <button
               type="button"
@@ -261,7 +262,7 @@ export const RecordingSummaryColumn: React.FC<RecordingSummaryColumnProps> = ({
                   : 'text-[#505055] border border-[#ebebee] bg-white hover:border-[#c6c6cc] hover:text-[#1c1c1e] cursor-pointer'
               }`}
             >
-              发到聊天框
+              {i18nService.t('recordingCardSummarySendToChatBtn')}
             </button>
           </div>
         </div>

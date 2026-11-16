@@ -2,6 +2,7 @@ import { XMarkIcon } from '@heroicons/react/24/outline';
 import React, { useCallback, useEffect, useState } from 'react';
 
 import { BillingLogItem, fetchBillingLogs } from '../services/billingService';
+import { i18nService } from '../services/i18n';
 import Modal from './common/Modal';
 
 interface BillingModalProps {
@@ -44,11 +45,11 @@ const BillingModal: React.FC<BillingModalProps> = ({ onClose }) => {
         setLogs(res.logs);
         setPage(1);
       } else {
-        setErrorMsg(res.error || '获取账单流水失败');
+        setErrorMsg(res.error || i18nService.t('billingFetchError'));
       }
     } catch (e: any) {
       console.error('[BillingModal] Fetch logs error:', e);
-      setErrorMsg('网络请求异常，请检查网络连接');
+      setErrorMsg(i18nService.t('billingNetworkError'));
     } finally {
       setLoading(false);
     }
@@ -110,7 +111,7 @@ const BillingModal: React.FC<BillingModalProps> = ({ onClose }) => {
     >
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-border/60 shrink-0">
-        <h3 className="text-base font-semibold text-foreground">我的账单</h3>
+        <h3 className="text-base font-semibold text-foreground">{i18nService.t('billingTitle')}</h3>
         <button
           onClick={onClose}
           className="p-1.5 text-secondary hover:text-foreground rounded-lg hover:bg-surface-raised transition-colors"
@@ -131,7 +132,7 @@ const BillingModal: React.FC<BillingModalProps> = ({ onClose }) => {
                 : 'text-secondary hover:bg-surface-raised hover:text-foreground'
             }`}
           >
-            全部
+            {i18nService.t('billingTabAll')}
           </button>
           <button
             onClick={() => { setFilterType('consume'); setPage(1); }}
@@ -141,7 +142,7 @@ const BillingModal: React.FC<BillingModalProps> = ({ onClose }) => {
                 : 'text-secondary hover:bg-surface-raised hover:text-foreground'
             }`}
           >
-            消费明细
+            {i18nService.t('billingTabConsume')}
           </button>
           <button
             onClick={() => { setFilterType('recharge'); setPage(1); }}
@@ -151,20 +152,20 @@ const BillingModal: React.FC<BillingModalProps> = ({ onClose }) => {
                 : 'text-secondary hover:bg-surface-raised hover:text-foreground'
             }`}
           >
-            充值明细
+            {i18nService.t('billingTabRecharge')}
           </button>
         </div>
 
         {/* 日期选择器 */}
         <div className="flex items-center gap-1.5 text-xs text-secondary shrink-0">
-          <span>日期：</span>
+          <span>{i18nService.t('billingDateLabel')}</span>
           <input
             type="date"
             value={startDate}
             onChange={(e) => { setStartDate(e.target.value); setPage(1); }}
             className="px-2 py-1 rounded-lg border border-border/60 bg-surface text-foreground focus:outline-none focus:border-primary"
           />
-          <span className="text-secondary/60">至</span>
+          <span className="text-secondary/60">{i18nService.t('billingDateTo')}</span>
           <input
             type="date"
             value={endDate}
@@ -176,7 +177,7 @@ const BillingModal: React.FC<BillingModalProps> = ({ onClose }) => {
               onClick={() => { setStartDate(''); setEndDate(''); setPage(1); }}
               className="text-primary hover:text-primary-hover font-medium ml-1"
             >
-              清空
+              {i18nService.t('billingClear')}
             </button>
           )}
         </div>
@@ -190,7 +191,7 @@ const BillingModal: React.FC<BillingModalProps> = ({ onClose }) => {
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
-            <span className="text-xs text-secondary">正在获取账单...</span>
+            <span className="text-xs text-secondary">{i18nService.t('billingLoading')}</span>
           </div>
         ) : errorMsg ? (
           <div className="flex-1 flex flex-col items-center justify-center text-center py-16 space-y-2">
@@ -199,7 +200,7 @@ const BillingModal: React.FC<BillingModalProps> = ({ onClose }) => {
               onClick={fetchBillingLogs}
               className="text-xs text-primary hover:underline"
             >
-              点击重新加载
+              {i18nService.t('billingReload')}
             </button>
           </div>
         ) : logs.length === 0 ? (
@@ -207,24 +208,24 @@ const BillingModal: React.FC<BillingModalProps> = ({ onClose }) => {
             <svg className="w-8 h-8 text-secondary/40" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
-            <span className="text-xs">暂无账单记录</span>
+            <span className="text-xs">{i18nService.t('billingEmpty')}</span>
           </div>
         ) : filteredLogs.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center py-16 text-secondary space-y-1">
             <svg className="w-8 h-8 text-secondary/40" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
             </svg>
-            <span className="text-xs">当前筛选条件（分类或日期）下无账单流水</span>
+            <span className="text-xs">{i18nService.t('billingEmptyFiltered')}</span>
           </div>
         ) : (
           <div className="flex-1 overflow-x-auto overflow-y-hidden">
             <table className="w-full text-left border-collapse text-xs">
               <thead>
                 <tr className="border-b border-border/60 text-secondary/80 font-semibold">
-                  <th className="py-2.5 px-3">类型</th>
-                  <th className="py-2.5 px-3">模型</th>
-                  <th className="py-2.5 px-3 text-right">额度变动</th>
-                  <th className="py-2.5 px-3 text-center">发生时间</th>
+                  <th className="py-2.5 px-3">{i18nService.t('billingColType')}</th>
+                  <th className="py-2.5 px-3">{i18nService.t('billingColModel')}</th>
+                  <th className="py-2.5 px-3 text-right">{i18nService.t('billingColAmount')}</th>
+                  <th className="py-2.5 px-3 text-center">{i18nService.t('billingColTime')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/20">
@@ -246,17 +247,17 @@ const BillingModal: React.FC<BillingModalProps> = ({ onClose }) => {
                               : 'bg-green-500/10 text-green-600 dark:text-green-400'
                           }`}
                         >
-                          {isConsume ? '消费' : '充值'}
+                          {isConsume ? i18nService.t('billingTypeConsume') : i18nService.t('billingTypeRecharge')}
                         </span>
                       </td>
                       <td className="py-3 px-3 font-medium text-foreground/80 break-all max-w-[240px] truncate" title={item.content}>
-                        {isConsume ? item.model_name || '未知模型' : (item.content || '充值/赠送')}
+                        {isConsume ? item.model_name || i18nService.t('billingUnknownModel') : (item.content || i18nService.t('billingRechargeOrGift'))}
                       </td>
                       <td className="py-3 px-3 text-right font-mono font-bold">
                         <span className={isConsume ? 'text-foreground/80' : 'text-green-500 dark:text-green-400'}>
                           {isConsume ? `-${points}` : `+${points}`}
                         </span>
-                        <span className="text-[10px] font-normal text-secondary ml-0.5">点</span>
+                        <span className="text-[10px] font-normal text-secondary ml-0.5">{i18nService.t('billingPointsUnit')}</span>
                       </td>
                       <td className="py-3 px-3 text-center text-secondary text-[11px] whitespace-nowrap">
                         {displayTime}
@@ -280,17 +281,17 @@ const BillingModal: React.FC<BillingModalProps> = ({ onClose }) => {
             disabled={page === 1 || loading}
             className="px-2.5 py-1 rounded-lg text-xs border border-border/80 hover:bg-surface-raised hover:text-foreground transition-all disabled:opacity-40 disabled:cursor-not-allowed font-medium text-secondary"
           >
-            上一页
+            {i18nService.t('billingPrevPage')}
           </button>
           <span className="text-xs font-semibold text-foreground px-2">
-            第 {page} / {totalPages} 页
+            {i18nService.t('billingPageIndicator', { page, totalPages })}
           </span>
           <button
             onClick={() => setPage(p => Math.min(totalPages, p + 1))}
             disabled={page === totalPages || loading}
             className="px-2.5 py-1 rounded-lg text-xs border border-border/80 hover:bg-surface-raised hover:text-foreground transition-all disabled:opacity-40 disabled:cursor-not-allowed font-medium text-secondary"
           >
-            下一页
+            {i18nService.t('billingNextPage')}
           </button>
         </div>
       </div>
