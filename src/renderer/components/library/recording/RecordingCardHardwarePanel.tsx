@@ -378,6 +378,11 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
         next.delete(file.name);
         return next;
       });
+      setSyncProgress(prev => {
+        const next = { ...prev };
+        delete next[file.name];
+        return next;
+      });
     }
   };
 
@@ -454,6 +459,11 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
             };
             await window.electron.localRecordings?.upsertRecord?.(newItem);
             setSyncProgress(prev => ({ ...prev, [item.file.name]: 100 }));
+            setSyncingFileNames(prev => {
+              const next = new Set(prev);
+              next.delete(item.file.name);
+              return next;
+            });
             successCount++;
           }
         } catch (saveErr) {
@@ -473,6 +483,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
         removeProgressListener();
       }
       setSyncingFileNames(new Set());
+      setSyncProgress({});
     }
   };
 
@@ -851,7 +862,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
             ) : (
               paginatedBleFiles.map((file, idx) => {
                 const isSaved = isFileSavedLocally(file.name);
-                const isSyncing = syncingFileNames.has(file.name);
+                const isSyncing = !isSaved && syncingFileNames.has(file.name);
                 const prog = syncProgress[file.name] ?? 0;
 
                 return (
