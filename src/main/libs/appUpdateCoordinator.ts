@@ -759,21 +759,47 @@ export class AppUpdateCoordinator {
       return null;
     }
 
-    const toEntry = (log?: ChangeLogLang) => ({
-      title: typeof log?.title === 'string' ? log.title : '',
-      content: Array.isArray(log?.content) ? log.content : [],
-    });
+    const toEntry = (log?: ChangeLogLang | any) => {
+      if (!log) {
+        return { title: '', content: [] };
+      }
+      const title = typeof log.title === 'string' ? log.title : '';
+      let content: string[] = [];
+      if (Array.isArray(log.content)) {
+        content = log.content.filter((item: unknown) => typeof item === 'string' && item.trim().length > 0);
+      } else if (typeof log.content === 'string' && log.content.trim()) {
+        content = [log.content.trim()];
+      }
+      return { title, content };
+    };
+
+    let changeLog: AppUpdateInfo['changeLog'];
+    if (payload && typeof payload.version === 'string') {
+      const rawLog = payload.changeLog;
+      const zhEntry = toEntry(rawLog?.zh || rawLog?.ch);
+      const enEntry = toEntry(rawLog?.en);
+
+      changeLog = {
+        zh: {
+          title: zhEntry.title || '版本更新',
+          content: zhEntry.content.length > 0 ? zhEntry.content : ['有新版本可用，请点击更新'],
+        },
+        en: {
+          title: enEntry.title || 'App Update',
+          content: enEntry.content.length > 0 ? enEntry.content : ['A new version is available, please update.'],
+        },
+      };
+    } else {
+      changeLog = {
+        zh: toEntry(payload?.data?.value?.changeLog?.ch),
+        en: toEntry(payload?.data?.value?.changeLog?.en),
+      };
+    }
 
     const result: AppUpdateInfo = {
       latestVersion, // 保留带有前缀的原始版本号以供 UI 展示一致性
       date,
-      changeLog: payload && typeof payload.version === 'string' ? {
-        zh: { title: '版本更新', content: ['有新版本可用，请点击更新'] },
-        en: { title: 'App Update', content: ['A new version is available, please update.'] }
-      } : {
-        zh: toEntry(payload?.data?.value?.changeLog?.ch),
-        en: toEntry(payload?.data?.value?.changeLog?.en),
-      },
+      changeLog,
       url: downloadUrl,
     };
     console.log(
