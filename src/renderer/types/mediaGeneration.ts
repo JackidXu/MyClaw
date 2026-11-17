@@ -12,6 +12,7 @@ export interface MediaModel {
   pricingDescription?: string;
   capabilities?: string;
   description?: string;
+  isDefault?: boolean;
   unitCredits?: number;
   unitLabel?: string;
 }

@@ -739,7 +739,15 @@ const MediaModelPicker: React.FC<MediaModelPickerProps> = ({ draftKey, disabled,
         ownerAccountKey: requestOwnerAccountKey,
       }));
       const currentSelection = selectionRef.current;
-      if (!currentSelection || currentSelection.mode === 'none') {
+      const isSelectionValid = currentSelection && currentSelection.mode !== 'none'
+        && (currentSelection.mode !== 'image' || imageModels.some(m => m.modelId === currentSelection.modelId))
+        && (currentSelection.mode !== 'video' || videoModels.some(m => m.modelId === currentSelection.modelId))
+        && (currentSelection.mode !== 'auto' || (
+          imageModels.some(m => m.modelId === currentSelection.imageModelId)
+          && videoModels.some(m => m.modelId === currentSelection.videoModelId)
+        ));
+
+      if (!isSelectionValid) {
         const rawSaved = await loadSavedMediaSelection(requestOwnerAccountKey);
         if (
           fetchRequestIdRef.current !== requestId
@@ -754,26 +762,33 @@ const MediaModelPicker: React.FC<MediaModelPickerProps> = ({ draftKey, disabled,
         const imageValid = imageEntry && imageModels.some(m => m.modelId === imageEntry.modelId);
         const videoValid = videoEntry && videoModels.some(m => m.modelId === videoEntry.modelId);
 
-        if (imageValid && videoValid) {
+        // 如果用户未选择或已保存的模型已失效，则回退启用带有 isDefault 标记的默认推荐模型
+        const defaultImageModel = !imageValid ? imageModels.find(m => m.isDefault) : undefined;
+        const defaultVideoModel = !videoValid ? videoModels.find(m => m.isDefault) : undefined;
+
+        const effectiveImage = imageValid ? imageEntry : (defaultImageModel ? { modelId: defaultImageModel.modelId, modelName: defaultImageModel.displayName } : undefined);
+        const effectiveVideo = videoValid ? videoEntry : (defaultVideoModel ? { modelId: defaultVideoModel.modelId, modelName: defaultVideoModel.displayName } : undefined);
+
+        if (effectiveImage && effectiveVideo) {
           dispatch(setMediaSelection({
             draftKey,
             selection: {
               mode: 'auto',
-              modelId: imageEntry.modelId,
-              modelName: imageEntry.modelName,
-              imageModelId: imageEntry.modelId,
-              videoModelId: videoEntry!.modelId,
+              modelId: effectiveImage.modelId,
+              modelName: effectiveImage.modelName,
+              imageModelId: effectiveImage.modelId,
+              videoModelId: effectiveVideo.modelId,
             },
           }));
-        } else if (imageValid) {
+        } else if (effectiveImage) {
           dispatch(setMediaSelection({
             draftKey,
-            selection: { mode: 'image', modelId: imageEntry.modelId, modelName: imageEntry.modelName },
+            selection: { mode: 'image', modelId: effectiveImage.modelId, modelName: effectiveImage.modelName },
           }));
-        } else if (videoValid) {
+        } else if (effectiveVideo) {
           dispatch(setMediaSelection({
             draftKey,
-            selection: { mode: 'video', modelId: videoEntry!.modelId, modelName: videoEntry!.modelName },
+            selection: { mode: 'video', modelId: effectiveVideo.modelId, modelName: effectiveVideo.modelName },
           }));
           setActiveTab('video');
         }
@@ -802,7 +817,7 @@ const MediaModelPicker: React.FC<MediaModelPickerProps> = ({ draftKey, disabled,
   }, [accountGeneration, ownerAccountKey]);
 
   useEffect(() => {
-    if (isOpen && canUseMediaGeneration) {
+    if (canUseMediaGeneration) {
       const currentMediaModels = mediaModelsRef.current;
       const hasCachedModels = (currentMediaModels.image && currentMediaModels.image.length > 0)
         || (currentMediaModels.video && currentMediaModels.video.length > 0);
@@ -810,7 +825,7 @@ const MediaModelPicker: React.FC<MediaModelPickerProps> = ({ draftKey, disabled,
         fetchModels();
       }
     }
-  }, [isOpen, canUseMediaGeneration, fetchModels]);
+  }, [canUseMediaGeneration, fetchModels]);
 
   // In the add menu, the prompt's badges name the chosen models; a remembered
   // image and video pair needs the model list for the second name.
@@ -890,26 +905,40 @@ const MediaModelPicker: React.FC<MediaModelPickerProps> = ({ draftKey, disabled,
         }
         const imageEntry = saved.image;
         const videoEntry = saved.video;
-        if (imageEntry && videoEntry) {
+
+        const currentMediaModels = mediaModelsRef.current;
+        const imageModels = currentMediaModels.image || [];
+        const videoModels = currentMediaModels.video || [];
+
+        const imageValid = imageEntry && (imageModels.length === 0 || imageModels.some(m => m.modelId === imageEntry.modelId));
+        const videoValid = videoEntry && (videoModels.length === 0 || videoModels.some(m => m.modelId === videoEntry.modelId));
+
+        const defaultImageModel = !imageValid && imageModels.length > 0 ? imageModels.find(m => m.isDefault) : undefined;
+        const defaultVideoModel = !videoValid && videoModels.length > 0 ? videoModels.find(m => m.isDefault) : undefined;
+
+        const effectiveImage = imageValid ? imageEntry : (defaultImageModel ? { modelId: defaultImageModel.modelId, modelName: defaultImageModel.displayName } : undefined);
+        const effectiveVideo = videoValid ? videoEntry : (defaultVideoModel ? { modelId: defaultVideoModel.modelId, modelName: defaultVideoModel.displayName } : undefined);
+
+        if (effectiveImage && effectiveVideo) {
           dispatch(setMediaSelection({
             draftKey,
             selection: {
               mode: 'auto',
-              modelId: imageEntry.modelId,
-              modelName: imageEntry.modelName,
-              imageModelId: imageEntry.modelId,
-              videoModelId: videoEntry.modelId,
+              modelId: effectiveImage.modelId,
+              modelName: effectiveImage.modelName,
+              imageModelId: effectiveImage.modelId,
+              videoModelId: effectiveVideo.modelId,
             },
           }));
-        } else if (imageEntry) {
+        } else if (effectiveImage) {
           dispatch(setMediaSelection({
             draftKey,
-            selection: { mode: 'image', modelId: imageEntry.modelId, modelName: imageEntry.modelName },
+            selection: { mode: 'image', modelId: effectiveImage.modelId, modelName: effectiveImage.modelName },
           }));
-        } else if (videoEntry) {
+        } else if (effectiveVideo) {
           dispatch(setMediaSelection({
             draftKey,
-            selection: { mode: 'video', modelId: videoEntry.modelId, modelName: videoEntry.modelName },
+            selection: { mode: 'video', modelId: effectiveVideo.modelId, modelName: effectiveVideo.modelName },
           }));
           setActiveTab('video');
         }
