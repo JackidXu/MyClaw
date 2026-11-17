@@ -17,6 +17,7 @@ export interface Model {
   name: string;
   provider?: string; // 模型所属的提供商
   providerKey?: string; // 模型所属的提供商 key（用于唯一标识）
+  icon?: string; // 模型所属的图标标识（由服务端下发，如 deepseek / doubao / zhipu / moonshot）
   openClawProviderId?: string; // OpenClaw runtime provider id
   runtimeProfile?: ModelRuntimeProfile; // 受控的运行时兼容档案
   supportsImage?: boolean;

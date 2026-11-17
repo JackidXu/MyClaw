@@ -15,6 +15,8 @@ export interface OneApiChatModel {
   modelName?: string;
   provider?: string;
   providerKey?: string;
+  icon?: string;
+  costMultiplier?: number;
   supportsVideo?: boolean;
   supportsThinking?: boolean;
   supportsToolCalling?: boolean;
@@ -144,6 +146,8 @@ export async function fetchAndFilterOneApiChatModels(
             modelName: modelName,
             provider: m.provider || '火山方舟',
             providerKey: m.providerKey || 'oneapi',
+            icon: m.icon || undefined,
+            costMultiplier: typeof m.costMultiplier === 'number' ? m.costMultiplier : undefined,
             supportsImage: typeof m.supportsImage === 'boolean' ? m.supportsImage : true,
             supportsVideo: Boolean(m.supportsVideo),
             supportsThinking: Boolean(m.supportsThinking),
