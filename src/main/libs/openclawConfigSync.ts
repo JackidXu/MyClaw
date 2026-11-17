@@ -2399,8 +2399,14 @@ export class OpenClawConfigSync {
             modelName: m.name,
             contextWindow: m.contextWindow,
             maxTokens: m.maxTokens,
+            thinkingConfig: m.thinkingConfig,
           });
           collectCompatibilityOwnerProfile(candidateModelProfiles, sel);
+          collectThinkingProfile(
+            candidateThinkingProfiles,
+            sel,
+            m.thinkingConfig,
+          );
           if (!allProvidersMap[sel.providerId]) {
             allProvidersMap[sel.providerId] = { ...sel.providerConfig, models: [] };
           }
