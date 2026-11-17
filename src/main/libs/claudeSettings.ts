@@ -69,6 +69,7 @@ type ProviderModelConfig = {
   supportsImage?: boolean;
   supportsVideo?: boolean;
   supportsThinking?: boolean;
+  thinkingConfig?: ModelThinkingConfig;
   contextWindow?: number;
   maxTokens?: number;
   customParams?: Record<string, unknown>;
@@ -80,6 +81,7 @@ type ProviderModelInputConfig = {
   supportsImage?: boolean;
   supportsVideo?: boolean;
   supportsThinking?: boolean;
+  thinkingConfig?: ModelThinkingConfig;
   contextWindow?: number;
   maxTokens?: number;
   customParams?: Record<string, unknown>;
