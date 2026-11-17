@@ -21,7 +21,6 @@ import { useDispatch, useSelector } from 'react-redux';
 
 import { ModelPresetId } from '../../shared/modelPresets/constants';
 import { getProviderIcon, ProviderIconId } from '../providers/uiRegistry';
-import { authService } from '../services/auth';
 import { i18nService } from '../services/i18n';
 import { modelPresetName } from '../services/modelPresets';
 import {
@@ -32,7 +31,7 @@ import { RootState } from '../store';
 import type { Model } from '../store/slices/modelSlice';
 import { AUTO_MODEL_ID, getModelIdentityKey, isSameModelIdentity, ServerModelLoadStatus, setSelectedModel } from '../store/slices/modelSlice';
 import { AccountConnectionNotice } from './AccountConnectionNotice';
-import { getAccountConnectionState, getModelConnectionState } from './accountConnectionState';
+import { getAccountConnectionState } from './accountConnectionState';
 import { resolvePopoverPlacement } from './cowork/popoverPlacement';
 import BalancedModelIcon from './icons/BalancedModelIcon';
 import BusyModelIcon from './icons/BusyModelIcon';
@@ -435,11 +434,7 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
   const serverModelLoadStatus = useSelector((state: RootState) => state.model.serverModelLoadStatus);
   const rawAvailableModels = useSelector((state: RootState) => state.model.availableModels);
   const availableModels = rawAvailableModels.filter(m => !m.isServerModel);
-  const connectionState = getModelConnectionState(
-    auth,
-    serverModelLoadStatus,
-    false,
-  );
+  const connectionState = null;
   const selectedValue = controlled ? value ?? null : globalSelectedModel;
   const currentModelMetadata = selectedValue
     ? availableModels.find(model => isSameModelIdentity(model, selectedValue)) : undefined;
@@ -450,7 +445,7 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
     && !selectedModel.isServerModel
     && selectedModel.providerKey !== ProviderName.LobsteraiServer);
   const isNodeServerModel = selectedModel?.providerKey === ProviderName.Oneapi;
-  const customProviderName = isCustomModelSelected
+  const customProviderName = isCustomModelSelected && !isNodeServerModel
     ? resolveCustomModelProviderName(selectedModel, currentModelMetadata)
     : '';
   const customBadgeLabel = isNodeServerModel
@@ -458,20 +453,30 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
     : i18nService.t('modelSourceCustom');
   const showCustomProviderName = Boolean(customProviderName) && !hideCustomProviderName;
   const selectedModelKey = selectedModel ? getModelIdentityKey(selectedModel) : '';
-  const serverModels: Model[] = [];
-  const userModels = availableModels;
+  const isOfficialModel = (model: Model | null | undefined): boolean => {
+    if (!model) return false;
+    return model.id === AUTO_MODEL_ID || Boolean(model.isAutoModel) || model.providerKey === ProviderName.Oneapi;
+  };
+
+  const officialModels = availableModels.filter(m => isOfficialModel(m));
+  const customModels = availableModels.filter(m => !isOfficialModel(m));
+  const serverModels = officialModels;
+  const userModels = customModels;
   const modelGroups = [
-    ...(userModels.length > 0
-      ? [{ key: ModelSelectorGroup.User, label: i18nService.t('modelGroupUser') }]
+    ...(officialModels.length > 0
+      ? [{ key: ModelSelectorGroup.Server, label: i18nService.t('modelGroupOfficial') }]
+      : []),
+    ...(customModels.length > 0
+      ? [{ key: ModelSelectorGroup.User, label: i18nService.t('modelGroupCustom') }]
       : []),
   ];
-  const shouldShowGroupTabs = false;
+  const shouldShowGroupTabs = officialModels.length > 0 && customModels.length > 0;
   const isGroupAvailable = (group: ModelSelectorGroup): boolean => (
-    group === ModelSelectorGroup.Server ? false : userModels.length > 0
+    group === ModelSelectorGroup.Server ? officialModels.length > 0 : customModels.length > 0
   );
   const getModelGroup = (model: Model | null): ModelSelectorGroup | null => {
     if (!model) return null;
-    return model.isServerModel ? ModelSelectorGroup.Server : ModelSelectorGroup.User;
+    return isOfficialModel(model) ? ModelSelectorGroup.Server : ModelSelectorGroup.User;
   };
   const selectedModelGroup = getModelGroup(selectedModel);
   const showCurrentModelFooter = shouldShowGroupTabs && selectedModel !== null && selectedModelGroup !== null;
@@ -530,8 +535,13 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
     : 'font-medium text-sm';
   const triggerIconClassName = compact ? 'h-3.5 w-3.5' : 'h-4 w-4';
   const resolveModelIconProviderKey = (model: Model): string => {
+    // 优先使用服务端下发的权威 icon 标识
+    if (model.icon?.trim()) return model.icon.trim();
+
     const providerKey = model.providerKey?.trim();
-    if (providerKey && providerKey !== ProviderName.LobsteraiServer) return providerKey;
+    if (providerKey && providerKey !== ProviderName.Oneapi && providerKey !== ProviderName.LobsteraiServer) {
+      return providerKey;
+    }
 
     const searchableText = `${model.presetId ? modelPresetName(model.presetId) : model.name} ${model.id}`;
     return MODEL_ICON_PROVIDER_HINTS.find(({ pattern }) => pattern.test(searchableText))?.providerName
@@ -558,25 +568,7 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
     });
   };
 
-  // Refresh access and campaign metadata whenever the picker opens.
-  React.useEffect(() => {
-    if (isOpen && isLoggedIn) void authService.refreshServerModels();
-  }, [isOpen, isLoggedIn]);
 
-  // Refresh at campaign boundaries while the picker remains open.
-  React.useEffect(() => {
-    if (!isOpen || !isLoggedIn) return;
-    const now = Date.now();
-    const nextBoundary = availableModels.flatMap(model => model.limitedFree
-      ? [model.limitedFreeStartAt, model.limitedFreeEndAt] : [])
-      .map(value => value ? Date.parse(value) : NaN)
-      .filter(value => Number.isFinite(value) && value > now)
-      .sort((a, b) => a - b)[0];
-    if (nextBoundary == null) return;
-    const timer = window.setTimeout(() => { void authService.refreshServerModels(); },
-      Math.min(nextBoundary - now + 100, 2_147_483_647));
-    return () => window.clearTimeout(timer);
-  }, [availableModels, isOpen, isLoggedIn]);
 
   // 点击外部区域关闭下拉框
   React.useEffect(() => {
@@ -1120,7 +1112,10 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
     const blocked = restricted || agenticBlocked || busy || accountUnavailable;
     const hasThinkingProtocol = supportsConfigurableModelThinkingProtocol(model);
 
-    const showCostMultiplier = model.costMultiplier != null && (model.costMultiplier > 0 || !!model.presetId || model.limitedFreeActive === true);
+    const showCostMultiplier = model.id !== AUTO_MODEL_ID
+      && !model.isAutoModel
+      && model.costMultiplier != null
+      && (model.costMultiplier > 0 || !!model.presetId || model.limitedFreeActive === true);
     const costMultiplierLabel = showCostMultiplier
       ? `x${model.costMultiplier?.toFixed(2)}`
       : undefined;
@@ -1166,16 +1161,6 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
           {model.isRecommended && (
             <span className="shrink-0 rounded-md bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-amber-600 dark:text-amber-400">
               {i18nService.t('modelRecommendedBadge')}
-            </span>
-          )}
-          {model.isDeprecated && (
-            <span className="shrink-0 rounded-md bg-rose-500/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-rose-600 dark:text-rose-400">
-              {i18nService.t('modelDeprecatedBadge')}
-            </span>
-          )}
-          {model.supportsImage && (
-            <span className="shrink-0 rounded-md bg-surface-raised px-1.5 py-0.5 text-[10px] font-medium leading-none text-secondary">
-              {i18nService.t('modelSupportsImageInputBadge')}
             </span>
           )}
           {model.presetId && restricted && model.restrictionHint && (

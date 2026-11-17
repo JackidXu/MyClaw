@@ -1691,6 +1691,8 @@ const App: React.FC = () => {
               name: model.name,
               provider: getProviderDisplayName(providerName, providerConfig),
               providerKey: providerName,
+              icon: model.icon,
+              costMultiplier: typeof model.costMultiplier === 'number' ? model.costMultiplier : undefined,
               openClawProviderId,
               supportsImage: model.supportsImage ?? false,
               supportsVideo: Boolean(model.supportsVideo),

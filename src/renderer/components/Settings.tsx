@@ -3583,6 +3583,8 @@ const Settings: React.FC<SettingsProps> = ({
               name: model.name,
               provider: getProviderDisplayName(providerName, config),
               providerKey: providerName,
+              icon: model.icon,
+              costMultiplier: typeof model.costMultiplier === 'number' ? model.costMultiplier : undefined,
               openClawProviderId,
               supportsImage: resolveModelSupportsImageForProvider(providerName, model),
               supportsVideo: Boolean(model.supportsVideo),
