@@ -41,6 +41,10 @@ SKILLs/ffmpeg-tool/assets/windows-x64/ffmpeg.exe
 SKILLs/**/jydec
 SKILLs/yixiaoer/bin/
 
+# Track the root dependency lock; generated skill lockfiles remain local.
+**/package-lock.json
+!/package-lock.json
+
 nul
 .work.env
 .keyfrom-build/

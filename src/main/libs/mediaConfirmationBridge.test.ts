@@ -3,7 +3,7 @@ import { expect, test } from 'vitest';
 import { MediaConfirmationReason } from '../../shared/media/confirmation';
 import { McpBridgeServer } from './mcpBridgeServer';
 
-test.each(['lobsterai_video_generate', 'lobsterai_image_generate'])('closing %s interrupts its pending confirmation and cannot submit', async tool => {
+test.each(['heyclaw_video_generate', 'heyclaw_image_generate'])('closing %s interrupts its pending confirmation and cannot submit', async tool => {
   const server = new McpBridgeServer('test-secret');
   let shown!: () => void;
   const published = new Promise<void>(resolve => { shown = resolve; });

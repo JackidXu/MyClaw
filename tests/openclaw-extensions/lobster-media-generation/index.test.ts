@@ -6,8 +6,8 @@ import { MediaRunAccountScopes, MediaRunLifecycle } from '../../../src/main/medi
 afterEach(() => vi.unstubAllGlobals());
 
 test.each([
-  ['agent:main:feishu:direct:user-1', 'lobsterai_image_generate'],
-  ['agent:main:cron:job-1:run:execution-1', 'lobsterai_video_generate'],
+  ['agent:main:feishu:direct:user-1', 'heyclaw_image_generate'],
+  ['agent:main:cron:job-1:run:execution-1', 'heyclaw_video_generate'],
 ])('native media bridge keeps the captured owner for %s', async (sessionKey, toolName) => {
   const hooks = new Map<string, (...args: any[]) => Promise<any>>();
   const factories: Array<(ctx: any) => any> = [];
@@ -37,7 +37,7 @@ test.each([
 
   const context = { sessionKey, runId: 'run-1' };
   const tools = factories.map(factory => factory({ sessionKey })).filter(Boolean);
-  expect(tools.map(tool => tool.name)).toEqual(['lobsterai_image_generate', 'lobsterai_video_generate']);
+  expect(tools.map(tool => tool.name)).toEqual(['heyclaw_image_generate', 'heyclaw_video_generate']);
   const tool = tools.find(tool => tool.name === toolName);
   // A missing lifecycle cannot be replaced by model-supplied identifiers.
   expect(await hooks.get('before_tool_call')!({ toolName, toolCallId: 'early' }, context)).toMatchObject({ block: true });

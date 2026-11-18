@@ -54,10 +54,10 @@ describe('ProviderRegistry', () => {
     });
   });
 
-  test('xiaomi default models are limited to MiMo V2.5 models with 1M context', () => {
+  test('xiaomi defaults to MiMo V2.6 Pro with 1M context', () => {
     const xiaomi = ProviderRegistry.get(ProviderName.Xiaomi);
     expect(xiaomi?.defaultModels).toEqual([
-      { id: 'mimo-v2.5-pro', name: 'MiMo V2.5 Pro', supportsImage: false, supportsThinking: true, contextWindow: 1_000_000 },
+      { id: 'mimo-v2.6-pro', name: 'MiMo V2.6 Pro', supportsImage: true, supportsThinking: true, contextWindow: 1_000_000 },
       { id: 'mimo-v2.5', name: 'MiMo V2.5', supportsImage: true, supportsThinking: true, contextWindow: 1_000_000 },
     ]);
   });
@@ -112,6 +112,14 @@ describe('ProviderRegistry', () => {
     expect(ProviderRegistry.resolveModelSupportsImage('custom_0', 'qwen3.6-plus', false)).toBe(true);
     expect(ProviderRegistry.resolveModelSupportsImage('custom_0', 'unknown-model', false)).toBe(false);
     expect(ProviderRegistry.resolveModelSupportsImage('custom_0', 'unknown-model', true)).toBe(true);
+  });
+
+  test('explicit capability overrides beat provider presets and known models', () => {
+    expect(ProviderRegistry.resolveModelSupportsImage(ProviderName.Zhipu, 'glm-5.1', true, true)).toBe(true);
+    expect(ProviderRegistry.resolveModelSupportsImage(ProviderName.Qwen, 'qwen3.6-plus', true, false)).toBe(false);
+    expect(ProviderRegistry.resolveModelSupportsImage('custom_0', 'qwen3.6-plus', true, false)).toBe(false);
+    expect(ProviderRegistry.resolveModelSupportsThinking(ProviderName.Xiaomi, 'mimo-v2.6-pro', true, false)).toBe(false);
+    expect(ProviderRegistry.resolveModelSupportsThinking(ProviderName.Xiaomi, 'mimo-v2.6-pro', false)).toBe(true);
   });
 
   test('qwen maps to the API-key provider instead of the OAuth alias', () => {

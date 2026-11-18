@@ -1,6 +1,7 @@
 import type { ModelPresetId } from '../../shared/modelPresets/constants';
 import {
   type ApiFormat,
+  type ModelCapabilityOverrides,
   normalizeGeminiApiBaseUrl,
   type OpenAIApiMode,
   type ProviderConfig,
@@ -14,6 +15,7 @@ import {
   type LobsterAIRequestCapability,
   parseLobsterAIRequestCapabilities,
 } from '../../shared/providers/lobsterAIRequestOptions';
+import { parseContextWindowOptions } from '../../shared/providers/modelContextWindow';
 import {
   applyModelRuntimeProfileMetadata,
   ModelRuntimeProfile,
@@ -73,6 +75,7 @@ type ProviderModelConfig = {
   contextWindow?: number;
   maxTokens?: number;
   customParams?: Record<string, unknown>;
+  capabilityOverrides?: ModelCapabilityOverrides;
 };
 
 type ProviderModelInputConfig = {
@@ -85,9 +88,12 @@ type ProviderModelInputConfig = {
   contextWindow?: number;
   maxTokens?: number;
   customParams?: Record<string, unknown>;
+  capabilityOverrides?: ModelCapabilityOverrides;
 };
 
 export type ServerModelMetadata = {
+  contextWindowOptions?: number[];
+  presetContextWindowOptions?: Partial<Record<ModelPresetId, number[]>>;
   modelId: string;
   modelName?: string;
   provider?: string;
@@ -160,6 +166,7 @@ export type ApiConfigResolution = {
     supportsImage?: boolean;
     supportsVideo?: boolean;
     supportsThinking?: boolean;
+    capabilityOverrides?: ModelCapabilityOverrides;
     thinkingConfig?: ModelThinkingConfig;
     requestCapabilities?: LobsterAIRequestCapability[];
     modelName?: string;
@@ -225,6 +232,8 @@ const serializeServerModelMetadata = (
       agenticReady: model.agenticReady,
       contextWindow: model.contextWindow,
       presetContextWindows: model.presetContextWindows,
+      contextWindowOptions: parseContextWindowOptions(model.contextWindowOptions),
+      presetContextWindowOptions: model.presetContextWindowOptions,
       maxTokens: model.maxTokens,
       explicitContextCache: model.explicitContextCache,
     }))
@@ -248,6 +257,8 @@ const getComparableServerModelMetadata = (
   agenticReady: meta.agenticReady,
   contextWindow: meta.contextWindow,
   presetContextWindows: meta.presetContextWindows,
+  contextWindowOptions: parseContextWindowOptions(meta.contextWindowOptions),
+  presetContextWindowOptions: meta.presetContextWindowOptions,
   maxTokens: meta.maxTokens,
   explicitContextCache: meta.explicitContextCache,
 }));
@@ -282,6 +293,7 @@ export function updateServerModelMetadata(models: ServerModelMetadataInput[]): b
       ? parseModelThinkingConfig(model.thinkingConfig)
       : undefined;
     const requestCapabilities = parseLobsterAIRequestCapabilities(model.requestCapabilities);
+    const contextWindowOptions = parseContextWindowOptions(model.contextWindowOptions);
 
     nextCache.set(modelId, {
       modelName: model.modelName,
@@ -298,8 +310,10 @@ export function updateServerModelMetadata(models: ServerModelMetadataInput[]): b
       requestCapabilities,
       supportsToolCalling: model.supportsToolCalling,
       agenticReady: model.agenticReady,
-      contextWindow: runtimeMetadata.contextWindow,
+      contextWindow: contextWindowOptions && model.contextWindow ? model.contextWindow : runtimeMetadata.contextWindow,
       presetContextWindows: model.presetContextWindows,
+      contextWindowOptions,
+      presetContextWindowOptions: model.presetContextWindowOptions,
       maxTokens: runtimeMetadata.maxTokens,
       explicitContextCache: model.explicitContextCache,
     });
@@ -322,7 +336,10 @@ export function updateServerModelMetadataFromResponse(models: ServerModelRespons
   const presetContextWindows = Object.fromEntries(models
     .filter(model => model.presetId)
     .map(model => [model.presetId!, model.contextWindow]));
-  return updateServerModelMetadata(models.map(model => ({ ...model, presetContextWindows })));
+  const presetContextWindowOptions = Object.fromEntries(models
+    .filter(model => model.presetId)
+    .map(model => [model.presetId!, parseContextWindowOptions(model.contextWindowOptions)]));
+  return updateServerModelMetadata(models.map(model => ({ ...model, presetContextWindows, presetContextWindowOptions })));
 }
 
 export function clearServerModelMetadata(): void {
@@ -345,6 +362,8 @@ export function getAllServerModelMetadata(): ServerModelMetadata[] {
     agenticReady: meta.agenticReady,
     contextWindow: meta.contextWindow,
     presetContextWindows: meta.presetContextWindows,
+    contextWindowOptions: parseContextWindowOptions(meta.contextWindowOptions),
+    presetContextWindowOptions: meta.presetContextWindowOptions,
     maxTokens: meta.maxTokens,
     explicitContextCache: meta.explicitContextCache,
   }));
@@ -370,6 +389,8 @@ export function getServerModelMetadata(modelId: string): ServerModelMetadata | n
     agenticReady: metadata.agenticReady,
     contextWindow: metadata.contextWindow,
     presetContextWindows: metadata.presetContextWindows,
+    contextWindowOptions: parseContextWindowOptions(metadata.contextWindowOptions),
+    presetContextWindowOptions: metadata.presetContextWindowOptions,
     maxTokens: metadata.maxTokens,
     explicitContextCache: metadata.explicitContextCache,
   };
@@ -461,6 +482,7 @@ function normalizeProviderModels(providerName: string, models?: ProviderModelInp
         providerName,
         model.id,
         model.supportsThinking,
+        model.capabilityOverrides?.thinking,
       );
       const supportsVideo = ProviderRegistry.resolveModelSupportsVideo(
         providerName,
@@ -479,6 +501,7 @@ function normalizeProviderModels(providerName: string, models?: ProviderModelInp
           providerName,
           model.id,
           model.supportsImage,
+          model.capabilityOverrides?.image,
         ),
         ...(supportsVideo ? { supportsVideo } : {}),
         ...(supportsThinking ? { supportsThinking } : {}),
@@ -505,6 +528,7 @@ type MatchedProvider = {
   supportsImage?: boolean;
   supportsVideo?: boolean;
   supportsThinking?: boolean;
+  capabilityOverrides?: ModelCapabilityOverrides;
   thinkingConfig?: ModelThinkingConfig;
   requestCapabilities?: LobsterAIRequestCapability[];
   modelName?: string;
@@ -742,6 +766,9 @@ function resolveMatchedProvider(appConfig: AppConfig): { matched: MatchedProvide
       supportsImage: matchedModel?.supportsImage,
       supportsVideo: matchedModel?.supportsVideo,
       supportsThinking: matchedModel?.supportsThinking,
+      ...(matchedModel?.capabilityOverrides
+        ? { capabilityOverrides: matchedModel.capabilityOverrides }
+        : {}),
       modelName: matchedModel?.name,
       contextWindow: matchedModel?.contextWindow,
       maxTokens: matchedModel?.maxTokens,
@@ -827,6 +854,7 @@ export function resolveRawApiConfig(): ApiConfigResolution {
       supportsImage: matched.supportsImage,
       supportsVideo: matched.supportsVideo,
       supportsThinking: matched.supportsThinking,
+      ...(matched.capabilityOverrides ? { capabilityOverrides: matched.capabilityOverrides } : {}),
       thinkingConfig: matched.thinkingConfig,
       requestCapabilities: matched.requestCapabilities,
       modelName: matched.modelName,

@@ -9,7 +9,7 @@ PR #2285 引入指定 `agentId` 启用 subagent 后，QA 反馈 child session �
 - main agent 普通桌面会话可以正常调用 `AskUserQuestion` 并弹出 LobsterAI 桌面选择窗口。
 - 非 main agent 普通桌面会话无法看到 LobsterAI 的 `AskUserQuestion`，模型会误用飞书插件的 `feishu_ask_user_question`。
 - 非 main agent 的 child session 同样无法使用 `AskUserQuestion`。
-- LobsterAI 自注册的 `lobsterai_image_generate` / `lobsterai_video_generate` 已支持非 main 普通桌面会话，但不支持 child session。
+- LobsterAI 自注册的 `heyclaw_image_generate` / `heyclaw_video_generate` 已支持非 main 普通桌面会话，但不支持 child session。
 
 用户期望是：
 
@@ -67,7 +67,7 @@ agent:<agentId>:subagent:<...>
 
 **Given** 用户在父桌面会话中选择了 LobsterAI 图片或视频模型
 
-**When** child session 调用 `lobsterai_image_generate` 或 `lobsterai_video_generate`
+**When** child session 调用 `heyclaw_image_generate` 或 `heyclaw_video_generate`
 
 **Then** 工具应可见，主进程回调应能解析 child session，并在 child 没有独立选择时继承父会话的媒体模型选择。
 
@@ -99,7 +99,7 @@ agent:<agentId>:subagent:<...>
 
 ### 3.3 媒体生成支持 child session
 
-`lobsterai_image_generate` / `lobsterai_video_generate` 插件应允许 `agent:<agentId>:subagent:<...>`。
+`heyclaw_image_generate` / `heyclaw_video_generate` 插件应允许 `agent:<agentId>:subagent:<...>`。
 
 主进程媒体回调应支持：
 
@@ -202,7 +202,7 @@ AskUser callback 使用 desktop resolver。无法解析或属于 IM 链路时返
 2. 非 main agent 普通桌面会话可以调用 `AskUserQuestion`，不再误用飞书 AskUser。
 3. 桌面 child session 的 `AskUserQuestion` callback 能映射到 materialized child Cowork session。
 4. IM 会话及其 child 链路不会触发 LobsterAI 桌面弹窗。
-5. 普通非 main agent 继续可以使用 `lobsterai_image_generate` / `lobsterai_video_generate`。
+5. 普通非 main agent 继续可以使用 `heyclaw_image_generate` / `heyclaw_video_generate`。
 6. 桌面 child session 可以看到 LobsterAI 图片/视频生成工具。
 7. child session 媒体生成在没有独立选择时继承 parent 的媒体模型选择。
 8. 不修改 `vendor/openclaw-runtime/current` 作为最终状态。

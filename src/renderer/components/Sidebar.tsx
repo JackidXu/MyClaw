@@ -31,9 +31,11 @@ import {
   createSessionBatchKey,
 } from './agentSidebar/batchSelection';
 import MyAgentSidebarTree from './agentSidebar/MyAgentSidebarTree';
+import { SIDEBAR_HEADER_BUTTON_FOCUS_CLASS_NAME } from './agentSidebar/sidebarHeaderTooltip';
 import SidebarTaskFilterButton, { SIDEBAR_TASK_FILTER_ENABLED } from './agentSidebar/SidebarTaskFilterButton';
 import SidebarTaskSearchButton from './agentSidebar/SidebarTaskSearchButton';
 import BillingModal from './BillingModal';
+import { DEFAULT_SIDEBAR_TASK_FILTER, type SidebarTaskFilter } from './agentSidebar/taskFilter';
 import Modal from './common/Modal';
 import {
   type CoworkTaskSearchRequestEventDetail,
@@ -52,6 +54,7 @@ import TrashIcon from './icons/TrashIcon';
 import { PasswordModal } from './PasswordModal';
 import PayModal from './PayModal';
 import ReportIssueModal from './ReportIssueModal';
+import { useIsWindowFullscreen } from './window/useIsWindowFullscreen';
 
 interface SidebarProps {
   onShowSettings: () => void;
@@ -72,9 +75,9 @@ interface SidebarProps {
   isCollapsed: boolean;
   onToggleCollapse: () => void;
   updateBadge?: React.ReactNode;
-  isTaskFilterActive: boolean;
+  taskFilter: SidebarTaskFilter;
   hasUnreadCompletedTasks: boolean;
-  onToggleTaskFilter: () => void;
+  onTaskFilterChange: (filter: SidebarTaskFilter) => void;
   onTaskFilterSummaryChange: (hasUnreadCompletedTasks: boolean) => void;
   onWidthChange?: (width: number) => void;
   updateNotice?: React.ReactNode;
@@ -204,9 +207,9 @@ const Sidebar: React.FC<SidebarProps> = ({
   onNewChat,
   isCollapsed,
   onToggleCollapse,
-  isTaskFilterActive,
+  taskFilter,
   hasUnreadCompletedTasks,
-  onToggleTaskFilter,
+  onTaskFilterChange,
   onTaskFilterSummaryChange,
   onWidthChange,
   updateNotice,
@@ -481,7 +484,11 @@ const Sidebar: React.FC<SidebarProps> = ({
   const resizeStartWidthRef = useRef(DEFAULT_SIDEBAR_WIDTH);
   const agentScrollContainerRef = useRef<HTMLDivElement>(null);
   const isWindows = window.electron.platform === 'win32';
+  const isMac = window.electron.platform === 'darwin';
   const showHeaderRow = !isWindows;
+  const isWindowFullscreen = useIsWindowFullscreen();
+  // macOS hides the traffic lights in full screen; take their slot instead of leaving a gap.
+  const alignHeaderStart = isMac && isWindowFullscreen;
   const showLoginPromo = !hideLogin && !isAuthLoading && !isLoggedIn && !accountConnectionState;
   const shouldShowLoginPromoTip = showLoginPromo && showLoginPromoTip;
   void isLoginPromoTipFading;
@@ -859,13 +866,17 @@ const Sidebar: React.FC<SidebarProps> = ({
       >
       <div className="pt-3 pb-3">
         {showHeaderRow && (
-          <div className="draggable sidebar-header-drag h-8 flex items-center justify-end px-3 gap-1">
+          <div
+            className={`draggable sidebar-header-drag h-8 flex items-center ${
+              alignHeaderStart ? 'justify-start gap-0.5 pl-[13px] pr-3' : 'justify-end px-3'
+            }`}
+          >
             {!isWindows && (
               <>
                 <button
                   type="button"
                   onClick={onToggleCollapse}
-                  className="non-draggable h-8 w-8 inline-flex items-center justify-center rounded-lg text-foreground/80 hover:bg-black/[0.03] dark:hover:bg-white/[0.04] transition-colors"
+                  className={`non-draggable h-8 w-8 inline-flex items-center justify-center rounded-lg text-foreground/80 hover:bg-black/[0.03] dark:hover:bg-white/[0.04] transition-colors ${SIDEBAR_HEADER_BUTTON_FOCUS_CLASS_NAME}`}
                   aria-label={isCollapsed ? i18nService.t('expand') : i18nService.t('collapse')}
                 >
                   <SidebarToggleIcon className="h-[18px] w-[18px]" isCollapsed={isCollapsed} />
@@ -880,12 +891,13 @@ const Sidebar: React.FC<SidebarProps> = ({
                       className="non-draggable"
                       label={i18nService.t('search')}
                     />
-                    {SIDEBAR_TASK_FILTER_ENABLED && activeView === MainView.Cowork && (
+                    {/* Shown on every page: the task list below is visible and filtered on all of them. */}
+                    {SIDEBAR_TASK_FILTER_ENABLED && (
                       <SidebarTaskFilterButton
-                        isActive={isTaskFilterActive}
+                        filter={taskFilter}
+                        onChange={onTaskFilterChange}
                         hasUnreadCompletedTasks={hasUnreadCompletedTasks}
                         label={i18nService.t('sidebarFilter')}
-                        onClick={onToggleTaskFilter}
                         className="non-draggable"
                       />
                     )}
@@ -1146,7 +1158,8 @@ const Sidebar: React.FC<SidebarProps> = ({
             batchAgentId={batchAgentId}
             deletedSessionIds={deletedSessionIds}
             selectedKeys={selectedKeys}
-            isTaskFilterActive={isTaskFilterActive}
+            taskFilter={taskFilter}
+            onClearTaskFilter={() => onTaskFilterChange(DEFAULT_SIDEBAR_TASK_FILTER)}
             onShowCowork={onShowCowork}
             onShowExperts={onShowExperts}
             onTaskFilterSummaryChange={onTaskFilterSummaryChange}

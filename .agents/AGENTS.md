@@ -55,6 +55,12 @@
 - **【核心行为禁令】绝对禁止主动 Commit 与 Push**：没有收到用户在当前对话中发送的明确文字指令前，绝对禁止调用、推荐或生成 `git commit`、`git push` 命令。指令单次有效。
 - **提交质量要求**：git 提交信息必须使用中文，严格遵循单一功能提交原则；严禁使用宽泛的 `git add .`，必须且只能暂存本次任务明确相关的改动文件；提交前必须执行 `git diff` 严格审查，彻底清理所有本地临时调试硬编码（如 `// TODO: 本地调试`、临时 console、敏感密钥等）。
 - **上游分支同步与品牌必检**：上游分支为 `upstream/main`。每次拉取同步上游代码并解冲突后，必须第一时间全局排查 `LobsterAI`、`lobster` 关键词，严格将用户可见文案（弹窗、退出提示、引导说明、多语言字典 `src/main/i18n.ts` 与 `src/renderer/services/i18n.ts`）、UI 组件标签、窗口标题及测试断言彻底替换为 `HeyClaw`。
+- **媒体生成工具命名契约（严格对齐 heyclaw 前缀）**：
+  - 核心媒体生成工具统一命名为 `heyclaw_image_generate` 与 `heyclaw_video_generate`（严禁残留使用上游旧命名 `lobster_image_generate`、`lobsterai_image_generate`、`lobster_video_generate`、`lobsterai_video_generate`）；
+  - 每次合并上游更新后，必须重点检查以下 3 类涉及媒体工具名的关键链路：
+    1. 系统提示词与指令构造器（如 `src/main/libs/agentEngine/mediaGenerationTurnInstruction.ts` 中的 `MANAGED_MEDIA_GENERATION_POLICY_PROMPT`）；
+    2. 工具渲染与状态展示组件（如 `src/renderer/components/cowork/ToolCallGroup.tsx`、`mediaTaskPresentation.ts`、`messageDisplayUtils.ts` 中的规范化匹配 `normalizeToolName(toolName) === 'heyclawvideogenerate'`）；
+    3. 媒体确认与任务单测（如 `mediaGenerationTurnInstruction.test.ts`、`mediaConfirmationBridge.test.ts`、`mediaTaskPresentation.test.ts` 等），确保断言与生产工具名 100% 一致。
 
 ### 2.2 开发与启动禁令
 - **【核心行为禁令】严禁擅自启动应用与开发服务**：

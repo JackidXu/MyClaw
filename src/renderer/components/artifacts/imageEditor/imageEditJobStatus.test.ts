@@ -12,7 +12,7 @@ let nextId = 0;
 const message = (type: CoworkMessage['type'], metadata: CoworkMessageMetadata = {}, content = ''): CoworkMessage =>
   ({ id: `m${nextId++}`, type, content, timestamp: nextId, metadata });
 const edit = (requestId = REQUEST) => message('user', { imageEdits: [{ requestId, operation: ImageEditOperation.Comment } as ImageEditMessageSnapshot] });
-const mediaCall = (details: Record<string, unknown> = {}) => message('tool_use', { toolName: 'lobsterai_image_generate', toolUseId: 'call-1', mediaStatusDetails: details });
+const mediaCall = (details: Record<string, unknown> = {}) => message('tool_use', { toolName: 'heyclaw_image_generate', toolUseId: 'call-1', mediaStatusDetails: details });
 const mediaResult = (details: Record<string, unknown>, isError = false, content = '') =>
   message('tool_result', { toolUseId: 'call-1', toolResultDetails: details, isError }, content);
 const status = (messages: CoworkMessage[], running = true, queued = false) => imageEditJobStatus({ requestId: REQUEST, messages, queued, running });

@@ -1,5 +1,8 @@
+import { randomUUID } from 'node:crypto';
+
 import { parseAgentAvatarImageUrl } from '../shared/agent/avatar';
-import { AgentSource } from '../shared/agent/constants';
+import { AgentId, AgentModelSelectionMode, AgentSource } from '../shared/agent/constants';
+import { usesInheritedAgentModel } from '../shared/agent/modelSelection';
 import { usesManagedPresetAvatar } from '../shared/agent/presetAvatar';
 import type { ExpertCatalog } from '../shared/agent/presets';
 import type { Agent, CoworkStore, CreateAgentRequest, UpdateAgentRequest } from './coworkStore';
@@ -150,14 +153,30 @@ export class AgentManager {
   createAgent(request: CreateAgentRequest, defaultModel?: string): Agent {
     return this.store.createAgent({
       ...request,
+      // Deleted identities remain reserved by legacy ownership and OpenClaw.
+      // A display name must not reconnect a new instance to that old identity.
+      id: request.id || randomUUID(),
       model: request.model?.trim() || defaultModel?.trim() || '',
       workingDirectory: request.workingDirectory?.trim() || '',
     });
   }
 
   updateAgent(agentId: string, updates: UpdateAgentRequest): Agent | null {
+    if (updates.modelSelectionMode !== undefined
+      && !Object.values(AgentModelSelectionMode).includes(updates.modelSelectionMode)) {
+      throw new Error('Invalid agent model selection mode.');
+    }
+    if (updates.modelSelectionMode === AgentModelSelectionMode.Inherit
+      && (agentId === AgentId.Main || this.store.getAgent(agentId)?.source !== AgentSource.Preset)) {
+      throw new Error('Only preset experts can inherit a new-task model.');
+    }
     return this.store.updateAgent(agentId, {
       ...updates,
+      // Explicit edits opt out; automatic preset refreshes write to the store
+      // directly so they do not turn an inherited binding into a user choice.
+      ...(updates.modelSelectionMode === undefined
+        && (updates.model !== undefined || updates.thinkingLevel !== undefined)
+        ? { modelSelectionMode: AgentModelSelectionMode.Explicit } : {}),
       ...(updates.workingDirectory !== undefined
         ? { workingDirectory: updates.workingDirectory.trim() }
         : {}),
@@ -254,7 +273,7 @@ export class AgentManager {
     return installedCount;
   }
 
-  async addPresetAgent(presetId: string, defaultModel?: string): Promise<Agent | null> {
+  async addPresetAgent(presetId: string, defaultModel?: string, thinkingLevel: Agent['thinkingLevel'] = ''): Promise<Agent | null> {
     const allExperts: any[] = [...getPresetExperts(), ...getPaidExperts(), ...getExpertTeams()];
     const preset = allExperts.find(p => p.id === presetId);
     if (!preset) return null;
@@ -263,6 +282,9 @@ export class AgentManager {
     const existing = this.store.getAgent(preset.id);
     if (existing) {
       this.syncPresetAgentsFromCloud();
+      if (!existing.enabled) {
+        this.store.updateAgent(existing.id, { enabled: true });
+      }
       this.ensureSubagentsInstalled(preset.subagentAllowAgentIds || [], defaultModel);
       return this.getAgent(preset.id) || existing;
     }
@@ -273,6 +295,8 @@ export class AgentManager {
     const agent = this.store.createAgent({
       ...createReq,
       model: finalModel,
+      modelSelectionMode: createReq.modelSelectionMode ?? AgentModelSelectionMode.Inherit,
+      thinkingLevel: thinkingLevel || createReq.thinkingLevel || '',
       workingDirectory: '',
     });
 

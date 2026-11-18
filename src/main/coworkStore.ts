@@ -7,7 +7,7 @@ import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 
 import { CoworkSystemMessageKind } from '../common/coworkSystemMessages';
-import { AgentId, normalizeAgentAvatarIcon } from '../shared/agent';
+import { AgentId, AgentModelSelectionMode, normalizeAgentAvatarIcon } from '../shared/agent';
 import { usesManagedPresetAvatar } from '../shared/agent/presetAvatar';
 import {
   COWORK_MESSAGE_PAGE_SIZE,
@@ -18,6 +18,7 @@ import {
   COWORK_SESSION_PAGE_SIZE,
   CoworkForkMode,
   type CoworkForkMode as CoworkForkModeType,
+  type CoworkSessionStatus,
 } from '../shared/cowork/constants';
 import type { CoworkErrorDetail } from '../shared/cowork/errorDetail';
 import {
@@ -42,11 +43,19 @@ import type {
   CoworkSearchMessage,
   CoworkSearchMessageCursor,
   CoworkSearchMessagePage,
+  CoworkSessionContentMatch,
 } from '../shared/cowork/search';
+import { buildSearchSnippet } from '../shared/cowork/searchSnippet';
 import {
   type CoworkSelectedTextSnippet,
   CoworkSelectedTextSource,
 } from '../shared/cowork/selectedText';
+import {
+  COWORK_SESSION_FILTER_DEFAULT_LIMIT,
+  COWORK_SESSION_FILTER_MAX_IDS,
+  COWORK_SESSION_FILTER_MAX_LIMIT,
+  type CoworkSessionFilterQuery,
+} from '../shared/cowork/sessionFilter';
 import type {
   KitReference,
   ResolvedKitCapabilities,
@@ -65,12 +74,16 @@ import {
   type CoworkContinuityCapsule,
 } from './libs/agentEngine/coworkContinuityCapsule';
 import { VISIBLE_COWORK_SESSION_SQL } from './libs/agentEngine/subagent/sessionVisibility';
+import { deriveForkToolUseId } from './libs/coworkForkToolUseIds';
+import { CoworkMessageEditStore } from './libs/coworkMessageEditStore';
+import { CoworkMessageVersionStore } from './libs/coworkMessageVersionStore';
 import { compactMessageMetadataMedia } from './libs/mediaMetadataCompaction';
 import {
   type SessionProjection,
   type SessionProjectionChanges,
   SessionProjectionNotifications,
 } from './libs/sessionProjectionNotifications';
+import { parseStoredMessageMetadata } from './libs/storedMessageMetadata';
 
 /**
  * Media details may still carry generated images as inline data URLs; they are copied into
@@ -415,7 +428,7 @@ function shouldAutoDeleteMemoryText(text: string): boolean {
 }
 
 // Types mirroring src/types/cowork.ts for main process use
-export type CoworkSessionStatus = 'idle' | 'running' | 'completed' | 'error';
+export type { CoworkSessionStatus } from '../shared/cowork/constants';
 export type CoworkMessageType = 'user' | 'assistant' | 'tool_use' | 'tool_result' | 'system';
 export type CoworkExecutionMode = 'auto' | 'local' | 'sandbox';
 export type CoworkAgentEngine = 'openclaw';
@@ -429,6 +442,7 @@ export interface Agent {
   systemPrompt: string;
   identity: string;
   model: string;
+  modelSelectionMode?: AgentModelSelectionMode;
   thinkingLevel: ModelThinkingLevel | '';
   workingDirectory: string;
   icon: string;
@@ -456,6 +470,7 @@ export interface CreateAgentRequest {
   systemPrompt?: string;
   identity?: string;
   model?: string;
+  modelSelectionMode?: AgentModelSelectionMode;
   thinkingLevel?: ModelThinkingLevel | '';
   workingDirectory?: string;
   avatar?: string;
@@ -475,6 +490,7 @@ export interface UpdateAgentRequest {
   systemPrompt?: string;
   identity?: string;
   model?: string;
+  modelSelectionMode?: AgentModelSelectionMode;
   thinkingLevel?: ModelThinkingLevel | '';
   workingDirectory?: string;
   avatar?: string;
@@ -496,7 +512,12 @@ export interface CoworkLiveEditDiff {
 }
 
 export interface CoworkMessageMetadata {
+  imageAttachments?: import('../shared/cowork/imageAttachments').CoworkImageAttachmentPayload[];
+  imageAttachmentPreviews?: import('../shared/cowork/imageAttachments').CoworkImageAttachmentPreview[];
+  browserAnnotations?: import('../shared/cowork/browserAnnotations').CoworkBrowserAnnotationMessageBatch[];
+  turnOutcome?: import('../shared/cowork/turnOutcome').CoworkTurnOutcome;
   imageEdits?: import('../shared/imageEditing/types').ImageEditMessageSnapshot[];
+  messageVersion?: import('../shared/cowork/messageEdit').CoworkMessageVersionInfo;
   modelChange?: CoworkModelChange;
   modelPresetId?: ModelPresetId;
   resolvedModelId?: string;
@@ -577,6 +598,8 @@ export interface CoworkSession {
   systemPrompt: string;
   modelOverride: string;
   modelPresetId?: ModelPresetId | null;
+  contextWindowOverride?: number | null;
+  contextWindowOwnerKey?: string | null;
   thinkingLevel?: ModelThinkingLevel | '';
   executionMode: CoworkExecutionMode;
   activeSkillIds: string[];
@@ -853,6 +876,19 @@ interface CoworkSessionSearchOptions {
   agentId?: string;
 }
 
+interface CoworkSessionContentSearchOptions {
+  query: string;
+  limit?: number;
+  agentId?: string;
+}
+
+export interface CoworkSessionContentSearchResult {
+  session: CoworkSessionSummary;
+  match: CoworkSessionContentMatch;
+}
+
+const COWORK_SESSION_CONTENT_SEARCH_LIMIT = 50;
+
 export interface CreateCoworkSessionOptions {
   scheduledTaskId?: string | null;
   thinkingLevel?: ModelThinkingLevel | '';
@@ -862,6 +898,8 @@ export interface CreateCoworkSessionOptions {
 
 export class CoworkStore {
   private db: Database.Database;
+  readonly messageEdits: CoworkMessageEditStore;
+  readonly messageVersions: CoworkMessageVersionStore;
   private readonly sessionProjectionNotifications: SessionProjectionNotifications;
   private readonly knownIMPlatforms = new Set<string>(PlatformRegistry.platforms);
 
@@ -878,6 +916,8 @@ export class CoworkStore {
       ),
     });
     this.ensureContinuityCapsuleTable();
+    this.messageEdits = new CoworkMessageEditStore(db, (sessionId, operation) => this.writeSessionProjections([sessionId], operation));
+    this.messageVersions = new CoworkMessageVersionStore(db, (sessionId, operation) => this.writeSessionProjections([sessionId], operation));
   }
 
   onSessionProjectionChanges(listener: (changes: SessionProjectionChanges) => void): () => void {
@@ -917,28 +957,6 @@ export class CoworkStore {
 
   private getAll<T>(sql: string, params: (string | number | null)[] = []): T[] {
     return this.db.prepare(sql).all(...params) as T[];
-  }
-
-  private mapConversationMessageRows(sessionId: string, rows: CoworkMessageRow[]): CoworkMessage[] {
-    return rows.map(row => {
-      let metadata: Record<string, unknown> | undefined;
-      if (row.metadata) {
-        try {
-          metadata = JSON.parse(row.metadata);
-        } catch {
-          console.warn(
-            `[CoworkStore] corrupt metadata detected for message ${row.id} in session ${sessionId}, discarding metadata`,
-          );
-        }
-      }
-      return {
-        id: row.id,
-        type: row.type as CoworkMessageType,
-        content: row.content,
-        timestamp: row.created_at,
-        metadata,
-      };
-    });
   }
 
   private escapeLikePattern(value: string): string {
@@ -1131,6 +1149,8 @@ export class CoworkStore {
       system_prompt: string;
       model_override?: string | null;
       model_preset_id?: string | null;
+      context_window_override?: number | null;
+      context_window_owner_key?: string | null;
       thinking_level?: string | null;
       execution_mode?: string | null;
       active_skill_ids?: string | null;
@@ -1144,7 +1164,7 @@ export class CoworkStore {
 
     const row = this.getOne<SessionRow>(
       `
-      SELECT id, title, claude_session_id, scheduled_task_id, project_id, status, pinned, pin_order, cwd, system_prompt, model_override, model_preset_id, thinking_level, execution_mode, active_skill_ids, agent_id, goal_json, second_brain_enabled, created_at, updated_at
+      SELECT id, title, claude_session_id, scheduled_task_id, project_id, status, pinned, pin_order, cwd, system_prompt, model_override, model_preset_id, context_window_override, context_window_owner_key, thinking_level, execution_mode, active_skill_ids, agent_id, goal_json, second_brain_enabled, created_at, updated_at
       FROM cowork_sessions
       WHERE id = ?
     `,
@@ -1188,6 +1208,8 @@ export class CoworkStore {
       systemPrompt: row.system_prompt,
       modelOverride: row.model_override || '',
       modelPresetId: parseModelPresetId(row.model_preset_id),
+      contextWindowOverride: row.context_window_override ?? null,
+      contextWindowOwnerKey: row.context_window_owner_key ?? null,
       thinkingLevel: parseModelThinkingLevel(row.thinking_level) ?? '',
       executionMode: (row.execution_mode as CoworkExecutionMode) || 'local',
       activeSkillIds,
@@ -1411,7 +1433,8 @@ export class CoworkStore {
         now,
       );
 
-      this.db.prepare('UPDATE cowork_sessions SET model_preset_id = ? WHERE id = ?').run(source.modelPresetId ?? null, id);
+      this.db.prepare('UPDATE cowork_sessions SET model_preset_id = ?, context_window_override = ?, context_window_owner_key = ? WHERE id = ?')
+        .run(source.modelPresetId ?? null, source.contextWindowOverride ?? null, source.contextWindowOwnerKey ?? null, id);
 
       for (const contextMessage of contextMessages) {
         const content = contextMessage.content.trim();
@@ -1437,7 +1460,7 @@ export class CoworkStore {
           id,
           row.type,
           row.content,
-          this.sanitizeForkMessageMetadata(row.type, row.metadata, forkedMessageIds),
+          this.sanitizeForkMessageMetadata(row.type, row.metadata, forkedMessageIds, id),
           row.created_at,
           row.sequence,
         );
@@ -1510,16 +1533,11 @@ export class CoworkStore {
   }
 
   private parseStoredMessage(sessionId: string, row: CoworkMessageRow): CoworkMessage {
-    let metadata: Record<string, unknown> | undefined;
-    if (row.metadata) {
-      try {
-        metadata = JSON.parse(row.metadata);
-      } catch {
-        console.warn(
-          `[CoworkStore] corrupt metadata detected for message ${row.id} in session ${sessionId}, discarding metadata`,
-        );
-      }
-    }
+    const metadata = parseStoredMessageMetadata(row.metadata, () => {
+      console.warn(
+        `[CoworkStore] corrupt metadata detected for message ${row.id} in session ${sessionId}, discarding metadata`,
+      );
+    });
     return {
       id: row.id,
       type: row.type as CoworkMessageType,
@@ -1619,6 +1637,7 @@ export class CoworkStore {
     messageType: string,
     metadataJson: string | null,
     forkedMessageIds: Map<string, string>,
+    forkSessionId: string,
   ): string | null {
     if (!metadataJson) return null;
     try {
@@ -1627,7 +1646,12 @@ export class CoworkStore {
       const wasStreamingAssistant = messageType === 'assistant' && sanitized.isStreaming === true;
       delete sanitized.isStreaming;
       if (wasStreamingAssistant) sanitized.isFinal = true;
-      delete sanitized.toolUseId;
+      // Results pair with their calls by this id, so it is remapped rather than dropped.
+      if (typeof sanitized.toolUseId === 'string' && sanitized.toolUseId.trim()) {
+        sanitized.toolUseId = deriveForkToolUseId(forkSessionId, sanitized.toolUseId);
+      } else {
+        delete sanitized.toolUseId;
+      }
       delete sanitized.mediaStatusDetails;
       delete sanitized.pendingApproval;
       delete sanitized.requestId;
@@ -1635,6 +1659,8 @@ export class CoworkStore {
       delete sanitized.turnToken;
       delete sanitized.openClawRunId;
       delete sanitized.openClawSessionKey;
+      // Versions belong to the source session's gateway transcript.
+      delete sanitized.messageVersion;
       delete sanitized[OpenClawCronRunMetadataKey.SessionKey];
       delete sanitized[OpenClawCronRunMetadataKey.EntryIndex];
       if (Array.isArray(sanitized.selectedTextSnippets)) {
@@ -1659,7 +1685,7 @@ export class CoworkStore {
     updates: Partial<
       Pick<
         CoworkSession,
-        'title' | 'claudeSessionId' | 'status' | 'cwd' | 'systemPrompt' | 'modelOverride' | 'modelPresetId' | 'thinkingLevel' | 'executionMode' | 'goal' | 'secondBrainEnabled'
+        'title' | 'claudeSessionId' | 'status' | 'cwd' | 'systemPrompt' | 'modelOverride' | 'modelPresetId' | 'contextWindowOverride' | 'contextWindowOwnerKey' | 'thinkingLevel' | 'executionMode' | 'goal' | 'secondBrainEnabled'
       >
     >,
     options: { touchUpdatedAt?: boolean } = {},
@@ -1714,6 +1740,14 @@ export class CoworkStore {
     if (updates.thinkingLevel !== undefined) {
       setClauses.push('thinking_level = ?');
       values.push(updates.thinkingLevel);
+    }
+    if (updates.contextWindowOverride !== undefined) {
+      setClauses.push('context_window_override = ?');
+      values.push(updates.contextWindowOverride);
+    }
+    if (updates.contextWindowOwnerKey !== undefined) {
+      setClauses.push('context_window_owner_key = ?');
+      values.push(updates.contextWindowOwnerKey);
     }
     if (updates.executionMode !== undefined) {
       setClauses.push('execution_mode = ?');
@@ -1783,6 +1817,10 @@ export class CoworkStore {
     );
     this.db.prepare(`DELETE FROM library_artifact_sessions WHERE session_id IN (${placeholders})`).run(...ids);
     this.db.prepare(`DELETE FROM cowork_session_capsules WHERE session_id IN (${placeholders})`).run(...ids);
+    // Foreign keys are not enforced on this connection, so edit and version records are removed by hand.
+    for (const table of ['cowork_message_edits', 'cowork_message_versions', 'cowork_message_version_switches']) {
+      this.db.prepare(`DELETE FROM ${table} WHERE session_id IN (${placeholders})`).run(...ids);
+    }
     this.db.prepare(`DELETE FROM cowork_messages WHERE session_id IN (${placeholders})`).run(...ids);
     this.db.prepare(`DELETE FROM cowork_sessions WHERE id IN (${placeholders})`).run(...ids);
     const affectedArtifactIds = affectedArtifactRows.map(row => row.artifact_id);
@@ -1980,6 +2018,129 @@ export class CoworkStore {
     return rows.map(row => this.mapSessionSummaryRow(row));
   }
 
+  /**
+   * Find sessions whose user or non-thinking assistant messages contain the
+   * query. Returns one entry per session, built from its most recent matching
+   * message, ordered like the session list.
+   */
+  searchSessionContent(options: CoworkSessionContentSearchOptions): CoworkSessionContentSearchResult[] {
+    const query = options.query.trim();
+    if (!query) return [];
+    const limit = options.limit ?? COWORK_SESSION_CONTENT_SEARCH_LIMIT;
+    const pattern = `%${this.escapeLikePattern(query)}%`;
+    const agentFilter = options.agentId
+      ? "AND COALESCE(NULLIF(TRIM(s.agent_id), ''), 'main') = ?"
+      : '';
+    type ContentMatchRow = CoworkSessionSummaryRow & {
+      match_message_id: string;
+      match_message_type: 'user' | 'assistant';
+      match_content: string;
+      match_created_at: number;
+      match_count: number;
+    };
+    // `msg` rather than `m`: the summary columns already use `m` for IM mappings.
+    const rows = this.getAll<ContentMatchRow>(
+      `
+      WITH matched AS (
+        SELECT
+          msg.id,
+          msg.session_id,
+          msg.type,
+          msg.created_at,
+          ROW_NUMBER() OVER (
+            PARTITION BY msg.session_id
+            ORDER BY COALESCE(msg.sequence, msg.created_at) DESC, msg.created_at DESC, msg.ROWID DESC
+          ) AS match_rank,
+          COUNT(*) OVER (PARTITION BY msg.session_id) AS match_count
+        FROM cowork_messages msg
+        WHERE msg.type IN ('user', 'assistant')
+          AND msg.content LIKE ? ESCAPE '\\'
+          AND NOT (
+            msg.type = 'assistant'
+            AND msg.metadata IS NOT NULL
+            AND json_valid(msg.metadata) = 1
+            AND COALESCE(json_extract(msg.metadata, '$.isThinking'), 0) = 1
+          )
+      )
+      SELECT ${this.getSessionSummaryColumns()},
+        matched.id AS match_message_id,
+        matched.type AS match_message_type,
+        matched.created_at AS match_created_at,
+        matched.match_count AS match_count,
+        (SELECT content FROM cowork_messages WHERE id = matched.id) AS match_content
+      FROM matched
+      JOIN cowork_sessions s ON s.id = matched.session_id
+      WHERE matched.match_rank = 1
+        AND ${VISIBLE_COWORK_SESSION_SQL}
+        ${agentFilter}
+      ORDER BY s.updated_at DESC
+      LIMIT ?
+    `,
+      options.agentId ? [pattern, options.agentId, limit] : [pattern, limit],
+    );
+
+    return rows.map(row => {
+      const snippet = buildSearchSnippet(row.match_content ?? '', query);
+      return {
+        session: this.mapSessionSummaryRow(row),
+        match: {
+          sessionId: row.id,
+          messageId: row.match_message_id,
+          messageType: row.match_message_type,
+          snippet: snippet.snippet,
+          highlightStart: snippet.highlightStart,
+          highlightLength: snippet.highlightLength,
+          matchCount: row.match_count,
+          matchedAt: row.match_created_at,
+        },
+      };
+    });
+  }
+
+  /**
+   * Sessions for the sidebar status/time filter, newest first. Reads the whole
+   * table rather than the paged sidebar list so older matches are not missed.
+   */
+  listFilteredSessions(query: CoworkSessionFilterQuery): CoworkSessionSummary[] {
+    const requestedLimit = query.limit ?? COWORK_SESSION_FILTER_DEFAULT_LIMIT;
+    const limit = Number.isFinite(requestedLimit)
+      ? Math.max(1, Math.min(COWORK_SESSION_FILTER_MAX_LIMIT, Math.floor(requestedLimit)))
+      : COWORK_SESSION_FILTER_DEFAULT_LIMIT;
+    const conditions: string[] = [VISIBLE_COWORK_SESSION_SQL];
+    const params: (string | number)[] = [];
+
+    if (query.statuses) {
+      const statuses = query.statuses.filter(status => typeof status === 'string' && status);
+      if (statuses.length === 0) return [];
+      conditions.push(`s.status IN (${statuses.map(() => '?').join(', ')})`);
+      params.push(...statuses);
+    }
+    if (query.sessionIds) {
+      const sessionIds = Array.from(new Set(
+        query.sessionIds.filter(id => typeof id === 'string' && id),
+      )).slice(0, COWORK_SESSION_FILTER_MAX_IDS);
+      if (sessionIds.length === 0) return [];
+      conditions.push(`s.id IN (${sessionIds.map(() => '?').join(', ')})`);
+      params.push(...sessionIds);
+    }
+    if (query.updatedSince !== undefined && Number.isFinite(query.updatedSince)) {
+      conditions.push('s.updated_at >= ?');
+      params.push(Math.floor(query.updatedSince));
+    }
+
+    const rows = this.getAll<CoworkSessionSummaryRow>(
+      `
+      SELECT ${this.getSessionSummaryColumns()}
+      FROM cowork_sessions s
+      WHERE ${conditions.join('\n        AND ')}
+      ORDER BY s.updated_at DESC, s.created_at DESC
+      LIMIT ?
+    `,
+      [...params, limit],
+    );
+    return rows.map(row => this.mapSessionSummaryRow(row));
+  }
+
   resetRunningSessions(): number {
     const now = Date.now();
     return this.runSessionTransaction(() => {
@@ -2057,13 +2218,7 @@ export class CoworkStore {
       [sessionId, limit, offset],
     );
 
-    return rows.map(row => ({
-      id: row.id,
-      type: row.type as CoworkMessageType,
-      content: row.content,
-      timestamp: row.created_at,
-      metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
-    }));
+    return rows.map(row => this.parseStoredMessage(sessionId, row));
   }
 
   /**
@@ -2340,7 +2495,7 @@ export class CoworkStore {
       [sessionId, boundedLimit],
     );
 
-    return this.mapConversationMessageRows(sessionId, rows);
+    return rows.map(row => this.parseStoredMessage(sessionId, row));
   }
 
 
@@ -2359,7 +2514,7 @@ export class CoworkStore {
       [sessionId],
     );
 
-    return this.mapConversationMessageRows(sessionId, rows);
+    return rows.map(row => this.parseStoredMessage(sessionId, row));
   }
 
   getSessionMessageRailIndex(sessionId: string): CoworkMessageRailIndexItem[] {
@@ -2439,26 +2594,7 @@ export class CoworkStore {
       [sessionId],
     );
 
-    return rows.map(row => {
-      let metadata: Record<string, unknown> | undefined;
-      if (row.metadata) {
-        try {
-          metadata = JSON.parse(row.metadata);
-        } catch {
-          console.warn(
-            `[CoworkStore] corrupt metadata detected for message ${row.id} in session ${sessionId}, discarding metadata`,
-          );
-          metadata = undefined;
-        }
-      }
-      return {
-        id: row.id,
-        type: row.type as CoworkMessageType,
-        content: row.content,
-        timestamp: row.created_at,
-        metadata,
-      };
-    });
+    return rows.map(row => this.parseStoredMessage(sessionId, row));
   }
 
   addMessage(sessionId: string, message: Omit<CoworkMessage, 'id' | 'timestamp'>, timestamp?: number): CoworkMessage {
@@ -2777,6 +2913,9 @@ export class CoworkStore {
     }
     if (updates.metadata !== undefined) {
       const existing = this.getMessage(sessionId, messageId)?.metadata;
+      if (existing?.turnOutcome && updates.metadata.turnOutcome === undefined) {
+        updates = { ...updates, metadata: { ...updates.metadata, turnOutcome: existing.turnOutcome } };
+      }
       if (existing?.modelPresetId) {
         updates = { ...updates, metadata: { ...updates.metadata,
           modelPresetId: existing.modelPresetId, resolvedModelId: existing.resolvedModelId } };
@@ -3637,8 +3776,8 @@ export class CoworkStore {
       this.db
         .prepare(
           `
-        INSERT INTO agents (id, name, description, system_prompt, identity, model, thinking_level, working_directory, icon, icon_customized, skill_ids, subagent_allow_agent_ids, level, department, enabled, is_default, source, preset_id, sort_order, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)
+        INSERT INTO agents (id, name, description, system_prompt, identity, model, model_selection_mode, thinking_level, working_directory, icon, icon_customized, skill_ids, subagent_allow_agent_ids, level, department, enabled, is_default, source, preset_id, sort_order, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)
       `,
         )
         .run(
@@ -3648,6 +3787,7 @@ export class CoworkStore {
           request.systemPrompt || '',
           request.identity || '',
           request.model || '',
+          request.modelSelectionMode ?? AgentModelSelectionMode.Explicit,
           normalizeAgentThinkingLevel(request.thinkingLevel),
           request.workingDirectory || '',
           avatarIcon,
@@ -3676,8 +3816,8 @@ export class CoworkStore {
     if (!normalizedModelId) return 0;
 
     const result = this.db
-      .prepare("UPDATE agents SET model = ?, updated_at = ? WHERE TRIM(COALESCE(model, '')) = ''")
-      .run(normalizedModelId, Date.now());
+      .prepare("UPDATE agents SET model = ?, updated_at = ? WHERE TRIM(COALESCE(model, '')) = '' AND model_selection_mode != ?")
+      .run(normalizedModelId, Date.now(), AgentModelSelectionMode.Inherit);
 
     return result.changes;
   }
@@ -3709,6 +3849,10 @@ export class CoworkStore {
     if (updates.model !== undefined) {
       setClauses.push('model = ?');
       values.push(updates.model);
+    }
+    if (updates.modelSelectionMode !== undefined) {
+      setClauses.push('model_selection_mode = ?');
+      values.push(updates.modelSelectionMode);
     }
     if (updates.thinkingLevel !== undefined) {
       setClauses.push('thinking_level = ?');
@@ -3855,6 +3999,7 @@ export class CoworkStore {
     system_prompt: string;
     identity: string;
     model: string;
+    model_selection_mode?: string;
     thinking_level?: string | null;
     working_directory?: string | null;
     icon: string;
@@ -3882,6 +4027,8 @@ export class CoworkStore {
       systemPrompt: row.system_prompt,
       identity: row.identity,
       model: row.model,
+      modelSelectionMode: row.model_selection_mode === AgentModelSelectionMode.Inherit
+        ? AgentModelSelectionMode.Inherit : AgentModelSelectionMode.Explicit,
       thinkingLevel: parseModelThinkingLevel(row.thinking_level) ?? '',
       workingDirectory: row.working_directory || '',
       icon: row.icon,
@@ -3942,7 +4089,9 @@ export class CoworkStore {
     const createdAt = options.createdAt ?? existing?.createdAt ?? now;
     const title = options.title.trim() || agent?.name || options.agentId;
     const cwd = parent?.cwd || agent?.workingDirectory || '';
-    const systemPrompt = agent?.systemPrompt || '';
+    // OpenClaw gives the child run its agent's persona from the workspace SOUL.md.
+    // The stored value may be stale and would be injected again on continuation.
+    const systemPrompt = '';
     const modelOverride = existing?.modelOverride || '';
     const executionMode = parent?.executionMode || 'local';
     const activeSkillIds = agent?.skillIds ?? [];

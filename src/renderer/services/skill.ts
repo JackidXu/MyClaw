@@ -1,4 +1,4 @@
-import { BUNDLED_SKILL_DISPLAY_NAMES } from '../components/skills/bundledSkillNames';
+import { BUNDLED_SKILL_DISPLAY_NAMES, LEGACY_BUNDLED_SKILL_DISPLAY_NAMES } from '../components/skills/bundledSkillNames';
 import { LocalizedText, LocalSkillInfo, MarketplaceSkill, MarketTag, Skill } from '../types/skill';
 import { i18nService } from './i18n';
 import { LogReporterAction, reportYdAnalyzer } from './logReporter';
@@ -485,7 +485,7 @@ class SkillService {
       if (mp && mp.name) return mp.name;
     }
 
-    const bundled = BUNDLED_SKILL_DISPLAY_NAMES[id];
+    const bundled = BUNDLED_SKILL_DISPLAY_NAMES[id] ?? LEGACY_BUNDLED_SKILL_DISPLAY_NAMES[id];
     if (bundled) return resolveLocalizedText(bundled);
 
     return prettifySkillName(name);

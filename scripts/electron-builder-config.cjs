@@ -38,6 +38,7 @@ const config = require('../electron-builder.json');
 const { BuildEnv, PackagingEnv } = require('./build-env.cjs');
 const { readBuildKeyfrom } = require('./build-keyfrom.cjs');
 const { configureMacWebAuthnEntitlements } = require('./mac-webauthn-entitlements.cjs');
+const { packagingEnv } = require('./codown-config.cjs');
 
 if (process.env[PackagingEnv.OutputDir]) {
   config.directories = { ...config.directories, output: path.resolve(process.env[PackagingEnv.OutputDir]) };
@@ -142,7 +143,7 @@ for (const platformName of ['mac', 'win', 'linux']) {
 // WebAuthn Passkey (keychain-access-groups) requires a specialized Apple Developer ID Provisioning Profile.
 // Without an embedded provisioning profile, AMFI kills the app immediately on launch with SIGKILL (Code=-413).
 // Keep standard hardened runtime entitlements without restricted keychain groups.
-// configureMacWebAuthnEntitlements(config, process.env.APPLE_TEAM_ID);
+// configureMacWebAuthnEntitlements(config, packagingEnv(path.join(__dirname, '..')));
 
 // Sign every Windows binary electron-builder produces (LobsterAI.exe, the
 // uninstaller, the installer) through the internal Youdao signing service,

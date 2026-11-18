@@ -15,8 +15,9 @@ interface QuickActionBarProps {
   selectedActionId?: string | null;
   selectedPromptId?: string | null;
   onActionSelect?: (actionId: string) => void;
-  onPromptSelect: (prompt: string, promptId: string, actionId: string) => void;
+  onPromptSelect?: (prompt: string, promptId: string, actionId: string) => void;
   onClearSelection?: () => void;
+  children?: React.ReactNode;
 }
 
 // 图标映射
@@ -91,7 +92,7 @@ const QuickActionBar: React.FC<QuickActionBarProps> = ({
       onClearSelection();
       return;
     }
-    onPromptSelect(item.prompt.prompt, item.prompt.id, item.action.id);
+    onPromptSelect?.(item.prompt.prompt, item.prompt.id, item.action.id);
   };
 
   return (

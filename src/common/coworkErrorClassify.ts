@@ -43,7 +43,15 @@ const UNAVAILABLE_NETWORK_CODE_PATTERN = String.raw`(?:ECONNREFUSED|ECONNRESET|E
 // Chromium network errors from Electron net.fetch, e.g. relayed by the LobsterAI token proxy.
 const CHROMIUM_NET_ERROR_PATTERN = String.raw`net::ERR_[A-Z0-9_]+`;
 
-const ERROR_RULES: Array<[RegExp, string]> = [
+// Node fs errors, e.g. "EACCES: permission denied, mkdir '/Volumes/Elements'".
+// They name the local file at fault, so they are shown verbatim instead of
+// matching provider rules such as "permission denied" (model access).
+const LOCAL_FILE_SYSTEM_ERROR_PATTERN =
+  /\b(?:EACCES|EPERM|ENOENT|ENOTDIR|EISDIR|EROFS|ENOSPC|EBUSY|EEXIST|ENOTEMPTY): [^\n]*?, (?:open|opendir|scandir|mkdir|mkdtemp|rmdir|rm|unlink|rename|copyfile|cp|stat|lstat|access|chmod|chown|realpath|readlink|symlink|link|utime|write|read) '/;
+
+/** A null key stops classification so the caller shows the original error. */
+const ERROR_RULES: Array<[RegExp, string | null]> = [
+  [LOCAL_FILE_SYSTEM_ERROR_PATTERN, null],
   // Incomplete agent turn (e.g. context limit reached or model ended with empty output after tool executions)
   [/Agent couldn't generate a response.*some tool actions may have already been executed/i, CoworkErrorI18nKey.IncompleteTurnWithTools],
   [/Agent couldn't generate a response/i, CoworkErrorI18nKey.IncompleteTurn],
@@ -108,6 +116,7 @@ const ERROR_RULES: Array<[RegExp, string]> = [
 export function classifyErrorKey(error: string, provider?: string): string | null {
   for (const [pattern, key] of ERROR_RULES) {
     if (pattern.test(error)) {
+      if (key === null) return null;
       // LobsterAI owns the upstream keys; its user quota has separate codes above.
       return key === CoworkErrorI18nKey.InsufficientBalance
         && provider?.trim() === ProviderName.LobsteraiServer

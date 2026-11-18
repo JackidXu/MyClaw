@@ -21,7 +21,7 @@ lobsterai-server 新增视频模型 `MiniMax-H3`（MiniMax V2 API，`/v2/video_g
 
 ## 2. Endpoint Details
 
-请求参数沿用客户端现有 `lobsterai_video_generate` 工具的字段：
+请求参数沿用客户端现有 `heyclaw_video_generate` 工具的字段：
 
 ```json
 {

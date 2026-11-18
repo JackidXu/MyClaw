@@ -186,7 +186,7 @@ test.each([MediaTaskStatus.Cancelled, MediaTaskStatus.Failed, MediaTaskStatus.Ti
 test('progress checks on a video task read as video checks', () => {
   const messages = [...mediaCall('generate', '294'), ...mediaCall('query', '294', {}, true)]
     .map(message => message.type === 'tool_use'
-      ? { ...message, metadata: { ...message.metadata, toolName: 'lobsterai_video_generate' } }
+      ? { ...message, metadata: { ...message.metadata, toolName: 'heyclaw_video_generate' } }
       : message);
   expect(renderCalls(messages)).toContain('查看了视频生成进度');
 });
@@ -269,7 +269,7 @@ test('submitted tasks never expose a cancel action, including stale queued and l
   expect(legacy).not.toContain('<button');
 });
 
-test.each(Object.values(ActivityEntryVariant))('media steps do not time confirmation or status calls (%s)', variant => {
+test.each(Object.values(ActivityEntryVariant))('step lines carry no timer of their own, media or command (%s)', variant => {
   const store = configureStore({ reducer: { cowork: () => ({ isStreaming: true }) } });
   const clock = vi.spyOn(Date, 'now').mockReturnValue(100_000);
   const render = (toolName: string) => renderToStaticMarkup(React.createElement(Provider, { store, children:
@@ -278,8 +278,8 @@ test.each(Object.values(ActivityEntryVariant))('media steps do not time confirma
     } } }),
   }));
   try {
-    expect(render('exec')).toContain('27s');
-    for (const name of ['heyclaw_image_generate', 'heyclaw_video_generate']) {
+    // The turn's status line owns the only clock on screen.
+    for (const name of ['exec', 'heyclaw_image_generate', 'heyclaw_video_generate']) {
       expect(render(name)).not.toContain('27s');
       expect(render(name)).not.toContain('视频生成中');
     }

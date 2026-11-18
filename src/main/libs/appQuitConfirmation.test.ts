@@ -17,6 +17,10 @@ vi.mock('electron', () => ({
 }));
 
 import { APP_NAME } from '../appConstants';
+
+vi.mock('./appQuitDialog', () => ({
+  showAppQuitDialog: mocks.showMessageBox,
+}));
 import {
   APP_QUIT_CANCEL_BUTTON_INDEX,
   APP_QUIT_CONFIRM_BUTTON_INDEX,
@@ -96,14 +100,14 @@ describe('AppQuitConfirmationGate', () => {
 });
 
 describe('buildAppQuitConfirmationOptions', () => {
-  test('builds a warning alert with Quit as default and Cancel as escape', () => {
+  test('builds an app-icon alert with Quit as default and Cancel as escape', () => {
     const options = buildAppQuitConfirmationOptions({
       appName: APP_NAME,
       translate: key => `<${key}>`,
     });
 
     expect(options).toEqual({
-      type: 'warning',
+      type: 'none',
       title: APP_NAME,
       message: '<appQuitConfirmTitle>',
       detail: '<appQuitConfirmDetail>',
@@ -153,7 +157,7 @@ describe('showAppQuitConfirmation', () => {
     expect(mocks.focus).toHaveBeenCalledWith({ steal: true });
     expect(mocks.showMessageBox).toHaveBeenCalledTimes(1);
     const [options] = mocks.showMessageBox.mock.calls[0];
-    expect(options).toMatchObject({ type: 'warning', title: APP_NAME, noLink: true });
+    expect(options).toMatchObject({ type: 'none', title: APP_NAME, noLink: true });
     expect(options.buttons).toHaveLength(2);
     expect(options.message).not.toBe('appQuitConfirmTitle');
     expect(options.detail).not.toBe('appQuitConfirmDetail');

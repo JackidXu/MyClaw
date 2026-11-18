@@ -93,3 +93,14 @@ export const BUNDLED_SKILL_DISPLAY_NAMES: Record<string, LocalizedText> = {
   'script-to-motion-video': { zh: '文案生成动效视频', en: 'Script to Motion Video' },
   'talking-head-cover': { zh: '口播视频封面图', en: 'Talking Head Cover' },
 };
+
+/**
+ * Offline names for formerly bundled skills retained in user data after upgrades.
+ * This compatibility map does not determine which skills are currently built in.
+ */
+export const LEGACY_BUNDLED_SKILL_DISPLAY_NAMES: Record<string, LocalizedText> = {
+  'canvas-design': { zh: '画布设计', en: 'Canvas Design' },
+  'create-plan': { zh: '计划生成', en: 'Create Plan' },
+  'develop-web-game': { zh: '网页游戏开发', en: 'Web Game Development' },
+  'technology-news-search': { zh: '科技新闻检索', en: 'Tech News Search' },
+};

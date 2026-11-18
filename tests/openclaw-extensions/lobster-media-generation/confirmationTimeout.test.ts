@@ -8,7 +8,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-test.each(['lobsterai_video_generate', 'lobsterai_image_generate'])('%s confirmation uses the configured retention budget and propagates an explicit stop', async toolName => {
+test.each(['heyclaw_video_generate', 'heyclaw_image_generate'])('%s confirmation uses the configured retention budget and propagates an explicit stop', async toolName => {
   vi.useFakeTimers();
   const factories: Array<
     (context: {

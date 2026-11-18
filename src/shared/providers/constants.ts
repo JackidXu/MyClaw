@@ -194,6 +194,20 @@ interface ProviderDefInput {
     readonly maxTokens?: number;
   }[];
   /**
+   * Models that used to be in defaultModels. They are no longer seeded into new
+   * configs, but their capability metadata stays known so saved user configs that
+   * still list them keep resolving the same image/thinking/context values.
+   */
+  readonly legacyModels?: readonly {
+    readonly id: string;
+    readonly name: string;
+    readonly supportsImage: boolean;
+    readonly supportsVideo?: boolean;
+    readonly supportsThinking?: boolean;
+    readonly contextWindow?: number;
+    readonly maxTokens?: number;
+  }[];
+  /**
    * The OpenClaw gateway provider ID used when building model refs (e.g. "provider/modelId").
    * Most providers share the same value as `id`, but some differ
    * (e.g. zhipu → zai, gemini → google).
@@ -438,8 +452,11 @@ const PROVIDER_DEFINITIONS = [
     region: 'china',
     enPriority: 0,
     defaultModels: [
-      { id: 'mimo-v2.5-pro', name: 'MiMo V2.5 Pro', supportsImage: false, supportsThinking: true, contextWindow: 1_000_000 },
+      { id: 'mimo-v2.6-pro', name: 'MiMo V2.6 Pro', supportsImage: true, supportsThinking: true, contextWindow: 1_000_000 },
       { id: 'mimo-v2.5', name: 'MiMo V2.5', supportsImage: true, supportsThinking: true, contextWindow: 1_000_000 },
+    ],
+    legacyModels: [
+      { id: 'mimo-v2.5-pro', name: 'MiMo V2.5 Pro', supportsImage: false, supportsThinking: true, contextWindow: 1_000_000 },
     ],
   },
   {
@@ -913,11 +930,19 @@ class ProviderRegistryImpl {
     return resolveFamilyMaxTokens(normKey);
   }
 
+  /**
+   * A user override wins outright. Otherwise the provider preset beats the
+   * configured value, which may be a stale snapshot of an older preset.
+   */
   resolveModelSupportsImage(
     providerName: string,
     modelId: string,
     configuredSupportsImage?: boolean,
+    overrideSupportsImage?: boolean,
   ): boolean {
+    if (typeof overrideSupportsImage === 'boolean') {
+      return overrideSupportsImage;
+    }
     const providerModelSupportsImage = this.getProviderModelSupportsImage(providerName, modelId);
     if (providerModelSupportsImage !== undefined) {
       return providerModelSupportsImage;
@@ -936,7 +961,11 @@ class ProviderRegistryImpl {
     providerName: string,
     modelId: string,
     configuredSupportsThinking?: boolean,
+    overrideSupportsThinking?: boolean,
   ): boolean {
+    if (typeof overrideSupportsThinking === 'boolean') {
+      return overrideSupportsThinking;
+    }
     const providerModelSupportsThinking = this.getProviderModelSupportsThinking(providerName, modelId);
     if (providerModelSupportsThinking !== undefined) {
       return providerModelSupportsThinking;

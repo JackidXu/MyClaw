@@ -46,7 +46,12 @@ import {
   PromptAnalyticsConversationState,
 } from '../shared/analytics/constants';
 import { UsageAnalytics, type UsageContext, UsageOrigin, UsageStage } from '../shared/analytics/usage';
-import { AppIpcChannel, type OpenSettingsRequest, OpenSettingsTab } from '../shared/app/constants';
+import {
+  AppIpcChannel,
+  type OpenSettingsRequest,
+  OpenSettingsTab,
+  WindowIpcChannel,
+} from '../shared/app/constants';
 import { AppSettingsAutoLaunchErrorCode, AppSettingsIpc } from '../shared/appSettings/constants';
 import { type AppUpdateActiveWorkloads, AppUpdateIpc } from '../shared/appUpdate/constants';
 import { ArtifactBrowserPartition, ArtifactPreviewIpc, ArtifactPreviewProtocol } from '../shared/artifactPreview/constants';
@@ -59,6 +64,7 @@ import {
   AuthIpcChannel,
   type AuthLifecycleEvent,
   AuthLifecycleEventType,
+  AuthLoginFailureReason,
   AuthRefreshOutcome,
   AuthRefreshReason,
   type AuthSessionChangedEvent,
@@ -90,6 +96,7 @@ import {
   normalizeBrowserWebAccessConfig,
 } from '../shared/browserWebAccess/constants';
 import type { BrowserPasskeyRequest } from '../shared/browserWebAccess/passkeys';
+import { normalizeClientBannerPlacement } from '../shared/clientBanner/constants';
 import { ClipboardIpc } from '../shared/clipboard/constants';
 import {
   type CoworkBrowserAnnotationMessageBatch,
@@ -118,6 +125,7 @@ import {
   CoworkForkMode,
   CoworkIpcChannel,
   CoworkOnboardingMessageKind,
+  CoworkSessionErrorCode,
 } from '../shared/cowork/constants';
 import { isEmbeddingProvider } from '../shared/cowork/embedding';
 import {
@@ -126,6 +134,7 @@ import {
   formatCoworkImageAttachmentLimit,
   validateCoworkImageAttachmentSize,
 } from '../shared/cowork/imageAttachments';
+import type { CoworkMessageEditRequest, CoworkMessageVersionSwitchRequest } from '../shared/cowork/messageEdit';
 import { OpenClawQuestion } from '../shared/cowork/openclawQuestion';
 import { containsPlanModePrompt } from '../shared/cowork/planMode';
 import type { CoworkSearchMessageCursor } from '../shared/cowork/search';
@@ -133,6 +142,7 @@ import {
   type CoworkSelectedTextSnippet,
   normalizeCoworkSelectedTextSnippets,
 } from '../shared/cowork/selectedText';
+import type { CoworkSessionFilterQuery } from '../shared/cowork/sessionFilter';
 import {
   CoworkSteerRejectReason,
   CoworkSteerStatus,
@@ -192,8 +202,9 @@ import { ConfirmationBehavior, type MediaConfirmationCommand, MediaConfirmationG
 import { MEDIA_V2_TASKS_PATH, MediaDeliveryStatus, MediaProtocol, MediaTaskPhase, MediaTaskStatus, TERMINAL_MEDIA_TASK_STATUSES } from '../shared/media/constants';
 import { type MediaPreference, MediaType } from '../shared/media/defaultPolicy';
 import { mediaServerFailureFields } from '../shared/media/usage';
+import { hasLayerDecompositionWarning } from '../shared/media/warnings';
 import { canonicalizeMediaModelId, HAPPYHORSE_1_1_MODEL_ID, mediaModelDisplayName } from '../shared/mediaModelAliases';
-import { type ModelPresetId, parseModelPresetId } from '../shared/modelPresets/constants';
+import { isChatPresetSession, type ModelPresetId, parseModelPresetId } from '../shared/modelPresets/constants';
 import {
   normalizeNotificationSettings,
   type NotificationSettings,
@@ -215,6 +226,7 @@ import {
   parseModelThinkingLevel,
   ProviderName,
 } from '../shared/providers';
+import { selectableContextWindows, userContextWindowSelection } from '../shared/providers/modelContextWindow';
 import {
   ShareDeploymentCandidateSource,
   type ShareDeploymentCreateNodeInput,
@@ -244,8 +256,10 @@ import { BrowserCredentialService } from './browserCredentials/browserCredential
 import { getRecentComputerUseLogEntries } from './computerUse/computerUseLogs';
 import { ContentDistributionService } from './contentDistribution/contentDistributionService';
 import { readEnvironmentSnapshot } from './conversation/environmentSnapshot';
+import { MessageSpeechController } from './conversation/messageSpeechController';
 import { WorkspaceReviewSourceStore } from './conversation/reviewSource';
 import { isScopedReview, ScopedReviewStore } from './conversation/scopedReview';
+import { bindCoworkTurnOutcomes } from './conversation/turnOutcomes';
 import { type CoworkForkContextMessage, type CoworkMessage, CoworkStore } from './coworkStore';
 import { DesktopCompanionManager } from './desktopCompanion/desktopCompanionManager';
 import { CompanionLanguageClient } from './desktopCompanion/languageToolClient';
@@ -303,6 +317,7 @@ import {
   stopDshFeatureRuntimes,
 } from './ipcHandlers/dsh/handlers';
 import { registerEnterpriseAccountHandlers } from './ipcHandlers/enterpriseAccount';
+import { registerImageCreationHandlers } from './ipcHandlers/imageCreation';
 import { registerImageEditingHandlers } from './ipcHandlers/imageEditing';
 import { registerKitHandlers } from './ipcHandlers/kits';
 import { hasUnsafeMarkdownEdits, registerMarkdownEditingHandlers } from './ipcHandlers/markdownEditing';
@@ -337,6 +352,8 @@ import {
   OpenClawRuntimeAdapter,
   type PermissionResult,
 } from './libs/agentEngine';
+import { prepareMessageEdit } from './libs/agentEngine/prepareMessageEdit';
+import { pickChangedAgentPersona, seedAgentPersonaFiles, writeAgentPersonaFiles } from './libs/agentPersonaFiles';
 import {
   APP_QUIT_CONFIRMATION_STORE_KEY,
   appQuitConfirmationGate,
@@ -344,16 +361,15 @@ import {
   quitAppWithoutConfirmation,
   showAppQuitConfirmation,
 } from './libs/appQuitConfirmation';
+import { focusAppQuitDialog } from './libs/appQuitDialog';
 import { hideAppWindowsForQuit } from './libs/appQuitWindows';
 import { AppUpdateCoordinator, INSTALLATION_UUID_KEY } from './libs/appUpdateCoordinator';
 import { AppUpdateGrayClient, type AppUpdateGraySession } from './libs/appUpdateGrayClient';
 import { ArtifactFileWatcher } from './libs/artifactFileWatcher';
+import { openBrowserLogin } from './libs/authBrowserLogin';
 import { AuthCallbackRouter } from './libs/authCallbackRouter';
-import {
-  appendCallbackReturnTo,
-  appendLoginParams,
-  startAuthLocalCallback,
-} from './libs/authLocalCallbackServer';
+import { startAuthLocalCallback, stopAuthLocalCallback } from './libs/authLocalCallbackServer';
+import { AuthLoginAttempt } from './libs/authLoginAttempt';
 import {
   AuthSessionManager,
   resolveAuthSessionStatusFromError,
@@ -378,7 +394,11 @@ import {
   updateServerModelMetadata,
   updateServerModelMetadataFromResponse,
 } from './libs/claudeSettings';
-import { appendClientBannerVersion } from './libs/clientBannerRequest';
+import {
+  appendClientBannerContentTypes,
+  appendClientBannerVersion,
+  fetchClientBanner,
+} from './libs/clientBannerRequest';
 import {
   getCopilotLoopbackPort,
   startCopilotLoopbackProxy,
@@ -390,6 +410,7 @@ import {
   refreshCopilotTokenNow,
   setCopilotTokenState,
 } from './libs/copilotTokenManager';
+import { CoworkImageOriginalStore } from './libs/coworkImageOriginalStore';
 import {
   startCoworkOpenAICompatProxy,
   stopCoworkOpenAICompatProxy,
@@ -405,6 +426,13 @@ import {
   ensureElectronNodeShim,
   getElectronNodeRuntimePath,
 } from './libs/coworkUtil';
+import {
+  checkCoworkWorkingDirectory,
+  type CoworkWorkingDirectoryCheck,
+  CoworkWorkingDirectoryIssue,
+  type CoworkWorkingDirectoryProblem,
+  getDefaultCoworkProjectDirectory,
+} from './libs/coworkWorkingDirectory';
 import {
   assertDataMigrationSqliteSnapshotMatchesLiveSync,
   buildDataMigrationBackupFileName,
@@ -424,9 +452,11 @@ import {
 } from './libs/developmentProtocolContext';
 import { getDeviceInfo } from './libs/deviceId';
 import { adaptDoubaoSeedreamSize } from './libs/doubaoMediaSizeAdapter';
+import { DshUsageTelemetry } from './libs/dshUsageTelemetry';
 import {
   getExpertStoreUrl,
   getHtmlSharePublicBaseUrl,
+  getImageCreationExamplesUrl,
   getKitStoreUrl,
   getServerApiBaseUrl,
   refreshEndpointsTestMode,
@@ -437,6 +467,8 @@ import {
   syncEnterpriseConfig,
 } from './libs/enterpriseConfigSync';
 import { ExpertStore, fetchExpertsFromCloud, initExpertStoreFromLocal } from './libs/expertStore';
+import { refreshFakeIpNetworkState } from './libs/fakeIpNetwork';
+import { fitImageBytesForModel } from './libs/fitImageForModel';
 import {
   createOfficePreviewSession,
   createPreviewSession,
@@ -472,6 +504,7 @@ import {
   buildArtifactIdentityClientSourceKey,
   buildHtmlShareClientSourceKey,
 } from './libs/htmlShare/htmlShareSourceKey';
+import { ImageCreationStore } from './libs/imageCreationStore';
 import { composesImageEditLocally, ImageEditingService, ImageEditResultError } from './libs/imageEditing';
 import { getKeyfromAttribution, initializeKeyfromAttribution } from './libs/keyfromAttribution';
 import { LibraryThumbnailRenderer } from './libs/libraryThumbnailRenderer';
@@ -501,6 +534,7 @@ import { enhanceImagePrompt } from './libs/mediaAestheticEnhancer';
 import { formatPersistedImageLink, inferImageMimeTypeFromDataUrl, type PersistedGeneratedImageAsset, persistGeneratedImageAssets, type PersistGeneratedImageAssetsResult, persistGeneratedVideoAssets, type RemoteGeneratedMediaAsset } from './libs/mediaAssetPersistence';
 import { mediaConfirmationQuote } from './libs/mediaConfirmationRequests';
 import { MediaDownloadCoordinator } from './libs/mediaDownloadCoordinator';
+import { formatMediaLayerLines } from './libs/mediaLayers';
 import { compactMediaDetails, compactMessageMetadataMedia, mediaSourceKey } from './libs/mediaMetadataCompaction';
 import { migrateInlineMediaMetadata } from './libs/mediaMetadataMigration';
 import {
@@ -510,6 +544,7 @@ import {
 } from './libs/mediaTaskStore';
 import { MediaUsageAnalytics } from './libs/mediaUsageAnalytics';
 import { MediaUsageStore } from './libs/mediaUsageStore';
+import { modelContextWindowOwnerKey, registerModelContextWindowIpc, rememberedContextWindow } from './libs/modelContextWindows';
 import { createModelPresetClient, registerModelPresetIpc } from './libs/modelPresets';
 import { bindNativeRunUsageOwner, claimNativeRunTurnUsage, configureNativeUsageSessionTitleResolver, getNativeRunMediaUsageContext, recordNativeRunMediaTask } from './libs/nativeRunTurnUsage';
 import {
@@ -517,6 +552,7 @@ import {
   recordApiTraffic,
   setTrafficLogMainWindow,
 } from './libs/networkInterceptor';
+import { deleteOpenClawAgent } from './libs/openclawAgentDeletion';
 import {
   migrateAgentModelRefs,
   parsePrimaryModelRef,
@@ -653,8 +689,11 @@ import {
   restoreOriginalProxyEnv,
   setSystemProxyEnabled,
 } from './libs/systemProxy';
+import { startUninstallAnalytics } from './libs/uninstallAnalytics';
 import { TaskUsageAnalytics } from './libs/usageAnalytics';
 import { type UsageTitleOutbox, UsageTitleSync } from './libs/usageTitleSync';
+import { getWebSearchBridgeFilePath, removeWebSearchBridgeFile, writeWebSearchBridgeFile } from './libs/webSearchBridgeFile';
+import { WebSearchHost } from './libs/webSearchHost';
 import { type LoopbackFirewallRepairResult, repairWindowsLoopbackFirewall } from './libs/windowsLoopbackFirewall';
 import { getLogFilePath, initLogger } from './logger';
 import { type AskUserResponse, McpRuntime } from './mcp/mcpRuntime';
@@ -2018,22 +2057,19 @@ const normalizeCaptureRect = (rect?: Partial<CaptureRect> | null): CaptureRect |
   return normalized.width > 0 && normalized.height > 0 ? normalized : null;
 };
 
-const resolveTaskWorkingDirectory = (workspaceRoot: string): string => {
-  const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
-  // Reject bare Windows drive roots (e.g. "D:\") — mkdir on drive roots causes EPERM,
-  // and some agent engines (OpenClaw) also fail when given a drive root as workspace.
-  if (process.platform === 'win32' && /^[a-zA-Z]:\\?$/.test(resolvedWorkspaceRoot)) {
-    throw new Error(
-      `Cannot use a drive root as the working directory (${resolvedWorkspaceRoot}). Please select a subfolder instead, for example: ${resolvedWorkspaceRoot}Projects`,
-    );
-  }
-  if (!fs.existsSync(resolvedWorkspaceRoot)) {
-    fs.mkdirSync(resolvedWorkspaceRoot, { recursive: true });
-  }
-  if (!fs.statSync(resolvedWorkspaceRoot).isDirectory()) {
-    throw new Error(`Selected workspace is not a directory: ${resolvedWorkspaceRoot}`);
-  }
-  return resolvedWorkspaceRoot;
+const checkTaskWorkingDirectory = (workingDirectory: string): CoworkWorkingDirectoryCheck =>
+  checkCoworkWorkingDirectory(workingDirectory, {
+    recreatableDirectories: [getDefaultCoworkProjectDirectory()],
+  });
+
+const getWorkingDirectoryUnavailableResponse = ({ issue, directory }: CoworkWorkingDirectoryProblem) => {
+  console.warn(`[Cowork] working directory check failed (${issue}): ${directory}`);
+  const error = issue === CoworkWorkingDirectoryIssue.DriveRoot
+    ? t('coworkWorkingDirectoryDriveRoot', { path: directory, example: path.win32.join(directory, 'Projects') })
+    : issue === CoworkWorkingDirectoryIssue.NotDirectory
+      ? t('coworkWorkingDirectoryNotFolder', { path: directory })
+      : t('coworkWorkingDirectoryMissing', { path: directory });
+  return { success: false, code: CoworkSessionErrorCode.WorkingDirectoryUnavailable, error };
 };
 
 const getDefaultExportImageName = (defaultFileName?: string): string => {
@@ -2252,6 +2288,7 @@ let coworkStore: CoworkStore | null = null;
 let openClawRuntimeAdapter: OpenClawRuntimeAdapter | null = null;
 let coworkEngineRouter: CoworkEngineRouter | null = null;
 let agentBrowserHost: AgentBrowserHost | null = null;
+let webSearchHost: WebSearchHost | null = null;
 let browserCredentialService: BrowserCredentialService | null = null;
 let contentDistributionService: ContentDistributionService | null = null;
 let browserCredentialApprovalService: BrowserCredentialApprovalService | null = null;
@@ -2420,6 +2457,16 @@ const getAgentBrowserHost = (): AgentBrowserHost => {
   return agentBrowserHost;
 };
 
+const getWebSearchHost = (): WebSearchHost => {
+  if (!webSearchHost) {
+    webSearchHost = new WebSearchHost({
+      getBrowserConfig: () => getStore().get<AppConfigSettings>('app_config')?.browserWebAccess,
+      getPageContext: () => getAgentBrowserHost().getBackgroundPageContext(),
+    });
+  }
+  return webSearchHost;
+};
+
 const formatAutoLaunchStatusForLog = (status: AutoLaunchStatus): string => {
   const launchItems = status.launchItems
     ?.map(item => `${item.name}:${item.enabled ? 'enabled' : 'disabled'}:${item.args.join(' ') || '(no-args)'}`)
@@ -2462,6 +2509,14 @@ const getMainLogReporter = (): MainLogReporter => {
   }
   return mainLogReporter;
 };
+
+const dshUsageTelemetry = new DshUsageTelemetry({
+  getReporter: getMainLogReporter,
+  getProxyBaseUrl: () => {
+    const port = getOpenClawTokenProxyPort();
+    return port ? `http://127.0.0.1:${port}/v1` : null;
+  },
+});
 
 const forwardOpenClawStatus = (status: OpenClawEngineStatus): void => {
   desktopCompanionManager?.setEnginePhase(status.phase);
@@ -3990,6 +4045,8 @@ const bindCoworkRuntimeForwarder = (): void => {
   if (coworkRuntimeForwarderBound) return;
   const runtime = getCoworkEngineRouter();
 
+  bindCoworkTurnOutcomes(runtime, getCoworkStore());
+
   runtime.on('message', (sessionId: string, message: unknown, beforeMessageId?: string) => {
     getDesktopNotificationManager().cancelPendingCompletion(sessionId);
     const safeMessage = sanitizeCoworkMessageForIpc(message);
@@ -4143,8 +4200,11 @@ const bindCoworkRuntimeForwarder = (): void => {
     }
   });
 
-  runtime.on('sessionStopped', (sessionId: string) => {
+  runtime.on('sessionStopped', (sessionId, turn) => {
     getDesktopNotificationManager().handleSessionStopped(sessionId);
+    void coworkTurnUsageService?.settleStoppedTurn(sessionId, turn).catch((error) => {
+      console.warn(`[TurnUsage] settlement failed for stopped session ${sessionId}.`, error);
+    });
   });
 
   runtime.on('complete', (sessionId: string, claudeSessionId: string | null) => {
@@ -4234,6 +4294,10 @@ const getCoworkEngineRouter = () => {
         {
           normalizeModelRef: normalizeOpenClawModelRef,
           getModelCatalog: buildAvailableOpenClawProviders,
+          getContextWindowOwnerKey: () => {
+            const owner = resolveCurrentMediaAccountScope()?.ownerAccountKey;
+            return owner ? modelContextWindowOwnerKey(owner, getServerApiBaseUrl()) : null;
+          },
           onChannelPromptSubmit: (event, sessionId) => {
             getTaskUsageAnalytics().begin(sessionId, {},
               event.conversationState === PromptAnalyticsConversationState.ContinueSession, UsageOrigin.Im);
@@ -4422,6 +4486,21 @@ const startAskUserServer = async (): Promise<void> => {
   const runtime = getMcpRuntime();
   await runtime.startAskUserServer();
   runtime.setBrowserToolHandler(request => getAgentBrowserHost().handleToolRequest(request));
+  runtime.setWebSearchPageHandler(request => getWebSearchHost().handleRequest(request));
+  const webSearchBridgeFile = getWebSearchBridgeFilePath(app.getPath('userData'));
+  const webSearchPageCallbackUrl = runtime.getWebSearchPageCallbackUrl();
+  try {
+    if (webSearchPageCallbackUrl) {
+      writeWebSearchBridgeFile(webSearchBridgeFile, {
+        bridgeUrl: webSearchPageCallbackUrl,
+        bridgeSecret: runtime.getBridgeSecret(),
+      });
+    } else {
+      removeWebSearchBridgeFile(webSearchBridgeFile);
+    }
+  } catch (error) {
+    console.warn('[WebSearchHost] Failed to publish the search bridge endpoint:', error);
+  }
   for (const editor of officeEditing.editors) {
     runtime.setEditorToolHandler(editor.id, editor.editorName, request => officeEditing.callTool(editor.id, request.tool, request.args));
   }
@@ -4668,6 +4747,7 @@ let mainWindow: BrowserWindow | null = null;
 let dataMigrationRestoreWindow: BrowserWindow | null = null;
 let desktopNotificationManager: DesktopNotificationManager | null = null;
 let desktopCompanionManager: DesktopCompanionManager | null = null;
+let messageSpeechController: MessageSpeechController | null = null;
 let ensureMainWindowForReason: ((reason: string) => BrowserWindow | null) | null = null;
 let isOpenSessionFromNotificationReady = false;
 let pendingOpenSessionFromNotificationId: string | null = null;
@@ -4765,6 +4845,12 @@ let resolveCurrentMediaAccountScope = (): MediaAccountScope | null => null;
 
 // Media attachment references per session (for @ mentions, FR-9)
 const mediaReferencesBySession = new Map<string, MediaAttachmentRefMain[]>();
+
+let coworkImageOriginals: CoworkImageOriginalStore | null = null;
+const getCoworkImageOriginals = (): CoworkImageOriginalStore => {
+  coworkImageOriginals ??= new CoworkImageOriginalStore(path.join(app.getPath('userData'), 'cowork-image-originals'));
+  return coworkImageOriginals;
+};
 const persistedGeneratedImageAssetsByUrl = new Map<string, PersistedGeneratedImageAsset>();
 const persistedGeneratedVideoAssetsByUrl = new Map<string, PersistedGeneratedImageAsset>();
 
@@ -5204,6 +5290,8 @@ const updateTitleBarOverlay = () => {
 
 const applyProxyPreference = async (useSystemProxy: boolean): Promise<void> => {
   setSystemProxyEnabled(useSystemProxy);
+  // TUN-mode proxies capture traffic whatever this preference says.
+  await refreshFakeIpNetworkState();
 
   try {
     await session.defaultSession.setProxy({ mode: useSystemProxy ? 'system' : 'direct' });
@@ -5342,7 +5430,9 @@ if (!gotTheLock) {
     app.setAsDefaultProtocolClient('lobsterai');
   }
 
+  const authLoginAttempt = new AuthLoginAttempt();
   const authCallbackRouter = new AuthCallbackRouter({
+    acceptsCallback: () => authLoginAttempt.acceptsCallback(),
     getTarget: () => {
       if (!mainWindow || mainWindow.isDestroyed()) return null;
       return mainWindow.webContents;
@@ -5819,6 +5909,10 @@ if (!gotTheLock) {
     return mainWindow?.isMaximized() ?? false;
   });
 
+  ipcMain.handle(WindowIpcChannel.IsFullscreen, () => {
+    return mainWindow?.isFullScreen() ?? false;
+  });
+
   ipcMain.on(
     'window:showSystemMenu',
     (_event, position: { x?: number; y?: number } | undefined) => {
@@ -6221,6 +6315,7 @@ if (!gotTheLock) {
   };
 
   const emitAuthSessionChanged = (event: AuthSessionChangedEvent, excludedWebContentsId?: number): void => {
+    messageSpeechController?.stop();
     desktopCompanionManager?.resetLanguageTools();
     for (const window of BrowserWindow.getAllWindows()) {
       if (!window.isDestroyed() && window.webContents.id !== excludedWebContentsId) {
@@ -7186,6 +7281,7 @@ if (!gotTheLock) {
         let resultLines: string[];
         let detailsAssets: unknown[] = composesImageEditLocally(statusImageEdit?.operation) ? [] : assets;
         let savedCount = 0;
+        let savedImageAssets: PersistedGeneratedImageAsset[] = [];
         if (status === 'succeeded' && statusMediaType === 'image' && ownerSessionId) {
           const persistResult = await persistGeneratedImages(ownerSessionId, assets, statusImageEdit, String(taskId));
           if (!isRequestAccountCurrent()) return staleAccountResult();
@@ -7193,6 +7289,7 @@ if (!gotTheLock) {
           if (persistResult && persistResult.saved.length > 0) {
             savedCount = persistResult.saved.length;
             detailsAssets = persistResult.saved;
+            savedImageAssets = persistResult.saved;
             resultLines = persistResult.saved.map(asset =>
               `  - ${formatPersistedImageLink(asset, t('mediaImageSavedToRecovery'))}`
             );
@@ -7232,6 +7329,7 @@ if (!gotTheLock) {
           taskId: String(taskId),
           ...(statusTracker ? { clientStartedAt: statusTracker.startedAt } : {}),
           status,
+
           ...(pollCount > 1 ? { pollCount } : {}),
           model: outputModel,
           ...(upstreamModel ? { upstreamModel } : {}),
@@ -7381,6 +7479,9 @@ if (!gotTheLock) {
         if (args.output_format) params.output_format = args.output_format;
         if (args.temperature != null) params.temperature = args.temperature;
         if (args.imageSize) params.imageSize = args.imageSize;
+        if (args.layerDecomposition != null) params.layer_decomposition = args.layerDecomposition;
+        if (args.layerDecompositionOptions) params.layer_decomposition_options = args.layerDecompositionOptions;
+        if (args.background) params.background = args.background;
       }
       if (args.count) params.count = args.count;
       
@@ -7818,6 +7919,7 @@ if (!gotTheLock) {
         `模型: ${outputModel}`,
         ...(upstreamModel ? [`Selected model: ${upstreamModel}`] : []),
         ...(modelSelectionReason ? [`Selection reason: ${modelSelectionReason}`] : []),
+
       ];
 
       if (status === 'succeeded' && mediaType === 'image' && ownerSessionId) {
@@ -8539,44 +8641,30 @@ if (!gotTheLock) {
   };
 
   ipcMain.handle(AuthIpcChannel.Login, async (_event, { loginUrl }: { loginUrl?: string } = {}) => {
-    const baseUrl = loginUrl || `${getServerApiBaseUrl()}/login`;
-    const fallbackUrl = appendLoginParams(baseUrl, { source: 'electron' });
-    let localCallback: Awaited<ReturnType<typeof startAuthLocalCallback>> | null = null;
-
-    try {
-      console.log('[Auth] starting browser login with local callback server');
-      localCallback = await startAuthLocalCallback({
+    const generation = authLoginAttempt.begin();
+    authCallbackRouter.clearPending();
+    await Promise.all([stopAuthLocalCallback(), authLoginAttempt.waitForExchange()]);
+    const isCurrent = () => authLoginAttempt.isCurrent(generation);
+    if (!isCurrent()) return { success: false, reason: AuthLoginFailureReason.Cancelled };
+    return openBrowserLogin({
+      baseUrl: loginUrl || `${getServerApiBaseUrl()}/login`,
+      openExternal: url => shell.openExternal(url),
+      isCurrent,
+      startLocalCallback: () => startAuthLocalCallback({
         onCode: code => {
+          if (!isCurrent()) return;
           authCallbackRouter.handleAuthCode(code);
           focusMainWindow('local auth callback');
         },
-      });
-      const returnTo = appendLoginParams(baseUrl, {
-        source: 'electron',
-        electronLogin: 'success',
-      });
-      const finalUrl = appendLoginParams(baseUrl, {
-        source: 'electron',
-        redirect_uri: appendCallbackReturnTo(localCallback.redirectUri, returnTo),
-        state: localCallback.state,
-      });
-      console.log('[Auth] opening portal login with local callback redirect');
-      await shell.openExternal(finalUrl);
-      return { success: true, redirectUrl: finalUrl };
-    } catch (error) {
-      // The callback may be shared by another login page and will clean itself up on timeout.
-      console.warn('[Auth] local callback login failed, falling back to deep link login:', error);
-      try {
-        await shell.openExternal(fallbackUrl);
-        return { success: true, redirectUrl: fallbackUrl };
-      } catch (fallbackError) {
-        console.error('[Auth] login failed:', fallbackError);
-        return {
-          success: false,
-          error: fallbackError instanceof Error ? fallbackError.message : 'Failed to open login',
-        };
-      }
-    }
+      }),
+    });
+  });
+
+  ipcMain.handle(AuthIpcChannel.CancelLogin, async () => {
+    authLoginAttempt.cancel();
+    authCallbackRouter.clearPending();
+    await Promise.all([stopAuthLocalCallback(), authLoginAttempt.waitForExchange()]);
+    return { success: true };
   });
 
   registerFeedbackIpc({
@@ -8611,11 +8699,12 @@ if (!gotTheLock) {
     fetchWithAuth,
   });
 
-  const activateLowCreditPurchaseOffer = async (): Promise<Record<string, unknown> | null> => {
+  const activateLowCreditPurchaseOffer = async (signal?: AbortSignal): Promise<Record<string, unknown> | null> => {
     try {
       const response = await fetchWithAuth(`${getServerApiBaseUrl()}/api/purchase-offers/low-credit/activate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal,
       });
       if (!response.ok) return null;
       const body = (await response.json()) as {
@@ -8629,7 +8718,7 @@ if (!gotTheLock) {
       return null;
     }
   };
-  ipcMain.handle(AuthIpcChannel.Exchange, async (_event, { code }: { code: string }) => {
+  ipcMain.handle(AuthIpcChannel.Exchange, (_event, { code }: { code: string }) => authLoginAttempt.runExchange(async (loginAttempt) => {
     const startingTokens = getAuthTokens();
     const startingUser = getAuthUser();
     const startingEnterpriseContext = getPersistedEnterpriseAccountContext(getStore());
@@ -8658,6 +8747,7 @@ if (!gotTheLock) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(withKeyfromBody({ authCode: code })),
+        signal: AbortSignal.any([loginAttempt.signal, AbortSignal.timeout(30_000)]),
       });
       if (!resp.ok) {
         return { success: false, error: `Exchange failed: ${resp.status}` };
@@ -8675,13 +8765,14 @@ if (!gotTheLock) {
       if (body.code !== 0 || !body.data) {
         return { success: false, error: body.message || 'Exchange failed' };
       }
-      if (!isExchangeIntentCurrent()) {
+      if (!isExchangeIntentCurrent() || !loginAttempt.isCurrent()) {
         return { success: false, error: t('authAccountChanged') };
       }
 
       const previousAccountScope = getCurrentMediaAccountScope();
       activeAuthExchangeIntent = null;
       authAccountGeneration += 1;
+      messageSpeechController?.stop();
       desktopCompanionManager?.resetLanguageTools();
       const exchangeAccountGeneration = authAccountGeneration;
       clearEnterpriseAccountContext(getStore());
@@ -8694,6 +8785,7 @@ if (!gotTheLock) {
       saveAuthUser(body.data.user);
       committedExchangeGeneration = exchangeAccountGeneration;
       const enterpriseContext = await syncEnterpriseAccountContextFromPayload(body.data);
+      if (!loginAttempt.isCurrent()) throw new Error('Login was cancelled or replaced');
       const requiresEnterpriseContext = (
         readAccountMode(body.data) === EnterpriseAccountMode.Enterprise
         || body.data.quota.subscriptionStatus === AuthSubscriptionStatus.Enterprise
@@ -8720,14 +8812,19 @@ if (!gotTheLock) {
         `[Auth] exchange completed; enterpriseContext=${enterpriseContext ? 'present' : 'absent'}`,
       );
       const quota = normalizeQuota(body.data.quota);
-      const purchaseOffer = await activateLowCreditPurchaseOffer();
+      const purchaseOffer = await activateLowCreditPurchaseOffer(loginAttempt.signal);
+      if (!loginAttempt.isCurrent()) throw new Error('Login was cancelled or replaced');
       if (
         authAccountGeneration !== exchangeAccountGeneration
         || authExchangeIntentSequence !== exchangeIntent.intentId
       ) {
         return { success: false, error: t('authAccountChanged') };
       }
-      syncOpenClawConfigIfAuthQuotaGateChanged(startingQuotaGateState);
+      // No quota-gate config sync here even when the entitlement changed: the
+      // server model metadata was just cleared, so a sync now renders a config
+      // without the plan catalog or the model-compat plugin and restarts the
+      // gateway, and the renderer's post-login model load then restarts it
+      // again to restore them. That load syncs once and reads the new gate.
       // The initiating renderer applies the exchange result; other windows
       // must refresh their own auth stores without consuming the OAuth code.
       emitAuthSessionChanged({
@@ -8775,7 +8872,8 @@ if (!gotTheLock) {
         });
         console.warn('[Auth] rolled back local credentials after an incomplete exchange');
       }
-      console.error('[Auth] exchange failed:', error);
+      if (loginAttempt.isCurrent()) console.error('[Auth] exchange failed:', error);
+      else console.debug('[Auth] cancelled or replaced login exchange settled');
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Exchange failed',
@@ -8785,7 +8883,7 @@ if (!gotTheLock) {
         activeAuthExchangeIntent = null;
       }
     }
-  });
+  }));
 
   ipcMain.handle(AuthIpcChannel.SyncUserSession, async (_event, { session }: { session: string }) => {
     const store = getStore();
@@ -9120,16 +9218,22 @@ if (!gotTheLock) {
     }
   });
 
-  ipcMain.handle(AuthIpcChannel.GetClientBannerSnapshot, async () => {
+  ipcMain.handle(AuthIpcChannel.GetClientBannerSnapshot, async (_event, placementArg?: unknown) => {
     const serverBaseUrl = getServerApiBaseUrl();
+    const placement = encodeURIComponent(normalizeClientBannerPlacement(placementArg));
+    const bannerFetchDeps = {
+      hasAuthTokens: () => getAuthTokens() !== null,
+      fetchWithAuth,
+      fetchPublic: (url: string, init?: RequestInit) => net.fetch(url, init),
+    };
     try {
       const snapshotUrl = appendKeyfromQuery(
-        appendClientBannerVersion(
-          `${serverBaseUrl}/api/client-banners/snapshot?placement=desktop_sidebar`,
+        appendClientBannerContentTypes(appendClientBannerVersion(
+          `${serverBaseUrl}/api/client-banners/snapshot?placement=${placement}`,
           app.getVersion(),
-        ),
+        )),
       );
-      const snapshotResponse = await net.fetch(snapshotUrl, { cache: 'no-store' });
+      const snapshotResponse = await fetchClientBanner(snapshotUrl, { cache: 'no-store' }, bannerFetchDeps);
       if (snapshotResponse.ok) {
         const snapshotBody = (await snapshotResponse.json()) as {
           code: number;
@@ -9160,12 +9264,12 @@ if (!gotTheLock) {
 
     try {
       const legacyUrl = appendKeyfromQuery(
-        appendClientBannerVersion(
-          `${serverBaseUrl}/api/client-banners/active-list?placement=desktop_sidebar`,
+        appendClientBannerContentTypes(appendClientBannerVersion(
+          `${serverBaseUrl}/api/client-banners/active-list?placement=${placement}`,
           app.getVersion(),
-        ),
+        )),
       );
-      const legacyResponse = await net.fetch(legacyUrl, { cache: 'no-store' });
+      const legacyResponse = await fetchClientBanner(legacyUrl, { cache: 'no-store' }, bannerFetchDeps);
       if (!legacyResponse.ok) return { success: false };
       const legacyBody = (await legacyResponse.json()) as {
         code: number;
@@ -9287,8 +9391,21 @@ if (!gotTheLock) {
     }
   });
 
+  const getContextWindowOwnerKey = () => {
+    const owner = getCurrentMediaAccountScope()?.ownerAccountKey;
+    return owner ? modelContextWindowOwnerKey(owner, getServerApiBaseUrl()) : null;
+  };
+  const modelContextWindows = registerModelContextWindowIpc({
+    ipcMain, getStore, getSessions: getCoworkStore, getRuntime: getCoworkEngineRouter,
+    ownerKey: getContextWindowOwnerKey,
+    resolveSessionModel: session => normalizeOpenClawModelRef(session.modelOverride
+      || getCoworkStore().getAgent(session.agentId)?.model || resolveDefaultAgentModelRef()),
+    ensureModelsReady: () => loadAvailableServerModels({ reason: 'context-window-selection', awaitConfigSync: true }),
+    t,
+  });
   const modelPresetSelection = registerModelPresetIpc({
     ipcMain, client: modelPresetClient, getStore, getSessions: getCoworkStore,
+    contextWindowOwnerKey: getContextWindowOwnerKey,
     getRuntime: getCoworkEngineRouter,
     ownerAccountKey: () => getCurrentMediaAccountScope()?.ownerAccountKey ?? null,
     ensureModelsReady: () => loadAvailableServerModels({ reason: 'chat-model-preset', awaitConfigSync: true }),
@@ -10951,6 +11068,7 @@ if (!gotTheLock) {
   });
 
   registerDshHandlers({
+    usageTelemetry: dshUsageTelemetry,
     getStore: () => getStore(),
     getProviders: () => {
       const appConfig = getStore().get<{ providers?: Record<string, ProviderConfig> }>('app_config');
@@ -11053,6 +11171,22 @@ if (!gotTheLock) {
         if (options.modelPresetId !== undefined && !parseModelPresetId(options.modelPresetId)) {
           return { success: false, error: t('modelPresetInvalidSession') };
         }
+        const selectedTaskDirectory = resolveSessionWorkingDirectory({
+          cwd: options.cwd,
+          agentId: options.agentId,
+        });
+        if (!selectedTaskDirectory) {
+          return {
+            success: false,
+            error: 'Please select a task folder before submitting.',
+          };
+        }
+        // Check before warming the engine so an unplugged drive fails fast.
+        const workingDirectoryCheck = checkTaskWorkingDirectory(selectedTaskDirectory);
+        if (workingDirectoryCheck.ok === false) {
+          return getWorkingDirectoryUnavailableResponse(workingDirectoryCheck);
+        }
+        const taskWorkingDirectory = workingDirectoryCheck.directory;
         if (!options.modelPresetId) {
           const modelRunGate = await ensureServerModelReadyForRun(
             resolveCoworkRunModelRef({
@@ -11089,17 +11223,6 @@ if (!gotTheLock) {
         const persistedSystemPrompt = containsPlanModePrompt(systemPrompt)
           ? mergeCoworkSystemPrompt(config.systemPrompt)
           : systemPrompt;
-        const selectedTaskDirectory = resolveSessionWorkingDirectory({
-          cwd: options.cwd,
-          agentId: options.agentId,
-        });
-
-        if (!selectedTaskDirectory) {
-          return {
-            success: false,
-            error: 'Please select a task folder before submitting.',
-          };
-        }
         const imageAttachmentValidation = validateCoworkImageAttachmentsForRuntime(options.imageAttachments);
         if (imageAttachmentValidation.ok === false) {
           return {
@@ -11116,7 +11239,6 @@ if (!gotTheLock) {
           t('coworkDefaultSessionTitle'),
         );
         const title = options.title?.trim() || fallbackTitle;
-        const taskWorkingDirectory = resolveTaskWorkingDirectory(selectedTaskDirectory);
         const runtimeSkillIds = options.runtimeSkillIds ?? options.activeSkillIds;
         const selectedTextSnippets = normalizeSelectedTextSnippetsForIpc(options.selectedTextSnippets);
         const browserAnnotations = normalizeBrowserAnnotationBatches(options.browserAnnotations);
@@ -11180,6 +11302,8 @@ if (!gotTheLock) {
           }
         }
 
+        modelContextWindows.restoreForSession(session.id);
+        session = coworkStoreInstance.getSession(session.id)!;
         if (options.modelOverride) {
           console.log(
             '[Cowork:StartSession] session created with modelOverride:',
@@ -11228,7 +11352,8 @@ if (!gotTheLock) {
             })),
           });
         }
-        const imageAttachmentPreviews = buildCoworkImageAttachmentPreviews(options.imageAttachments);
+        const imageAttachments = getCoworkImageOriginals().retain(session.id, options.imageAttachments);
+        const imageAttachmentPreviews = buildCoworkImageAttachmentPreviews(imageAttachments);
         const messageMetadata = buildCoworkUserSelectionMetadata({
           prompt,
           skillIds: options.activeSkillIds,
@@ -11268,7 +11393,7 @@ if (!gotTheLock) {
             resolvedKitCapabilities: options.resolvedKitCapabilities,
             workspaceRoot: taskWorkingDirectory,
             confirmationMode: 'modal',
-            imageAttachments: options.imageAttachments,
+            imageAttachments,
             agentId: options.agentId,
             mediaSelection: normalizedMediaSelection,
             workflowKind,
@@ -11305,6 +11430,7 @@ if (!gotTheLock) {
         };
         return { success: true, session: sessionWithMessages };
       } catch (error) {
+        console.error('[Cowork] failed to start session:', error);
         return {
           success: false,
           error: error instanceof Error ? error.message : 'Failed to start session',
@@ -11316,11 +11442,10 @@ if (!gotTheLock) {
   // 注册 VIP 状态查询 IPC（供渲染进程只读消费）
   mainVipService.registerIpc();
 
-  ipcMain.handle(
-    CoworkIpcChannel.SessionContinue,
-    async (
-      _event,
+  const continueCoworkSession = async (
+      _event: Electron.IpcMainInvokeEvent,
       options: {
+        editRequest?: CoworkMessageEditRequest;
         analytics?: UsageContext;
         sessionId: string;
         prompt: string;
@@ -11339,6 +11464,10 @@ if (!gotTheLock) {
       },
     ) => {
       try {
+        if (!options.editRequest && (getCoworkStore().messageEdits.pending(options.sessionId)
+          || getCoworkEngineRouter().hasPendingMessageEdit(options.sessionId))) {
+          return { success: false, error: t('coworkEditRecoveryNeeded') };
+        }
         const ipcStartedAtMs = Date.now();
         const captureCompanionTask = desktopCompanionManager?.captureTaskAnalytics(_event.sender.id);
         const requestAccountScope = getCurrentMediaAccountScope();
@@ -11348,6 +11477,13 @@ if (!gotTheLock) {
           `Prompt length ${options.prompt.length}.`,
           `Image attachments ${options.imageAttachments?.length ?? 0}.`,
         );
+        const continueWorkingDirectory = getCoworkStore().getSession(options.sessionId)?.cwd?.trim();
+        if (continueWorkingDirectory) {
+          const workingDirectoryCheck = checkTaskWorkingDirectory(continueWorkingDirectory);
+          if (workingDirectoryCheck.ok === false) {
+            return getWorkingDirectoryUnavailableResponse(workingDirectoryCheck);
+          }
+        }
         const modelRunGate = await ensureServerModelReadyForRun(
           resolveCoworkRunModelRef({ sessionId: options.sessionId }),
         );
@@ -11371,6 +11507,8 @@ if (!gotTheLock) {
         }
 
         const runtime = getCoworkEngineRouter();
+        // A version switch interrupted by a restart must land before the next message does.
+        await runtime.reconcileMessageVersionSwitch(options.sessionId);
         const coworkStoreInstance = getCoworkStore();
         const existingSession = coworkStoreInstance.getSession(options.sessionId);
         const config = coworkStoreInstance.getConfig();
@@ -11402,6 +11540,7 @@ if (!gotTheLock) {
             error: imageAttachmentValidation.error,
           };
         }
+        const imageAttachments = getCoworkImageOriginals().retain(options.sessionId, options.imageAttachments);
 
         const turnIsPlan = containsPlanModePrompt(continuationSystemPrompt);
         const turnMediaSelection = await mediaDefaults.turn({
@@ -11460,7 +11599,31 @@ if (!gotTheLock) {
           `Session ${options.sessionId}.`,
           `Elapsed ${Date.now() - ipcStartedAtMs}ms.`,
         );
+        if (options.editRequest) {
+          if ([...pendingMediaTasks.values()].some(task => task.sessionId === options.sessionId)) {
+            return { success: false, error: t('coworkEditBusy') };
+          }
+          await runtime.editMessage(options.editRequest, {
+            systemPrompt: continuationSystemPrompt,
+            skillIds: options.runtimeSkillIds ?? options.activeSkillIds,
+            messageSkillIds: options.activeSkillIds,
+            kitIds: options.kitIds,
+            kitReferences: options.kitReferences,
+            resolvedKitCapabilities: options.resolvedKitCapabilities,
+            imageAttachments,
+            mediaSelection: normalizedMediaSelection,
+            workflowKind,
+            mediaReferences: options.mediaReferences,
+            selectedTextSnippets,
+            browserAnnotations,
+          });
+          return { success: true };
+        }
         const previousUsage = getTaskUsageAnalytics().context(options.sessionId);
+        // Model/runtime preparation awaits above can overlap a second window starting an edit.
+        if (runtime.hasPendingMessageEdit(options.sessionId)) {
+          return { success: false, error: t('coworkEditRecoveryNeeded') };
+        }
         runtime
           .continueSession(options.sessionId, options.prompt, {
             analytics: options.analytics,
@@ -11470,7 +11633,7 @@ if (!gotTheLock) {
             kitIds: options.kitIds,
             kitReferences: options.kitReferences,
             resolvedKitCapabilities: options.resolvedKitCapabilities,
-            imageAttachments: options.imageAttachments,
+            imageAttachments,
             mediaSelection: normalizedMediaSelection,
             workflowKind,
             mediaReferences: options.mediaReferences,
@@ -11504,13 +11667,109 @@ if (!gotTheLock) {
         const session = getCoworkStore().getSession(options.sessionId);
         return { success: true, session };
       } catch (error) {
+        console.error('[Cowork] failed to continue session:', error);
         return {
           success: false,
           error: error instanceof Error ? error.message : 'Failed to continue session',
         };
       }
+    };
+
+  ipcMain.handle(CoworkIpcChannel.SessionContinue, (event, options) =>
+    continueCoworkSession(event, { ...options, editRequest: undefined }));
+
+  const messageEditDeps = {
+    resolveImageEdit: (sessionId: string, requestId: string) => {
+      try {
+        return imageEditing.resolve(sessionId, requestId);
+      } catch {
+        return undefined;
+      }
     },
-  );
+    fitImage: fitImageBytesForModel,
+  };
+
+  // Lets the editor say up front that a message cannot be resent as it is.
+  ipcMain.handle(CoworkIpcChannel.CheckMessageEdit, async (_event, request: { sessionId: string; messageId: string }) => {
+    if (!request || typeof request.sessionId !== 'string' || typeof request.messageId !== 'string') {
+      return { success: false, error: t('coworkEditUnsupported') };
+    }
+    try {
+      const mapping = getIMGatewayManager()?.getIMStore()?.getSessionMappingByCoworkSessionId(request.sessionId);
+      if (mapping) return { success: false, error: t('coworkEditUnsupported') };
+      const message = getCoworkStore().getMessage(request.sessionId, request.messageId);
+      await prepareMessageEdit(message, { ...request, prompt: message?.content ?? '' },
+        { ...messageEditDeps, validateOnly: true });
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : t('coworkEditUnsupported') };
+    }
+  });
+
+  ipcMain.handle(CoworkIpcChannel.EditMessage, async (event, request: CoworkMessageEditRequest) => {
+    if (!request || typeof request.sessionId !== 'string' || typeof request.messageId !== 'string'
+      || typeof request.prompt !== 'string' || (request.removedImageIndexes !== undefined && !Array.isArray(request.removedImageIndexes))) {
+      return { success: false, error: t('coworkEditUnsupported') };
+    }
+    try {
+      const mapping = getIMGatewayManager()?.getIMStore()?.getSessionMappingByCoworkSessionId(request.sessionId);
+      if (mapping) return { success: false, error: t('coworkEditUnsupported') };
+      const store = getCoworkStore();
+      const prepared = await prepareMessageEdit(store.getMessage(request.sessionId, request.messageId), request, messageEditDeps);
+      const result = await continueCoworkSession(event, {
+        ...prepared, sessionId: request.sessionId, prompt: request.prompt,
+        activeSkillIds: prepared.messageSkillIds, runtimeSkillIds: prepared.skillIds,
+        editRequest: request,
+      });
+      return { ...result, pending: store.messageEdits.pending(request.sessionId) ?? undefined };
+    } catch (error) {
+      console.error('[CoworkEdit] failed to edit message:', error);
+      return { success: false, error: error instanceof Error ? error.message : t('coworkEditFailed'),
+        pending: getCoworkStore().messageEdits.pending(request.sessionId) ?? undefined };
+    }
+  });
+
+  ipcMain.handle(CoworkIpcChannel.SwitchMessageVersion, async (_event, request: CoworkMessageVersionSwitchRequest) => {
+    if (!request || typeof request.sessionId !== 'string' || typeof request.messageId !== 'string'
+      || !Number.isInteger(request.targetIndex) || request.targetIndex < 1) {
+      return { success: false, error: t('coworkEditUnsupported') };
+    }
+    try {
+      const mapping = getIMGatewayManager()?.getIMStore()?.getSessionMappingByCoworkSessionId(request.sessionId);
+      if (mapping) return { success: false, error: t('coworkEditUnsupported') };
+      if ([...pendingMediaTasks.values()].some(task => task.sessionId === request.sessionId)) {
+        return { success: false, error: t('coworkEditBusy') };
+      }
+      const engineStatus = await ensureOpenClawRunningForCowork({
+        taskModelRef: resolveCoworkTurnModelRef({ sessionId: request.sessionId }),
+      });
+      if (engineStatus.phase !== 'running') return getEngineNotReadyResponse(engineStatus);
+      const messageId = await getCoworkEngineRouter().switchMessageVersion(request);
+      mediaReferencesBySession.delete(request.sessionId);
+      return { success: true, messageId };
+    } catch (error) {
+      console.error('[CoworkEdit] failed to switch message version:', error);
+      return { success: false, error: error instanceof Error ? error.message : t('coworkVersionSwitchFailed') };
+    }
+  });
+
+  ipcMain.handle(CoworkIpcChannel.GetMessageEdit, (_event, sessionId: string) => ({
+    success: true, pending: getCoworkStore().messageEdits.pending(sessionId) ?? undefined,
+  }));
+
+  ipcMain.handle(CoworkIpcChannel.RecoverMessageEdit, async (_event, request: { sessionId: string; operationId: string }) => {
+    if (!request || typeof request.sessionId !== 'string' || typeof request.operationId !== 'string') {
+      return { success: false, error: t('coworkEditUnsupported') };
+    }
+    try {
+      await getCoworkEngineRouter().recoverMessageEdit(request.sessionId, request.operationId);
+      return { success: true };
+    } catch (error) {
+      console.error('[CoworkEdit] failed to recover message edit:', error);
+      return { success: false, error: t('coworkEditRecoveryFailed'),
+        pending: getCoworkStore().messageEdits.pending(request.sessionId) ?? undefined };
+    }
+  });
 
   ipcMain.handle(CoworkIpcChannel.SubmitBtw, async (
     _event,
@@ -11968,6 +12227,7 @@ if (!gotTheLock) {
       mediaTurnAccountScopeBySession.delete(sessionId);
       skinRuntimeController?.handleSessionDeleted(sessionId);
       mediaReferencesBySession.delete(sessionId);
+      getCoworkImageOriginals().deleteSession(sessionId);
       getDesktopNotificationManager().handleSessionDeleted(sessionId);
       // Remove any pending media tasks for this session
       for (const [taskId, tracker] of pendingMediaTasks) {
@@ -12009,6 +12269,7 @@ if (!gotTheLock) {
       const router = getCoworkEngineRouter();
       for (const sessionId of sessionIds) {
         skinRuntimeController?.handleSessionDeleted(sessionId);
+        getCoworkImageOriginals().deleteSession(sessionId);
         getDesktopNotificationManager().handleSessionDeleted(sessionId);
         try {
           getIMGatewayManager()?.getIMStore()?.deleteSessionMappingByCoworkSessionId(sessionId);
@@ -12246,6 +12507,63 @@ if (!gotTheLock) {
   );
 
   ipcMain.handle(
+    CoworkIpcChannel.ListFilteredSessions,
+    async (_event, query: CoworkSessionFilterQuery) => {
+      try {
+        const startedAt = Date.now();
+        const sessions = getCoworkStore().listFilteredSessions({
+          statuses: Array.isArray(query?.statuses) ? query.statuses : undefined,
+          sessionIds: Array.isArray(query?.sessionIds) ? query.sessionIds : undefined,
+          updatedSince: typeof query?.updatedSince === 'number' ? query.updatedSince : undefined,
+          limit: typeof query?.limit === 'number' ? query.limit : undefined,
+        });
+        console.debug(
+          `[CoworkIPC] listed filtered sessions; statuses=${query?.statuses?.length ?? 0}, `
+          + `ids=${query?.sessionIds?.length ?? 0}, since=${query?.updatedSince ?? 'none'}, `
+          + `returned ${sessions.length} in ${Date.now() - startedAt}ms.`,
+        );
+        return { success: true, sessions };
+      } catch (error) {
+        console.error('[CoworkIPC] failed to list filtered sessions:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to list filtered sessions',
+        };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    CoworkIpcChannel.SearchSessionContent,
+    async (_event, options: { query: string; limit?: number; agentId?: string }) => {
+      try {
+        const query = typeof options?.query === 'string' ? options.query.trim() : '';
+        const requestedLimit = options?.limit ?? 50;
+        const limit = Number.isFinite(requestedLimit)
+          ? Math.max(1, Math.min(100, Math.floor(requestedLimit)))
+          : 50;
+        const startedAt = Date.now();
+        const results = getCoworkStore().searchSessionContent({
+          query,
+          limit,
+          agentId: options?.agentId,
+        });
+        console.debug(
+          `[CoworkIPC] searched session content; query length ${query.length}, `
+          + `returned ${results.length} sessions in ${Date.now() - startedAt}ms.`,
+        );
+        return { success: true, results };
+      } catch (error) {
+        console.error('[CoworkIPC] failed to search session content:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to search session content',
+        };
+      }
+    },
+  );
+
+  ipcMain.handle(
     CoworkIpcChannel.GetSessionSearchMessages,
     async (_event, options: {
       sessionId: string;
@@ -12348,6 +12666,10 @@ if (!gotTheLock) {
     return resolveAgentWorkspacePath(normalizedAgentId);
   };
 
+  registerImageCreationHandlers(new ImageCreationStore({
+    getEndpoint: getImageCreationExamplesUrl,
+    cacheDirectory: path.join(app.getPath('userData'), 'image-creation'),
+  }));
   registerAgentHandlers({
     reportPresetPreparation: fields => { void getMainLogReporter().report({ action: LogReporterAction.ExpertJourney,
       schemaVersion: UsageAnalytics.SchemaVersion, stage: UsageStage.Prepare, ...fields }); },
@@ -12358,6 +12680,18 @@ if (!gotTheLock) {
     refreshImSessionWorkingDirectoriesForAgent,
     resolveAgentWorkspacePath,
     resolveDefaultAgentModelRef,
+    deleteAgentWithRuntime: (agentId, commitLocalDeletion) => {
+      const deletion = deleteOpenClawAgent({
+        agentId, commitLocalDeletion, previousConfigSync: openClawConfigApplyQueue,
+        getGatewayState: () => ({
+          phase: getOpenClawEngineManager().getStatus().phase,
+          processId: getOpenClawEngineManager().getGatewayProcessPid(),
+        }),
+        ensureRpcClient: async () => openClawRuntimeAdapter?.ensureGatewayRpcClient() ?? null,
+      });
+      openClawConfigApplyQueue = deletion.then(() => {}, () => {});
+      return deletion;
+    },
     syncOpenClawConfig,
   });
 
@@ -12797,8 +13131,13 @@ if (!gotTheLock) {
         patch.model = normalizeOpenClawModelRef(patch.model);
       }
       const previousSession = getCoworkStore().getSession(sessionId);
-      if (patch.model !== undefined && previousSession?.modelPresetId) {
-        patch.contextWindow = null;
+      const contextOwner = getContextWindowOwnerKey();
+      const targetModelId = patch.model?.slice(patch.model.indexOf('/') + 1) ?? '';
+      const contextOverride = patch.model !== undefined && isChatPresetSession(previousSession ?? {})
+        ? rememberedContextWindow(getStore(), contextOwner, targetModelId, undefined,
+          selectableContextWindows(getServerModelMetadata(targetModelId))) : null;
+      if (patch.model !== undefined) {
+        patch.contextWindow = contextOverride ? userContextWindowSelection(contextOverride) : null;
       }
       const runtime = getCoworkEngineRouter();
       const patchResult = await runtime.patchSession(sessionId, patch);
@@ -12807,10 +13146,14 @@ if (!gotTheLock) {
         const sessionUpdates: {
           modelOverride?: string;
           modelPresetId?: ModelPresetId | null;
+          contextWindowOverride?: number | null;
+          contextWindowOwnerKey?: string | null;
           thinkingLevel?: ReturnType<typeof parseModelThinkingLevel> | '';
         } = {};
         if (patch.model !== undefined) {
           sessionUpdates.modelPresetId = null;
+          sessionUpdates.contextWindowOverride = contextOverride;
+          sessionUpdates.contextWindowOwnerKey = contextOverride ? contextOwner : null;
           sessionUpdates.modelOverride =
             patchResult && typeof patchResult.modelOverride === 'string'
               ? patchResult.modelOverride
@@ -13073,6 +13416,12 @@ if (!gotTheLock) {
   ) => {
     try {
       const workspace = resolveExistingAgentWorkspacePath(options?.agentId);
+      const agentId = options?.agentId?.trim() || AgentId.Main;
+      const agent = agentId === AgentId.Main ? null : getAgentManager().getAgent(agentId);
+      if (agent) {
+        // Settings can open before config sync has seeded a new or disabled agent's workspace.
+        seedAgentPersonaFiles(workspace, agent);
+      }
       const content = readBootstrapFile(workspace, filename);
       return { success: true, content };
     } catch (error) {
@@ -15199,6 +15548,16 @@ if (!gotTheLock) {
     fetchWithAuth, fetchAnonymous: (url, options) => net.fetch(url, options),
     getInstallationId: getOrCreateInstallationId, getServerApiBaseUrl, getSessionKey: getAuthSessionKey,
   });
+  messageSpeechController = new MessageSpeechController({
+    getMainWindow: () => mainWindow,
+    beforeStart: () => desktopCompanionManager?.stopSpeech(),
+    client: new CompanionLanguageClient({
+      reportAnalytics: event => getMainLogReporter().report(event),
+      analyticsSource: CompanionAnalyticsSource.MainChat,
+      fetchWithAuth, fetchAnonymous: (url, options) => net.fetch(url, options),
+      getInstallationId: getOrCreateInstallationId, getServerApiBaseUrl, getSessionKey: getAuthSessionKey,
+    }),
+  });
 
   registerSiteIpcHandlers({
     fetchWithAuth: (url, options) => {
@@ -16432,6 +16791,8 @@ if (!gotTheLock) {
     // so nothing re-shows a window that hideAppWindowsForQuit() just hid.
     desktopCompanionManager?.dispose();
     desktopCompanionManager = null;
+    messageSpeechController?.dispose();
+    messageSpeechController = null;
     skillManager?.stopWatching();
     cancelAllMcpOAuthLogins();
     stopMediaPollTimer();
@@ -16470,6 +16831,12 @@ if (!gotTheLock) {
     currentAppCleanupStep = 'skill-services';
     const skillServices = getSkillServiceManager();
     await skillServices.stopAll();
+    webSearchHost?.dispose();
+    try {
+      removeWebSearchBridgeFile(getWebSearchBridgeFilePath(app.getPath('userData')));
+    } catch (error) {
+      console.warn('[WebSearchHost] Failed to remove the search bridge endpoint file:', error);
+    }
 
     // Stop all IM gateways gracefully.
     if (imGatewayManager) {
@@ -16601,6 +16968,7 @@ if (!gotTheLock) {
       isAppQuitConfirmationEnabled() || hasUnsafeDocumentEdits(),
     );
     if (verdict === AppQuitRequestVerdict.Ignore) {
+      if (!appQuitConfirmationGate.isBypassArmed()) focusAppQuitDialog();
       return;
     }
     if (verdict === AppQuitRequestVerdict.Bypass) {
@@ -16610,7 +16978,7 @@ if (!gotTheLock) {
 
     // User-initiated quit (Cmd+Q, app menu, Dock, tray): scheduled tasks and
     // IM replies stop with the app, so ask first.
-    void showAppQuitConfirmation(hasUnsafeDocumentEdits)
+    void showAppQuitConfirmation(hasUnsafeDocumentEdits, mainWindow)
       .then(
         confirmed => confirmed,
         error => {
@@ -16671,7 +17039,7 @@ if (!gotTheLock) {
     // We don't trigger permission dialogs at startup to avoid annoying users
 
     // Ensure default working directory exists
-    const defaultProjectDir = path.join(os.homedir(), 'lobsterai', 'project');
+    const defaultProjectDir = getDefaultCoworkProjectDirectory();
     if (!fs.existsSync(defaultProjectDir)) {
       fs.mkdirSync(defaultProjectDir, { recursive: true });
       console.log('Created default project directory:', defaultProjectDir);
@@ -16770,6 +17138,15 @@ if (!gotTheLock) {
       .catch(err => {
         console.error('[Main] Failed to fetch experts from cloud:', err);
       });
+
+    startUninstallAnalytics({
+      isPackaged: app.isPackaged,
+      platform: process.platform,
+      executablePath: app.getPath('exe'),
+      userDataPath: app.getPath('userData'),
+      store,
+      captureContext: () => getMainLogReporter().captureContext(),
+    });
 
     // Background persistence services require the initialized store and restored endpoints.
     const usageTitleSync = new UsageTitleSync({
@@ -16926,6 +17303,7 @@ if (!gotTheLock) {
         getServerBaseUrl: getServerApiBaseUrl,
         getAccountContextHeaders: getEnterpriseAccountHeaders,
         getSessionKey: getAuthSessionKey,
+        observeRequest: request => dshUsageTelemetry.observeRequest(request),
         onRequestFinished: origin => {
           void coworkTurnUsageService?.refreshExactTrace(origin).catch(error => {
             console.warn('[TurnUsage] failed to refresh completed background request usage.', error);
@@ -17025,6 +17403,18 @@ if (!gotTheLock) {
                 source: 'custom',
               });
               cs.updateAgent(agent.id, { enabled: agent.enabled });
+            }
+            // Config sync never overwrites persona files, so a changed package value is written here.
+            // Unchanged values leave the agent's own edits to SOUL.md / IDENTITY.md in place.
+            if (agent.id !== AgentId.Main) {
+              try {
+                writeAgentPersonaFiles(
+                  resolveAgentWorkspacePath(agent.id),
+                  pickChangedAgentPersona(existing, agent),
+                );
+              } catch (error) {
+                console.warn(`[Enterprise] failed to write persona files for agent ${agent.id}:`, error);
+              }
             }
           },
         );
@@ -17244,6 +17634,7 @@ if (!gotTheLock) {
       },
       services: {
         languageClient: desktopLanguageClient,
+        beforeSpeech: () => messageSpeechController?.stop(),
         quickAnswer: new CompanionQuickAnswerService({ getSessionKey: getAuthSessionKey,
           getProxyToken: () => getOpenClawLoopbackState().proxyToken,
           resolvePreset: (presetId, signal) => modelPresetClient.resolve(crypto.randomUUID(), presetId, false, signal),
@@ -17259,6 +17650,11 @@ if (!gotTheLock) {
         if (sessionId) pendingOpenSessionFromNotificationId = sessionId;
         focusMainWindowForReason('desktop companion');
         flushOpenSessionFromNotification();
+      },
+      relaunch: () => {
+        console.log('[Main] Desktop companion requested a relaunch to apply a permission');
+        relaunchApp();
+        quitAppWithoutConfirmation('desktop-companion:permission');
       },
       openSettings: () => {
         focusMainWindowForReason('desktop companion settings');
