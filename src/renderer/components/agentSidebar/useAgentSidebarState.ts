@@ -224,6 +224,8 @@ export const useAgentSidebarState = ({
   const [hasMoreSessions, setHasMoreSessions] = useState<boolean>(false);
   const [visibleTaskLimit, setVisibleTaskLimit] = useState<number>(AgentSidebarPageSize.Preview);
   const [isTaskListExpanded, setIsTaskListExpanded] = useState<boolean>(false);
+  const [visibleProjectLimit, setVisibleProjectLimit] = useState<number>(AgentSidebarPageSize.Preview);
+  const [isProjectListExpanded, setIsProjectListExpanded] = useState<boolean>(false);
   const [expandedProjectIds, setExpandedProjectIds] = useState<string[]>([]);
   const [isLoadingTasks, setIsLoadingTasks] = useState<boolean>(false);
   const [hasLoadError, setHasLoadError] = useState<boolean>(false);
@@ -383,6 +385,18 @@ export const useAgentSidebarState = ({
     setVisibleTaskLimit(AgentSidebarPageSize.Preview);
   }, []);
 
+  // 展开更多项目
+  const loadMoreProjects = useCallback(() => {
+    setIsProjectListExpanded(true);
+    setVisibleProjectLimit((previous) => previous + AgentSidebarPageSize.ExpandBatch);
+  }, []);
+
+  // 折叠收起项目
+  const collapseProjects = useCallback(() => {
+    setIsProjectListExpanded(false);
+    setVisibleProjectLimit(AgentSidebarPageSize.Preview);
+  }, []);
+
   const retryLoadTasks = useCallback(() => {
     return loadInitialSessions();
   }, [loadInitialSessions]);
@@ -452,9 +466,12 @@ export const useAgentSidebarState = ({
     chatTasks,
     allChatTasks,
     projectNodes,
+    allProjectNodes,
     hasUnreadCompletedTasks,
     canExpandTasks,
     canCollapseTasks,
+    canExpandProjects,
+    canCollapseProjects,
   } = useMemo(() => {
     const nonProjectSessions = allSessions.filter((s) => !s.projectId);
     const sortedChatSessions = sortAgentSidebarTasks(nonProjectSessions);
@@ -520,13 +537,20 @@ export const useAgentSidebarState = ({
       })
       .map(({ latestActivity: _latestActivity, ...node }) => node);
 
+    const canExpandProj = projectsList.length > visibleProjectLimit;
+    const canCollapseProj = visibleProjectLimit > AgentSidebarPageSize.Preview || isProjectListExpanded;
+    const visibleProjectNodes = projectsList.slice(0, visibleProjectLimit);
+
     return {
       chatTasks: mappedChatTasks,
       allChatTasks: allMappedChatTasks,
-      projectNodes: projectsList,
+      projectNodes: visibleProjectNodes,
+      allProjectNodes: projectsList,
       hasUnreadCompletedTasks: hasUnread,
       canExpandTasks: canExpand,
       canCollapseTasks: canCollapse,
+      canExpandProjects: canExpandProj,
+      canCollapseProjects: canCollapseProj,
     };
   }, [
     allSessions,
@@ -534,9 +558,11 @@ export const useAgentSidebarState = ({
     currentSessionId,
     expandedProjectIdSet,
     hasMoreSessions,
+    isProjectListExpanded,
     isTaskListExpanded,
     pendingPermissionSessionIdSet,
     projects,
+    visibleProjectLimit,
     visibleTaskLimit,
   ]);
 
@@ -578,11 +604,14 @@ export const useAgentSidebarState = ({
     allChatTasks,
     agentNodes: [] as AgentSidebarAgentNode[],
     projectNodes,
+    allProjectNodes,
     activityAgentNodes,
     hasUnreadCompletedTasks,
     expandedTaskListAgentIds: [] as string[],
     canExpandTasks,
     canCollapseTasks,
+    canExpandProjects,
+    canCollapseProjects,
     isLoadingTasks,
     hasLoadError,
     patchTaskPreview,
@@ -592,6 +621,8 @@ export const useAgentSidebarState = ({
     retryLoadTasks,
     loadMoreTasks,
     collapseTasks,
+    loadMoreProjects,
+    collapseProjects,
     expandAgent: () => undefined,
     collapseAgent: () => undefined,
     expandTasks: loadMoreTasks,

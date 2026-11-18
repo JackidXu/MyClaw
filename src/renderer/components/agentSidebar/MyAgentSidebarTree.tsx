@@ -180,9 +180,12 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
     chatTasks,
     allChatTasks,
     projectNodes,
+    allProjectNodes,
     hasUnreadCompletedTasks,
     canExpandTasks,
     canCollapseTasks,
+    canExpandProjects,
+    canCollapseProjects,
     isLoadingTasks,
     hasLoadError,
     patchTaskPreview,
@@ -191,6 +194,8 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
     retryLoadTasks,
     loadMoreTasks,
     collapseTasks,
+    loadMoreProjects,
+    collapseProjects,
     toggleProjectExpanded,
     expandProject,
   } = useAgentSidebarState();
@@ -493,7 +498,7 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
                   const activeId = String(event.active.id);
                   const overId = event.over?.id ? String(event.over.id) : '';
                   if (!overId) return;
-                  void handleReorderProjects(activeId, overId, projectNodes);
+                  void handleReorderProjects(activeId, overId, allProjectNodes);
                 }}
               >
                 <SortableContext
@@ -527,6 +532,28 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
                   ))}
                 </SortableContext>
               </DndContext>
+            )}
+
+            {(canExpandProjects || canCollapseProjects) && (
+              <ExpandAgentTasksRow
+                isLoading={false}
+                label={canExpandProjects
+                  ? i18nService.t('myAgentSidebarExpandMore')
+                  : i18nService.t('myAgentSidebarCollapse')}
+                onClick={() => {
+                  if (canExpandProjects) {
+                    loadMoreProjects();
+                  } else {
+                    collapseProjects();
+                  }
+                }}
+                secondaryLabel={canExpandProjects && canCollapseProjects
+                  ? i18nService.t('myAgentSidebarCollapse')
+                  : undefined}
+                onSecondaryClick={canExpandProjects && canCollapseProjects
+                  ? () => collapseProjects()
+                  : undefined}
+              />
             )}
           </div>
 
