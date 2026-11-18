@@ -1,0 +1,37 @@
+diff --git a/src/agents/model-auth-provider-config.ts b/src/agents/model-auth-provider-config.ts
+index 853d080fb50..b45a5e3bb3e 100644
+--- a/src/agents/model-auth-provider-config.ts
++++ b/src/agents/model-auth-provider-config.ts
+@@ -588,11 +588,9 @@ export function resolveInlineProviderApiKeyCooldownUntil(
+   store: AuthProfileStore,
+   provider: string,
+ ): number | null {
+-  if (isAuthCooldownBypassedForProvider(provider)) {
+-    return null;
+-  }
+-  const stats = store.usageStats?.[`inline-api-key:${normalizeProviderId(provider)}`];
+-  return stats ? resolveProfileUnusableUntil(stats) : null;
++  // Desktop client (HeyClaw): never lock out inline API keys locally.
++  // Quota and auth errors are server-managed, allowing immediate retry upon top-up.
++  return null;
+ }
+ 
+ /** Fails closed while an inline provider API key is inside its billing/auth cooldown. */
+@@ -600,15 +598,8 @@ export function assertInlineProviderApiKeyUsable(params: {
+   store: AuthProfileStore;
+   provider: string;
+ }): void {
+-  const unusableUntil = resolveInlineProviderApiKeyCooldownUntil(params.store, params.provider);
+-  if (typeof unusableUntil !== "number" || unusableUntil <= Date.now()) {
+-    return;
+-  }
+-  const waitMs = Math.max(0, unusableUntil - Date.now());
+-  const waitMinutes = Math.max(1, Math.ceil(waitMs / 60_000));
+-  throw new Error(
+-    `Inline API key for provider "${params.provider}" is temporarily disabled after a provider auth/billing failure. Retry after about ${waitMinutes} minute${waitMinutes === 1 ? "" : "s"}, or switch to a different auth profile/API key.`,
+-  );
++  // Desktop client (HeyClaw): disabled to prevent artificial local cooldown lockouts.
++  return;
+ }
+ 
+ function isCustomLocalProviderConfig(providerConfig: ModelProviderConfig): boolean {
