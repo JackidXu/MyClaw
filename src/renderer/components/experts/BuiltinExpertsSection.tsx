@@ -15,6 +15,7 @@ interface BuiltinExpertsSectionProps {
   searchQuery: string;
   hiringId: string | null;
   onStartWork: (expert: PresetAgent, initialPrompt?: string) => void;
+  onEdit: (expert: PresetAgent) => void;
 }
 
 // 优雅流光骨架屏 + 平滑淡入封面图组件
@@ -70,6 +71,7 @@ const BuiltinExpertsSection: React.FC<BuiltinExpertsSectionProps> = ({
   searchQuery,
   hiringId,
   onStartWork,
+  onEdit,
 }) => {
   const [activeEngine, setActiveEngine] = useState<ExpertEngineType>(ExpertEngineType.Acquisition);
   const [activeScene, setActiveScene] = useState<string>('全部');
@@ -299,11 +301,18 @@ const BuiltinExpertsSection: React.FC<BuiltinExpertsSectionProps> = ({
                     <div className="mt-auto" />
                   )}
 
-                  {/* 底部动作栏：左侧【看示例 →】，右侧【使用】快捷按钮 */}
-                  <div className="flex items-center justify-between gap-2 pt-1">
-                    <span className="text-[11.5px] font-semibold text-amber-600 dark:text-amber-400 group-hover:translate-x-0.5 transition-transform">
-                      {i18nService.t('builtinViewExample')}
-                    </span>
+                  {/* 底部动作栏：右侧并列【编辑】（空心次要按钮）与【使用】（实心主要按钮） */}
+                  <div className="flex items-center justify-end gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onEdit(expert);
+                      }}
+                      className="px-2.5 py-1 rounded-full text-[11px] font-medium border border-border text-secondary hover:text-foreground hover:border-border/80 hover:bg-surface-raised active:scale-95 transition-all shrink-0 cursor-pointer shadow-2xs"
+                    >
+                      {i18nService.t('edit')}
+                    </button>
                     <button
                       type="button"
                       disabled={hiringId !== null}

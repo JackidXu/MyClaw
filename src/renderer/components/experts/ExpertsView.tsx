@@ -420,6 +420,18 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
                 searchQuery={searchQuery}
                 hiringId={hiringId}
                 onStartWork={handleStartWork}
+                onEdit={async (expert) => {
+                  let installed = installedAgents.find(
+                    (a) => a.presetId === expert.id || a.id === expert.id
+                  );
+                  if (!installed) {
+                    installed = await window.electron.agents.addPreset(expert.id);
+                    await agentService.loadAgents();
+                  }
+                  if (installed) {
+                    setEditingAgentId(installed.id);
+                  }
+                }}
               />
             ) : (
               /* ── 我的（自定义）专家列表 ── */
