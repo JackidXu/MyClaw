@@ -92,6 +92,10 @@ export const BUNDLED_SKILL_DISPLAY_NAMES: Record<string, LocalizedText> = {
   'talking-head-motion-cut': { zh: '口播动效剪辑', en: 'Talking Head Motion Cut' },
   'script-to-motion-video': { zh: '文案生成动效视频', en: 'Script to Motion Video' },
   'talking-head-cover': { zh: '口播视频封面图', en: 'Talking Head Cover' },
+  'moments-seeding': { zh: '朋友圈种草', en: 'Moments Seeding' },
+  'sales-strategist': { zh: '销售幕后军师', en: 'Sales Strategist' },
+  'real-footage-presenter-cut': { zh: '真实素材口播剪辑', en: 'Real Footage Presenter Cut' },
+  'viral-image-replicator': { zh: '爆款图复刻', en: 'Viral Image Replicator' },
 };
 
 /**

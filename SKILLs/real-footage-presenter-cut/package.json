@@ -1,0 +1,14 @@
+{
+  "name": "real-footage-presenter-cut",
+  "version": "3.8.0",
+  "description": "WorkBuddy skill: real-footage presenter-cut explainer videos",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "setup": "npx playwright install chromium"
+  },
+  "dependencies": {
+    "playwright": "^1.58.2"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,10 @@
+# Python 依赖（ffmpeg / ffprobe 需另装并放进 PATH）
+numpy>=1.24            # 波形和响度分析
+yt-dlp>=2026.8.19      # 下载素材（过期就会被 YouTube 403，要保持更新）
+opencv-python>=4.8     # 镜头运动自检（motion_check.py）、连续帧拼图（strip.py）、抠像后处理（matte_clean.py）
+Pillow>=10             # 抠像（matte.py）
+# 口播原声逐字对齐必需（host_timeline.py）；有 NVIDIA 显卡会快很多
+faster-whisper>=1.0
+# 可选：当事人逐帧抠像（matte.py）。有 NVIDIA 显卡装 GPU 版，没有就装 onnxruntime（会慢很多）
+# onnxruntime-gpu[cuda,cudnn]>=1.20
+# rembg>=2.0           # 只用来下载抠像模型：python -c "from rembg import new_session; new_session('isnet-general-use')"

@@ -317,6 +317,22 @@
     "talking-head-cover": {
       "order": 10210,
       "enabled": true
+    },
+    "moments-seeding": {
+      "order": 10220,
+      "enabled": true
+    },
+    "sales-strategist": {
+      "order": 10230,
+      "enabled": true
+    },
+    "real-footage-presenter-cut": {
+      "order": 10240,
+      "enabled": true
+    },
+    "viral-image-replicator": {
+      "order": 10250,
+      "enabled": true
     }
   }
 }
