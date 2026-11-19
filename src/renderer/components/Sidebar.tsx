@@ -34,8 +34,8 @@ import MyAgentSidebarTree from './agentSidebar/MyAgentSidebarTree';
 import { SIDEBAR_HEADER_BUTTON_FOCUS_CLASS_NAME } from './agentSidebar/sidebarHeaderTooltip';
 import SidebarTaskFilterButton, { SIDEBAR_TASK_FILTER_ENABLED } from './agentSidebar/SidebarTaskFilterButton';
 import SidebarTaskSearchButton from './agentSidebar/SidebarTaskSearchButton';
-import BillingModal from './BillingModal';
 import { DEFAULT_SIDEBAR_TASK_FILTER, type SidebarTaskFilter } from './agentSidebar/taskFilter';
+import BillingModal from './BillingModal';
 import Modal from './common/Modal';
 import {
   type CoworkTaskSearchRequestEventDetail,
@@ -43,6 +43,7 @@ import {
   CoworkUiEvent,
 } from './cowork/constants';
 import CoworkSearchModal from './cowork/CoworkSearchModal';
+import { EnterpriseModal } from './EnterpriseModal';
 import BrainIcon from './icons/BrainIcon';
 import ComposeIcon from './icons/ComposeIcon';
 import SidebarAutomationIcon from './icons/SidebarAutomationIcon';
@@ -239,14 +240,34 @@ const Sidebar: React.FC<SidebarProps> = ({
   const [isLibraryMenuExpanded, setIsLibraryMenuExpanded] = useState(false);
   const [pendingCognitionCount, setPendingCognitionCount] = useState<number>(0);
 
-  const [hasSecondBrain, setHasSecondBrain] = useState<boolean>(() => vipService.hasSecondBrainPermission());
+  const [hasSecondBrain, setHasSecondBrain] = useState<boolean>(false);
 
   useEffect(() => {
+    let cancelled = false;
+    const updateSecondBrainVisibility = async (granted = vipService.hasSecondBrainPermission()) => {
+      try {
+        const creds = await window.electron?.auth?.getAuthCredentials?.();
+        const isStaff = creds?.role === 'staff';
+        if (!cancelled) {
+          setHasSecondBrain(!isStaff && granted);
+        }
+      } catch {
+        if (!cancelled) {
+          setHasSecondBrain(granted);
+        }
+      }
+    };
+
+    updateSecondBrainVisibility();
+
     const unsubscribe = vipService.subscribe((state) => {
       const granted = state.authorized && state.permissions.includes('secondBrain');
-      setHasSecondBrain(granted);
+      updateSecondBrainVisibility(granted);
     });
-    return unsubscribe;
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
   }, []);
 
   /** 加载待确认认知数，用于侧边栏徽章显示（仅在有第二大脑权限时初始化请求一次，后续通过事件精准更新） */
@@ -305,6 +326,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   const [editNickname, setEditNickname] = useState('');
   const [editAvatar, setEditAvatar] = useState('');
   const [showConfirmDeactivate, setShowConfirmDeactivate] = useState(false);
+  const [userRole, setUserRole] = useState<'owner' | 'staff' | 'individual'>('individual');
+  const [isEnterpriseModalOpen, setIsEnterpriseModalOpen] = useState(false);
   const [isPayModalOpen, setIsPayModalOpen] = useState(false);
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
   const [isReportIssueModalOpen, setIsReportIssueModalOpen] = useState(false);
@@ -404,7 +427,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     }
   };
 
-  const handleRefreshBalance = useCallback(async (showToast = true) => {
+  const handleRefreshUserProfile = useCallback(async () => {
     if (balanceLoadingRef.current) return;
     balanceLoadingRef.current = true;
     setBalanceLoading(true);
@@ -422,6 +445,8 @@ const Sidebar: React.FC<SidebarProps> = ({
             displayName: string;
             quota: number;
             usedQuota: number;
+            role?: 'owner' | 'staff' | 'individual';
+            enterpriseName?: string;
           };
           error?: string;
         }>('/api/client/user-profile');
@@ -431,6 +456,9 @@ const Sidebar: React.FC<SidebarProps> = ({
           remainQuota = Number(userProfile?.quota || 0);
           const rawAccount = userProfile?.username || userProfile?.displayName || '';
           setAccountUsername(rawAccount);
+          if (userProfile?.role) {
+            setUserRole(userProfile.role);
+          }
         } else {
           const errorMsg = selfResp.data?.error || i18nService.t('sidebarGetUserInfoFailed');
           throw new Error(errorMsg);
@@ -443,10 +471,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       dispatch(setUserBalance(points));
 
     } catch (err) {
-      console.error('[Sidebar] Refresh balance error:', err);
-      if (showToast) {
-        window.dispatchEvent(new CustomEvent('app:showToast', { detail: i18nService.t('sidebarBalanceRefreshFailed') }));
-      }
+      console.error('[Sidebar] Refresh user profile error:', err);
     } finally {
       balanceLoadingRef.current = false;
       setBalanceLoading(false);
@@ -466,8 +491,8 @@ const Sidebar: React.FC<SidebarProps> = ({
       setEditAvatar('🐱');
     }
     // 启动时自动静默加载一次用户账号与余额
-    void handleRefreshBalance(false);
-  }, [handleRefreshBalance]);
+    void handleRefreshUserProfile();
+  }, [handleRefreshUserProfile]);
 
   const [batchAgentId, setBatchAgentId] = useState<string | null>(null);
   const [batchSelectableItems, setBatchSelectableItems] = useState<AgentSidebarBatchItem[]>([]);
@@ -1266,7 +1291,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               const willOpen = !showUserMenu;
               setShowUserMenu(willOpen);
               if (willOpen) {
-                void handleRefreshBalance(false);
+                void handleRefreshUserProfile();
               }
             }}
             className="flex items-center gap-2.5 p-2 rounded-xl bg-surface/50 hover:bg-surface-raised transition-all duration-200 shadow-sm border border-border/10 cursor-pointer select-none"
@@ -1349,8 +1374,30 @@ const Sidebar: React.FC<SidebarProps> = ({
 
               {/* Profile Body */}
               <div className="py-1">
-                {/* 第一组：算力充值、我的账单 */}
+                {/* 第一组：我的企业 (仅老板)、算力充值、我的账单 */}
                 <div className="py-1 border-b border-border/40">
+                  {userRole === 'owner' && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowUserMenu(false);
+                        setIsEnterpriseModalOpen(true);
+                      }}
+                      className="w-full flex items-center gap-2.5 px-4 py-2 text-left text-foreground/85 hover:bg-surface-raised hover:text-foreground transition-colors font-medium"
+                    >
+                      <svg className="w-4 h-4 text-secondary shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z" />
+                        <path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" />
+                        <path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2" />
+                        <path d="M10 6h4" />
+                        <path d="M10 10h4" />
+                        <path d="M10 14h4" />
+                        <path d="M10 18h4" />
+                      </svg>
+                      <span>{i18nService.t('sidebarMyEnterprise')}</span>
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={(e) => {
@@ -1673,6 +1720,11 @@ const Sidebar: React.FC<SidebarProps> = ({
           onClose={() => setIsPayModalOpen(false)}
           onSuccess={() => setIsPayModalOpen(false)}
         />
+      )}
+
+      {/* 我的企业 Modal */}
+      {isEnterpriseModalOpen && (
+        <EnterpriseModal onClose={() => setIsEnterpriseModalOpen(false)} />
       )}
 
       {/* 修改密码模态框 */}

@@ -141,7 +141,7 @@ export interface SecondBrainTranslations {
   secondBrainPendingEditBtn: string;
   secondBrainPendingCancelEdit: string;
   secondBrainPendingFinishEdit: string;
-  secondBrainPendingEmptyCount: string;
+  secondBrainPendingEmptyTitle: string;
 
   // Materials Area
   secondBrainMaterialsTitle: string;
@@ -351,7 +351,7 @@ export const secondBrainI18n: { zh: SecondBrainTranslations; en: SecondBrainTran
     secondBrainPendingEditBtn: '编辑',
     secondBrainPendingCancelEdit: '取消编辑',
     secondBrainPendingFinishEdit: '完成编辑',
-    secondBrainPendingEmptyCount: '{count} 条待确认认知',
+    secondBrainPendingEmptyTitle: '暂无待审核认知',
 
     // Materials Area
     secondBrainMaterialsTitle: '学习资料',
@@ -359,7 +359,7 @@ export const secondBrainI18n: { zh: SecondBrainTranslations; en: SecondBrainTran
     secondBrainAutoSyncSetting: '设置',
     secondBrainSyncNowBtn: '立即同步',
     secondBrainSyncingBtn: '正在同步…',
-    secondBrainUploadDocBtn: '+ 上传文件',
+    secondBrainUploadDocBtn: '上传文件',
     secondBrainUploadingBtn: '上传中…',
     secondBrainUploadDocTip: '支持 .docx / .md / .txt（单文件最大 2MB，每批最多 10 个）',
     secondBrainEmptyChat: '暂无对话',
@@ -559,7 +559,7 @@ export const secondBrainI18n: { zh: SecondBrainTranslations; en: SecondBrainTran
     secondBrainPendingEditBtn: 'Edit',
     secondBrainPendingCancelEdit: 'Cancel Edit',
     secondBrainPendingFinishEdit: 'Finish Edit',
-    secondBrainPendingEmptyCount: '{count} cognitions pending review',
+    secondBrainPendingEmptyTitle: 'No pending cognitions',
 
     // Materials Area
     secondBrainMaterialsTitle: 'Learning Materials',
@@ -567,7 +567,7 @@ export const secondBrainI18n: { zh: SecondBrainTranslations; en: SecondBrainTran
     secondBrainAutoSyncSetting: 'Settings',
     secondBrainSyncNowBtn: 'Sync Now',
     secondBrainSyncingBtn: 'Syncing...',
-    secondBrainUploadDocBtn: '+ Upload Files',
+    secondBrainUploadDocBtn: 'Upload Files',
     secondBrainUploadingBtn: 'Uploading...',
     secondBrainUploadDocTip: 'Supports .docx / .md / .txt (max 2MB per file, up to 10 per batch)',
     secondBrainEmptyChat: 'No conversations yet',

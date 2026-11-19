@@ -1320,7 +1320,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                 <div className="h-10 w-10 rounded-full bg-surface-raised border border-border flex items-center justify-center mb-2 text-secondary font-bold">
                   ✓
                 </div>
-                <p className="text-xs font-semibold text-foreground">{i18nService.t('secondBrainPendingEmptyCount')}</p>
+                <p className="text-xs font-semibold text-foreground">{i18nService.t('secondBrainPendingEmptyTitle')}</p>
                 <p className="text-[11px] text-secondary mt-0.5">{i18nService.t('secondBrainPendingEmptySubtitle')}</p>
               </div>
             )}
