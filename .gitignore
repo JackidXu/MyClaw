@@ -44,6 +44,7 @@ SKILLs/yixiaoer/bin/
 # Track the root dependency lock; generated skill lockfiles remain local.
 **/package-lock.json
 !/package-lock.json
+!SKILLs/*/package-lock.json
 
 nul
 .work.env
