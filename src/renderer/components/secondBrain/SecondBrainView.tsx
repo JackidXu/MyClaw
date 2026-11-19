@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useSelector } from 'react-redux';
 
 import {
   SECOND_BRAIN_MAX_BATCH_COUNT,
@@ -34,11 +35,13 @@ import {
   updatePersona,
 } from '../../services/secondBrainApi';
 import { secondBrainAutoUploadService } from '../../services/secondBrainAutoUpload';
+import { RootState } from '../../store';
 import {
   MANAGEMENT_PAGE_TITLE_TEXT,
 } from '../common/managementTypography';
 import SidebarToggleIcon from '../icons/SidebarToggleIcon';
 import { AutoUploadSettingsModal } from './AutoUploadSettingsModal';
+import { EnterpriseSection } from './EnterpriseSection';
 
 interface SecondBrainViewProps {
   isSidebarCollapsed?: boolean;
@@ -111,6 +114,9 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
   const [selectedNodeIds, setSelectedNodeIds] = useState<Set<number>>(new Set());
   /** 批量操作执行中状态（'adopt' | 'reject' | null） */
   const [batchActionType, setBatchActionType] = useState<'adopt' | 'reject' | null>(null);
+
+  /** 当前用户角色（owner / staff / individual） */
+  const userRole = useSelector((state: RootState) => state.auth.userRole);
 
   /** 今日 AI 自动吸收相关 */
   const [todayAdoptedList, setTodayAdoptedList] = useState<CognitionItem[]>([]);
@@ -2038,6 +2044,9 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
               />
             </div>
           </div>
+
+          {/* 6. 企业管理（仅企业所有者可见） */}
+          {userRole === 'owner' && <EnterpriseSection />}
 
         </div>
         )}
