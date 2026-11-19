@@ -29,12 +29,16 @@ export interface StoredAuthCredentials {
   session: string | null;
   userId: string | null;
   apiKey: string | null;
+  role?: string | null;
+  ownerUserId?: string | null;
 }
 
 export const AUTH_STORE_KEYS = {
   SessionToken: 'user_access_token',
   UserId: 'heyclaw_user_id',
   ApiKey: 'heyclaw_api_key',
+  Role: 'heyclaw_role',
+  OwnerUserId: 'heyclaw_owner_uid',
 } as const;
 
 export type AuthIpcChannel = typeof AuthIpcChannel[keyof typeof AuthIpcChannel];

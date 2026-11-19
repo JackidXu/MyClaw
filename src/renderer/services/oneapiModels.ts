@@ -1,3 +1,4 @@
+import { AUTH_STORAGE_KEYS } from './authStorage';
 import { configService } from './config';
 import { httpClient } from './httpClient';
 
@@ -114,7 +115,8 @@ export async function fetchAndFilterOneApiChatModels(
   _baseUrl?: string,
   apiKey?: string
 ): Promise<FetchOneApiChatModelsResult> {
-  const formattedKey = apiKey ? (apiKey.startsWith('sk-') ? apiKey : `sk-${apiKey}`) : '';
+  const rawKey = (apiKey || localStorage.getItem(AUTH_STORAGE_KEYS.ApiKey) || '').trim();
+  const formattedKey = rawKey ? (rawKey.startsWith('sk-') ? rawKey : `sk-${rawKey}`) : '';
 
   try {
     const headers: Record<string, string> = {};

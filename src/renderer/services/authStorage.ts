@@ -8,7 +8,7 @@
  */
 
 export const AUTH_STORAGE_KEYS = {
-  // 核心鉴权三要素
+  // 核心鉴权要素
   Session: "heyclaw_session",
   ApiKey: "heyclaw_api_key",
   UserId: "heyclaw_user_id",
@@ -24,6 +24,8 @@ export async function setAuthCredentials(credentials: {
   session?: string;
   userId?: string;
   apiKey?: string;
+  role?: string;
+  ownerUserId?: string;
 }): Promise<void> {
   // 1. 持久化至主进程 SQLite
   await window.electron?.auth?.setAuthCredentials?.(credentials);

@@ -209,9 +209,9 @@ function buildPath(path: string): string {
  * 通用 GET 请求
  * 成功条件：status === 'success' 且 code === 1
  */
-async function get<T>(path: string): Promise<T> {
+async function get<T>(path: string, headers?: Record<string, string>): Promise<T> {
   const apiPath = buildPath(path);
-  const resp = await httpClient.biz.get<SecondBrainResponse<T>>(apiPath);
+  const resp = await httpClient.biz.get<SecondBrainResponse<T>>(apiPath, headers);
 
   if (!resp.ok) {
     const errDetail = resp.error || (resp.status === 0 ? '网络未连通或连接超时' : `HTTP ${resp.status}`);
@@ -816,21 +816,6 @@ export interface FmpPromptResult {
   cached?: boolean;
 }
 
-/** 获取会话级认知注入提示词（GET /fmp/injectPrompt，每次新会话调用） */
-export async function fetchCognitionPrompt(): Promise<FmpPromptResult> {
-  try {
-    const res = await get<FmpPromptResult>('/fmp/injectPrompt');
-    return {
-      prompt: typeof res.prompt === 'string' ? res.prompt : '',
-      version: res.version,
-      cached: res.cached,
-    };
-  } catch (err) {
-    console.warn('[SecondBrain] fetchCognitionPrompt error:', err);
-    return { prompt: '' };
-  }
-}
-
 
 /** 人设数据结构 */
 export interface PersonaData {
@@ -884,7 +869,6 @@ export const secondBrainApi = {
   deleteDocument,
   deleteChat,
   reExtractDocument,
-  fetchCognitionPrompt,
   fetchPersonaDetail,
   updatePersona,
   reportChat,

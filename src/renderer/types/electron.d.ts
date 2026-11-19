@@ -2376,11 +2376,15 @@ interface IElectronAPI {
       session: string | null;
       userId: string | null;
       apiKey: string | null;
+      role?: string | null;
+      ownerUserId?: string | null;
     }>;
     setAuthCredentials: (credentials: {
       session?: string;
       userId?: string;
       apiKey?: string;
+      role?: string;
+      ownerUserId?: string;
     }) => Promise<{ success: boolean }>;
     clearAuthCredentials: () => Promise<{ success: boolean }>;
     getModels: () => Promise<{

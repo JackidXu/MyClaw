@@ -33,6 +33,11 @@ export function setUnauthorizedBroadcastHandler(handler: () => void): void {
   unauthorizedBroadcastHandler = handler;
 }
 
+/** 获取主进程 SqliteStore 实例（内部复用） */
+export function getMainHttpClientStore(): SqliteStore | null {
+  return sqliteStoreGetter?.() || null;
+}
+
 import { getAdminBaseUrl, getBizBaseUrl } from '../../shared/endpoints';
 
 export { getAdminBaseUrl, getBizBaseUrl };
@@ -72,11 +77,13 @@ export class MainHttpClient {
     }
 
     // 自动附带用户长效访问令牌
-    if (!options?.skipAuth && !headers['Authorization']) {
+    if (!options?.skipAuth) {
       const store = sqliteStoreGetter?.() || null;
-      const token = store?.get<string>(AUTH_STORE_KEYS.SessionToken);
-      if (token && typeof token === 'string' && token.trim()) {
-        headers['Authorization'] = `Bearer ${token.trim()}`;
+      if (!headers['Authorization']) {
+        const token = store?.get<string>(AUTH_STORE_KEYS.SessionToken);
+        if (token && typeof token === 'string' && token.trim()) {
+          headers['Authorization'] = `Bearer ${token.trim()}`;
+        }
       }
     }
 

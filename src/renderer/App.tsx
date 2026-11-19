@@ -973,10 +973,19 @@ const App: React.FC = () => {
     setMainView('sites');
   }, []);
 
-  const handleShowSecondBrain = useCallback(() => {
+  const handleShowSecondBrain = useCallback(async () => {
     if (!vipService.hasSecondBrainPermission()) {
       setMainView('cowork');
       return;
+    }
+    try {
+      const creds = await window.electron?.auth?.getAuthCredentials?.();
+      if (creds?.role === 'staff') {
+        setMainView('cowork');
+        return;
+      }
+    } catch {
+      // 容错
     }
     setMainView('secondBrain');
   }, []);

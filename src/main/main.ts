@@ -8908,12 +8908,23 @@ if (!gotTheLock) {
       session: store?.get<string>(AUTH_STORE_KEYS.SessionToken) || null,
       userId: store?.get<string>(AUTH_STORE_KEYS.UserId) || null,
       apiKey: store?.get<string>(AUTH_STORE_KEYS.ApiKey) || null,
+      role: store?.get<string>(AUTH_STORE_KEYS.Role) || null,
+      ownerUserId: store?.get<string>(AUTH_STORE_KEYS.OwnerUserId) || null,
     };
   });
 
   ipcMain.handle(
     AuthIpcChannel.SetAuthCredentials,
-    async (_event, credentials: { session?: string; userId?: string; apiKey?: string }) => {
+    async (
+      _event,
+      credentials: {
+        session?: string;
+        userId?: string;
+        apiKey?: string;
+        role?: string;
+        ownerUserId?: string;
+      },
+    ) => {
       const store = getStore();
       const prevToken = store?.get<string>(AUTH_STORE_KEYS.SessionToken);
       if (credentials.session !== undefined) {
@@ -8937,6 +8948,20 @@ if (!gotTheLock) {
           store?.delete(AUTH_STORE_KEYS.ApiKey);
         }
       }
+      if (credentials.role !== undefined) {
+        if (credentials.role) {
+          store?.set(AUTH_STORE_KEYS.Role, credentials.role);
+        } else {
+          store?.delete(AUTH_STORE_KEYS.Role);
+        }
+      }
+      if (credentials.ownerUserId !== undefined) {
+        if (credentials.ownerUserId) {
+          store?.set(AUTH_STORE_KEYS.OwnerUserId, credentials.ownerUserId);
+        } else {
+          store?.delete(AUTH_STORE_KEYS.OwnerUserId);
+        }
+      }
 
       const currentToken = store?.get<string>(AUTH_STORE_KEYS.SessionToken);
       if (currentToken) {
@@ -8955,6 +8980,8 @@ if (!gotTheLock) {
     store?.delete(AUTH_STORE_KEYS.SessionToken);
     store?.delete(AUTH_STORE_KEYS.UserId);
     store?.delete(AUTH_STORE_KEYS.ApiKey);
+    store?.delete(AUTH_STORE_KEYS.Role);
+    store?.delete(AUTH_STORE_KEYS.OwnerUserId);
     mainVipService.resetVipStatus();
     return { success: true };
   });
@@ -9907,13 +9934,11 @@ if (!gotTheLock) {
       };
 
       try {
-        const appConfig = sqliteStore?.get<any>('app_config');
-        const oneapiConfig = appConfig?.providers?.['oneapi'];
-        const oneapiKey = oneapiConfig?.apiKey?.trim();
-
+        const apiKey = sqliteStore?.get<string>(AUTH_STORE_KEYS.ApiKey);
         const headers: Record<string, string> = {};
-        if (oneapiKey) {
-          headers['x-api-key'] = oneapiKey.startsWith('sk-') ? oneapiKey : `sk-${oneapiKey}`;
+        if (apiKey && typeof apiKey === 'string' && apiKey.trim()) {
+          const trimmedKey = apiKey.trim();
+          headers['x-api-key'] = trimmedKey.startsWith('sk-') ? trimmedKey : `sk-${trimmedKey}`;
         }
 
         const resp = await mainHttpClient.admin.get<{

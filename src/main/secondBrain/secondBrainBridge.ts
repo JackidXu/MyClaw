@@ -1,4 +1,5 @@
-import { mainHttpClient } from '../libs/mainHttpClient';
+import { AUTH_STORE_KEYS } from '../../shared/auth/constants';
+import { getMainHttpClientStore, mainHttpClient } from '../libs/mainHttpClient';
 import { mainVipService } from '../vip/mainVipService';
 
 // 用于查询会话第二大脑启用状态的注入函数
@@ -114,6 +115,13 @@ export async function executeSecondBrainTool(options: {
     };
   }
 
+  const store = getMainHttpClientStore();
+  const ownerUserId = store?.get<string>(AUTH_STORE_KEYS.OwnerUserId);
+  const headers: Record<string, string> = {};
+  if (ownerUserId && typeof ownerUserId === 'string' && ownerUserId.trim()) {
+    headers['X-Claw-Fmp-Owner-Uid'] = ownerUserId.trim();
+  }
+
   const res = await mainHttpClient.admin.post<{ success: boolean; data?: unknown; error?: string }>(
     '/api/client/fmp/tool/execute',
     {
@@ -124,6 +132,7 @@ export async function executeSecondBrainTool(options: {
         ...(options.layer !== undefined ? { layer: options.layer } : {}),
       },
     },
+    { headers },
   );
 
   if (!res.ok || !res.data || !res.data.success) {
@@ -194,8 +203,16 @@ export async function fetchSecondBrainPrompt(sessionKey?: string): Promise<{ pro
 
   const startedAt = Date.now();
   try {
+    const store = getMainHttpClientStore();
+    const ownerUserId = store?.get<string>(AUTH_STORE_KEYS.OwnerUserId);
+    const headers: Record<string, string> = {};
+    if (ownerUserId && typeof ownerUserId === 'string' && ownerUserId.trim()) {
+      headers['X-Claw-Fmp-Owner-Uid'] = ownerUserId.trim();
+    }
+
     const res = await mainHttpClient.biz.get<SecondBrainApiResponse<{ prompt?: string }>>(
       '/api/chaohuixie/claw/fmp/injectPrompt',
+      { headers },
     );
 
     if (!res.ok || !res.data) {
