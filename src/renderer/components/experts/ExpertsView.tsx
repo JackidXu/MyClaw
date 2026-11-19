@@ -75,8 +75,8 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
     setSearchQuery('');
   }, [initialTab]);
 
-  // 专家 Tab 内子 Tab：内置 / 我的
-  const [expertSubTab, setExpertSubTab] = useState<'preset' | 'custom'>('preset');
+  // 专家 Tab 内子 Tab：内置 / 专家团 / 我的
+  const [expertSubTab, setExpertSubTab] = useState<'preset' | 'teams' | 'custom'>('preset');
 
   // 专家团详情模态弹窗状态（仅用于专家团）
   const [selectedTeamDetail, setSelectedTeamDetail] = useState<ExpertTeam | null>(null);
@@ -277,7 +277,11 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
             <div className="relative">
               <input
                 type="text"
-                placeholder={activeTab === 'teams' ? i18nService.t('expertsSearchTeamsPlaceholder') : i18nService.t('expertsSearchExpertsPlaceholder')}
+                placeholder={
+                  activeTab === 'teams' || expertSubTab === 'teams'
+                    ? i18nService.t('expertsSearchTeamsPlaceholder')
+                    : i18nService.t('expertsSearchExpertsPlaceholder')
+                }
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-64 pl-8 pr-3 py-1.5 rounded-lg border border-border bg-surface text-xs focus:outline-none focus:ring-1 focus:ring-primary/40 focus:border-primary"
@@ -312,7 +316,7 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
         )}
       </div>
 
-      {/* 专家 Tab 内：内置 / 我的 子 Tab 栏 + 部门过滤 */}
+      {/* 专家 Tab 内：内置 / 专家团 / 我的 子 Tab 栏 + 部门过滤 */}
       {activeTab === 'experts' && (
         <div className="border-b border-border bg-surface shrink-0 py-2.5 px-6 flex flex-col gap-2.5">
           <div className="flex bg-secondary/10 p-0.5 rounded-lg w-fit select-none">
@@ -328,6 +332,20 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
               {i18nService.t('expertSubTabPreset')}
               {presets.length > 0 && (
                 <span className="ml-1.5 text-[10px] text-secondary">{presets.length}</span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setExpertSubTab('teams'); setSelectedDept(ALL_DEPT_KEY); }}
+              className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                expertSubTab === 'teams'
+                  ? 'bg-surface text-foreground shadow-xs'
+                  : 'text-secondary hover:text-foreground'
+              }`}
+            >
+              {i18nService.t('expertTabTeams')}
+              {expertTeams.length > 0 && (
+                <span className="ml-1.5 text-[10px] text-secondary">{expertTeams.length}</span>
               )}
             </button>
             <button
@@ -393,7 +411,7 @@ const ExpertsView: React.FC<ExpertsViewProps> = ({
               <div className="flex h-64 items-center justify-center">
                 <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary"></div>
               </div>
-            ) : activeTab === 'teams' ? (
+            ) : activeTab === 'teams' || expertSubTab === 'teams' ? (
               /* ── 专家团 Hero 卡片列表 ── */
               filteredTeams.length === 0 ? (
                 <div className="flex h-64 flex-col items-center justify-center text-secondary">

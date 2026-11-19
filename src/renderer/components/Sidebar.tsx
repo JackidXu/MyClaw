@@ -1055,30 +1055,14 @@ const Sidebar: React.FC<SidebarProps> = ({
                   type="button"
                   onClick={() => {
                     setIsSearchOpen(false);
-                    onShowExperts('teams');
-                  }}
-                  className={`w-full inline-flex h-[30px] items-center gap-2 rounded-md px-2 text-left text-[12.5px] transition-colors ${
-                    activeView === 'experts' && (expertActiveTab === 'teams' || !expertActiveTab)
-                      ? 'font-medium text-foreground bg-foreground/[0.07] dark:bg-white/[0.08]'
-                      : 'text-foreground/75 hover:bg-foreground/[0.04] hover:text-foreground dark:hover:bg-white/[0.05]'
-                  }`}
-                  aria-current={activeView === 'experts' && (expertActiveTab === 'teams' || !expertActiveTab) ? 'page' : undefined}
-                >
-                  <span className="truncate">{i18nService.t('expertTabTeams')}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsSearchOpen(false);
                     onShowExperts('experts');
                   }}
                   className={`w-full inline-flex h-[30px] items-center gap-2 rounded-md px-2 text-left text-[12.5px] transition-colors ${
-                    activeView === 'experts' && expertActiveTab === 'experts'
+                    activeView === 'experts' && (expertActiveTab === 'experts' || expertActiveTab === 'teams' || !expertActiveTab)
                       ? 'font-medium text-foreground bg-foreground/[0.07] dark:bg-white/[0.08]'
                       : 'text-foreground/75 hover:bg-foreground/[0.04] hover:text-foreground dark:hover:bg-white/[0.05]'
                   }`}
-                  aria-current={activeView === 'experts' && expertActiveTab === 'experts' ? 'page' : undefined}
+                  aria-current={activeView === 'experts' && (expertActiveTab === 'experts' || expertActiveTab === 'teams' || !expertActiveTab) ? 'page' : undefined}
                 >
                   <span className="truncate">{i18nService.t('expertTabExperts')}</span>
                 </button>
