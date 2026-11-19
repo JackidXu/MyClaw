@@ -7,7 +7,6 @@ import { configService } from '../services/config';
 import { httpClient } from '../services/httpClient';
 import { i18nService } from '../services/i18n';
 import { fetchAndFilterOneApiChatModels } from '../services/oneapiModels';
-import { vipService } from '../services/vipService';
 import { setLoggedIn } from '../store/slices/authSlice';
 
 interface AuthModalProps {
@@ -67,7 +66,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
       // 2. 登录逻辑 (安全获取后端托管生成的对话令牌)
       const loginRes = await httpClient.admin.post<{
         success: boolean;
-        data?: { id: number; token: string; session?: string; name?: string; quota?: number };
+        data?: {
+          id: number;
+          token: string;
+          session?: string;
+          name?: string;
+          quota?: number;
+          role?: string;
+          ownerUserId?: number;
+        };
         error?: string;
       }>(
         '/api/client/login',
@@ -84,6 +91,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
       const userId = loginRes.data.data?.id;
       const apiKey = loginRes.data.data?.token; // 后端已代管生成好的完整明文 sk- 令牌
       const session = loginRes.data.data?.session || '';
+      const role = loginRes.data.data?.role || 'individual';
+      const ownerUserId = loginRes.data.data?.ownerUserId || userId;
 
       if (!userId || !apiKey) {
         throw new Error(i18nService.t('authMissingSessionToken'));
@@ -96,6 +105,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
         userId: String(userId),
         session: session || '',
         apiKey: formattedKey,
+        role: String(role),
+        ownerUserId: String(ownerUserId),
       });
 
       dispatch(setLoggedIn({
@@ -155,8 +166,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
 
           // 核心闭环：模型配置写入完成后，立即同步刷新 Redux Store 内存态，彻底消除时序竞争
           applyAppConfigToStore();
-
-          await vipService.refreshStatus();
         } catch (postLoginErr) {
           console.error('[AuthModal] Post-login config or VIP sync error:', postLoginErr);
         }

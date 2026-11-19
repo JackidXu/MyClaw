@@ -509,8 +509,6 @@ class CoworkService {
       store.dispatch(updateSessionStatus({ sessionId, status: 'completed' }));
       this.setCurrentSessionStreaming(sessionId, false, 'stream_complete');
       this.scheduleFinalContextUsageRefresh(sessionId, true);
-      // 会话/操作成功响应后自动静默刷新余额
-      window.dispatchEvent(new CustomEvent('app:refresh-balance'));
       this.queuedFollowUpCoordinator.handleSessionCompleted(sessionId);
     });
     this.streamListenerCleanups.push(completeCleanup);
@@ -527,8 +525,6 @@ class CoworkService {
         return;
       }
       store.dispatch(updateSessionStatus({ sessionId, status: 'error' }));
-      // 会话出错结束后自动静默刷新余额
-      window.dispatchEvent(new CustomEvent('app:refresh-balance'));
       this.setCurrentSessionStreaming(sessionId, false, 'stream_error');
       this.queuedFollowUpCoordinator.handleSessionError(sessionId);
       // Surface the error as a visible message so the user knows what happened.
