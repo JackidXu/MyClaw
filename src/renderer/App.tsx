@@ -245,7 +245,7 @@ const App: React.FC = () => {
   const [showFeedback, setShowFeedback] = useState(false);
   const [settingsOptions, setSettingsOptions] = useState<SettingsOpenOptions & { requestId: number }>({ requestId: 0 });
   const [mainView, setMainView] = useState<MainView>(MainView.Cowork);
-  const [expertActiveTab, setExpertActiveTab] = useState<'teams' | 'experts' | 'skills' | 'mcp'>('teams');
+  const [expertActiveTab, setExpertActiveTab] = useState<'teams' | 'experts' | 'skills' | 'mcp'>('experts');
   const [skillsActiveTab, setSkillsActiveTab] = useState<'skills' | 'mcp'>('skills');
   void skillsActiveTab;
   void setSkillsActiveTab;
