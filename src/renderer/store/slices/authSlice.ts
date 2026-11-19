@@ -128,6 +128,8 @@ interface AuthState {
   accountGeneration: number;
   /** HeyClaw 算力点数余额 (纯内存存储) */
   userBalance: number | null;
+  /** 用户企业角色：owner=老板, staff=员工, individual=个人 */
+  userRole: 'owner' | 'staff' | 'individual';
 }
 
 const initialState: AuthState = {
@@ -142,6 +144,7 @@ const initialState: AuthState = {
   ownerAccountKey: null,
   accountGeneration: 0,
   userBalance: null,
+  userRole: 'individual',
 };
 
 const authSlice = createSlice({
@@ -255,6 +258,9 @@ const authSlice = createSlice({
     setUserBalance(state, action: PayloadAction<number | null>) {
       state.userBalance = action.payload;
     },
+    setUserRole(state, action: PayloadAction<'owner' | 'staff' | 'individual'>) {
+      state.userRole = action.payload;
+    },
   },
 });
 
@@ -269,6 +275,7 @@ export const {
   setProfileSummary,
   updateQuota,
   setUserBalance,
+  setUserRole,
   updatePurchaseOffer,
 } = authSlice.actions;
 export default authSlice.reducer;

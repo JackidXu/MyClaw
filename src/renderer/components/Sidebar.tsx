@@ -21,7 +21,7 @@ import {
   selectCoworkSessions,
   selectCurrentSessionId,
 } from '../store/selectors/coworkSelectors';
-import { setUserBalance } from '../store/slices/authSlice';
+import { setUserBalance, setUserRole as setAuthUserRole } from '../store/slices/authSlice';
 import type { CoworkSessionSummary } from '../types/cowork';
 import { MainView } from '../types/navigation';
 import { getAccountConnectionState } from './accountConnectionState';
@@ -43,7 +43,6 @@ import {
   CoworkUiEvent,
 } from './cowork/constants';
 import CoworkSearchModal from './cowork/CoworkSearchModal';
-import { EnterpriseModal } from './EnterpriseModal';
 import BrainIcon from './icons/BrainIcon';
 import ComposeIcon from './icons/ComposeIcon';
 import SidebarAutomationIcon from './icons/SidebarAutomationIcon';
@@ -327,7 +326,6 @@ const Sidebar: React.FC<SidebarProps> = ({
   const [editAvatar, setEditAvatar] = useState('');
   const [showConfirmDeactivate, setShowConfirmDeactivate] = useState(false);
   const [userRole, setUserRole] = useState<'owner' | 'staff' | 'individual'>('individual');
-  const [isEnterpriseModalOpen, setIsEnterpriseModalOpen] = useState(false);
   const [isPayModalOpen, setIsPayModalOpen] = useState(false);
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
   const [isReportIssueModalOpen, setIsReportIssueModalOpen] = useState(false);
@@ -458,6 +456,12 @@ const Sidebar: React.FC<SidebarProps> = ({
           setAccountUsername(rawAccount);
           if (userProfile?.role) {
             setUserRole(userProfile.role);
+            dispatch(setAuthUserRole(userProfile.role));
+            try {
+              localStorage.setItem('heyclaw_role', userProfile.role);
+            } catch {
+              // ignore storage errors
+            }
           }
         } else {
           const errorMsg = selfResp.data?.error || i18nService.t('sidebarGetUserInfoFailed');
@@ -933,8 +937,39 @@ const Sidebar: React.FC<SidebarProps> = ({
           </div>
         )}
         {showHeaderRow && (
-          <div className="px-4 pt-2 pb-1 flex items-center select-none text-[11px] font-medium tracking-wide text-secondary/60">
-            {i18nService.t('sidebarAppGrowthAssistant')}
+          <div className="px-4 pt-2.5 pb-1 flex items-center justify-between select-none">
+            <span className="text-[11px] font-semibold tracking-wide text-foreground/80 flex items-center gap-1.5">
+              {userRole === 'owner' ? (
+                <>
+                  <span className="inline-flex items-center justify-center w-3.5 h-3.5 text-primary">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                      <path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z" />
+                      <path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" />
+                      <path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2" />
+                    </svg>
+                  </span>
+                  <span>{i18nService.t('sidebarAppBossWorkbench')}</span>
+                </>
+              ) : userRole === 'staff' ? (
+                <>
+                  <span className="inline-flex items-center justify-center w-3.5 h-3.5 text-primary">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                      <circle cx="9" cy="7" r="4" />
+                    </svg>
+                  </span>
+                  <span>{i18nService.t('sidebarAppStaffWorkbench')}</span>
+                </>
+              ) : (
+                <span>{i18nService.t('sidebarAppGrowthAssistant')}</span>
+              )}
+            </span>
+
+            {userRole !== 'individual' && (
+              <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-gradient-to-r from-primary/15 to-primary/5 text-primary border border-primary/20 shadow-2xs">
+                企业版
+              </span>
+            )}
           </div>
         )}
         <div className="mt-1 space-y-1 px-2.5">
@@ -1376,30 +1411,8 @@ const Sidebar: React.FC<SidebarProps> = ({
 
               {/* Profile Body */}
               <div className="py-1">
-                {/* 第一组：我的企业 (仅老板)、算力充值、我的账单 */}
+                {/* 第一组：算力充值、我的账单 */}
                 <div className="py-1 border-b border-border/40">
-                  {userRole === 'owner' && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setShowUserMenu(false);
-                        setIsEnterpriseModalOpen(true);
-                      }}
-                      className="w-full flex items-center gap-2.5 px-4 py-2 text-left text-foreground/85 hover:bg-surface-raised hover:text-foreground transition-colors font-medium"
-                    >
-                      <svg className="w-4 h-4 text-secondary shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z" />
-                        <path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" />
-                        <path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2" />
-                        <path d="M10 6h4" />
-                        <path d="M10 10h4" />
-                        <path d="M10 14h4" />
-                        <path d="M10 18h4" />
-                      </svg>
-                      <span>{i18nService.t('sidebarMyEnterprise')}</span>
-                    </button>
-                  )}
                   {/* 算力充值 (仅老板与独立个人用户可见，企业员工不可见) */}
                   {userRole !== 'staff' && (
                     <button
@@ -1725,11 +1738,6 @@ const Sidebar: React.FC<SidebarProps> = ({
           onClose={() => setIsPayModalOpen(false)}
           onSuccess={() => setIsPayModalOpen(false)}
         />
-      )}
-
-      {/* 我的企业 Modal */}
-      {isEnterpriseModalOpen && (
-        <EnterpriseModal onClose={() => setIsEnterpriseModalOpen(false)} />
       )}
 
       {/* 修改密码模态框 */}
