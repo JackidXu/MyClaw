@@ -13,6 +13,7 @@ interface PayModalProps {
 const PayModal: React.FC<PayModalProps> = ({ onClose, onSuccess }) => {
   const [specs, setSpecs] = useState<RechargeSpecItem[]>([]);
   const [selectedSpec, setSelectedSpec] = useState<RechargeSpecItem | null>(null);
+  const [isStaff, setIsStaff] = useState(false);
   const payChannel: 1 | 2 = 2; // 2: 支付宝
   
   const [loadingSpecs, setLoadingSpecs] = useState(true);
@@ -29,6 +30,13 @@ const PayModal: React.FC<PayModalProps> = ({ onClose, onSuccess }) => {
     setLoadingSpecs(true);
     setErrorMessage(null);
     try {
+      const creds = await window.electron?.auth?.getAuthCredentials?.().catch(() => null);
+      if (creds?.role === 'staff') {
+        setIsStaff(true);
+        setLoadingSpecs(false);
+        return;
+      }
+
       const res = await fetchRechargeSpecs();
       if (res.success && res.data.length > 0) {
         setSpecs(res.data);
@@ -201,7 +209,19 @@ const PayModal: React.FC<PayModalProps> = ({ onClose, onSuccess }) => {
 
       {/* 主体内容 */}
       <div className="px-6 py-5 flex flex-col space-y-5 overflow-y-auto">
-        {loadingSpecs ? (
+        {isStaff ? (
+          <div className="py-12 flex flex-col items-center justify-center text-center space-y-3 px-4">
+            <div className="w-12 h-12 rounded-full bg-surface-raised border border-border flex items-center justify-center text-secondary">
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+              </svg>
+            </div>
+            <div className="text-sm font-semibold text-foreground">您当前为企业成员账号</div>
+            <p className="text-xs text-secondary leading-relaxed max-w-xs">
+              企业成员的算力由所属企业统一采购与提供，无需自行充值。若当前算力不足，请联系企业管理员充值或分配额度。
+            </p>
+          </div>
+        ) : loadingSpecs ? (
           <div className="py-12 flex flex-col items-center justify-center space-y-3">
             <svg className="animate-spin h-6 w-6 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />

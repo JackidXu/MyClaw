@@ -1354,22 +1354,24 @@ const Sidebar: React.FC<SidebarProps> = ({
                     </div>
                   )}
                 </div>
-                {/* 算力点数展示徽章 */}
-                <div 
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-raised border border-border/60 text-foreground font-semibold text-xs shrink-0 select-none"
-                >
-                  {balanceLoading ? (
-                    <svg className="animate-spin h-3.5 w-3.5 text-amber-500 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                  ) : (
-                    <svg className="w-3.5 h-3.5 text-amber-500 fill-amber-500 shrink-0" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-                      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-                    </svg>
-                  )}
-                  <span>{balance !== null ? balance.toLocaleString() : '--'}</span>
-                </div>
+                {/* 算力点数展示徽章 (员工账号不展示点数) */}
+                {userRole !== 'staff' && (
+                  <div 
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-raised border border-border/60 text-foreground font-semibold text-xs shrink-0 select-none"
+                  >
+                    {balanceLoading ? (
+                      <svg className="animate-spin h-3.5 w-3.5 text-amber-500 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                    ) : (
+                      <svg className="w-3.5 h-3.5 text-amber-500 fill-amber-500 shrink-0" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                      </svg>
+                    )}
+                    <span>{balance !== null ? balance.toLocaleString() : '--'}</span>
+                  </div>
+                )}
               </div>
 
               {/* Profile Body */}
@@ -1398,28 +1400,31 @@ const Sidebar: React.FC<SidebarProps> = ({
                       <span>{i18nService.t('sidebarMyEnterprise')}</span>
                     </button>
                   )}
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowUserMenu(false);
-                      const config = configService.getConfig();
-                      const oneapiConfig = config.providers?.['oneapi'];
-                      const apiKey = oneapiConfig?.apiKey?.trim();
-                      if (!apiKey) {
-                        window.dispatchEvent(new CustomEvent('app:showToast', { detail: i18nService.t('sidebarSystemNotActivated') }));
-                        return;
-                      }
-                      setIsPayModalOpen(true);
-                    }}
-                    className="w-full flex items-center gap-2.5 px-4 py-2 text-left text-foreground/85 hover:bg-surface-raised hover:text-foreground transition-colors font-medium"
-                  >
-                    <svg className="w-4 h-4 text-secondary shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
-                      <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
-                    </svg>
-                    <span>{i18nService.t('sidebarRechargePoints')}</span>
-                  </button>
+                  {/* 算力充值 (仅老板与独立个人用户可见，企业员工不可见) */}
+                  {userRole !== 'staff' && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowUserMenu(false);
+                        const config = configService.getConfig();
+                        const oneapiConfig = config.providers?.['oneapi'];
+                        const apiKey = oneapiConfig?.apiKey?.trim();
+                        if (!apiKey) {
+                          window.dispatchEvent(new CustomEvent('app:showToast', { detail: i18nService.t('sidebarSystemNotActivated') }));
+                          return;
+                        }
+                        setIsPayModalOpen(true);
+                      }}
+                      className="w-full flex items-center gap-2.5 px-4 py-2 text-left text-foreground/85 hover:bg-surface-raised hover:text-foreground transition-colors font-medium"
+                    >
+                      <svg className="w-4 h-4 text-secondary shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
+                        <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
+                      </svg>
+                      <span>{i18nService.t('sidebarRechargePoints')}</span>
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={(e) => {
