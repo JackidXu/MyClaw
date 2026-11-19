@@ -69,6 +69,10 @@ export interface CognitionItem {
   source_type: number;
   /** 来源名称（文件名 / 对话名 / 归纳描述） */
   source_name?: string;
+  /** 是否仅老板可见：0=全员可见 1=仅老板可见 */
+  is_private?: number;
+  /** 采纳来源：0=未知/历史 1=系统自动采纳 2=人工采纳 */
+  adopt_source?: number;
   /** 置信度 0-100 */
   confidence: number;
   /** 创建时间（秒级时间戳） */
@@ -260,13 +264,29 @@ export interface TrendWeekItem {
   week_start: string;
   week_end: string;
   label: string;
-  adopted_count: number;
-  usage_count: number;
+  /** 自己调用次数 */
+  self_count?: number;
+  /** 员工调用次数 */
+  staff_count?: number;
+  /** 新增已采纳认知数 */
+  generated_count?: number;
+  /** 历史兼容字段 */
+  adopted_count?: number;
+  usage_count?: number;
+}
+
+/** 员工调用统计项 */
+export interface TrendStaffItem {
+  caller_uid: number;
+  count: number;
 }
 
 /** 每周趋势响应 */
 export interface CognitionTrendResponse {
-  weeks: TrendWeekItem[];
+  trend?: TrendWeekItem[];
+  staffs?: TrendStaffItem[];
+  /** 兼容历史旧结构 */
+  weeks?: TrendWeekItem[];
 }
 
 /** 获取每周趋势（近 N 周沉淀与调用频次） */
@@ -284,13 +304,17 @@ export interface FetchCognitionItemListParams {
   layer?: number;
   /** 是否已失效：0 仅未失效 / 1 仅已失效 */
   superseded?: number;
+  /** 采纳来源过滤：0=未知 1=系统自动采纳 2=人工采纳 */
+  auditSource?: number;
+  /** 关键词过滤 */
+  keyword?: string;
   /** 创建时间范围开始 */
   createTimeStart?: string;
   /** 创建时间范围结束 */
   createTimeEnd?: string;
 }
 
-/** 获取认知列表(支持待审核、已采纳、时间范围等过滤) */
+/** 获取认知列表(支持待审核、已采纳、时间范围、关键词、审核来源等过滤) */
 export async function fetchCognitionItemList(params: FetchCognitionItemListParams = {}): Promise<CognitionListResponse> {
   const query = new URLSearchParams();
   if (params.page !== undefined) query.set('page', String(params.page));
@@ -298,10 +322,73 @@ export async function fetchCognitionItemList(params: FetchCognitionItemListParam
   if (params.status !== undefined) query.set('status', String(params.status));
   if (params.layer !== undefined) query.set('layer', String(params.layer));
   if (params.superseded !== undefined) query.set('superseded', String(params.superseded));
+  if (params.auditSource !== undefined) query.set('auditSource', String(params.auditSource));
+  if (params.keyword !== undefined && params.keyword.trim() !== '') query.set('keyword', params.keyword.trim());
   if (params.createTimeStart) query.set('createTimeStart', params.createTimeStart);
   if (params.createTimeEnd) query.set('createTimeEnd', params.createTimeEnd);
 
   return get<CognitionListResponse>(`/fmp/node/list?${query.toString()}`);
+}
+
+/** 更新认知节点（用于设置隐私/取消隐私、标记失效等场景） */
+export async function updateCognitionNode(params: {
+  nodeId: number;
+  isPrivate?: boolean;
+  status?: number;
+}): Promise<boolean> {
+  return post<boolean>('/fmp/node/update', params);
+}
+
+/** 批量审核认知节点（批量采纳 / 批量驳回） */
+export async function batchAuditCognitionNodes(params: {
+  nodeIds: number[];
+  action: 'adopt' | 'reject';
+  proposition?: string;
+  elaboration?: string;
+}): Promise<boolean> {
+  return post<boolean>('/fmp/node/batchAudit', params);
+}
+
+/** 员工调用明细项 */
+export interface CallLogItem {
+  log_id: number;
+  caller_uid: number;
+  is_owner: number;
+  query: string;
+  layer: number | null;
+  hit_count: number;
+  nodes: Array<{
+    node_id: number;
+    proposition: string;
+  }>;
+  create_time: string;
+}
+
+/** 员工调用明细响应（分页） */
+export interface CallLogListResponse {
+  total: number;
+  per_page: number;
+  current_page: number;
+  last_page: number;
+  data: CallLogItem[];
+}
+
+/** 获取第二大脑调用日志明细 */
+export async function fetchFmpCallLogs(params: {
+  page?: number;
+  pageSize?: number;
+  callerUid?: number;
+  startTime?: string | number;
+  endTime?: string | number;
+} = {}): Promise<CallLogListResponse> {
+  const query = new URLSearchParams();
+  if (params.page !== undefined) query.set('page', String(params.page));
+  if (params.pageSize !== undefined) query.set('pageSize', String(params.pageSize));
+  if (params.callerUid !== undefined && params.callerUid > 0) query.set('callerUid', String(params.callerUid));
+  if (params.startTime) query.set('startTime', String(params.startTime));
+  if (params.endTime) query.set('endTime', String(params.endTime));
+
+  return get<CallLogListResponse>(`/fmp/callLogs?${query.toString()}`);
 }
 
 /** 采纳认知（proposition/elaboration 可选，传入时以修改后的内容为准） */
@@ -857,7 +944,11 @@ export async function reportChat(params: ReportChatParams): Promise<void> {
 
 export const secondBrainApi = {
   fetchCognitionStats,
+  fetchCognitionTrend,
   fetchCognitionItemList,
+  updateCognitionNode,
+  batchAuditCognitionNodes,
+  fetchFmpCallLogs,
   adoptCognitionItem,
   rejectCognitionItem,
   fetchDocumentList,

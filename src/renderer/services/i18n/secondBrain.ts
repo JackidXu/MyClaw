@@ -175,6 +175,8 @@ export interface SecondBrainTranslations {
   secondBrainTrendsTitle: string;
   secondBrainTrendsSubtitle: string;
   secondBrainTrendsCurveTitle: string;
+  secondBrainTrendsSelfLegend: string;
+  secondBrainTrendsStaffLegend: string;
   secondBrainTrendsAdoptedLegend: string;
   secondBrainTrendsInvokedLegend: string;
   secondBrainTrendsLoading: string;
@@ -182,6 +184,41 @@ export interface SecondBrainTranslations {
   secondBrainTrendsTooltipInvoked: string;
   secondBrainTrendsTooltipAdopted: string;
   secondBrainTrendsSummaryFooter: string;
+
+  // Employee / Usage Logs
+  secondBrainCallLogTitle: string;
+  secondBrainCallLogSubtitle: string;
+  secondBrainCallLogSelfSubtitle: string;
+  secondBrainCallLogEmpty: string;
+  secondBrainCallLogThisWeek: string;
+  secondBrainCallLogHitCount: string;
+  secondBrainCallLogHitNodes: string;
+
+  // Cognition & Privacy (L1~L6)
+  secondBrainPrivacyTitle: string;
+  secondBrainPrivacySubtitle: string;
+  secondBrainPrivacyBanner: string;
+  secondBrainPrivacyBadgePublic: string;
+  secondBrainPrivacyBadgePrivate: string;
+  secondBrainPrivacySetPrivate: string;
+  secondBrainPrivacyCancelPrivate: string;
+  secondBrainPrivacyInvalidate: string;
+  secondBrainPrivacySetPrivateSuccess: string;
+  secondBrainPrivacyCancelPrivateSuccess: string;
+  secondBrainPrivacyInvalidateSuccess: string;
+  secondBrainPrivacySearchPlaceholder: string;
+  secondBrainPrivacyLoadMore: string;
+  secondBrainPrivacyCollapse: string;
+
+  // Auto Absorption
+  secondBrainAutoAbsorbTitle: string;
+  secondBrainAutoAbsorbSubtitle: string;
+  secondBrainAutoAbsorbFromDoc: string;
+  secondBrainAutoAbsorbFromChat: string;
+  secondBrainAutoAbsorbFromAudio: string;
+  secondBrainAutoAbsorbEmpty: string;
+  secondBrainAutoAbsorbExpand: string;
+  secondBrainAutoAbsorbCollapse: string;
 
   // Delete Modal
   secondBrainDeleteConfirmTitle: string;
@@ -288,7 +325,7 @@ export const secondBrainI18n: { zh: SecondBrainTranslations; en: SecondBrainTran
     secondBrainPersonaEditBtn: '编辑',
     secondBrainPersonaCompleteBtn: '完善人设信息',
     secondBrainPersonaProfileBtn: '人设侧写 ✏️',
-    secondBrainPersonaRequiredNotice: '第二大脑需要了解您的姓名称呼与主营业务，以提供精准的商业认知与拍板建议',
+    secondBrainPersonaRequiredNotice: '沉淀你的思维，越来越超越你拍板 · 已形成 {count} 条标准认知',
 
     // Stats Grid (Top)
     secondBrainStatContinuousLearn: '持续学习',
@@ -299,10 +336,10 @@ export const secondBrainI18n: { zh: SecondBrainTranslations; en: SecondBrainTran
     secondBrainStatUploads7d: '近 7 日上传 {count} 个文件',
     secondBrainStatAdoptedCognition: '已形成认知',
     secondBrainStatAdoptedItems: '条',
-    secondBrainStatYesterdayNew: '昨日新增 +{count} 条',
+    secondBrainStatYesterdayNew: '昨日新增 +{count} 条 · 点看结构',
     secondBrainStatPendingReview: '待确认认知',
     secondBrainStatPendingItems: '条',
-    secondBrainStatPendingAction: '需你拍板',
+    secondBrainStatPendingAction: '需你拍板 · 点「采纳」即入脑',
 
     // Pagination & General Stats
     secondBrainTotalCount: '共 {count} {unit}',
@@ -324,8 +361,8 @@ export const secondBrainI18n: { zh: SecondBrainTranslations; en: SecondBrainTran
     secondBrainDailySummaryText: '今日 <b>{today}</b> 条自动吸收 · 历史共 <b>{total}</b> 条沉淀',
 
     // Pending Review Area
-    secondBrainPendingTitle: '待审核认知',
-    secondBrainPendingSubtitle: 'AI 拿不准的才会出现在这里 · 点「编辑」可直接修正局部信息 · 想补材料就重新上传文档',
+    secondBrainPendingTitle: '等你拍板',
+    secondBrainPendingSubtitle: '点「采纳」直接修正局部信息 · 想补材料就重新上传文档',
     secondBrainPendingSelectAll: '本页全选',
     secondBrainPendingBatchAdopt: '批量采纳',
     secondBrainPendingBatchAdopting: '采纳中…',
@@ -359,7 +396,7 @@ export const secondBrainI18n: { zh: SecondBrainTranslations; en: SecondBrainTran
     secondBrainAutoSyncSetting: '设置',
     secondBrainSyncNowBtn: '立即同步',
     secondBrainSyncingBtn: '正在同步…',
-    secondBrainUploadDocBtn: '上传文件',
+    secondBrainUploadDocBtn: '＋ 上传文件',
     secondBrainUploadingBtn: '上传中…',
     secondBrainUploadDocTip: '支持 .docx / .md / .txt（单文件最大 2MB，每批最多 10 个）',
     secondBrainEmptyChat: '暂无对话',
@@ -382,16 +419,53 @@ export const secondBrainI18n: { zh: SecondBrainTranslations; en: SecondBrainTran
     secondBrainExtractedCount: '已萃取 {count} 条认知',
 
     // Trends & Chart
-    secondBrainTrendsTitle: '大脑词条近况',
-    secondBrainTrendsSubtitle: '本周新增 {newCount} 条 · 总沉淀 {total} 条，覆盖价值 · 决策 · 方式 · 案例。',
-    secondBrainTrendsCurveTitle: '判断力成长曲线',
-    secondBrainTrendsAdoptedLegend: '已沉淀判断',
+    secondBrainTrendsTitle: '员工调用与沉淀趋势',
+    secondBrainTrendsSubtitle: '每周统计：谁在用、用了多少、长出了多少新认知',
+    secondBrainTrendsCurveTitle: '调用与沉淀 · 近 8 周',
+    secondBrainTrendsSelfLegend: '自己调用',
+    secondBrainTrendsStaffLegend: '员工调用',
+    secondBrainTrendsAdoptedLegend: '生成的认知',
     secondBrainTrendsInvokedLegend: '本周被调用',
     secondBrainTrendsLoading: '加载趋势数据中…',
     secondBrainTrendsEmpty: '暂无近 8 周趋势数据',
     secondBrainTrendsTooltipInvoked: '被调用: <b>{count}</b> 次',
     secondBrainTrendsTooltipAdopted: '已采纳: <b>{count}</b> 条',
-    secondBrainTrendsSummaryFooter: '近 {weeks} 周 · 已沉淀判断共 {total} 条，被调用频次同步攀升（本周 {thisWeek} 次）',
+    secondBrainTrendsSummaryFooter: '近 {weeks} 周 · 已沉淀认知共 {total} 条，被调用频次同步攀升（本周调用 {thisWeek} 次）',
+
+    // Employee / Usage Logs
+    secondBrainCallLogTitle: '员工调用记录',
+    secondBrainCallLogSubtitle: '谁在调用你的大脑、干了什么活 · 点开看明细',
+    secondBrainCallLogSelfSubtitle: '你的大脑调用明细与触发记录',
+    secondBrainCallLogEmpty: '暂无调用记录',
+    secondBrainCallLogThisWeek: '本周',
+    secondBrainCallLogHitCount: '命中 {count} 条判断',
+    secondBrainCallLogHitNodes: '使用判断',
+
+    // Cognition & Privacy (L1~L6)
+    secondBrainPrivacyTitle: '认知与隐私',
+    secondBrainPrivacySubtitle: '看你的大脑长成什么样 · 每条认知可直接设隐私',
+    secondBrainPrivacyBanner: '点开任意一层，每条认知右侧可直接设隐私。默认全员可见；设为隐私后只有你能调用，员工与 AI 团队都调不到，也不会进每日合并。',
+    secondBrainPrivacyBadgePublic: '全员可见',
+    secondBrainPrivacyBadgePrivate: '仅我可见',
+    secondBrainPrivacySetPrivate: '设为隐私',
+    secondBrainPrivacyCancelPrivate: '取消隐私',
+    secondBrainPrivacyInvalidate: '标记失效',
+    secondBrainPrivacySetPrivateSuccess: '已设为隐私 · 员工与 AI 团队都调不到',
+    secondBrainPrivacyCancelPrivateSuccess: '已恢复全员可见',
+    secondBrainPrivacyInvalidateSuccess: '已成功标记为失效',
+    secondBrainPrivacySearchPlaceholder: '搜索认知命题关键词…',
+    secondBrainPrivacyLoadMore: '查看全部',
+    secondBrainPrivacyCollapse: '收起',
+
+    // Auto Absorption
+    secondBrainAutoAbsorbTitle: '今日 AI 自动吸收 {count} 条',
+    secondBrainAutoAbsorbSubtitle: '已自动沉淀到第二大脑，AI 拿不准的才会出现在下面等你拍板',
+    secondBrainAutoAbsorbFromDoc: '来自文档 · 已写入第二大脑',
+    secondBrainAutoAbsorbFromChat: '来自对话 · 已写入第二大脑',
+    secondBrainAutoAbsorbFromAudio: '来自音频 · 已写入第二大脑',
+    secondBrainAutoAbsorbEmpty: '当日暂无自动吸收的认知',
+    secondBrainAutoAbsorbExpand: '展开全部',
+    secondBrainAutoAbsorbCollapse: '收起',
 
     // Delete Modal
     secondBrainDeleteConfirmTitle: '确认删除',
@@ -496,7 +570,7 @@ export const secondBrainI18n: { zh: SecondBrainTranslations; en: SecondBrainTran
     secondBrainPersonaEditBtn: 'Edit',
     secondBrainPersonaCompleteBtn: 'Complete Persona Info',
     secondBrainPersonaProfileBtn: 'Persona Profile ✏️',
-    secondBrainPersonaRequiredNotice: 'Second Brain needs your name and core business to provide accurate business advice and decisions.',
+    secondBrainPersonaRequiredNotice: 'Accumulate your thinking to surpass your own decisions · {count} standard cognitions formed',
 
     // Stats Grid (Top)
     secondBrainStatContinuousLearn: 'Continuous Learning',
@@ -507,10 +581,10 @@ export const secondBrainI18n: { zh: SecondBrainTranslations; en: SecondBrainTran
     secondBrainStatUploads7d: '{count} uploaded in 7 days',
     secondBrainStatAdoptedCognition: 'Formed Cognitions',
     secondBrainStatAdoptedItems: 'Items',
-    secondBrainStatYesterdayNew: '+{count} added yesterday',
+    secondBrainStatYesterdayNew: '+{count} added yesterday · View structure',
     secondBrainStatPendingReview: 'Pending Confirmation',
     secondBrainStatPendingItems: 'Items',
-    secondBrainStatPendingAction: 'Decision Needed',
+    secondBrainStatPendingAction: 'Decision Needed · Click "Adopt" into brain',
 
     // Pagination & General Stats
     secondBrainTotalCount: 'Total {count} {unit}',
@@ -532,8 +606,8 @@ export const secondBrainI18n: { zh: SecondBrainTranslations; en: SecondBrainTran
     secondBrainDailySummaryText: '<b>{today}</b> absorbed today · <b>{total}</b> total accumulated',
 
     // Pending Review Area
-    secondBrainPendingTitle: 'Pending Cognitions',
-    secondBrainPendingSubtitle: 'Only uncertain items appear here · Click "Edit" to modify directly · Re-upload docs to add materials',
+    secondBrainPendingTitle: 'Decisions Needed',
+    secondBrainPendingSubtitle: 'Click "Adopt" to modify details · Re-upload docs to add materials',
     secondBrainPendingSelectAll: 'Select Page',
     secondBrainPendingBatchAdopt: 'Batch Adopt',
     secondBrainPendingBatchAdopting: 'Adopting...',
@@ -567,7 +641,7 @@ export const secondBrainI18n: { zh: SecondBrainTranslations; en: SecondBrainTran
     secondBrainAutoSyncSetting: 'Settings',
     secondBrainSyncNowBtn: 'Sync Now',
     secondBrainSyncingBtn: 'Syncing...',
-    secondBrainUploadDocBtn: 'Upload Files',
+    secondBrainUploadDocBtn: '＋ Upload Files',
     secondBrainUploadingBtn: 'Uploading...',
     secondBrainUploadDocTip: 'Supports .docx / .md / .txt (max 2MB per file, up to 10 per batch)',
     secondBrainEmptyChat: 'No conversations yet',
@@ -590,16 +664,53 @@ export const secondBrainI18n: { zh: SecondBrainTranslations; en: SecondBrainTran
     secondBrainExtractedCount: '{count} cognitions extracted',
 
     // Trends & Chart
-    secondBrainTrendsTitle: 'Second Brain Trends',
-    secondBrainTrendsSubtitle: 'Added {newCount} this week · Total {total}, covering values, decisions, methods, and cases.',
-    secondBrainTrendsCurveTitle: 'Judgement Growth Curve',
-    secondBrainTrendsAdoptedLegend: 'Adopted Judgements',
+    secondBrainTrendsTitle: 'Usage & Cognition Trends',
+    secondBrainTrendsSubtitle: 'Weekly statistics: who is using, usage volume, and new cognitions formed.',
+    secondBrainTrendsCurveTitle: 'Invocations & Cognitions · Last 8 Weeks',
+    secondBrainTrendsSelfLegend: 'Self Invocations',
+    secondBrainTrendsStaffLegend: 'Staff Invocations',
+    secondBrainTrendsAdoptedLegend: 'Generated Cognitions',
     secondBrainTrendsInvokedLegend: 'Invoked this week',
     secondBrainTrendsLoading: 'Loading trend data...',
     secondBrainTrendsEmpty: 'No trend data for the last 8 weeks',
     secondBrainTrendsTooltipInvoked: 'Invoked: <b>{count}</b> times',
     secondBrainTrendsTooltipAdopted: 'Adopted: <b>{count}</b> items',
-    secondBrainTrendsSummaryFooter: 'Last {weeks} weeks · Total {total} judgements accumulated, invocation growing in sync ({thisWeek} this week)',
+    secondBrainTrendsSummaryFooter: 'Last {weeks} weeks · Total {total} cognitions accumulated, invocation growing in sync ({thisWeek} this week)',
+
+    // Employee / Usage Logs
+    secondBrainCallLogTitle: 'Invocation Logs',
+    secondBrainCallLogSubtitle: 'Who is invoking your second brain and for what tasks · Click to view details',
+    secondBrainCallLogSelfSubtitle: 'Your second brain invocation and trigger records',
+    secondBrainCallLogEmpty: 'No invocation logs found',
+    secondBrainCallLogThisWeek: 'This week',
+    secondBrainCallLogHitCount: 'Matched {count} judgements',
+    secondBrainCallLogHitNodes: 'Used judgement',
+
+    // Cognition & Privacy (L1~L6)
+    secondBrainPrivacyTitle: 'Cognitions & Privacy',
+    secondBrainPrivacySubtitle: 'Explore your second brain structure · Set privacy for any cognition directly',
+    secondBrainPrivacyBanner: 'Expand any layer to toggle privacy directly. Public to all by default; private items can only be invoked by you.',
+    secondBrainPrivacyBadgePublic: 'Public',
+    secondBrainPrivacyBadgePrivate: 'Private Only',
+    secondBrainPrivacySetPrivate: 'Set Private',
+    secondBrainPrivacyCancelPrivate: 'Make Public',
+    secondBrainPrivacyInvalidate: 'Invalidate',
+    secondBrainPrivacySetPrivateSuccess: 'Set to private · Staff and AI team cannot invoke',
+    secondBrainPrivacyCancelPrivateSuccess: 'Restored to public for all',
+    secondBrainPrivacyInvalidateSuccess: 'Marked as invalid',
+    secondBrainPrivacySearchPlaceholder: 'Search cognition proposition...',
+    secondBrainPrivacyLoadMore: 'View All',
+    secondBrainPrivacyCollapse: 'Collapse',
+
+    // Auto Absorption
+    secondBrainAutoAbsorbTitle: 'Today AI Auto-absorbed {count} Items',
+    secondBrainAutoAbsorbSubtitle: 'Automatically deposited into second brain; uncertain ones appear below for review',
+    secondBrainAutoAbsorbFromDoc: 'From document · Written to second brain',
+    secondBrainAutoAbsorbFromChat: 'From chat · Written to second brain',
+    secondBrainAutoAbsorbFromAudio: 'From audio · Written to second brain',
+    secondBrainAutoAbsorbEmpty: 'No auto-absorbed cognitions on this day',
+    secondBrainAutoAbsorbExpand: 'Expand All',
+    secondBrainAutoAbsorbCollapse: 'Collapse',
 
     // Delete Modal
     secondBrainDeleteConfirmTitle: 'Confirm Delete',

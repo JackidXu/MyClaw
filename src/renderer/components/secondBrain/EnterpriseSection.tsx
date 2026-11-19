@@ -1,9 +1,7 @@
 import {
   AdjustmentsHorizontalIcon,
-  BuildingOfficeIcon,
   CheckIcon,
   PlusIcon,
-  TrashIcon,
   UserIcon,
   UserPlusIcon,
   XMarkIcon,
@@ -11,7 +9,6 @@ import {
 import React, { useCallback, useEffect, useState } from 'react';
 
 import { httpClient } from '../../services/httpClient';
-import { i18nService } from '../../services/i18n';
 import Modal from '../common/Modal';
 
 const MAX_STAFF_LIMIT = 5;
@@ -60,7 +57,8 @@ export const EnterpriseSection: React.FC = () => {
   const [savingQuota, setSavingQuota] = useState(false);
   const [quotaErrorMessage, setQuotaErrorMessage] = useState<string | null>(null);
 
-  const [deletingUserId, setDeletingUserId] = useState<number | null>(null);
+  const [deletingMember, setDeletingMember] = useState<EnterpriseMember | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [sectionErrorMessage, setSectionErrorMessage] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
@@ -205,12 +203,11 @@ export const EnterpriseSection: React.FC = () => {
     }
   };
 
-  const handleDeleteStaff = async (userId: number, username: string) => {
-    if (!window.confirm(`确定要移除员工【${username}】吗？移除后将作废其专属 API Key 并回收席位。`)) {
-      return;
-    }
+  const handleConfirmDeleteStaff = async () => {
+    if (!deletingMember || deleting) return;
 
-    setDeletingUserId(userId);
+    setDeleting(true);
+    const userId = deletingMember.userId;
     try {
       const res = await httpClient.admin.delete<{ success: boolean; error?: string }>(
         `/api/client/enterprise/members/${userId}`
@@ -220,13 +217,14 @@ export const EnterpriseSection: React.FC = () => {
         if (enterpriseInfo) {
           setEnterpriseInfo({ ...enterpriseInfo, memberCount: Math.max(0, enterpriseInfo.memberCount - 1) });
         }
+        setDeletingMember(null);
       } else {
-        alert(res.data?.error || '移除员工失败');
+        setSectionErrorMessage(res.data?.error || '解绑员工失败');
       }
     } catch (err: any) {
-      alert(err.message || '移除员工请求失败');
+      setSectionErrorMessage(err.message || '解绑员工请求失败');
     } finally {
-      setDeletingUserId(null);
+      setDeleting(false);
     }
   };
 
@@ -240,33 +238,23 @@ export const EnterpriseSection: React.FC = () => {
   };
 
   return (
-    <div className="rounded-2xl border border-border/80 bg-surface p-5 md:p-6 shadow-sm space-y-6">
-      {/* 头部标题区 */}
-      <div className="flex items-center justify-between pb-4 border-b border-border/60">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary/20 via-primary/10 to-transparent border border-primary/25 flex items-center justify-center text-primary shadow-2xs">
-            <BuildingOfficeIcon className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-sm font-bold text-foreground">
-                {enterpriseInfo?.name || i18nService.t('sidebarMyEnterprise')}
-              </h2>
-              <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/25">
-                企业版
-              </span>
-            </div>
-            <p className="text-xs text-secondary mt-0.5">
-              企业成员共享第二大脑与企业主算力池，支持精细化分配员工额度
-            </p>
-          </div>
+    <div className="space-y-3">
+      {/* 模块外部标题栏与添加按钮 */}
+      <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-2">
+        <div className="flex items-baseline gap-2.5 flex-wrap">
+          <h2 className="text-base font-bold text-foreground">
+            席位与员工绑定
+          </h2>
+          <span className="text-xs text-secondary">
+            平时不用动 · 要绑人、调额度时打开 · 绑定后全量开放，单条隐私去「认知与隐私」单独管
+          </span>
         </div>
 
         <button
           type="button"
           disabled={isLimitReached}
           onClick={handleOpenAddModal}
-          className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium rounded-lg transition shadow-2xs ${
+          className={`self-end sm:self-auto shrink-0 inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium rounded-lg transition shadow-2xs ${
             isLimitReached
               ? 'bg-surface-raised text-secondary border border-border/70 cursor-not-allowed opacity-60'
               : 'text-white bg-primary hover:bg-primary/90 active:scale-[0.98]'
@@ -274,8 +262,20 @@ export const EnterpriseSection: React.FC = () => {
           title={isLimitReached ? `已达到最大员工数限制（${MAX_STAFF_LIMIT}人）` : '添加新员工'}
         >
           <PlusIcon className="w-3.5 h-3.5" />
-          <span>{isLimitReached ? '席位已满 (5/5)' : '添加员工'}</span>
+          <span>{isLimitReached ? `席位已满 (${MAX_STAFF_LIMIT}/${MAX_STAFF_LIMIT})` : '添加员工'}</span>
         </button>
+      </div>
+
+      <div className="rounded-2xl border border-border/80 bg-surface p-5 md:p-6 shadow-sm space-y-5">
+      {/* 原型提示条：绑定 ＝ 全量开放 */}
+      <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-700 dark:text-emerald-400 text-xs">
+        <div className="w-4 h-4 rounded-full bg-emerald-500/20 flex items-center justify-center shrink-0">
+          <CheckIcon className="w-3 h-3 text-emerald-600 dark:text-emerald-300 stroke-[2.5]" />
+        </div>
+        <p className="leading-snug">
+          <strong className="font-semibold text-emerald-800 dark:text-emerald-300">绑定 ＝ 全量开放。</strong>
+          <span className="opacity-90 ml-1">想藏住某条，去「认知与隐私」单独设。</span>
+        </p>
       </div>
 
       {sectionErrorMessage && (
@@ -285,121 +285,190 @@ export const EnterpriseSection: React.FC = () => {
         </div>
       )}
 
-      {/* 顶部概览指标栏 */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 rounded-xl bg-surface-raised/40 border border-border/50">
-        <div>
-          <div className="text-[11px] text-secondary font-medium">成员席位配额</div>
-          <div className="text-lg font-bold text-foreground mt-0.5">
-            {currentCount} <span className="text-xs font-normal text-secondary">/ {MAX_STAFF_LIMIT} 人</span>
+      {/* 顶部概览指标栏（含企业名称，统一高度与基准线） */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="bg-surface border border-border/80 rounded-xl p-3.5 shadow-2xs">
+          <div className="text-[11px] text-secondary font-medium mb-1">企业名称</div>
+          <div className="h-6 flex items-baseline">
+            <span className="text-sm font-bold text-foreground truncate" title={enterpriseInfo?.name || enterpriseName}>
+              {enterpriseInfo?.name || enterpriseName}
+            </span>
           </div>
         </div>
-        <div>
-          <div className="text-[11px] text-secondary font-medium">企业账号有效期</div>
-          <div className="text-xs font-semibold text-foreground mt-1 truncate">
-            {enterpriseInfo?.accountExpireAt || '未生效'}
+
+        <div className="bg-surface border border-border/80 rounded-xl p-3.5 shadow-2xs">
+          <div className="text-[11px] text-secondary font-medium mb-1">成员席位配额</div>
+          <div className="h-6 flex items-baseline gap-1">
+            <span className="text-sm font-bold text-foreground font-mono">{currentCount}</span>
+            <span className="text-xs text-secondary font-normal font-mono">/ {MAX_STAFF_LIMIT} 人</span>
           </div>
         </div>
-        <div>
-          <div className="text-[11px] text-secondary font-medium">第二大脑有效期</div>
-          <div className="text-xs font-semibold text-foreground mt-1 truncate">
-            {enterpriseInfo?.secondBrainExpireAt || '未生效'}
+
+        <div className="bg-surface border border-border/80 rounded-xl p-3.5 shadow-2xs">
+          <div className="text-[11px] text-secondary font-medium mb-1">企业账号有效期</div>
+          <div className="h-6 flex items-baseline">
+            <span className="text-xs font-semibold text-foreground font-mono truncate">
+              {enterpriseInfo?.accountExpireAt || '未生效'}
+            </span>
+          </div>
+        </div>
+
+        <div className="bg-surface border border-border/80 rounded-xl p-3.5 shadow-2xs">
+          <div className="text-[11px] text-secondary font-medium mb-1">第二大脑有效期</div>
+          <div className="h-6 flex items-baseline">
+            <span className="text-xs font-semibold text-foreground font-mono truncate">
+              {enterpriseInfo?.secondBrainExpireAt || '未生效'}
+            </span>
           </div>
         </div>
       </div>
 
-      {/* 员工列表：AntD 经典现代风格表格 */}
+      {/* 员工列表：对齐原型席位绑定与员工管理 */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <h3 className="text-xs font-bold text-foreground">员工列表</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-xs font-bold text-foreground">席位与员工列表</h3>
+          </div>
         </div>
 
         <div className="border border-border/70 rounded-xl overflow-hidden bg-surface shadow-2xs">
           <table className="w-full text-left border-collapse text-xs">
             <thead>
               <tr className="bg-surface-raised/50 border-b border-border/70 text-secondary font-medium">
-                <th className="py-2.5 px-4">员工账号</th>
-                <th className="py-2.5 px-4">算力额度</th>
-                <th className="py-2.5 px-4">添加时间</th>
-                <th className="py-2.5 px-4 text-right">操作</th>
+                <th className="py-2.5 px-4 font-medium">席位</th>
+                <th className="py-2.5 px-4 font-medium">算力额度</th>
+                <th className="py-2.5 px-4 font-medium">状态 / 添加时间</th>
+                <th className="py-2.5 px-4 text-right font-medium">操作</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/40">
               {loading ? (
                 <tr>
                   <td colSpan={4} className="py-12 text-center text-secondary">
-                    加载员工列表中...
+                    加载席位列表中...
                   </td>
                 </tr>
               ) : members.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="py-12 text-center text-secondary">
-                    暂无企业员工，点击右上角【添加员工】分配成员账号
+                    暂无已绑定员工，点击右上角【添加员工】分配成员席位
                   </td>
                 </tr>
               ) : (
                 members.map((m) => (
                   <tr key={m.userId} className="hover:bg-surface-raised/40 transition-colors">
-                    {/* 员工信息 */}
+                    {/* 员工席位 */}
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-2.5">
-                        <div className="w-7 h-7 rounded-full bg-gradient-to-br from-primary/15 to-primary/5 border border-primary/20 flex items-center justify-center text-primary font-semibold text-xs shrink-0">
-                          {m.displayName ? m.displayName.slice(0, 1) : <UserIcon className="w-3.5 h-3.5" />}
+                        <div className="w-8 h-8 rounded-full bg-foreground/10 text-foreground font-semibold text-xs flex items-center justify-center shrink-0">
+                          {m.displayName ? m.displayName.slice(0, 1) : m.username ? m.username.slice(0, 1) : <UserIcon className="w-3.5 h-3.5" />}
                         </div>
-                        <span className="font-semibold text-foreground">{m.displayName || m.username}</span>
+                        <div>
+                          <div className="font-semibold text-foreground">{m.displayName || m.username}</div>
+                          <div className="text-[11px] text-secondary">已绑定员工</div>
+                        </div>
                       </div>
                     </td>
 
-                    {/* 额度 */}
+                    {/* 算力额度 */}
                     <td className="py-3 px-4">
                       {m.isUnlimitedQuota ? (
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-surface-raised text-secondary border border-border/60">
                           无限制
                         </span>
                       ) : (
-                        <div className="text-[11px]">
-                          <span className="text-secondary">剩余点数: </span>
-                          <span className="font-semibold text-foreground font-mono">
-                            {(m.remainQuota ?? 0).toLocaleString()}
-                          </span>
+                        <div className="text-[11px] space-y-0.5">
+                          <div>
+                            <span className="text-secondary">剩余: </span>
+                            <span className="font-semibold text-foreground font-mono">
+                              {(m.remainQuota ?? 0).toLocaleString()} 点
+                            </span>
+                          </div>
                         </div>
                       )}
                     </td>
 
-                    {/* 添加时间 */}
-                    <td className="py-3 px-4 text-secondary text-[11px] font-mono">
-                      {formatCreatedAt(m.createdAt)}
+                    {/* 状态与添加时间 */}
+                    <td className="py-3 px-4">
+                      <div className="space-y-1">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                          使用中
+                        </span>
+                        <div className="text-secondary text-[11px] font-mono">
+                          {formatCreatedAt(m.createdAt)}
+                        </div>
+                      </div>
                     </td>
 
                     {/* 操作列 */}
                     <td className="py-3 px-4 text-right">
-                      <div className="inline-flex items-center gap-1.5">
+                      <div className="inline-flex items-center gap-2">
                         <button
                           type="button"
                           onClick={() => handleOpenQuotaModal(m)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-foreground bg-surface-raised hover:bg-primary/10 hover:text-primary border border-border/70 hover:border-primary/30 rounded-lg transition"
+                          className="px-2.5 py-1 text-[11px] font-medium text-foreground bg-surface hover:bg-surface-raised border border-border/80 hover:border-primary/40 rounded-lg transition"
                           title="调整算力额度"
                         >
-                          <AdjustmentsHorizontalIcon className="w-3.5 h-3.5" />
-                          <span>调整额度</span>
+                          调额度
                         </button>
 
                         <button
                           type="button"
-                          disabled={deletingUserId === m.userId}
-                          onClick={() => handleDeleteStaff(m.userId, m.displayName || m.username)}
-                          className="p-1.5 text-secondary hover:text-destructive hover:bg-destructive/10 rounded-lg transition disabled:opacity-50"
-                          title="移除员工"
+                          onClick={() => setDeletingMember(m)}
+                          className="px-2.5 py-1 text-[11px] font-medium text-secondary hover:text-destructive hover:bg-destructive/10 border border-border/70 hover:border-destructive/30 rounded-lg transition"
+                          title="解绑并移除员工"
                         >
-                          <TrashIcon className="w-3.5 h-3.5" />
+                          解绑
                         </button>
                       </div>
                     </td>
                   </tr>
                 ))
               )}
+
+              {/* 原型空席位占位行（当还有剩余席位时展示） */}
+              {!loading && !isLimitReached && (
+                <tr className="hover:bg-surface-raised/20 transition-colors bg-surface-raised/10">
+                  <td className="py-3 px-4">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-full border border-dashed border-border/80 flex items-center justify-center text-secondary shrink-0">
+                        <PlusIcon className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="font-semibold text-foreground">
+                          空席位 {MAX_STAFF_LIMIT - currentCount} 个
+                        </div>
+                        <div className="text-[11px] text-secondary">等你分配</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="py-3 px-4 text-[11px] text-secondary">
+                    待设
+                  </td>
+                  <td className="py-3 px-4">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-surface-raised text-secondary border border-border/60">
+                      未启用
+                    </span>
+                  </td>
+                  <td className="py-3 px-4 text-right">
+                    <button
+                      type="button"
+                      onClick={handleOpenAddModal}
+                      className="px-3 py-1 text-[11px] font-medium text-white bg-primary hover:bg-primary/90 rounded-lg transition shadow-2xs active:scale-[0.98]"
+                    >
+                      邀请同事
+                    </button>
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
+
+        {/* 原型底部说明脚注 */}
+        <p className="text-[11px] text-secondary/90 px-1 pt-1">
+          算力额度由公司统一采购、分配 · 员工不付费 · 用到 100% 只停员工、不停你
+        </p>
       </div>
 
       {/* 1. 添加员工弹窗 Modal */}
@@ -615,6 +684,56 @@ export const EnterpriseSection: React.FC = () => {
           </form>
         </Modal>
       )}
+
+      {/* 3. 解绑员工二次确认 Modal */}
+      {deletingMember && (
+        <Modal
+          isOpen
+          onClose={() => !deleting && setDeletingMember(null)}
+          className="w-[400px] max-w-[92vw] my-auto rounded-2xl bg-surface border border-border/80 shadow-2xl p-5 space-y-4 animate-fade-in"
+        >
+          <div className="flex items-center justify-between border-b border-border/40 pb-2.5">
+            <h4 className="text-sm font-semibold text-foreground">确认解绑员工</h4>
+            <button
+              type="button"
+              disabled={deleting}
+              onClick={() => setDeletingMember(null)}
+              className="text-secondary hover:text-foreground"
+            >
+              <XMarkIcon className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="space-y-2 text-xs">
+            <p className="text-foreground">
+              确定要解绑员工 <span className="font-bold text-primary">{deletingMember.displayName || deletingMember.username}</span> 吗？
+            </p>
+            <p className="text-secondary text-[11px] leading-relaxed">
+              解绑后将立即作废该员工的专属访问凭据与 API Key，并释放回收席位供其他成员绑定。
+            </p>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-border/40">
+            <button
+              type="button"
+              disabled={deleting}
+              onClick={() => setDeletingMember(null)}
+              className="px-3.5 py-1.5 text-xs text-secondary hover:text-foreground rounded-lg transition"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              disabled={deleting}
+              onClick={handleConfirmDeleteStaff}
+              className="px-4 py-1.5 text-xs font-medium text-white bg-destructive hover:bg-destructive/90 rounded-lg transition shadow-2xs disabled:opacity-50"
+            >
+              {deleting ? '解绑中...' : '确认解绑'}
+            </button>
+          </div>
+        </Modal>
+      )}
+      </div>
     </div>
   );
 };

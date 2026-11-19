@@ -10,6 +10,7 @@ import {
 import { i18nService } from '../../services/i18n';
 import {
   adoptCognitionItem,
+  batchAuditCognitionNodes,
   batchUploadDocuments,
   type CognitionItem,
   type CognitionStats,
@@ -41,7 +42,9 @@ import {
 } from '../common/managementTypography';
 import SidebarToggleIcon from '../icons/SidebarToggleIcon';
 import { AutoUploadSettingsModal } from './AutoUploadSettingsModal';
+import { CognitionPrivacySection } from './CognitionPrivacySection';
 import { EnterpriseSection } from './EnterpriseSection';
+import { UsageCallLogSection } from './UsageCallLogSection';
 
 interface SecondBrainViewProps {
   isSidebarCollapsed?: boolean;
@@ -118,10 +121,14 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
   /** 当前用户角色（owner / staff / individual） */
   const userRole = useSelector((state: RootState) => state.auth.userRole);
 
-  /** 今日 AI 自动吸收相关 */
+  /** 今日/近7日 AI 自动吸收相关 */
   const [todayAdoptedList, setTodayAdoptedList] = useState<CognitionItem[]>([]);
   const [todayAdoptedLoading, setTodayAdoptedLoading] = useState(true);
   const [isUpgradeCollapsed, setIsUpgradeCollapsed] = useState(true);
+  const [selectedCalendarOffset, setSelectedCalendarOffset] = useState<number>(0);
+  const [absorbPage, setAbsorbPage] = useState<number>(1);
+  const [calendarDayCounts, setCalendarDayCounts] = useState<Record<number, number>>({});
+  const [isBatchMode, setIsBatchMode] = useState<boolean>(false);
 
   /** 正在操作中的 nodeId（防止重复点击） */
   const [actioningIds, setActioningIds] = useState<Set<number>>(new Set());
@@ -300,7 +307,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
     setTrendLoading(true);
     fetchCognitionTrend(8)
       .then((res) => {
-        setTrendWeeks(res.weeks || []);
+        setTrendWeeks(res.trend || res.weeks || []);
       })
       .catch((err) => {
         console.warn('[SecondBrainView] 每周趋势接口失败:', err);
@@ -347,25 +354,53 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
       });
   }, []);
 
-  /** 拉取今日 AI 自动吸收列表 (status: 1, 当天时间范围) */
-  const loadTodayAdopted = () => {
+  /** 拉取近 7 天每日自动吸收条数 */
+  const loadCalendarDayCounts = React.useCallback(() => {
+    const offsets = [0, 1, 2, 3, 4, 5, 6];
+    offsets.forEach((offset) => {
+      const targetDate = new Date();
+      targetDate.setDate(targetDate.getDate() - offset);
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const ymd = `${targetDate.getFullYear()}-${pad(targetDate.getMonth() + 1)}-${pad(targetDate.getDate())}`;
+      fetchCognitionItemList({
+        status: 1,
+        auditSource: 1,
+        createTimeStart: `${ymd} 00:00:00`,
+        createTimeEnd: `${ymd} 23:59:59`,
+        page: 1,
+        pageSize: 1,
+      })
+        .then((res) => {
+          const total = Number(res.total) || 0;
+          setCalendarDayCounts((prev) => ({ ...prev, [offset]: total }));
+        })
+        .catch(() => {});
+    });
+  }, []);
+
+  /** 拉取 AI 自动吸收列表 (status: 1, auditSource: 1, 指定日期范围) */
+  const loadTodayAdopted = React.useCallback((dayOffset = selectedCalendarOffset) => {
     setTodayAdoptedLoading(true);
-    const now = new Date();
+    const targetDate = new Date();
+    targetDate.setDate(targetDate.getDate() - dayOffset);
     const pad = (n: number) => String(n).padStart(2, '0');
-    const ymd = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    const ymd = `${targetDate.getFullYear()}-${pad(targetDate.getMonth() + 1)}-${pad(targetDate.getDate())}`;
     fetchCognitionItemList({
       status: 1,
+      auditSource: 1, // 系统自动采纳
       createTimeStart: `${ymd} 00:00:00`,
       createTimeEnd: `${ymd} 23:59:59`,
       page: 1,
-      pageSize: 20,
+      pageSize: 50,
     })
       .then((res) => {
-        setTodayAdoptedList(res.data || []);
+        const list = res.data || [];
+        setTodayAdoptedList(list);
+        setCalendarDayCounts((prev) => ({ ...prev, [dayOffset]: Number(res.total) || list.length }));
       })
-      .catch((err) => { console.warn('[SecondBrainView] 今日自动吸收接口失败:', err); })
+      .catch((err) => { console.warn('[SecondBrainView] 自动吸收接口失败:', err); })
       .finally(() => { setTodayAdoptedLoading(false); });
-  };
+  }, [selectedCalendarOffset]);
 
   /** 采纳 */
   const handleAdopt = async (item: CognitionItem) => {
@@ -442,27 +477,6 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
     });
   };
 
-  /** 全选 / 取消全选当前页 */
-  const toggleSelectAllCurrentPage = () => {
-    const selectableItems = items.filter((item) => !actioningIds.has(item.node_id));
-    if (selectableItems.length === 0) return;
-
-    const allSelected = selectableItems.every((item) => selectedNodeIds.has(item.node_id));
-    if (allSelected) {
-      setSelectedNodeIds((prev) => {
-        const next = new Set(prev);
-        selectableItems.forEach((item) => next.delete(item.node_id));
-        return next;
-      });
-    } else {
-      setSelectedNodeIds((prev) => {
-        const next = new Set(prev);
-        selectableItems.forEach((item) => next.add(item.node_id));
-        return next;
-      });
-    }
-  };
-
   /** 批量采纳 */
   const handleBatchAdopt = async () => {
     if (selectedNodeIds.size === 0 || batchActionType !== null) return;
@@ -470,38 +484,16 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
     if (targetItems.length === 0) return;
 
     setBatchActionType('adopt');
-    // 标记所有选中项为处理中
     targetItems.forEach((i) => setActioning(i.node_id, true));
 
-    let successCount = 0;
-    let failCount = 0;
-
     try {
-      await Promise.all(
-        targetItems.map(async (item) => {
-          try {
-            const propToAdopt = (editingNodeId === item.node_id ? editingPropText : editedPropositions[item.node_id]) ?? item.proposition;
-            const elabToAdopt = (editingNodeId === item.node_id ? editingElabText : editedElaborations[item.node_id]) ?? item.elaboration;
-            await adoptCognitionItem({
-              nodeId: item.node_id,
-              proposition: propToAdopt,
-              elaboration: elabToAdopt,
-            });
-            successCount += 1;
-            setSelectedNodeIds((prev) => {
-              const next = new Set(prev);
-              next.delete(item.node_id);
-              return next;
-            });
-          } catch (err) {
-            console.warn(`[SecondBrainView] 批量采纳节点 ${item.node_id} 失败:`, err);
-            failCount += 1;
-          } finally {
-            setActioning(item.node_id, false);
-          }
-        })
-      );
+      const nodeIds = targetItems.map((i) => i.node_id);
+      await batchAuditCognitionNodes({
+        nodeIds,
+        action: 'adopt',
+      });
 
+      setSelectedNodeIds(new Set());
       if (editingNodeId && selectedNodeIds.has(editingNodeId)) {
         setEditingNodeId(null);
       }
@@ -511,12 +503,12 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
       loadTrend();
       loadItems(itemsPage, { silent: true });
 
-      if (failCount === 0) {
-        showToast('success', i18nService.t('secondBrainBatchAdoptSuccessToast', { count: successCount }));
-      } else {
-        showToast('info', i18nService.t('secondBrainBatchAdoptDoneToast', { success: successCount, fail: failCount }));
-      }
+      showToast('success', i18nService.t('secondBrainBatchAdoptSuccessToast', { count: nodeIds.length }));
+    } catch (err: any) {
+      console.warn('[SecondBrainView] 批量采纳失败:', err);
+      showToast('error', err?.message || '批量采纳失败');
     } finally {
+      targetItems.forEach((i) => setActioning(i.node_id, false));
       setBatchActionType(null);
     }
   };
@@ -528,32 +520,16 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
     if (targetItems.length === 0) return;
 
     setBatchActionType('reject');
-    // 标记所有选中项为处理中
     targetItems.forEach((i) => setActioning(i.node_id, true));
 
-    let successCount = 0;
-    let failCount = 0;
-
     try {
-      await Promise.all(
-        targetItems.map(async (item) => {
-          try {
-            await rejectCognitionItem(item.node_id);
-            successCount += 1;
-            setSelectedNodeIds((prev) => {
-              const next = new Set(prev);
-              next.delete(item.node_id);
-              return next;
-            });
-          } catch (err) {
-            console.warn(`[SecondBrainView] 批量驳回节点 ${item.node_id} 失败:`, err);
-            failCount += 1;
-          } finally {
-            setActioning(item.node_id, false);
-          }
-        })
-      );
+      const nodeIds = targetItems.map((i) => i.node_id);
+      await batchAuditCognitionNodes({
+        nodeIds,
+        action: 'reject',
+      });
 
+      setSelectedNodeIds(new Set());
       if (editingNodeId && selectedNodeIds.has(editingNodeId)) {
         setEditingNodeId(null);
       }
@@ -561,12 +537,12 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
       loadStats();
       loadItems(itemsPage, { silent: true });
 
-      if (failCount === 0) {
-        showToast('success', i18nService.t('secondBrainBatchRejectSuccessToast', { count: successCount }));
-      } else {
-        showToast('info', i18nService.t('secondBrainBatchRejectDoneToast', { success: successCount, fail: failCount }));
-      }
+      showToast('success', i18nService.t('secondBrainBatchRejectSuccessToast', { count: nodeIds.length }));
+    } catch (err: any) {
+      console.warn('[SecondBrainView] 批量驳回失败:', err);
+      showToast('error', err?.message || '批量驳回失败');
     } finally {
+      targetItems.forEach((i) => setActioning(i.node_id, false));
       setBatchActionType(null);
     }
   };
@@ -628,8 +604,9 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
     loadPersona();
     loadStats();
     loadTodayAdopted();
+    loadCalendarDayCounts();
     loadTrend();
-  }, []);
+  }, [loadTodayAdopted, loadCalendarDayCounts]);
 
   /** 翻页或挂载时拉取待审核认知列表 */
   useEffect(() => {
@@ -1050,7 +1027,10 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                   🧠
                 </div>
                 <div className="space-y-0.5">
-                  <div className="flex items-center">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-bold text-[#FF6B35] bg-[#FF6B35]/10 border border-[#FF6B35]/20 px-1.5 py-0.2 rounded">
+                      老板
+                    </span>
                     <h2 className="text-sm md:text-[15px] font-bold text-foreground">
                       {persona?.name ? i18nService.t('secondBrainUserPersonaTitle', { name: persona.name }) : i18nService.t('secondBrainBossPersonaTitle')}
                     </h2>
@@ -1062,9 +1042,14 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                       {i18nService.t('secondBrainPersonaProfileBtn')}
                     </button>
                   </div>
-                  <p className="text-xs text-secondary">
-                    {i18nService.t('secondBrainPersonaRequiredNotice')} · <span dangerouslySetInnerHTML={{ __html: i18nService.t('secondBrainStatAdoptedCognition', { count: stats?.adopted_count ?? 0 }) }} />
-                  </p>
+                  <p
+                    className="text-xs text-secondary"
+                    dangerouslySetInnerHTML={{
+                      __html: i18nService.t('secondBrainPersonaRequiredNotice', {
+                        count: `<b class="text-foreground font-bold">${stats?.adopted_count ?? 0}</b>`,
+                      }),
+                    }}
+                  />
                 </div>
               </div>
 
@@ -1124,7 +1109,13 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
               </div>
 
               {/* 格子 3：已形成认知 */}
-              <div className="bg-surface border border-border rounded-xl p-3.5 shadow-2xs transition hover:border-border/80">
+              <div
+                onClick={() => {
+                  const el = document.getElementById('sec-cognition-privacy');
+                  el?.scrollIntoView({ behavior: 'smooth' });
+                }}
+                className="bg-surface border border-border rounded-xl p-3.5 shadow-2xs transition hover:border-primary/50 cursor-pointer"
+              >
                 <div className="text-[11px] text-secondary font-medium mb-1">{i18nService.t('secondBrainStatAdoptedCognition', { count: '' }).replace(/<[^>]+>/g, '')}</div>
                 <div className="text-[22px] font-extrabold text-foreground leading-tight flex items-baseline">
                   {statsLoading ? '--' : stats?.adopted_count ?? 0}
@@ -1141,7 +1132,13 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
               </div>
 
               {/* 格子 4：待确认认知 */}
-              <div className="bg-[#f5a623]/5 border border-[#f5a623]/30 rounded-xl p-3.5 shadow-2xs transition hover:border-[#f5a623]/50">
+              <div
+                onClick={() => {
+                  const el = document.getElementById('s-pending');
+                  el?.scrollIntoView({ behavior: 'smooth' });
+                }}
+                className="bg-[#f5a623]/5 border border-[#f5a623]/30 rounded-xl p-3.5 shadow-2xs transition hover:border-[#f5a623]/60 cursor-pointer"
+              >
                 <div className="text-[11px] text-[#f5a623] font-medium mb-1">{i18nService.t('secondBrainStatPendingReview')}</div>
                 <div className="text-[22px] font-extrabold text-[#f5a623] leading-tight flex items-baseline">
                   {statsLoading ? '--' : stats?.pending_count ?? 0}
@@ -1154,164 +1151,244 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
             </div>
           </div>
 
-          {/* 2. 今日 AI 自动吸收（单行折叠 + 点击展开 .upg-card） */}
+          {/* 2. 今日 AI 自动吸收（单行折叠 + 日历选天 + 点击展开） */}
           <div className="rounded-2xl border border-border bg-surface shadow-[0_2px_8px_rgba(0,0,0,0.03)] overflow-hidden transition-all">
             <div
               onClick={() => setIsUpgradeCollapsed(!isUpgradeCollapsed)}
-              className="grid grid-cols-[auto_1fr_auto] gap-3.5 items-center px-4 py-3 cursor-pointer select-none hover:bg-surface-raised/60 transition-colors"
+              className="flex items-center gap-2.5 px-4 py-3 cursor-pointer select-none hover:bg-surface-raised/60 transition-colors"
             >
-              <div className="flex items-center gap-2">
-                <span className="text-base">💡</span>
-                <span className="text-xs md:text-sm font-bold text-foreground">{i18nService.t('secondBrainDailyBannerCount', { count: '' }).split('{')[0] || '今日 AI 自动吸收'}</span>
-                <span className="text-[10.5px] font-bold bg-[#2d8a5f] text-white px-2 py-0.5 rounded-md">
-                  {todayAdoptedList.length}
-                </span>
+              <div className="w-[26px] h-[26px] rounded-lg bg-[#FF6B35]/10 text-[#FF6B35] flex items-center justify-center shrink-0">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z" />
+                </svg>
               </div>
 
-              <div className="text-xs text-secondary truncate hidden sm:block">
-                {todayAdoptedLoading
-                  ? i18nService.t('secondBrainExtracting')
-                  : todayAdoptedList.length > 0
-                  ? i18nService.t('secondBrainDailyBannerCount', { count: todayAdoptedList.length })
-                  : i18nService.t('secondBrainDailyBannerEmpty')}
-              </div>
+              <span className="text-[12.5px] text-foreground flex-1">
+                <b>今日 AI 自动吸收 {todayAdoptedList.length} 条</b> · 已自动沉淀到第二大脑，AI 拿不准的才会出现在下面等你拍板
+              </span>
 
-              <div className="flex items-center gap-1 text-xs font-bold text-[#2d8a5f] shrink-0">
-                <span>{isUpgradeCollapsed ? i18nService.t('secondBrainDailyViewDetails') : i18nService.t('secondBrainDailyCollapse')}</span>
-                <span className={`inline-block transition-transform duration-200 ${isUpgradeCollapsed ? '' : 'rotate-180'}`}>
-                  ▾
-                </span>
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-secondary hover:text-foreground transition-colors ml-auto shrink-0 select-none">
+                <span>{isUpgradeCollapsed ? '展开' : '收起'}</span>
+                <svg
+                  className={`w-4 h-4 text-secondary/80 transition-transform duration-200 ${isUpgradeCollapsed ? '' : 'rotate-180'}`}
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
               </div>
             </div>
 
             {/* 展开内容 */}
             {!isUpgradeCollapsed && (
-              <div className="border-t border-border px-4 py-3.5 bg-background/40 space-y-2.5">
+              <div className="border-t border-border px-4 py-3.5 bg-background/40 space-y-3">
+                {/* 7天日历栏 */}
+                <div className="flex items-center gap-2 overflow-x-auto pb-1 [scrollbar-width:none]">
+                  {[0, 1, 2, 3, 4, 5, 6].map((offset) => {
+                    const d = new Date();
+                    d.setDate(d.getDate() - offset);
+                    const isSelected = selectedCalendarOffset === offset;
+                    const weekNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+                    const dayLabel = offset === 0 ? '今天' : offset === 1 ? '昨天' : weekNames[d.getDay()];
+                    const pad = (n: number) => String(n).padStart(2, '0');
+                    const dateStr = `${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+                    const count = calendarDayCounts[offset] ?? (offset === 0 ? todayAdoptedList.length : 0);
+
+                    return (
+                      <button
+                        key={offset}
+                        type="button"
+                        onClick={() => {
+                          setSelectedCalendarOffset(offset);
+                          setAbsorbPage(1);
+                          loadTodayAdopted(offset);
+                        }}
+                        className={`flex-1 min-w-[86px] rounded-lg border py-2 px-2.5 text-center transition-all cursor-pointer ${
+                          isSelected
+                            ? 'bg-[#FF6B35]/8 border-[#f3c8ab] text-[#e85c27] shadow-2xs'
+                            : 'bg-surface border-border text-secondary hover:border-[#c9c9ce] hover:bg-surface-raised'
+                        }`}
+                      >
+                        <div className={`text-[10.5px] ${isSelected ? 'text-[#e85c27] font-semibold' : 'text-secondary/70'}`}>
+                          {dayLabel}
+                        </div>
+                        <div className={`text-[12px] font-medium mt-0.5 ${isSelected ? 'text-[#e85c27] font-bold' : 'text-foreground'}`}>
+                          {dateStr}
+                        </div>
+                        <div className={`text-[11px] mt-1 ${isSelected ? 'text-[#e85c27] font-semibold' : 'text-secondary/80'}`}>
+                          {count} 条
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
                 {todayAdoptedLoading && (
                   <div className="py-6 text-center text-xs text-secondary/60">{i18nService.t('secondBrainTrendsLoading')}</div>
                 )}
                 {!todayAdoptedLoading && todayAdoptedList.length === 0 && (
                   <div className="py-6 text-center text-xs text-secondary">
-                    {i18nService.t('secondBrainDailyEmptyDesc')}
+                    {i18nService.t('secondBrainAutoAbsorbEmpty')}
                   </div>
                 )}
-                {!todayAdoptedLoading && todayAdoptedList.length > 0 && (
-                  <div className="space-y-2">
-                    {todayAdoptedList.map((item) => (
-                      <div
-                        key={item.node_id}
-                        className="bg-surface border border-border border-l-[3.5px] border-l-[#2d8a5f] rounded-2xl p-3.5 space-y-1.5 shadow-2xs"
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-[10.5px] font-bold text-[#2d8a5f] bg-[#2d8a5f]/12 px-2 py-0.5 rounded-[6px]">
-                              {i18nService.t('secondBrainDailyNewBadge')}
+                {!todayAdoptedLoading && todayAdoptedList.length > 0 && (() => {
+                  const ABSORB_PAGE_SIZE = 5;
+                  const absorbTotalPages = Math.max(1, Math.ceil(todayAdoptedList.length / ABSORB_PAGE_SIZE));
+                  const currentAbsorbPage = Math.min(absorbPage, absorbTotalPages);
+                  const currentAbsorbItems = todayAdoptedList.slice(
+                    (currentAbsorbPage - 1) * ABSORB_PAGE_SIZE,
+                    currentAbsorbPage * ABSORB_PAGE_SIZE
+                  );
+
+                  return (
+                    <div className="space-y-2.5">
+                      {currentAbsorbItems.map((item) => (
+                        <div
+                          key={item.node_id}
+                          className="bg-surface border border-border rounded-xl p-3.5 space-y-2 shadow-2xs"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10.5px] font-semibold text-[#e85c27] bg-[#FF6B35]/10 rounded px-2 py-0.5">
+                              + 新增
                             </span>
-                            <span className="text-[10px] font-bold text-secondary bg-surface-raised border border-border px-1.5 py-0.5 rounded">
+                            <span className="text-[10.5px] text-secondary bg-surface-raised border border-border rounded px-2 py-0.5">
                               {getLayerLabel(item.layer)}
                             </span>
+                            <span className="text-[10.5px] text-secondary/60 ml-auto tabular-nums">
+                              {formatTimestamp(item.create_time)}
+                            </span>
                           </div>
-                          <span className="text-[11px] text-secondary/60">{formatTimestamp(item.create_time)}</span>
+                          <div className="text-[13.5px] font-semibold text-foreground leading-[1.65]">
+                            「{item.proposition}」
+                          </div>
+                          {item.elaboration && (
+                            <div className="text-[12px] text-secondary leading-[1.7]">
+                              {item.elaboration}
+                            </div>
+                          )}
+                          <div className="flex items-center gap-1.5 text-[11px] text-secondary/80 pt-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-[#2d8a5f] inline-block shrink-0" />
+                            <span>
+                              {item.source_type === 1
+                                ? '来自文档 · 已写入第二大脑'
+                                : item.source_type === 2
+                                ? '来自对话 · 已写入第二大脑'
+                                : item.source_type === 3
+                                ? '来自音频 · 已写入第二大脑'
+                                : '来自 AI 归纳 · 已写入第二大脑'}
+                            </span>
+                          </div>
                         </div>
-                        <p className="text-xs font-semibold text-foreground leading-relaxed">
-                          "{item.proposition}"
-                        </p>
-                        {item.elaboration && (
-                          <p className="text-[11px] text-secondary leading-relaxed">
-                            {item.elaboration}
-                          </p>
-                        )}
-                        <div className="text-[10.5px] text-secondary/70 pt-0.5">
-                          📥 {item.source_type === 1 ? i18nService.t('secondBrainPendingSourceDoc') : item.source_type === 2 ? i18nService.t('secondBrainPendingSourceChat') : item.source_type === 3 ? i18nService.t('secondBrainPendingSourceAudio') : i18nService.t('secondBrainPendingSourceGeneral')} · 已写入商业第二大脑
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                      ))}
 
-                <div className="pt-2 border-t border-border/60 text-center text-[11px] text-secondary">
-                  <span dangerouslySetInnerHTML={{ __html: i18nService.t('secondBrainDailySummaryText', { today: todayAdoptedList.length, total: stats?.adopted_count ?? 0 }) }} />
-                </div>
+                      {todayAdoptedList.length > ABSORB_PAGE_SIZE && (
+                        <div className="flex items-center justify-between pt-3 border-t border-border/60 text-xs text-secondary">
+                          <button
+                            type="button"
+                            disabled={currentAbsorbPage <= 1}
+                            onClick={() => setAbsorbPage((p) => Math.max(1, p - 1))}
+                            className="px-3 py-1.5 rounded-lg border border-border bg-surface hover:bg-surface-raised disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                          >
+                            ‹ 上一页
+                          </button>
+                          <span className="font-medium">
+                            <b className="text-foreground">{currentAbsorbPage}</b> / {absorbTotalPages} 页 (共 {todayAdoptedList.length} 条)
+                          </span>
+                          <button
+                            type="button"
+                            disabled={currentAbsorbPage >= absorbTotalPages}
+                            onClick={() => setAbsorbPage((p) => Math.min(absorbTotalPages, p + 1))}
+                            className="px-3 py-1.5 rounded-lg border border-border bg-surface hover:bg-surface-raised disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                          >
+                            下一页 ›
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             )}
           </div>
 
-          {/* 3. 待审核认知区 (#s-pending) */}
-          <div className="rounded-2xl border border-border bg-surface p-5 md:p-6 shadow-[0_2px_8px_rgba(0,0,0,0.03)] space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <div className="flex items-center gap-2">
-                  <h2 className="text-sm font-bold text-foreground">
-                    {i18nService.t('secondBrainPendingTitle')}
-                  </h2>
-                  {itemsTotal > 0 && (
-                    <span className="text-xs font-bold bg-[#f5a623]/15 text-[#f5a623] px-2 py-0.5 rounded-md">
-                      {itemsTotal}
-                    </span>
-                  )}
-                </div>
-                <p className="text-xs text-secondary mt-1">
+          {/* 2. 等你拍板区 (#s-pending) */}
+          <div id="s-pending" className="space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-1">
+              <div className="flex items-baseline gap-2.5 flex-wrap">
+                <h2 className="text-base font-bold text-foreground">
+                  {i18nService.t('secondBrainPendingTitle')}
+                </h2>
+                <span className="text-xs text-secondary">
                   {i18nService.t('secondBrainPendingSubtitle')}
-                </p>
+                </span>
               </div>
 
-              {/* 批量操作工具栏 */}
-              {!itemsLoading && items.length > 0 && (
-                <div className="flex items-center gap-2.5 self-start sm:self-auto shrink-0 bg-surface-raised/70 border border-border/80 px-3 py-1.5 rounded-xl">
-                  <label className="flex items-center gap-1.5 text-xs text-secondary hover:text-foreground cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={
-                        items.length > 0 &&
-                        items.every((item) => selectedNodeIds.has(item.node_id))
-                      }
-                      ref={(el) => {
-                        if (el) {
-                          const hasSelected = items.some((item) => selectedNodeIds.has(item.node_id));
-                          const allSelected = items.length > 0 && items.every((item) => selectedNodeIds.has(item.node_id));
-                          el.indeterminate = hasSelected && !allSelected;
-                        }
-                      }}
-                      onChange={toggleSelectAllCurrentPage}
-                      disabled={batchActionType !== null}
-                      className="rounded border-border text-primary focus:ring-primary h-3.5 w-3.5 cursor-pointer disabled:opacity-50"
-                    />
-                    <span>{i18nService.t('secondBrainPendingSelectAll')}</span>
-                  </label>
+              {/* 右侧：剩 N 条 + 批量按钮 */}
+              <div className="flex items-center gap-3 self-end sm:self-auto shrink-0">
+                <span className="text-xs text-[#FF6B35] font-bold">
+                  剩 {itemsTotal} 条
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isBatchMode) {
+                      setSelectedNodeIds(new Set());
+                    }
+                    setIsBatchMode(!isBatchMode);
+                  }}
+                  className={`text-xs px-3.5 py-1.5 rounded-lg border transition-all cursor-pointer font-medium ${
+                    isBatchMode
+                      ? 'bg-[#FF6B35] text-white border-[#FF6B35] shadow-2xs font-semibold'
+                      : 'bg-surface hover:bg-surface-raised border-border text-foreground hover:border-[#c6c6cc]'
+                  }`}
+                >
+                  {isBatchMode ? '退出批量' : '批量'}
+                </button>
+              </div>
+            </div>
 
-                  {selectedNodeIds.size > 0 && (
-                    <span
-                      className="text-xs text-secondary font-medium"
-                      dangerouslySetInnerHTML={{
-                        __html: i18nService.t('secondBrainPendingSelectedCount', {
-                          count: `<b class="text-foreground">${selectedNodeIds.size}</b>`,
-                        }),
-                      }}
-                    />
-                  )}
-
-                  <div className="h-3.5 w-[1px] bg-border/80 mx-0.5" />
-
+            <div className="rounded-2xl border border-border bg-surface p-5 md:p-6 shadow-[0_2px_8px_rgba(0,0,0,0.03)] space-y-4">
+            {/* 批量操作条 (batchbar) */}
+            {isBatchMode && (
+              <div className="flex items-center gap-3 bg-[#FF6B35]/8 border border-[#f3c8ab] rounded-xl px-4 py-2.5 flex-wrap transition-all">
+                <span className="text-xs text-[#e85c27]">
+                  已选 <b className="font-bold text-sm text-[#e85c27]">{selectedNodeIds.size}</b> 条
+                </span>
+                <span className="text-[11px] text-[#c08a66] hidden md:inline">
+                  批量采纳＝全部写入第二大脑 · 批量驳回＝全部不收
+                </span>
+                <div className="flex-1" />
+                <div className="flex items-center gap-2">
                   <button
                     type="button"
                     disabled={selectedNodeIds.size === 0 || batchActionType !== null}
                     onClick={handleBatchAdopt}
-                    className="bg-[#f5a623] hover:bg-[#df9318] text-white font-bold text-xs px-2.5 py-1 rounded-lg border border-[#f5a623] shadow-2xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                    className="bg-[#FF6B35] hover:bg-[#e85c27] text-white font-bold text-xs px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shadow-2xs"
                   >
-                    {batchActionType === 'adopt' ? i18nService.t('secondBrainPendingBatchAdopting') : i18nService.t('secondBrainPendingBatchAdopt')}
+                    {batchActionType === 'adopt' ? i18nService.t('secondBrainPendingBatchAdopting') : '批量采纳'}
                   </button>
-
                   <button
                     type="button"
                     disabled={selectedNodeIds.size === 0 || batchActionType !== null}
                     onClick={handleBatchReject}
-                    className="border border-border bg-surface hover:bg-surface-raised text-foreground font-semibold text-xs px-2.5 py-1 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                    className="border border-[#f3c8ab] bg-white dark:bg-surface hover:bg-surface-raised text-foreground font-medium text-xs px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                   >
-                    {batchActionType === 'reject' ? i18nService.t('secondBrainPendingBatchRejecting') : i18nService.t('secondBrainPendingBatchReject')}
+                    {batchActionType === 'reject' ? i18nService.t('secondBrainPendingBatchRejecting') : '批量驳回'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedNodeIds(new Set())}
+                    className="text-xs text-[#c08a66] hover:text-[#e85c27] px-2 py-1 transition-colors cursor-pointer"
+                  >
+                    取消选择
                   </button>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
 
             {/* 加载中 */}
             {itemsLoading && (
@@ -1343,26 +1420,26 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                   return (
                     <div
                       key={item.node_id}
-                      className={`rounded-2xl border ${
-                        isSelected
-                          ? 'border-primary/60 ring-1 ring-primary/30'
-                          : 'border-border'
+                      className={`rounded-2xl border border-border ${
+                        isSelected ? 'bg-[#fffdfb] dark:bg-surface-raised/40' : 'bg-surface'
                       } ${
                         isConflict ? 'border-l-[3.5px] border-l-[#f53f3f]' : 'border-l-[3.5px] border-l-[#9b59b6]'
-                      } bg-surface p-4 md:p-5 shadow-[0_2px_8px_rgba(0,0,0,0.03)] space-y-3.5 transition`}
+                      } p-4 md:p-5 shadow-[0_2px_8px_rgba(0,0,0,0.03)] space-y-3.5 transition`}
                     >
                       {/* 顶部标签与来源 */}
                       <div className="flex items-center justify-between gap-2 text-xs">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <label className="flex items-center cursor-pointer select-none">
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
-                              disabled={isActioning || batchActionType !== null}
-                              onChange={() => toggleSelectNode(item.node_id)}
-                              className="rounded border-border text-primary focus:ring-primary h-3.5 w-3.5 cursor-pointer disabled:opacity-50"
-                            />
-                          </label>
+                          {isBatchMode && (
+                            <label className="flex items-center cursor-pointer select-none">
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                disabled={isActioning || batchActionType !== null}
+                                onChange={() => toggleSelectNode(item.node_id)}
+                                className="rounded border-border accent-[#FF6B35] text-[#FF6B35] focus:ring-0 focus:outline-hidden h-3.5 w-3.5 cursor-pointer disabled:opacity-50"
+                              />
+                            </label>
+                          )}
                           <span className="text-[10.5px] font-extrabold text-[#9b59b6] bg-[#9b59b6]/12 px-2.5 py-0.5 rounded-[7px]">
                             {getLayerLabel(item.layer)}
                           </span>
@@ -1523,12 +1600,362 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                 {renderPager(itemsPage, itemsLastPage, itemsTotal, setItemsPage, i18nService.t('secondBrainPendingTitle'))}
               </div>
             )}
+            </div>
           </div>
 
-          {/* 4. 学习资料区 (#s-materials) */}
-          <div id="s-materials" className="space-y-2">
-            <div className="text-[11px] font-bold tracking-wider text-secondary uppercase">
-              {i18nService.t('secondBrainMaterialsTitle')}
+          {/* 3. 员工调用记录 */}
+          <div className="space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-1">
+              <div className="flex items-baseline gap-2.5 flex-wrap">
+                <h2 className="text-base font-bold text-foreground">
+                  {userRole === 'owner' ? i18nService.t('secondBrainCallLogTitle') : '调用记录'}
+                </h2>
+                <span className="text-xs text-secondary">
+                  {userRole === 'owner'
+                    ? i18nService.t('secondBrainCallLogSubtitle')
+                    : i18nService.t('secondBrainCallLogSelfSubtitle')}
+                </span>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-border bg-surface p-5 md:p-6 shadow-[0_2px_8px_rgba(0,0,0,0.03)] space-y-4">
+            {/* 调用与沉淀折线图 */}
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div>
+                  <div className="text-xs md:text-[13px] font-bold text-foreground">
+                    {i18nService.t('secondBrainTrendsCurveTitle')}
+                  </div>
+                  <div className="text-[11px] text-secondary mt-0.5">
+                    {i18nService.t('secondBrainTrendsSubtitle')}
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 text-[11px] text-secondary">
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full bg-[#8b8b90]" />
+                    {i18nService.t('secondBrainTrendsSelfLegend')}
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full bg-[#FF6B35]" />
+                    {i18nService.t('secondBrainTrendsStaffLegend')}
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full bg-[#2d8a5f]" />
+                    {i18nService.t('secondBrainTrendsAdoptedLegend')}
+                  </span>
+                </div>
+              </div>
+
+              {/* 曲线图 */}
+              {trendLoading ? (
+                <div className="h-[120px] flex items-center justify-center text-xs text-secondary/60">
+                  {i18nService.t('secondBrainTrendsLoading')}
+                </div>
+              ) : trendWeeks.length === 0 ? (
+                <div className="h-[120px] flex items-center justify-center text-xs text-secondary/60">
+                  {i18nService.t('secondBrainTrendsEmpty')}
+                </div>
+              ) : (() => {
+                const count = trendWeeks.length;
+                const maxVal = Math.max(
+                  ...trendWeeks.flatMap((w) => [
+                    w.self_count ?? 0,
+                    w.staff_count ?? w.usage_count ?? 0,
+                    w.generated_count ?? w.adopted_count ?? 0,
+                  ]),
+                  1
+                );
+                const stepX = count > 1 ? (302 - 18) / (count - 1) : 0;
+
+                const pointsSelf = trendWeeks.map((w, idx) => {
+                  const val = w.self_count ?? 0;
+                  const x = 18 + idx * stepX;
+                  const y = 68 - (val / maxVal) * 52;
+                  return { x: Number(x.toFixed(1)), y: Number(y.toFixed(1)), val, week: w };
+                });
+
+                const pointsStaff = trendWeeks.map((w, idx) => {
+                  const val = w.staff_count ?? w.usage_count ?? 0;
+                  const x = 18 + idx * stepX;
+                  const y = 68 - (val / maxVal) * 52;
+                  return { x: Number(x.toFixed(1)), y: Number(y.toFixed(1)), val, week: w };
+                });
+
+                const pointsGenerated = trendWeeks.map((w, idx) => {
+                  const val = w.generated_count ?? w.adopted_count ?? 0;
+                  const x = 18 + idx * stepX;
+                  const y = 68 - (val / maxVal) * 52;
+                  return { x: Number(x.toFixed(1)), y: Number(y.toFixed(1)), val, week: w };
+                });
+
+                const pathSelf = pointsSelf.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ');
+                const pathStaff = pointsStaff.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ');
+                const fillStaff = `${pathStaff} L${pointsStaff[pointsStaff.length - 1].x},72 L${pointsStaff[0].x},72 Z`;
+                const pathGenerated = pointsGenerated.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ');
+
+                return (
+                  <div className="space-y-2">
+                    <div className="relative pt-1">
+                      <svg className="w-full h-[95px] block overflow-visible" viewBox="0 0 320 80" preserveAspectRatio="none">
+                        <defs>
+                          <linearGradient id="gcFill" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#FF6B35" stopOpacity="0.22" />
+                            <stop offset="100%" stopColor="#FF6B35" stopOpacity="0" />
+                          </linearGradient>
+                        </defs>
+
+                        {/* 背景水平网格虚线 */}
+                        <line x1="0" y1="16" x2="320" y2="16" stroke="currentColor" strokeOpacity="0.08" strokeDasharray="3 3" />
+                        <line x1="0" y1="42" x2="320" y2="42" stroke="currentColor" strokeOpacity="0.08" strokeDasharray="3 3" />
+                        <line x1="0" y1="68" x2="320" y2="68" stroke="currentColor" strokeOpacity="0.12" />
+
+                        {/* 员工调用面积渐变 */}
+                        {pointsStaff.length > 1 && (
+                          <path d={fillStaff} fill="url(#gcFill)" />
+                        )}
+
+                        {/* 1. 生成认知折线（绿色虚线） */}
+                        {pointsGenerated.length > 1 && (
+                          <path
+                            d={pathGenerated}
+                            fill="none"
+                            stroke="#2d8a5f"
+                            strokeWidth="1.8"
+                            strokeDasharray="4 3"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            vectorEffect="non-scaling-stroke"
+                          />
+                        )}
+
+                        {/* 2. 自己调用折线（灰色实线） */}
+                        {pointsSelf.length > 1 && (
+                          <path
+                            d={pathSelf}
+                            fill="none"
+                            stroke="#8b8b90"
+                            strokeWidth="1.8"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            vectorEffect="non-scaling-stroke"
+                          />
+                        )}
+
+                        {/* 3. 员工调用折线（橙色粗线） */}
+                        {pointsStaff.length > 1 && (
+                          <path
+                            d={pathStaff}
+                            fill="none"
+                            stroke="#FF6B35"
+                            strokeWidth="2.2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            vectorEffect="non-scaling-stroke"
+                          />
+                        )}
+
+                        {/* 悬浮基准竖线 */}
+                        {hoveredWeekIndex !== null && pointsStaff[hoveredWeekIndex] && (
+                          <line
+                            x1={pointsStaff[hoveredWeekIndex].x}
+                            y1={8}
+                            x2={pointsStaff[hoveredWeekIndex].x}
+                            y2={68}
+                            stroke="#FF6B35"
+                            strokeWidth="1.2"
+                            strokeDasharray="2 2"
+                            vectorEffect="non-scaling-stroke"
+                          />
+                        )}
+
+                        {/* 末尾端点圆点（常驻显示最新一周状态） */}
+                        {hoveredWeekIndex === null && pointsStaff.length > 0 && (
+                          <g>
+                            <circle
+                              cx={pointsSelf[pointsSelf.length - 1].x}
+                              cy={pointsSelf[pointsSelf.length - 1].y}
+                              r="2.8"
+                              fill="#8b8b90"
+                              stroke="#ffffff"
+                              strokeWidth="1"
+                            />
+                            <circle
+                              cx={pointsStaff[pointsStaff.length - 1].x}
+                              cy={pointsStaff[pointsStaff.length - 1].y}
+                              r="3.5"
+                              fill="#FF6B35"
+                              stroke="#ffffff"
+                              strokeWidth="1.2"
+                            />
+                            <circle
+                              cx={pointsGenerated[pointsGenerated.length - 1].x}
+                              cy={pointsGenerated[pointsGenerated.length - 1].y}
+                              r="2.8"
+                              fill="#2d8a5f"
+                              stroke="#ffffff"
+                              strokeWidth="1"
+                            />
+                          </g>
+                        )}
+
+                        {/* 悬浮时高亮点 */}
+                        {hoveredWeekIndex !== null && pointsStaff[hoveredWeekIndex] && (
+                          <g>
+                            <circle
+                              cx={pointsSelf[hoveredWeekIndex].x}
+                              cy={pointsSelf[hoveredWeekIndex].y}
+                              r="3"
+                              fill="#8b8b90"
+                              stroke="#ffffff"
+                              strokeWidth="1"
+                            />
+                            <circle
+                              cx={pointsStaff[hoveredWeekIndex].x}
+                              cy={pointsStaff[hoveredWeekIndex].y}
+                              r="3.5"
+                              fill="#FF6B35"
+                              stroke="#ffffff"
+                              strokeWidth="1"
+                            />
+                            <circle
+                              cx={pointsGenerated[hoveredWeekIndex].x}
+                              cy={pointsGenerated[hoveredWeekIndex].y}
+                              r="3"
+                              fill="#2d8a5f"
+                              stroke="#ffffff"
+                              strokeWidth="1"
+                            />
+                          </g>
+                        )}
+
+                        {/* 交互热区 rect */}
+                        {pointsStaff.map((p, i) => (
+                          <rect
+                            key={i}
+                            x={Math.max(0, p.x - (stepX || 40) / 2)}
+                            y={0}
+                            width={stepX || 40}
+                            height={80}
+                            fill="transparent"
+                            className="cursor-pointer"
+                            onMouseEnter={() => setHoveredWeekIndex(i)}
+                            onMouseLeave={() => setHoveredWeekIndex(null)}
+                          />
+                        ))}
+                      </svg>
+
+                      {/* 动态随位置浮动的 Tooltip 卡片 */}
+                      {hoveredWeekIndex !== null && trendWeeks[hoveredWeekIndex] && (() => {
+                        const cur = trendWeeks[hoveredWeekIndex];
+                        const leftPercent = count > 1 ? (hoveredWeekIndex / (count - 1)) * 100 : 50;
+                        const transformStyle =
+                          hoveredWeekIndex <= 1
+                            ? 'translateX(0%)'
+                            : hoveredWeekIndex >= count - 2
+                              ? 'translateX(-100%)'
+                              : 'translateX(-50%)';
+
+                        const selfCnt = cur.self_count ?? 0;
+                        const staffCnt = cur.staff_count ?? cur.usage_count ?? 0;
+                        const genCnt = cur.generated_count ?? cur.adopted_count ?? 0;
+
+                        return (
+                          <div
+                            className="absolute -top-11 z-20 pointer-events-none transition-all duration-75 ease-out"
+                            style={{
+                              left: `${leftPercent}%`,
+                              transform: transformStyle,
+                            }}
+                          >
+                            <div className="bg-foreground text-background dark:bg-surface-raised dark:text-foreground text-[10.5px] px-2.5 py-1.5 rounded-lg shadow-lg border border-border whitespace-nowrap leading-tight">
+                              <div className="font-bold border-b border-background/20 dark:border-border pb-1 mb-1">
+                                {cur.label}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="flex items-center gap-1">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-[#8b8b90] inline-block" />
+                                  <span>自己: <b>{selfCnt}</b></span>
+                                </span>
+                                <span className="flex items-center gap-1">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-[#FF6B35] inline-block" />
+                                  <span>员工: <b>{staffCnt}</b></span>
+                                </span>
+                                <span className="flex items-center gap-1">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-[#2d8a5f] inline-block" />
+                                  <span>沉淀: <b>{genCnt}</b></span>
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    {/* X 轴日期刻度列表 */}
+                    <div className="flex items-center justify-between px-1 text-[10.5px] text-secondary">
+                      {trendWeeks.map((w, idx) => {
+                        const isHovered = hoveredWeekIndex === idx;
+                        const shortLabel = w.label.includes('~') ? w.label.split('~')[0].trim() : w.label;
+
+                        return (
+                          <button
+                            key={idx}
+                            type="button"
+                            onMouseEnter={() => setHoveredWeekIndex(idx)}
+                            onMouseLeave={() => setHoveredWeekIndex(null)}
+                            className={`text-center font-medium transition-colors cursor-pointer py-0.5 ${
+                              isHovered ? 'text-[#FF6B35] font-bold scale-105' : 'text-secondary/70 hover:text-foreground'
+                            }`}
+                            style={{ flex: 1 }}
+                            title={w.label}
+                          >
+                            {shortLabel}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div
+                className="text-[11px] text-secondary pt-1"
+                dangerouslySetInnerHTML={{
+                  __html: i18nService.t('secondBrainTrendsSummaryFooter', {
+                    weeks: trendWeeks.length || 8,
+                    total: `<b class="text-[#FF6B35] font-bold">${stats?.adopted_count ?? 0}</b>`,
+                    thisWeek: `<b class="text-[#FF6B35] font-bold">${(trendWeeks[trendWeeks.length - 1]?.staff_count ?? trendWeeks[trendWeeks.length - 1]?.usage_count ?? 0) + (trendWeeks[trendWeeks.length - 1]?.self_count ?? 0)}</b>`,
+                  }),
+                }}
+              />
+            </div>
+
+            {/* 员工/个人调用明细（与调用沉淀整合在同一卡片内） */}
+            {(userRole === 'owner' || userRole === 'individual') && (
+              <UsageCallLogSection userRole={userRole} embedded showToast={showToast} />
+            )}
+          </div>
+          </div>
+
+          {/* 5. 认知与隐私（L1 ~ L7 分层展示与隐私设置） */}
+          <div id="sec-cognition-privacy">
+            <CognitionPrivacySection
+              onStatsChange={loadStats}
+              showToast={showToast}
+            />
+          </div>
+
+          {/* 5. 学习资料区 (#s-materials) */}
+          <div id="s-materials" className="space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-1">
+              <div className="flex items-baseline gap-2.5 flex-wrap">
+                <h2 className="text-base font-bold text-foreground">
+                  {i18nService.t('secondBrainMaterialsTitle')}
+                </h2>
+                <span className="text-xs text-secondary">
+                  导入业务文档、对话与录音，沉淀为你专属的第二大脑
+                </span>
+              </div>
             </div>
 
             <div className="rounded-2xl border border-border bg-surface p-5 md:p-6 shadow-[0_2px_8px_rgba(0,0,0,0.03)] space-y-4">
@@ -1568,9 +1995,17 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                           {autoUploadSyncing ? '🔄' : '📁'}
                         </span>
                         <span>{i18nService.t('secondBrainAutoSyncBtn')}</span>
-                        <span className="text-[10px] text-secondary/60 group-hover:text-foreground transition-transform duration-150 group-hover:rotate-180">
-                          ▾
-                        </span>
+                        <svg
+                          className="w-3.5 h-3.5 text-secondary/60 group-hover:text-foreground transition-transform duration-150 group-hover:rotate-180"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <polyline points="6 9 12 15 18 9" />
+                        </svg>
                       </button>
 
                       {/* 鼠标悬浮下拉菜单 */}
@@ -1610,7 +2045,6 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                         onClick={handleUploadClick}
                         className="bg-[#4a8fe7] hover:bg-[#3b7ed4] text-white font-bold text-xs px-3.5 py-1.5 rounded-lg shadow-2xs transition-colors flex items-center gap-1 disabled:opacity-50 cursor-pointer"
                       >
-                        <span>+</span>
                         <span>{uploading ? i18nService.t('secondBrainUploadingBtn') : i18nService.t('secondBrainUploadDocBtn')}</span>
                       </button>
                       <div className="pointer-events-none absolute right-0 bottom-full mb-2 z-20 whitespace-nowrap rounded-xl bg-black/90 dark:bg-black px-3.5 py-1.5 text-xs font-medium text-white shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200">
@@ -1789,259 +2223,6 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                   </>
                 );
               })()}
-            </div>
-          </div>
-
-          {/* 5. 大脑词条近况 (#s-fmp) */}
-          <div className="rounded-2xl border border-[#FF6B35]/25 bg-gradient-to-b from-[#FF6B35]/[0.02] to-surface bg-surface p-5 md:p-6 shadow-[0_4px_20px_rgba(255,107,53,0.05)] space-y-4">
-            <div className="pb-3.5 border-b border-dashed border-[#FF6B35]/20">
-              <h2 className="text-sm font-bold text-foreground">
-                {i18nService.t('secondBrainTrendsTitle')}
-              </h2>
-              <p
-                className="text-xs text-secondary mt-1"
-                dangerouslySetInnerHTML={{
-                  __html: i18nService.t('secondBrainTrendsSubtitle', {
-                    newCount: `<b class="text-foreground font-bold">${trendWeeks[trendWeeks.length - 1]?.adopted_count ?? 0}</b>`,
-                    total: `<b class="text-foreground font-bold">${stats?.adopted_count ?? 0}</b>`,
-                  }),
-                }}
-              />
-            </div>
-
-            {/* 判断力成长曲线 */}
-            <div className="space-y-2.5">
-              <div className="flex items-center justify-between gap-2 flex-wrap">
-                <div className="text-xs md:text-[13px] font-bold text-foreground flex items-center gap-1.5">
-                  <span>📈</span>
-                  <span>{i18nService.t('secondBrainTrendsCurveTitle')}</span>
-                </div>
-                <div className="flex items-center gap-3 text-[11px] text-secondary">
-                  <span className="flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-[#2d8a5f]" />
-                    {i18nService.t('secondBrainTrendsAdoptedLegend')}
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-[#FF6B35]" />
-                    {i18nService.t('secondBrainTrendsInvokedLegend')}
-                  </span>
-                </div>
-              </div>
-
-              {/* 曲线图 */}
-              {trendLoading ? (
-                <div className="h-[120px] flex items-center justify-center text-xs text-secondary/60">
-                  {i18nService.t('secondBrainTrendsLoading')}
-                </div>
-              ) : trendWeeks.length === 0 ? (
-                <div className="h-[120px] flex items-center justify-center text-xs text-secondary/60">
-                  {i18nService.t('secondBrainTrendsEmpty')}
-                </div>
-              ) : (() => {
-                const count = trendWeeks.length;
-                const maxVal = Math.max(...trendWeeks.flatMap((w) => [w.adopted_count, w.usage_count]), 1);
-                const stepX = count > 1 ? (302 - 18) / (count - 1) : 0;
-
-                const pointsUsage = trendWeeks.map((w, idx) => {
-                  const x = 18 + idx * stepX;
-                  const y = 68 - (w.usage_count / maxVal) * 52;
-                  return { x: Number(x.toFixed(1)), y: Number(y.toFixed(1)), val: w.usage_count, week: w };
-                });
-
-                const pointsAdopted = trendWeeks.map((w, idx) => {
-                  const x = 18 + idx * stepX;
-                  const y = 68 - (w.adopted_count / maxVal) * 52;
-                  return { x: Number(x.toFixed(1)), y: Number(y.toFixed(1)), val: w.adopted_count, week: w };
-                });
-
-                const pathUsage = pointsUsage.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ');
-                const fillUsage = `${pathUsage} L${pointsUsage[pointsUsage.length - 1].x},72 L${pointsUsage[0].x},72 Z`;
-                const pathAdopted = pointsAdopted.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ');
-
-                return (
-                  <div className="space-y-2">
-                    <div className="relative pt-1">
-                      <svg className="w-full h-[95px] block overflow-visible" viewBox="0 0 320 80" preserveAspectRatio="none">
-                        <defs>
-                          <linearGradient id="gcFill" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#FF6B35" stopOpacity="0.22" />
-                            <stop offset="100%" stopColor="#FF6B35" stopOpacity="0" />
-                          </linearGradient>
-                        </defs>
-
-                        {/* 浅灰极细水平参考线 */}
-                        <line x1="10" y1="16" x2="310" y2="16" stroke="currentColor" strokeDasharray="3 3" opacity="0.06" />
-                        <line x1="10" y1="42" x2="310" y2="42" stroke="currentColor" strokeDasharray="3 3" opacity="0.06" />
-                        <line x1="10" y1="68" x2="310" y2="68" stroke="currentColor" opacity="0.1" />
-
-                        {/* 悬浮列极细竖向导引虚线 */}
-                        {hoveredWeekIndex !== null && pointsUsage[hoveredWeekIndex] && (
-                          <line
-                            x1={pointsUsage[hoveredWeekIndex].x}
-                            y1={6}
-                            x2={pointsUsage[hoveredWeekIndex].x}
-                            y2={72}
-                            stroke="currentColor"
-                            strokeWidth="0.8"
-                            strokeDasharray="2 2"
-                            opacity="0.3"
-                          />
-                        )}
-
-                        {/* 面积渐变与主折线 */}
-                        <path d={fillUsage} fill="url(#gcFill)" />
-                        <path
-                          d={pathUsage}
-                          fill="none"
-                          stroke="#FF6B35"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          vectorEffect="non-scaling-stroke"
-                        />
-                        <path
-                          d={pathAdopted}
-                          fill="none"
-                          stroke="#2d8a5f"
-                          strokeWidth="1.6"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeDasharray="3 3"
-                          opacity=".85"
-                          vectorEffect="non-scaling-stroke"
-                        />
-
-                        {/* 悬浮时精致发光高亮点（仅悬停时展示精致双层微点） */}
-                        {hoveredWeekIndex !== null && pointsUsage[hoveredWeekIndex] && (
-                          <g>
-                            {/* 橙色调用点 */}
-                            <circle
-                              cx={pointsUsage[hoveredWeekIndex].x}
-                              cy={pointsUsage[hoveredWeekIndex].y}
-                              r="5.5"
-                              fill="#FF6B35"
-                              opacity="0.22"
-                            />
-                            <circle
-                              cx={pointsUsage[hoveredWeekIndex].x}
-                              cy={pointsUsage[hoveredWeekIndex].y}
-                              r="2.5"
-                              fill="#FF6B35"
-                              stroke="#ffffff"
-                              strokeWidth="1"
-                            />
-
-                            {/* 绿色采纳点 */}
-                            <circle
-                              cx={pointsAdopted[hoveredWeekIndex].x}
-                              cy={pointsAdopted[hoveredWeekIndex].y}
-                              r="5.5"
-                              fill="#2d8a5f"
-                              opacity="0.22"
-                            />
-                            <circle
-                              cx={pointsAdopted[hoveredWeekIndex].x}
-                              cy={pointsAdopted[hoveredWeekIndex].y}
-                              r="2.5"
-                              fill="#2d8a5f"
-                              stroke="#ffffff"
-                              strokeWidth="1"
-                            />
-                          </g>
-                        )}
-
-                        {/* 交互热区 rect */}
-                        {pointsUsage.map((p, i) => (
-                          <rect
-                            key={i}
-                            x={Math.max(0, p.x - (stepX || 40) / 2)}
-                            y={0}
-                            width={stepX || 40}
-                            height={80}
-                            fill="transparent"
-                            className="cursor-pointer"
-                            onMouseEnter={() => setHoveredWeekIndex(i)}
-                            onMouseLeave={() => setHoveredWeekIndex(null)}
-                          />
-                        ))}
-                      </svg>
-
-                      {/* 动态随位置浮动的 Tooltip 卡片 */}
-                      {hoveredWeekIndex !== null && trendWeeks[hoveredWeekIndex] && (() => {
-                        const leftPercent = count > 1 ? (hoveredWeekIndex / (count - 1)) * 100 : 50;
-                        const transformStyle =
-                          hoveredWeekIndex <= 1
-                            ? 'translateX(0%)'
-                            : hoveredWeekIndex >= count - 2
-                              ? 'translateX(-100%)'
-                              : 'translateX(-50%)';
-
-                        return (
-                          <div
-                            className="absolute -top-3 z-20 pointer-events-none transition-all duration-150 ease-out"
-                            style={{
-                              left: `${leftPercent}%`,
-                              transform: transformStyle,
-                            }}
-                          >
-                            <div className="bg-surface/95 backdrop-blur-md border border-border px-3 py-1.5 rounded-xl shadow-[0_4px_16px_rgba(0,0,0,0.08)] text-[11px] space-y-0.5 whitespace-nowrap">
-                              <div className="font-bold text-foreground flex items-center gap-1">
-                                <span>📅</span>
-                                <span>{trendWeeks[hoveredWeekIndex].label}</span>
-                              </div>
-                              <div className="flex items-center gap-3 pt-0.5 text-[10.5px]">
-                                <span className="text-[#FF6B35] font-semibold flex items-center gap-1">
-                                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#FF6B35]" />
-                                  <span dangerouslySetInnerHTML={{ __html: i18nService.t('secondBrainTrendsTooltipInvoked', { count: trendWeeks[hoveredWeekIndex].usage_count }) }} />
-                                </span>
-                                <span className="text-[#2d8a5f] font-semibold flex items-center gap-1">
-                                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#2d8a5f]" />
-                                  <span dangerouslySetInnerHTML={{ __html: i18nService.t('secondBrainTrendsTooltipAdopted', { count: trendWeeks[hoveredWeekIndex].adopted_count }) }} />
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })()}
-                    </div>
-
-                    {/* X 轴日期刻度列表 */}
-                    <div className="flex items-center justify-between px-1 text-[10.5px] text-secondary">
-                      {trendWeeks.map((w, idx) => {
-                        const isHovered = hoveredWeekIndex === idx;
-                        const shortLabel = w.label.includes('~') ? w.label.split('~')[0].trim() : w.label;
-
-                        return (
-                          <button
-                            key={idx}
-                            type="button"
-                            onMouseEnter={() => setHoveredWeekIndex(idx)}
-                            onMouseLeave={() => setHoveredWeekIndex(null)}
-                            className={`text-center font-medium transition-colors cursor-pointer py-0.5 ${
-                              isHovered ? 'text-[#FF6B35] font-bold scale-105' : 'text-secondary/70 hover:text-foreground'
-                            }`}
-                            style={{ flex: 1 }}
-                            title={w.label}
-                          >
-                            {shortLabel}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })()}
-
-              <div
-                className="text-[11px] text-secondary pt-1"
-                dangerouslySetInnerHTML={{
-                  __html: i18nService.t('secondBrainTrendsSummaryFooter', {
-                    weeks: trendWeeks.length || 8,
-                    total: `<b class="text-[#FF6B35] font-bold">${stats?.adopted_count ?? 0}</b>`,
-                    thisWeek: `<b class="text-[#FF6B35] font-bold">${trendWeeks[trendWeeks.length - 1]?.usage_count ?? 0}</b>`,
-                  }),
-                }}
-              />
             </div>
           </div>
 
