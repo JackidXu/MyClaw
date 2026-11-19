@@ -208,8 +208,6 @@ import {
   MEDIA_TOKEN_DISPLAY_RE,
   type ToolGroupItem,
 } from './messageDisplayUtils';
-import { getLastMessageSpeechTurnIndex, isMessageSpeechTurnCompleted } from './messageSpeech/eligibility';
-import MessageSpeechSession from './messageSpeech/MessageSpeechSession';
 import { takePendingConversationSearch } from './pendingConversationSearch';
 import { parseProposedPlanBlock } from './proposedPlanParser';
 import { buildSelectedKitContextPrompt } from './selectedKitContextPrompt';
@@ -6261,7 +6259,6 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
       );
     }
 
-    const lastMessageSpeechTurnIndex = getLastMessageSpeechTurnIndex(turns);
     return turns.map((turn, index) => {
       const isLastTurn = index === turns.length - 1;
       const turnMessageIds = getTurnMessageIds(turn);
@@ -6377,12 +6374,7 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
                 }
                 awaitingRunStart={isAwaitingRunStart}
                 showCopyButtons={!isStreaming || !isLastTurn}
-                enableMessageSpeech={!remoteManaged && !isExportingImage && isMessageSpeechTurnCompleted(turn, {
-                  isLastTurn: index === lastMessageSpeechTurnIndex,
-                  sessionStatus: currentSession.status,
-                  isStreaming,
-                  hasRunningSubagents: turnHasRunningSubagents,
-                })}
+                enableMessageSpeech={false}
                 hiddenSystemMessageId={enterpriseQuotaPromptMessageId}
                 modelSwitchNoticeMessageId={
                   !isExportingImage && modelSwitchNotice?.sessionId === currentSession.id
@@ -7407,7 +7399,6 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
       </div>
       </div>
       <ImageStudioHost sessionId={currentSession.id} />
-      <MessageSpeechSession sessionId={currentSession.id} />
     </MarkdownLinkOpenerContext.Provider>
     </ArtifactFileShareProvider>
   );
