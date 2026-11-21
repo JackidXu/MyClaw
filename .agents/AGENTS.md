@@ -7,6 +7,7 @@
 - **模型中转站**：统一使用 **NewAPI**（代码中历史 `oneapi` 变量及配置均指代 NewAPI 中转服务）。底层接入火山方舟等。
 - **【核心安全铁律】NewAPI 数据库绝对纯只读**：严禁对 `oneapi` 执行写操作，仅限 `SELECT` 只读查询；业务数据持久化写入业务库（如 `heyclaw.vip_subscriptions`、`heyclaw.vip_devices`）。
 - **多模态与媒体生成中转**：图片/视频（Seedance、Seedream 等）与大模型推理均统一基于 NewAPI 协议透传与分发。
+- **Token 数特征**：系统日常业务场景下的 Token 数普遍比较大（日常十几万常态运行）。
 
 ### 1.2 数据目录与服务后端
 - **UserData 目录**：正式环境 macOS `~/Library/Application Support/HeyClaw`（Dev 对应 `HeyClawDev`）；Windows `%APPDATA%\HeyClaw[Dev]`。
