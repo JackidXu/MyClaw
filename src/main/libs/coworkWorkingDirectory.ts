@@ -34,7 +34,7 @@ const MISSING_PATH_ERROR_CODES = new Set(['ENOENT', 'ENOTDIR']);
 const WINDOWS_DRIVE_ROOT_PATTERN = /^[a-zA-Z]:\\?$/;
 
 export const getDefaultCoworkProjectDirectory = (): string =>
-  path.join(os.homedir(), 'lobsterai', 'project');
+  path.join(os.homedir(), 'heyclaw', 'project');
 
 const isMissingPathError = (error: unknown): boolean => {
   const code = (error as NodeJS.ErrnoException | null)?.code;
