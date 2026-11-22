@@ -1,0 +1,46 @@
+name: Test Certum Cloud Sign Probe
+
+on:
+  push:
+    paths:
+      - '.github/workflows/test-certum-cloud-sign.yml'
+  workflow_dispatch:
+
+jobs:
+  test-certum-cloud-sign:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # 快速准备一个真实的 Windows 可执行文件供签名测试（无需编译大项目，秒级准备）
+      - name: Prepare Test Windows Binary
+        run: |
+          mkdir -p dist
+          echo "[Setup] Downloading tiny official 7z Windows binary as signing probe target..."
+          curl -fSL "https://www.7-zip.org/a/7zr.exe" -o dist/test-probe.exe
+          ls -lh dist/test-probe.exe
+
+      # 使用 Certum 云签名直接签名
+      - name: Sign Binary via Certum SimplySign Cloud
+        uses: IvanHanloth/super-simply-sign@v1
+        with:
+          files: 'dist/test-probe.exe'
+          description: 'HeyClaw Windows Cloud Sign Probe'
+          url: 'https://heyclaw.com'
+          email: ${{ secrets.CERTUM_EMAIL }}
+          otp-seed: ${{ secrets.CERTUM_OTP_SECRET }}
+
+      # 验证产物并上传供查看数字签名属性
+      - name: Inspect Signed Binary
+        run: |
+          echo "=== Signed Binary Status ==="
+          ls -lh dist/test-probe.exe
+
+      - name: Upload Signed Test Binary Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: certum-signed-probe-exe
+          path: dist/test-probe.exe
+          retention-days: 1
