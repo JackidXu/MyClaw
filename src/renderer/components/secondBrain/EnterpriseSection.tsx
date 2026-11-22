@@ -11,13 +11,15 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { httpClient } from '../../services/httpClient';
 import Modal from '../common/Modal';
 
-const MAX_STAFF_LIMIT = 5;
+// 默认兜底最多支持 50 名员工席位（优先以后端接口返回为准）
+const DEFAULT_FALLBACK_STAFF_LIMIT = 50;
 
 interface EnterpriseInfo {
   id: number;
   name: string;
   ownerUserId: number;
   memberCount: number;
+  maxMembers?: number;
   quota: number;
   usedQuota: number;
   accountExpireAt: string | null;
@@ -92,7 +94,8 @@ export const EnterpriseSection: React.FC = () => {
   }, [fetchData]);
 
   const currentCount = members.length;
-  const isLimitReached = currentCount >= MAX_STAFF_LIMIT;
+  const maxStaffLimit = enterpriseInfo?.maxMembers && enterpriseInfo.maxMembers > 0 ? enterpriseInfo.maxMembers : DEFAULT_FALLBACK_STAFF_LIMIT;
+  const isLimitReached = currentCount >= maxStaffLimit;
   const enterpriseName = enterpriseInfo?.name || '企业';
   const suggestedPlaceholder = `例如: ${enterpriseName}-姓名`;
 
@@ -116,7 +119,7 @@ export const EnterpriseSection: React.FC = () => {
     if (!newUsername.trim()) return;
 
     if (isLimitReached) {
-      setAddErrorMessage(`企业席位已满（最多支持 ${MAX_STAFF_LIMIT} 名员工）`);
+      setAddErrorMessage(`企业席位已满（最多支持 ${maxStaffLimit} 名员工）`);
       return;
     }
 
@@ -259,10 +262,10 @@ export const EnterpriseSection: React.FC = () => {
               ? 'bg-surface-raised text-secondary border border-border/70 cursor-not-allowed opacity-60'
               : 'text-white bg-primary hover:bg-primary/90 active:scale-[0.98]'
           }`}
-          title={isLimitReached ? `已达到最大员工数限制（${MAX_STAFF_LIMIT}人）` : '添加新员工'}
+          title={isLimitReached ? `已达到最大员工数限制（${maxStaffLimit}人）` : '添加新员工'}
         >
           <PlusIcon className="w-3.5 h-3.5" />
-          <span>{isLimitReached ? `席位已满 (${MAX_STAFF_LIMIT}/${MAX_STAFF_LIMIT})` : '添加员工'}</span>
+          <span>{isLimitReached ? `席位已满 (${maxStaffLimit}/${maxStaffLimit})` : '添加员工'}</span>
         </button>
       </div>
 
@@ -300,7 +303,7 @@ export const EnterpriseSection: React.FC = () => {
           <div className="text-[11px] text-secondary font-medium mb-1">成员席位配额</div>
           <div className="h-6 flex items-baseline gap-1">
             <span className="text-sm font-bold text-foreground font-mono">{currentCount}</span>
-            <span className="text-xs text-secondary font-normal font-mono">/ {MAX_STAFF_LIMIT} 人</span>
+            <span className="text-xs text-secondary font-normal font-mono">/ {maxStaffLimit} 人</span>
           </div>
         </div>
 
@@ -436,7 +439,7 @@ export const EnterpriseSection: React.FC = () => {
                       </div>
                       <div>
                         <div className="font-semibold text-foreground">
-                          空席位 {MAX_STAFF_LIMIT - currentCount} 个
+                          空席位 {maxStaffLimit - currentCount} 个
                         </div>
                         <div className="text-[11px] text-secondary">等你分配</div>
                       </div>
