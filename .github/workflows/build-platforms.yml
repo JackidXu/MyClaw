@@ -168,65 +168,35 @@ jobs:
         env:
           LOBSTERAI_PORTABLE_PYTHON_ARCHIVE: ${{ secrets.WINDOWS_PYTHON_ARCHIVE }}
 
-      - name: Determine Windows Sign OSS Prefix
-        shell: bash
-        run: |
-          WIN_SIGN_OSS_PREFIX="heyclaw-dev/win-sign"
-          BRANCHES=$(git branch -r --contains HEAD || true)
-          echo "Branches containing current commit:"
-          echo "$BRANCHES"
-          if echo "$BRANCHES" | grep -qE "origin/main$|origin/main "; then
-            WIN_SIGN_OSS_PREFIX="heyclaw/win-sign"
-          fi
-          echo "Determined Windows Sign OSS Prefix: $WIN_SIGN_OSS_PREFIX"
-          echo "WIN_SIGN_OSS_PREFIX=$WIN_SIGN_OSS_PREFIX" >> $GITHUB_ENV
-
-      - name: Setup ossutil on Windows
-        shell: bash
-        run: |
-          echo "[Setup] Downloading official ossutil for Windows..."
-          curl -fSL --retry 3 "https://gosspublic.alicdn.com/ossutil/1.7.18/ossutil64.zip" -o ossutil64.zip || true
-          if [ -f ossutil64.zip ]; then
-            unzip -q -o ossutil64.zip || true
-            OSSUTIL_DIR=$(find . -maxdepth 1 -type d -name "ossutil64*" | head -n 1)
-            if [ -n "$OSSUTIL_DIR" ] && [ -d "$OSSUTIL_DIR" ]; then
-              FULL_PATH="$(pwd)/$OSSUTIL_DIR"
-              echo "$FULL_PATH" >> $GITHUB_PATH
-              echo "OSSUTIL_PATH=$FULL_PATH/ossutil64.exe" >> $GITHUB_ENV
-              echo "[Setup] Installed ossutil to PATH: $FULL_PATH"
-              "$FULL_PATH/ossutil64.exe" --version || true
-            fi
-          fi
-
       - name: Build Windows
         shell: bash
         run: |
-          # 如果 WIN_CSC_LINK 既不是有效文件，其长度又明显不是 Base64 证书内容（小于 100 字符），则彻底注销环境变量
-          if [[ ! -f "$WIN_CSC_LINK" && ${#WIN_CSC_LINK} -lt 100 ]]; then
-            echo "[Codesign] 检测到 WIN_CSC_LINK 为无效占位符 (${WIN_CSC_LINK})，彻底注销签名环境变量以跳过签名。"
-            unset WIN_CSC_LINK
-            unset CSC_LINK
-            unset WIN_CSC_KEY_PASSWORD
-            unset CSC_KEY_PASSWORD
-          fi
+          # 构建未签名安装包，稍后统一通过 Certum SimplySign 云端签名
+          unset WIN_CSC_LINK
+          unset CSC_LINK
+          unset WIN_CSC_KEY_PASSWORD
+          unset CSC_KEY_PASSWORD
+          unset WIN_SIGN_SERVICE_URL
+          unset WIN_SIGN_SERVICE_SECRET
+          unset WIN_SIGN_CERT_SHA1
           npm run dist:win -- --publish never
         env:
-          CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-          WIN_SIGN_CERT_SHA1: ${{ secrets.WIN_SIGN_CERT_SHA1 }}
-          WIN_SIGN_SERVICE_URL: ${{ secrets.WIN_SIGN_SERVICE_URL }}
-          WIN_SIGN_SERVICE_SECRET: ${{ secrets.WIN_SIGN_SERVICE_SECRET }}
-          WIN_SIGN_OSS_PREFIX: ${{ env.WIN_SIGN_OSS_PREFIX }}
-          OSS_ENDPOINT: ${{ secrets.OSS_ENDPOINT }}
-          OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
-          OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
-          OSS_BUCKET: ${{ secrets.OSS_BUCKET }}
           # electron-builder 下载依赖超时保护（防止大文件下载导致 408）
           ELECTRON_BUILDER_HTTP_TIMEOUT: 600000
 
-      
+      # 使用 Certum 云签名对 Windows 安装包与可执行文件直接签名并打上时间戳
+      - name: Sign Windows Artifacts via Certum SimplySign Cloud
+        uses: IvanHanloth/super-simply-sign@main
+        with:
+          files: |
+            release/*.exe
+            release/win-unpacked/*.exe
+          description: 'HeyClaw'
+          url: 'https://chaohui.ai'
+          email: ${{ secrets.CERTUM_EMAIL }}
+          otp-seed: ${{ secrets.CERTUM_OTP_SECRET }}
+          replace-existing-signature: true
+
       - uses: actions/upload-artifact@v4
         with:
           name: windows-build
