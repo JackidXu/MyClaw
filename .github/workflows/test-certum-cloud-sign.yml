@@ -24,13 +24,14 @@ jobs:
 
       # 使用 Certum 云签名直接签名
       - name: Sign Binary via Certum SimplySign Cloud
-        uses: IvanHanloth/super-simply-sign@v1
+        uses: IvanHanloth/super-simply-sign@main
         with:
           files: 'dist/test-probe.exe'
           description: 'HeyClaw Windows Cloud Sign Probe'
           url: 'https://heyclaw.com'
           email: ${{ secrets.CERTUM_EMAIL }}
           otp-seed: ${{ secrets.CERTUM_OTP_SECRET }}
+          replace-existing-signature: true
 
       # 验证产物并上传供查看数字签名属性
       - name: Inspect Signed Binary
