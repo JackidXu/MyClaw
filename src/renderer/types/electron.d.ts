@@ -695,6 +695,13 @@ interface IElectronAPI {
   platform: string;
   arch: string;
   getDeviceInfo: () => Promise<{ deviceId: string; platform: string; hostname: string }>;
+  bluetoothDevice: {
+    onDevicesDiscovered: (
+      callback: (devices: Array<{ deviceId: string; deviceName: string; deviceMac: string }>) => void
+    ) => () => void;
+    selectDevice: (deviceId: string) => Promise<void>;
+    cancelDevice: () => Promise<void>;
+  };
   store: {
     get: (key: string) => Promise<any>;
     set: (key: string, value: any) => Promise<void>;
