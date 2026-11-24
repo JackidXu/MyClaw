@@ -443,11 +443,28 @@ export function migrateAgentModelRefs(options: {
       continue;
     }
 
-    if (qualification.status !== 'qualified' || qualification.primaryModel === agent.model.trim()) {
+    // 检查模型是否在当前可用 Provider 列表中真实有效
+    let targetModel = qualification.status === 'qualified' ? qualification.primaryModel : '';
+    if (targetModel && !isAutoModelRef(targetModel)) {
+      const parsed = parsePrimaryModelRef(targetModel);
+      const existsInProviders = parsed
+        ? (availableProviders[parsed.providerId]?.models ?? []).some((m) => m.id === parsed.modelId)
+        : false;
+
+      // 如果绑定的模型在当前可用列表中完全不存在（如残留的幽灵模型），进行自愈纠偏
+      if (!existsInProviders) {
+        console.warn(
+          `[Main] Agent "${agent.id}" model "${targetModel}" is not available in current providers. Repairing to default "${defaultModelRef}".`,
+        );
+        targetModel = agent.id === 'main' ? '' : defaultModelRef;
+      }
+    }
+
+    if (targetModel === agent.model.trim()) {
       continue;
     }
 
-    updateAgent(agent.id, { model: qualification.primaryModel });
+    updateAgent(agent.id, { model: targetModel });
     changed += 1;
   }
 

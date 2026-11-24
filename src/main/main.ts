@@ -16982,10 +16982,20 @@ if (!gotTheLock) {
     // can match lobsterai-server models without falling back.
     profiler.mark('agentModelMigration');
     const defaultAgentModelRef = resolveDefaultAgentModelRef();
-    const backfilledAgentModels = getCoworkStore().backfillEmptyAgentModels(defaultAgentModelRef);
+    const availableProviders = buildAvailableOpenClawProviders();
+
+    // 仅当 defaultAgentModelRef 存在且真实存在于可用 Provider 模型列表中时才执行回填，
+    // 避免未登录或无有效模型时将无效的兜底模型写入数据库
+    const defaultModelValid = Boolean(defaultAgentModelRef) && Object.values(availableProviders).some((p) => (
+      p.models.some((m) => defaultAgentModelRef.endsWith(`/${m.id}`) || defaultAgentModelRef === m.id)
+    ));
+    const backfilledAgentModels = defaultModelValid
+      ? getCoworkStore().backfillEmptyAgentModels(defaultAgentModelRef)
+      : 0;
+
     const qualifiedAgentModels = migrateAgentModelRefs({
       defaultModelRef: defaultAgentModelRef,
-      availableProviders: buildAvailableOpenClawProviders(),
+      availableProviders,
       agents: getAgentManager().listAgents(),
       updateAgent: (id, patch) => getCoworkStore().updateAgent(id, patch),
     });

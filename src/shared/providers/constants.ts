@@ -379,9 +379,7 @@ const PROVIDER_DEFINITIONS = [
     codingPlanSupported: false,
     region: 'china',
     enPriority: 0,
-    defaultModels: [
-      { id: 'HeyClaw', name: 'HeyClaw', supportsImage: true },
-    ],
+    defaultModels: [],
   },
   {
     id: ProviderName.Qianfan,
