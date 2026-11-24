@@ -350,7 +350,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
       setBleFiles(list);
       setBleFilesPage(1);
     } catch (err: any) {
-      onShowToast('error', i18nService.t('recordingCardFetchFilesFailedToast', { msg: err?.message || '' }));
+      onShowToast('error', i18nService.t('recordingCardFetchFilesFailedToast', { error: err?.message || '' }));
     } finally {
       setBleLoadingFiles(false);
     }
@@ -384,7 +384,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
       setShowUnbindModal(false);
       onShowToast('success', i18nService.t('recordingCardUnboundToast'));
     } catch (err: any) {
-      onShowToast('error', i18nService.t('recordingCardUnbindFailedToast', { msg: err?.message || String(err) }));
+      onShowToast('error', i18nService.t('recordingCardUnbindFailedToast', { error: err?.message || String(err) }));
     }
   };
 
@@ -487,7 +487,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
       if (!wifiClosed) {
         await handleCloseWifi();
       }
-      onShowToast('error', i18nService.t('recordingCardSaveFailedToast', { msg: err?.message || String(err) }));
+      onShowToast('error', i18nService.t('recordingCardSaveFailedToast', { error: err?.message || String(err) }));
     } finally {
       if (removeProgressListener) {
         removeProgressListener();
@@ -586,7 +586,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
       if (!wifiClosed) {
         await handleCloseWifi();
       }
-      onShowToast('error', i18nService.t('recordingCardBatchSaveExceptionToast', { msg: err?.message || String(err) }));
+      onShowToast('error', i18nService.t('recordingCardBatchSaveExceptionToast', { error: err?.message || String(err) }));
     } finally {
       if (removeProgressListener) {
         removeProgressListener();
@@ -633,7 +633,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
         setShowWifiSyncModal(false);
         isWifiFlowRunningRef.current = false;
         pendingSyncActionRef.current = null;
-        onShowToast('error', i18nService.t('recordingCardWakeWifiFailedToast', { msg: err?.message || String(err) }));
+        onShowToast('error', i18nService.t('recordingCardWakeWifiFailedToast', { error: err?.message || String(err) }));
         return;
       } finally {
         setOpeningWifiAp(false);
@@ -743,7 +743,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
       }
     } catch (err: any) {
       isWifiFlowRunningRef.current = false;
-      onShowToast('error', i18nService.t('recordingCardEstablishConnectionFailedToast', { msg: err?.message || String(err) }));
+      onShowToast('error', i18nService.t('recordingCardEstablishConnectionFailedToast', { error: err?.message || String(err) }));
     } finally {
       setWifiConnecting(false);
     }
@@ -780,7 +780,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
         // 容量刷新失败不影响删除结果
       }
     } catch (err: any) {
-      onShowToast('error', i18nService.t('recordingCardDeleteHardwareFileFailedToast', { msg: err?.message || String(err) }));
+      onShowToast('error', i18nService.t('recordingCardDeleteHardwareFileFailedToast', { error: err?.message || String(err) }));
     } finally {
       setDeletingFileName(null);
       setDeleteConfirmFile(null);
@@ -923,7 +923,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
               <div>
                 <h3 className="text-[15px] font-semibold text-[#1c1c1e]">{i18nService.t('recordingCardModalTitle')}</h3>
                 <div className="text-[12px] text-[#8b8b90] mt-0.5">
-                  <span dangerouslySetInnerHTML={{ __html: i18nService.t('recordingCardModalStatsText', { total: bleFiles.length, pending: unsavedFiles.length }) }} />
+                  <span dangerouslySetInnerHTML={{ __html: i18nService.t('recordingCardModalStatsText', { total: bleFiles.length, unsaved: unsavedFiles.length }) }} />
                 </div>
               </div>
             </div>
@@ -1055,7 +1055,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
           {bleFilesLastPage > 1 && (
             <div className="flex items-center justify-between px-6 py-3 border-t border-[#ebebee] text-[12px] select-none shrink-0 bg-[#fafafb]">
               <span className="text-[#8b8b90] text-[12px]">
-                <span dangerouslySetInnerHTML={{ __html: i18nService.t('recordingCardModalPageText', { page: bleFilesPage, totalPages: bleFilesLastPage }) }} />
+                <span dangerouslySetInnerHTML={{ __html: i18nService.t('recordingCardModalPageText', { page: bleFilesPage, lastPage: bleFilesLastPage }) }} />
               </span>
               <div className="flex items-center gap-2">
                 <button
@@ -1214,7 +1214,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
         >
           <h4 className="text-[14px] font-semibold text-[#1c1c1e] mb-2">{i18nService.t('recordingCardUnbindBtn')}</h4>
           <p className="text-[12px] text-[#8b8b90] leading-relaxed mb-4">
-            {i18nService.t('recordingCardDeleteHardwareModalDesc')}
+            {i18nService.t('recordingCardUnbindModalDesc')}
           </p>
           <div className="flex justify-end gap-2">
             <button

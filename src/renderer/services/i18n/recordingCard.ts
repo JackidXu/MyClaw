@@ -13,6 +13,7 @@ export interface RecordingCardTranslations {
   recordingCardTranscribedCountLocal: string;
   recordingCardDisconnectBtn: string;
   recordingCardUnbindBtn: string;
+  recordingCardUnbindModalDesc: string;
   recordingCardConnectBtn: string;
 
   // Hardware Panel
@@ -225,6 +226,7 @@ export const recordingCardI18n: { zh: RecordingCardTranslations; en: RecordingCa
     recordingCardTranscribedCountLocal: '已转写 {count} 条 · 都只存在本机',
     recordingCardDisconnectBtn: '断开连接',
     recordingCardUnbindBtn: '解除绑定',
+    recordingCardUnbindModalDesc: '解除绑定后将清除录音卡本地配对信息。确定解除绑定吗？',
     recordingCardConnectBtn: '连接录音卡',
 
     // Hardware Panel
@@ -435,6 +437,7 @@ export const recordingCardI18n: { zh: RecordingCardTranslations; en: RecordingCa
     recordingCardTranscribedCountLocal: '{count} Transcribed · Saved locally only',
     recordingCardDisconnectBtn: 'Disconnect',
     recordingCardUnbindBtn: 'Unbind',
+    recordingCardUnbindModalDesc: 'Unbinding will clear local pairing information for the device. Are you sure you want to unbind?',
     recordingCardConnectBtn: 'Connect Device',
 
     // Hardware Panel

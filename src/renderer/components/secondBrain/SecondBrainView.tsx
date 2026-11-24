@@ -390,7 +390,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
       showToast('success', item.replaces ? i18nService.t('secondBrainAdoptSuccessOverrideToast') : i18nService.t('secondBrainAdoptSuccessToast'));
     } catch (err: any) {
       console.warn('[SecondBrainView] 采纳失败:', err);
-      showToast('error', i18nService.t('secondBrainAdoptFailToast', { msg: err?.message || '' }));
+      showToast('error', i18nService.t('secondBrainAdoptFailToast', { error: err?.message || '' }));
     } finally {
       setActioning(item.node_id, false);
     }
@@ -417,7 +417,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
       showToast('success', item.replaces ? i18nService.t('secondBrainRejectSuccessKeepToast') : i18nService.t('secondBrainRejectSuccessToast'));
     } catch (err: any) {
       console.warn('[SecondBrainView] 驳回失败:', err);
-      showToast('error', i18nService.t('secondBrainRejectFailToast', { msg: err?.message || '' }));
+      showToast('error', i18nService.t('secondBrainRejectFailToast', { error: err?.message || '' }));
     } finally {
       setActioning(item.node_id, false);
     }
@@ -611,7 +611,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
       showToast('success', i18nService.t('secondBrainPersonaSaveSuccessToast'));
     } catch (err: any) {
       console.warn('[SecondBrainView] 保存人设失败:', err);
-      showToast('error', i18nService.t('secondBrainPersonaSaveFailToast', { msg: err?.message || '' }));
+      showToast('error', i18nService.t('secondBrainPersonaSaveFailToast', { error: err?.message || '' }));
     } finally {
       setSavingPersona(false);
     }
@@ -771,14 +771,14 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
       showToast(
         'error',
         i18nService.t('secondBrainFileFormatUnsupportedToast', {
-          files: unsupportedFiles.join(', '),
-          formats: SECOND_BRAIN_SUPPORTED_EXTENSIONS.join('、'),
+          name: unsupportedFiles.join(', '),
+          exts: SECOND_BRAIN_SUPPORTED_EXTENSIONS.join('、'),
         }),
       );
     }
 
     if (oversizedFiles.length > 0) {
-      showToast('error', i18nService.t('secondBrainFileSizeExceededToast', { files: oversizedFiles.join(', ') }));
+      showToast('error', i18nService.t('secondBrainFileSizeExceededToast', { name: oversizedFiles.join(', ') }));
     }
 
     if (validFiles.length === 0) return;
@@ -815,14 +815,14 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
         showToast(
           'info',
           i18nService.t('secondBrainUploadMaxBatchToast', {
-            uploaded: result.realUploadedCount,
+            count: result.realUploadedCount,
             max: SECOND_BRAIN_MAX_BATCH_COUNT,
-            remaining: result.truncatedCount,
+            truncated: result.truncatedCount,
           }),
         );
       } else if (result.realUploadedCount > 0 && result.skippedCount > 0) {
         showToast('success', i18nService.t('secondBrainUploadSuccessSkippedToast', {
-          uploaded: result.realUploadedCount,
+          count: result.realUploadedCount,
           skipped: result.skippedCount,
         }));
       } else if (result.realUploadedCount > 0) {
@@ -844,8 +844,8 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
       const failSummary = result.failedItems.map((f) => `${f.name} (${f.error})`).join('；');
       if (result.realUploadedCount > 0) {
         showToast('error', i18nService.t('secondBrainUploadPartialFailToast', {
-          uploaded: result.realUploadedCount,
-          failedCount: result.failedItems.length,
+          count: result.realUploadedCount,
+          failCount: result.failedItems.length,
           summary: failSummary,
         }));
       } else {
@@ -872,7 +872,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
       }
     } catch (err: any) {
       console.warn('[SecondBrainView] 获取下载地址失败:', err);
-      showToast('error', i18nService.t('secondBrainDownloadFailToast', { msg: err?.message || '' }));
+      showToast('error', i18nService.t('secondBrainDownloadFailToast', { error: err?.message || '' }));
     } finally {
       setDownloadingId(null);
     }
@@ -893,7 +893,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
       showToast('success', i18nService.t('secondBrainReExtractSuccessToast'));
     } catch (err: any) {
       console.warn('[SecondBrainView] 重新萃取失败:', err);
-      showToast('error', i18nService.t('secondBrainReExtractFailToast', { msg: err?.message || '' }));
+      showToast('error', i18nService.t('secondBrainReExtractFailToast', { error: err?.message || '' }));
     } finally {
       setReExtractingId(null);
     }
@@ -921,7 +921,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
       showToast('success', i18nService.t('secondBrainDeleteSuccessToast', { type: typeLabel, name: docName }));
     } catch (err: any) {
       console.warn('[SecondBrainView] 删除失败:', err);
-      showToast('error', i18nService.t('secondBrainDeleteFailToast', { msg: err?.message || '' }));
+      showToast('error', i18nService.t('secondBrainDeleteFailToast', { error: err?.message || '' }));
     } finally {
       setDeleting(false);
     }
@@ -1057,7 +1057,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                     </button>
                   </div>
                   <p className="text-xs text-secondary">
-                    {i18nService.t('secondBrainPersonaRequiredNotice')} · <span dangerouslySetInnerHTML={{ __html: i18nService.t('secondBrainStatAdoptedCognition', { count: stats?.adopted_count ?? 0 }) }} />
+                    {i18nService.t('secondBrainPersonaRequiredNotice')} · <span dangerouslySetInnerHTML={{ __html: i18nService.t('secondBrainStatAdoptedCountNotice', { count: stats?.adopted_count ?? 0 }) }} />
                   </p>
                 </div>
               </div>
@@ -1119,7 +1119,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
 
               {/* 格子 3：已形成认知 */}
               <div className="bg-surface border border-border rounded-xl p-3.5 shadow-2xs transition hover:border-border/80">
-                <div className="text-[11px] text-secondary font-medium mb-1">{i18nService.t('secondBrainStatAdoptedCognition', { count: '' }).replace(/<[^>]+>/g, '')}</div>
+                <div className="text-[11px] text-secondary font-medium mb-1">{i18nService.t('secondBrainStatAdoptedCognition')}</div>
                 <div className="text-[22px] font-extrabold text-foreground leading-tight flex items-baseline">
                   {statsLoading ? '--' : stats?.adopted_count ?? 0}
                   <span className="text-xs font-semibold text-secondary ml-1">{i18nService.t('secondBrainStatAdoptedItems')}</span>
@@ -1320,7 +1320,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                 <div className="h-10 w-10 rounded-full bg-surface-raised border border-border flex items-center justify-center mb-2 text-secondary font-bold">
                   ✓
                 </div>
-                <p className="text-xs font-semibold text-foreground">{i18nService.t('secondBrainPendingEmptyCount')}</p>
+                <p className="text-xs font-semibold text-foreground">{i18nService.t('secondBrainPendingEmptyTitle')}</p>
                 <p className="text-[11px] text-secondary mt-0.5">{i18nService.t('secondBrainPendingEmptySubtitle')}</p>
               </div>
             )}
@@ -1365,10 +1365,10 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                           </span>
                         </div>
                         <span className="text-[11px] text-secondary ml-auto">
-                          {item.source_type === 1 && (item.source_name ? i18nService.t('secondBrainPendingSourceNamed', { name: item.source_name }) : i18nService.t('secondBrainPendingSourceDoc'))}
-                          {item.source_type === 2 && (item.source_name ? i18nService.t('secondBrainPendingSourceNamed', { name: item.source_name }) : i18nService.t('secondBrainPendingSourceChat'))}
-                          {item.source_type === 3 && (item.source_name ? i18nService.t('secondBrainPendingSourceNamed', { name: item.source_name }) : i18nService.t('secondBrainPendingSourceAudio'))}
-                          {item.source_type === 9 && (item.source_name ? i18nService.t('secondBrainPendingSourceNamed', { name: item.source_name }) : i18nService.t('secondBrainPendingSourceGeneral'))}
+                          {item.source_type === 1 && (item.source_name ? i18nService.t('secondBrainPendingSourceNamed', { source: item.source_name }) : i18nService.t('secondBrainPendingSourceDoc'))}
+                          {item.source_type === 2 && (item.source_name ? i18nService.t('secondBrainPendingSourceNamed', { source: item.source_name }) : i18nService.t('secondBrainPendingSourceChat'))}
+                          {item.source_type === 3 && (item.source_name ? i18nService.t('secondBrainPendingSourceNamed', { source: item.source_name }) : i18nService.t('secondBrainPendingSourceAudio'))}
+                          {item.source_type === 9 && (item.source_name ? i18nService.t('secondBrainPendingSourceNamed', { source: item.source_name }) : i18nService.t('secondBrainPendingSourceGeneral'))}
                           {` · ${formatTimestamp(item.create_time)}`}
                         </span>
                       </div>
@@ -1682,7 +1682,7 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
                                   </span>
                                 )}
                                 {doc.extract_status === DOCUMENT_STATUS.Failed && (
-                                  <span className="text-destructive font-semibold">{i18nService.t('secondBrainReExtractFailToast', { msg: '' }).split(':')[0]}</span>
+                                  <span className="text-destructive font-semibold">{i18nService.t('secondBrainReExtractFailToast', { error: '' }).split(':')[0]}</span>
                                 )}
                               </div>
                             </div>
@@ -2055,10 +2055,13 @@ const SecondBrainView: React.FC<SecondBrainViewProps> = ({
           >
             <div className="space-y-1.5">
               <h3 className="text-sm font-bold text-foreground">
-                {i18nService.t('secondBrainDeleteConfirmTitle', { type: deletingDoc.type === 'chat' ? i18nService.t('secondBrainTabChat') : i18nService.t('secondBrainTabDocument') })}
+                {i18nService.t('secondBrainDeleteConfirmTitle')}
               </h3>
               <p className="text-xs text-secondary">
-                {i18nService.t('secondBrainDeleteConfirmDesc', { name: deletingDoc.name })}
+                {i18nService.t('secondBrainDeleteConfirmDesc', {
+                  type: deletingDoc.type === 'chat' ? i18nService.t('secondBrainTabChat') : i18nService.t('secondBrainTabDocument'),
+                  name: deletingDoc.name,
+                })}
               </p>
             </div>
             <div className="flex items-center justify-end gap-2">

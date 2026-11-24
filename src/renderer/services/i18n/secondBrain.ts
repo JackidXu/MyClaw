@@ -88,6 +88,7 @@ export interface SecondBrainTranslations {
   secondBrainStatMaterialsCount: string;
   secondBrainStatUploads7d: string;
   secondBrainStatAdoptedCognition: string;
+  secondBrainStatAdoptedCountNotice: string;
   secondBrainStatAdoptedItems: string;
   secondBrainStatYesterdayNew: string;
   secondBrainStatPendingReview: string;
@@ -141,6 +142,7 @@ export interface SecondBrainTranslations {
   secondBrainPendingEditBtn: string;
   secondBrainPendingCancelEdit: string;
   secondBrainPendingFinishEdit: string;
+  secondBrainPendingEmptyTitle: string;
   secondBrainPendingEmptyCount: string;
 
   // Materials Area
@@ -298,6 +300,7 @@ export const secondBrainI18n: { zh: SecondBrainTranslations; en: SecondBrainTran
     secondBrainStatMaterialsCount: '个',
     secondBrainStatUploads7d: '近 7 日上传 {count} 个文件',
     secondBrainStatAdoptedCognition: '已形成认知',
+    secondBrainStatAdoptedCountNotice: '已形成 <b className="text-foreground font-bold">{count}</b> 条标准决策',
     secondBrainStatAdoptedItems: '条',
     secondBrainStatYesterdayNew: '昨日新增 +{count} 条',
     secondBrainStatPendingReview: '待确认认知',
@@ -351,6 +354,7 @@ export const secondBrainI18n: { zh: SecondBrainTranslations; en: SecondBrainTran
     secondBrainPendingEditBtn: '编辑',
     secondBrainPendingCancelEdit: '取消编辑',
     secondBrainPendingFinishEdit: '完成编辑',
+    secondBrainPendingEmptyTitle: '暂无待审核认知',
     secondBrainPendingEmptyCount: '{count} 条待确认认知',
 
     // Materials Area
@@ -506,6 +510,7 @@ export const secondBrainI18n: { zh: SecondBrainTranslations; en: SecondBrainTran
     secondBrainStatMaterialsCount: 'Items',
     secondBrainStatUploads7d: '{count} uploaded in 7 days',
     secondBrainStatAdoptedCognition: 'Formed Cognitions',
+    secondBrainStatAdoptedCountNotice: '<b className="text-foreground font-bold">{count}</b> standard decisions formed',
     secondBrainStatAdoptedItems: 'Items',
     secondBrainStatYesterdayNew: '+{count} added yesterday',
     secondBrainStatPendingReview: 'Pending Confirmation',
@@ -559,6 +564,7 @@ export const secondBrainI18n: { zh: SecondBrainTranslations; en: SecondBrainTran
     secondBrainPendingEditBtn: 'Edit',
     secondBrainPendingCancelEdit: 'Cancel Edit',
     secondBrainPendingFinishEdit: 'Finish Edit',
+    secondBrainPendingEmptyTitle: 'No Pending Cognitions',
     secondBrainPendingEmptyCount: '{count} cognitions pending review',
 
     // Materials Area
