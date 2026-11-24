@@ -8,6 +8,8 @@
  */
 import { v5 as uuidv5 } from 'uuid';
 
+import { httpClient } from './httpClient';
+
 // ─────────────────────────────────────────────
 // Web Bluetooth API 类型兼容声明
 // ─────────────────────────────────────────────
@@ -80,6 +82,25 @@ export interface HandshakeResult {
 
 // HeyClaw 录音卡专属命名空间 (固定不变，任何情况下不得修改)
 export const RECORDING_CARD_UUID_NAMESPACE = 'a3f8e2c1-7d4b-5e9f-b0c2-8d1a6e3f9047';
+
+/** 
+ * 历史自愈候选名单（用于在静默遇到 0x01 时尝试自动认领与擦除配对码）
+ * 优先级梯队：
+ * 1. 【第一优先级】已确认拥有录音卡的重点学员：[428, 444, 438, 446, 471]
+ * 2. 【第二优先级】当期其余学员（426~471，精确剔除测试/无效账号：465~469, 432~436, 449, 451, 454）
+ * 3. 【第三优先级】当时在场工作人员（可能性低，兜底排在最后）：[4, 18, 19, 27]
+ */
+const RECOVERY_CANDIDATES: (string | number)[] = [
+  // 1. 重点持卡学员
+  428, 444, 438, 446, 471,
+  // 2. 当期其余学员
+  426, 427, 429, 430, 431,
+  437, 439, 440, 441, 442, 443, 445, 447, 448,
+  450, 452, 453, 455, 456, 457, 458, 459, 460, 461, 462, 463, 464,
+  470,
+  // 3. 在场工作人员（兜底放最后）
+  4, 18, 19, 27,
+];
 
 /**
  * 根据 heyclaw_user_id 生成确定性 APP UUID
@@ -396,7 +417,10 @@ async function connectAndHandshake(
   const wifiPassword = deviceUuid ? deviceUuid.replace(/-/g, '').slice(0, 8) : '';
   logBle('info', `🎉 握手全流程圆满成功！设备已就绪 (SN: ${sn})，正在读取真实硬件电量与存储容量...`);
 
-  // 握手成功后，真实读取硬件电量与存储容量
+  // 握手成功后保护间隔：留出 150ms 让芯片固件写 Flash 就绪，防止后续查询丢帧
+  await new Promise((r) => setTimeout(r, 150));
+
+  // 串行链式读取硬件电量与存储容量
   let battery = 100;
   let freeKb = 0;
   let totalKb = 0;
@@ -406,6 +430,9 @@ async function connectAndHandshake(
   } catch (err) {
     logBle('warn', `获取电量失败 (非致命): ${err}`);
   }
+
+  await new Promise((r) => setTimeout(r, 80));
+
   try {
     const storage = await getStorageCapacity();
     freeKb = storage.freeKb;
@@ -426,18 +453,25 @@ async function connectAndHandshake(
  *
  * @param userId heyclaw_user_id
  * @param onDisconnected 设备物理断开时的回调
+ * @param forceScan 是否强制唤起系统扫描与设备选择弹窗（用户在界面显式点击时为 true）
  */
 export async function handshake(
   userId: string | number,
-  onDisconnected?: () => void
+  onDisconnected?: () => void,
+  forceScan = true
 ): Promise<HandshakeResult> {
-  // 1. 优先尝试复用当前会话已授权的历史设备，无需重复唤起系统选择弹窗
-  if (cachedDevice) {
-    try {
-      logBle('info', `检测到已授权的设备 (${cachedDevice.name || cachedDevice.id})，正在尝试直接回连...`);
-      return await connectAndHandshake(cachedDevice, userId, onDisconnected);
-    } catch (cachedErr: any) {
-      logBle('warn', `直接回连历史设备未成功 (${cachedErr?.message})，正在尝试通过系统授权列表回连...`);
+  // 1. 若为用户主动发起的连接请求（forceScan = true），必须彻底清除缓存，100% 触发弹窗选择
+  if (forceScan) {
+    cachedDevice = null;
+  } else {
+    // 仅在非用户主动点击的后台恢复通道，才尝试快速回连
+    if (cachedDevice) {
+      try {
+        logBle('info', `检测到已授权的设备 (${cachedDevice.name || cachedDevice.id})，正在尝试静默回连...`);
+        return await connectAndHandshakeWithAutoRecover(cachedDevice, userId, onDisconnected);
+      } catch (cachedErr: any) {
+        logBle('warn', `直接回连历史设备未成功 (${cachedErr?.message})`);
+      }
     }
   }
 
@@ -446,21 +480,21 @@ export async function handshake(
     throw new Error('当前运行环境不支持 Web Bluetooth API');
   }
 
-  // 2. 尝试从 Web Bluetooth 授权列表中获取已配对过的录音卡，直接静默连接
-  if (typeof (bluetooth as any).getDevices === 'function') {
+  // 2. 非强制扫描时才尝试 getDevices()
+  if (!forceScan && typeof (bluetooth as any).getDevices === 'function') {
     try {
       const authorizedDevices: BluetoothDevice[] = await (bluetooth as any).getDevices();
       const matched = authorizedDevices.find(
         (d) => d.name?.startsWith('M1') || d.name?.startsWith('M2') || d.name?.startsWith('T240')
       );
       if (matched) {
-        logBle('info', `从系统授权列表中匹配到录音卡: ${matched.name} (${matched.id})，无感直接连接...`);
+        logBle('info', `从系统授权列表中匹配到录音卡: ${matched.name} (${matched.id})，静默直接连接...`);
         cachedDevice = matched;
         cachedUserId = userId;
         cachedOnDisconnected = onDisconnected;
         isWifiTransferring = false;
         try {
-          return await connectAndHandshake(matched, userId, onDisconnected);
+          return await connectAndHandshakeWithAutoRecover(matched, userId, onDisconnected);
         } catch (authErr: any) {
           logBle('warn', `通过系统授权设备回连失败 (${authErr?.message})，回退到扫描弹窗...`);
         }
@@ -486,31 +520,146 @@ export async function handshake(
   cachedOnDisconnected = onDisconnected;
   isWifiTransferring = false;
 
-  try {
-    return await connectAndHandshake(device, userId, onDisconnected);
-  } catch (err: any) {
-    const isGattDisconnected =
-      err?.message?.includes('GATT Server is disconnected') ||
-      err?.message?.includes('GATT operation failed') ||
-      err?.name === 'NetworkError';
+  // 严格执行 0 盲目重试原则：连接或握手异常时，严禁死循环重复冲撞芯片，直接向上抛出
+  return await connectAndHandshakeWithAutoRecover(device, userId, onDisconnected);
+}
 
-    if (isGattDisconnected) {
-      let lastErr = err;
-      for (let retry = 1; retry <= 2; retry++) {
-        logBle(
-          'warn',
-          `连接录音卡触发硬件切模复位 (${lastErr?.message})，正在自动无感重试 (第 ${retry}/2 次，等待 ${retry * 800}ms)...`
-        );
-        await new Promise((resolve) => setTimeout(resolve, retry * 800));
-        try {
-          return await connectAndHandshake(device, userId, onDisconnected);
-        } catch (retryErr: any) {
-          lastErr = retryErr;
+/** 记录主进程扫描报告的真实物理 MAC 映射表 (避免 Chromium 生成随机 Hash device.id 导致 MAC 失真) */
+let knownPhysicalMac: string | null = null;
+
+export function setKnownPhysicalMac(mac: string | null) {
+  knownPhysicalMac = mac ? mac.replace(/[^a-fA-F0-9]/g, '').toUpperCase() : null;
+}
+
+/**
+ * 从设备名称或标识提取规范化物理 MAC（优先使用主进程扫描发现的权威物理 MAC）
+ */
+export function extractDeviceMac(device: BluetoothDevice): string {
+  if (knownPhysicalMac) {
+    return knownPhysicalMac;
+  }
+  const name = device.name || '';
+  const match = name.match(/\(([a-fA-F0-9:]{4,17})\)/);
+  if (match) {
+    return match[1].replace(/[^a-fA-F0-9]/g, '').toUpperCase();
+  }
+  // 回退取 device.id 清洗后的规范化标识
+  const cleanId = (device.id || '').replace(/[^a-fA-F0-9]/g, '').toUpperCase();
+  return cleanId.length >= 12 ? cleanId.slice(-12) : cleanId;
+}
+
+/**
+ * 包装 connectAndHandshake，具备云端仲裁静默自愈能力：
+ * 当遭遇 0x01（设备已绑定其他账号）时，向云端申请自愈仲裁：
+ * - 若云端查无记录（第一批黑户/误连卡）或属于本人：下发候选人静默解绑自愈
+ * - 若云端已有其他合法归属：坚决拦截，报错提示已被绑定
+ */
+async function connectAndHandshakeWithAutoRecover(
+  device: BluetoothDevice,
+  userId: string | number,
+  onDisconnected?: () => void
+): Promise<HandshakeResult> {
+  const deviceMac = extractDeviceMac(device);
+
+  try {
+    const res = await connectAndHandshake(device, userId, onDisconnected);
+    // 连接成功后，异步向云端同步资产权威台账
+    void httpClient.request({
+      url: '/api/client/recording-card/bind',
+      method: 'POST',
+      body: {
+        deviceMac,
+        deviceName: res.deviceName,
+        sn: res.sn,
+      },
+    }).catch((err) => logBle('warn', `上报录音卡台账异常 (非致命): ${err?.message || err}`));
+    return res;
+  } catch (err: any) {
+    const isUuidBound = err?.message?.includes('APP UUID 校验失败');
+    if (!isUuidBound) {
+      throw err;
+    }
+
+    logBle('warn', `🚨 遇到 0x01 (APP UUID 校验失败)，正在向云端发起设备 (${deviceMac}) 权威自愈仲裁...`);
+
+    let canRecover = false;
+    let dynamicCandidates: (string | number)[] = [];
+
+    try {
+      const arbitrateResp = await httpClient.request({
+        url: '/api/client/recording-card/arbitrate-recovery',
+        method: 'POST',
+        body: { deviceMac },
+      });
+
+      if (arbitrateResp.ok && arbitrateResp.data?.success && arbitrateResp.data?.data) {
+        const arbitrateData = arbitrateResp.data.data;
+        canRecover = Boolean(arbitrateData.canRecover);
+        if (Array.isArray(arbitrateData.candidates) && arbitrateData.candidates.length > 0) {
+          dynamicCandidates = arbitrateData.candidates;
         }
       }
-      throw lastErr;
+    } catch (arbErr: any) {
+      logBle('warn', `云端自愈仲裁请求失败，回退到离线白名单: ${arbErr?.message || arbErr}`);
+      // 若因网络原因无法请求云端，保守允许尝试本地内置候选人
+      canRecover = true;
     }
-    throw err;
+
+    // 权威防线：若云端明确裁决该卡已被其他用户登记绑定，绝对严禁自愈抢夺！
+    if (!canRecover) {
+      logBle('error', `🚫 云端仲裁拒绝自愈：录音卡 (${deviceMac}) 已被其他合法账号登记，禁止认领！`);
+      throw new Error('[BleV2] 该录音卡已被其他账号绑定，请使用原账号解绑');
+    }
+
+    logBle('info', `✅ 云端仲裁准许自愈认领 (黑户/历史误连设备)，开始执行纯静默解绑...`);
+
+    // 芯片回绝 0x01 后会立即主动断开蓝牙链路，必须主动显式断开并退避 600ms，等待操作系统栈与芯片彻底就绪
+    disconnect();
+    await new Promise((r) => setTimeout(r, 600));
+
+    const poolCandidates = dynamicCandidates.length > 0 ? dynamicCandidates : RECOVERY_CANDIDATES;
+    const candidates = poolCandidates.filter((c) => String(c) !== String(userId));
+    let recovered = false;
+
+    for (const candidateId of candidates) {
+      try {
+        logBle('info', `[静默自愈] 正在尝试命中历史绑定凭证: ${candidateId}...`);
+        await connectAndHandshake(device, candidateId, onDisconnected);
+        logBle('info', `[静默自愈] 🎯 成功命中原绑定账号 (${candidateId})！立即下发解绑指令...`);
+        await unbind();
+        recovered = true;
+        logBle('info', '[静默自愈] 🎉 录音卡配对码擦除成功，已恢复出厂无主状态！');
+        break;
+      } catch (cErr: any) {
+        logBle('info', `[静默自愈] 候选凭证 ${candidateId} 未匹配: ${cErr?.message || cErr}`);
+        disconnect();
+        // 每次候选人握手失败芯片都会断开链路，严格等待 600ms 退避窗口再试下一个
+        await new Promise((r) => setTimeout(r, 600));
+      }
+    }
+
+    if (!recovered) {
+      logBle('error', '[静默自愈] 候选名单均未命中，无法静默解绑');
+      throw err;
+    }
+
+    // 解绑完成后等待 1.2s 录音卡芯片彻底复位广播
+    logBle('info', `[静默自愈] 正在使用当前用户 (${userId}) 重新发起最终认领握手...`);
+    await new Promise((r) => setTimeout(r, 1200));
+    const finalResult = await connectAndHandshake(device, userId, onDisconnected);
+
+    // 自愈完成后，立即在云端权威登记给当前学员
+    void httpClient.request({
+      url: '/api/client/recording-card/bind',
+      method: 'POST',
+      body: {
+        deviceMac,
+        deviceName: finalResult.deviceName,
+        sn: finalResult.sn,
+      },
+    }).catch(() => {});
+
+    return finalResult;
   }
 }
 

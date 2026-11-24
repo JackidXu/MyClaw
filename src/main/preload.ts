@@ -310,6 +310,15 @@ contextBridge.exposeInMainWorld('electron', {
     hasSavedWifi: (ssid: string) =>
       ipcRenderer.invoke(RecordingCardWifiIpc.HasSavedWifi, ssid),
   },
+  bluetoothDevice: {
+    onDevicesDiscovered: (callback: (devices: Array<{ deviceId: string; deviceName: string; deviceMac: string }>) => void) => {
+      const handler = (_event: any, devices: any) => callback(devices);
+      ipcRenderer.on('bluetooth:devices-discovered', handler);
+      return () => ipcRenderer.removeListener('bluetooth:devices-discovered', handler);
+    },
+    selectDevice: (deviceId: string) => ipcRenderer.invoke('bluetooth:select-device', deviceId),
+    cancelDevice: () => ipcRenderer.invoke('bluetooth:cancel-device'),
+  },
   localRecordings: {
     getList: () => ipcRenderer.invoke(LocalRecordingIpc.GetList),
     getById: (id: string) => ipcRenderer.invoke(LocalRecordingIpc.GetById, id),

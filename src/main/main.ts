@@ -15881,50 +15881,88 @@ if (!gotTheLock) {
       });
     });
 
-    // 处理 Web Bluetooth 设备选择（录音卡连接入口）
-    let bluetoothScanTimer: ReturnType<typeof setTimeout> | null = null;
+    // 处理 Web Bluetooth 设备选择（录音卡连接入口 - 工业级弹窗选择模式）
     let bluetoothCallback: ((deviceId: string) => void) | null = null;
+    let bluetoothScanTimer: ReturnType<typeof setTimeout> | null = null;
 
     mainWindow.webContents.on('select-bluetooth-device', (event, deviceList, callback) => {
       event.preventDefault();
       bluetoothCallback = callback;
 
-      if (deviceList.length > 0) {
-        // 优先匹配录音卡特征前缀，若无特定前缀则由于已通过 filters 校验直接选用列表首个设备
-        const target =
-          deviceList.find(
-            (d) =>
-              /^(M1|M2|T240|Record)/i.test(d.deviceName) ||
-              d.deviceName.includes('(BLE)') ||
-              d.deviceName.includes('BLE')
-          ) || deviceList[0];
+      // 提取符合录音卡特征的候选设备列表
+      const recordingCards = deviceList
+        .filter(
+          (d) =>
+            /^(M1|M2|T240|Record)/i.test(d.deviceName) ||
+            d.deviceName.includes('(BLE)') ||
+            d.deviceName.includes('BLE')
+        )
+        .map((d) => {
+          // 规范化 MAC 地址提取：
+          // 1. 若名称自带括号 MAC 如 M2(C82B96112233) 或 M1(C8:2B:96:11:22:33)，优先提取
+          // 2. 否则取底层上报的物理 deviceId（在 Windows 下为真实物理 MAC 如 B9:49:CC:3B:85:3F）
+          const nameMatch = d.deviceName.match(/\(([a-fA-F0-9:]{4,17})\)/);
+          const rawMacCandidate = nameMatch ? nameMatch[1] : d.deviceId;
+          const cleanMac = rawMacCandidate.replace(/[^a-fA-F0-9]/g, '').toUpperCase();
+          // 若为标准 12 位 MAC 则取 12 位，否则取 cleanMac 的前 12 位或末 12 位稳定标识
+          const standardMac = cleanMac.length >= 12 ? cleanMac.slice(-12) : cleanMac;
 
-        if (bluetoothScanTimer) {
-          clearTimeout(bluetoothScanTimer);
-          bluetoothScanTimer = null;
-        }
-        bluetoothCallback = null;
-        console.log(`[Bluetooth Scan] 🎯 命中目标外设: "${target.deviceName}" (${target.deviceId})，立即连接`);
-        callback(target.deviceId);
-        return;
+          return {
+            deviceId: d.deviceId,
+            deviceName: d.deviceName,
+            deviceMac: standardMac || d.deviceId,
+          };
+        });
+
+      // 将搜到的设备列表实时推送给渲染层弹窗
+      if (recordingCards.length > 0 && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('bluetooth:devices-discovered', recordingCards);
       }
 
-      // 若初次触发时暂无设备，设置 15 秒超时保护（期间每次扫描到新设备都会重新触发此事件并立即直通连接）
+      // 设置 60 秒扫描保护超时
       if (!bluetoothScanTimer) {
         bluetoothScanTimer = setTimeout(() => {
           bluetoothScanTimer = null;
           if (bluetoothCallback) {
             const cb = bluetoothCallback;
             bluetoothCallback = null;
-            if (deviceList.length > 0) {
-              cb(deviceList[0].deviceId);
-            } else {
-              console.warn('[Bluetooth Scan] 扫描 15 秒超时，未发现可用蓝牙设备');
-              cb('');
-            }
+            console.warn('[Bluetooth Scan] 扫描 60 秒超时，自动取消');
+            cb('');
           }
-        }, 15000);
+        }, 60000);
       }
+    });
+
+    // 渲染层用户选定特定设备连接
+    ipcMain.handle('bluetooth:select-device', (_event, deviceId: string) => {
+      if (bluetoothScanTimer) {
+        clearTimeout(bluetoothScanTimer);
+        bluetoothScanTimer = null;
+      }
+      if (bluetoothCallback) {
+        const cb = bluetoothCallback;
+        bluetoothCallback = null;
+        console.log(`[Bluetooth Scan] 🎯 用户在弹窗确认连接设备: ${deviceId}`);
+        cb(deviceId);
+        return { success: true };
+      }
+      return { success: false, error: '当前没有等待选择的蓝牙会话' };
+    });
+
+    // 渲染层取消连接
+    ipcMain.handle('bluetooth:cancel-device', () => {
+      if (bluetoothScanTimer) {
+        clearTimeout(bluetoothScanTimer);
+        bluetoothScanTimer = null;
+      }
+      if (bluetoothCallback) {
+        const cb = bluetoothCallback;
+        bluetoothCallback = null;
+        console.log('[Bluetooth Scan] ❌ 用户取消了蓝牙设备选择');
+        cb('');
+        return { success: true };
+      }
+      return { success: false };
     });
 
     // 设置窗口的最小尺寸

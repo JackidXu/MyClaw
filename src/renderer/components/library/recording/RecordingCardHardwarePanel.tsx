@@ -14,11 +14,13 @@ import React, { useEffect, useRef, useState } from 'react';
 import type { LocalRecordingItem } from '../../../../shared/recordingCard/localRecording';
 import { LocalRecordingStatus } from '../../../../shared/recordingCard/localRecording';
 import { copyTextToClipboard } from '../../../services/clipboard';
+import { httpClient } from '../../../services/httpClient';
 import { i18nService } from '../../../services/i18n';
 import { wrapRawOpusToOgg } from '../../../services/oggOpusEncoder';
 import * as recordingCardBle from '../../../services/recordingCardBle';
 import Modal from '../../common/Modal';
 import { formatAudioDuration } from './audioDuration';
+import { BluetoothDevicePickerModal, type DiscoveredCardItem } from './BluetoothDevicePickerModal';
 
 interface BleDeviceInfo {
   name: string;
@@ -80,6 +82,12 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
   const [wifiConnecting, setWifiConnecting] = useState(false);
   const [wifiGuideCopied, setWifiGuideCopied] = useState(false);
   const [showUnbindModal, setShowUnbindModal] = useState(false);
+
+  // 蓝牙设备选择弹窗相关状态
+  const [showDevicePicker, setShowDevicePicker] = useState(false);
+  const [discoveredDevices, setDiscoveredDevices] = useState<DiscoveredCardItem[]>([]);
+  const [boundMacs, setBoundMacs] = useState<Set<string>>(new Set());
+  const [connectingPickerDeviceId, setConnectingPickerDeviceId] = useState<string | null>(null);
 
   const originalWifiSsidRef = useRef<string | null>(null);
   const pendingSyncActionRef = useRef<(() => Promise<void>) | null>(null);
@@ -173,9 +181,101 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
     };
   }, []);
 
+  // 刷新当前用户已绑定的卡列表（用于弹窗置顶与“曾连接过”高亮）
+  const refreshBoundCards = async () => {
+    try {
+      const resp = await httpClient.request({ url: '/api/client/recording-card/list' });
+      if (resp.ok && resp.data?.success && Array.isArray(resp.data?.data)) {
+        const macs = new Set<string>(resp.data.data.map((c: any) => String(c.deviceMac).toLowerCase()));
+        setBoundMacs(macs);
+      }
+    } catch {
+      // 容错
+    }
+  };
+
+  // 初始化加载当前用户已绑定的卡列表
+  useEffect(() => {
+    void refreshBoundCards();
+  }, []);
+
+  // 监听主进程推流过来的蓝牙设备列表
+  useEffect(() => {
+    const removeListener = window.electron.bluetoothDevice?.onDevicesDiscovered?.((devices) => {
+      // 提取符合录音卡特征的列表
+      const cardList: DiscoveredCardItem[] = devices.map((d) => ({
+        deviceId: d.deviceId,
+        deviceName: d.deviceName,
+        deviceMac: d.deviceMac,
+      }));
+
+      // 智能无感直通策略：
+      // 若雷达搜索到的候选录音卡【只有 1 张】，且该卡【属于曾连接过的合法卡 (boundMacs)】：
+      // 直接秒级自动选中连接，完全省略弹窗打扰！
+      if (
+        cardList.length === 1 &&
+        boundMacs.size > 0 &&
+        boundMacs.has(cardList[0].deviceMac.toLowerCase())
+      ) {
+        const onlyDevice = cardList[0];
+        recordingCardBle.setKnownPhysicalMac(onlyDevice.deviceMac);
+        window.electron.bluetoothDevice?.selectDevice?.(onlyDevice.deviceId).catch(() => {});
+        setShowDevicePicker(false);
+        return;
+      }
+
+      // 存在多张卡（多卡共存场景）或遇到未绑定过的新卡时，优雅弹出列表供用户明确选择
+      setDiscoveredDevices((prev) => {
+        const map = new Map<string, DiscoveredCardItem>();
+        for (const item of prev) map.set(item.deviceId, item);
+        for (const dev of cardList) {
+          map.set(dev.deviceId, dev);
+        }
+        return Array.from(map.values());
+      });
+      setShowDevicePicker(true);
+    });
+
+    return () => {
+      if (removeListener) removeListener();
+    };
+  }, [boundMacs]);
+
+  // 用户在弹窗中选中了某个设备
+  const handleSelectDeviceFromPicker = async (deviceId: string) => {
+    setConnectingPickerDeviceId(deviceId);
+    try {
+      // 找到该设备对应的真实物理 MAC 并记录给 recordingCardBle，确保上报与自愈使用同一权威 MAC
+      const selectedItem = discoveredDevices.find((d) => d.deviceId === deviceId);
+      if (selectedItem?.deviceMac) {
+        recordingCardBle.setKnownPhysicalMac(selectedItem.deviceMac);
+      }
+      await window.electron.bluetoothDevice?.selectDevice?.(deviceId);
+      setShowDevicePicker(false);
+    } catch (err) {
+      console.warn('选择设备异常:', err);
+    } finally {
+      setConnectingPickerDeviceId(null);
+    }
+  };
+
+  // 用户关闭或取消设备弹窗
+  const handleCloseDevicePicker = async () => {
+    setShowDevicePicker(false);
+    setConnectingPickerDeviceId(null);
+    try {
+      await window.electron.bluetoothDevice?.cancelDevice?.();
+    } catch {
+      // 忽略
+    }
+  };
+
   // 连接录音卡 (BLE 握手)
   const handleConnectBle = async () => {
     if (bleConnecting) return;
+    setDiscoveredDevices([]);
+    // 点击连接前先静默拉取最新的已绑定列表，确保弹窗展示“曾连接过”始终是最新状态
+    void refreshBoundCards();
     let userId = 'local_user';
     try {
       const creds = await window.electron.auth.getAuthCredentials();
@@ -191,7 +291,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
       const handshakeInfo = await recordingCardBle.handshake(userId, () => {
         setBleDevice(null);
         setBleFiles([]);
-      });
+      }, true);
 
       setBleDevice({
         name: handshakeInfo.deviceName || i18nService.t('recordingCardDefaultDeviceName'),
@@ -206,19 +306,30 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
       });
 
       onShowToast('success', i18nService.t('recordingCardConnectSuccessToast'));
+      // 连接成功绑定后，立即刷新已绑定列表
+      void refreshBoundCards();
       await loadBleFilesViaBle();
     } catch (err: any) {
+      setShowDevicePicker(false);
       const rawMsg = err?.message || String(err);
-      const isScanTimeout =
-        rawMsg.includes('User cancelled the requestDevice') ||
-        rawMsg.includes('no device') ||
-        rawMsg.includes('NotFound');
+      const isUserCancel =
+        err?.name === 'NotFoundError' ||
+        rawMsg.includes('User cancelled') ||
+        rawMsg.includes('User cancelled the requestDevice() chooser');
+
+      // 用户在弹窗中主动点击“取消”或关闭，属于正常交互退出，静默恢复，严禁误报错误 Toast
+      if (isUserCancel) {
+        return;
+      }
+
+      const isScanTimeout = rawMsg.includes('no device') || rawMsg.includes('NotFound');
       const tip = isScanTimeout
         ? i18nService.t('recordingCardScanFailedToast')
         : i18nService.t('recordingCardConnectFailedToast', { msg: rawMsg || '' });
       onShowToast('error', tip);
     } finally {
       setBleConnecting(false);
+      setShowDevicePicker(false);
     }
   };
 
@@ -258,8 +369,16 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
   // 解除绑定
   const handleUnbind = async () => {
     try {
+      const mac = bleDevice?.name ? recordingCardBle.extractDeviceMac({ name: bleDevice.name, id: '' } as any) : '';
       await recordingCardBle.unbind();
       recordingCardBle.disconnect();
+      if (mac) {
+        void httpClient.request({
+          url: '/api/client/recording-card/unbind',
+          method: 'POST',
+          body: { deviceMac: mac },
+        }).catch(() => {});
+      }
       setBleDevice(null);
       setBleFiles([]);
       setShowUnbindModal(false);
@@ -1158,6 +1277,15 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
           </div>
         </Modal>
       )}
+      {/* 蓝牙设备发现与选择弹窗 */}
+      <BluetoothDevicePickerModal
+        isOpen={showDevicePicker}
+        onClose={handleCloseDevicePicker}
+        onSelect={handleSelectDeviceFromPicker}
+        discoveredDevices={discoveredDevices}
+        boundMacs={boundMacs}
+        connectingDeviceId={connectingPickerDeviceId}
+      />
     </div>
   );
 };
