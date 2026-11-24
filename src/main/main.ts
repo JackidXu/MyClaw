@@ -15385,8 +15385,11 @@ if (!gotTheLock) {
         }
       };
 
+      const currentLang = getLanguage();
       const finalRequestHeaders: Record<string, string> = {
         'Content-Type': 'application/json',
+        'X-Lang': currentLang,
+        'Accept-Language': currentLang === 'en' ? 'en-US' : 'zh-CN',
         ...getSafeAppVersionHeader(),
         ...options.headers,
       };
