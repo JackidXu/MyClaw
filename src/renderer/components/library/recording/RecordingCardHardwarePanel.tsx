@@ -76,6 +76,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
   const [syncingFileNames, setSyncingFileNames] = useState<Set<string>>(new Set());
   const [syncProgress, setSyncProgress] = useState<Record<string, number>>({});
   const [showWifiSyncModal, setShowWifiSyncModal] = useState(false);
+  const [wifiModalTarget, setWifiModalTarget] = useState<{ ssid: string; password?: string } | null>(null);
   const [openingWifiAp, setOpeningWifiAp] = useState(false);
   const [autoConnectingWifi, setAutoConnectingWifi] = useState(false);
   const [autoConnectFailed, setAutoConnectFailed] = useState(false);
@@ -146,6 +147,28 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
     return 0;
   };
 
+  const [optimisticSavedNames, setOptimisticSavedNames] = useState<Set<string>>(new Set());
+
+  // 等待系统外网与 DNS 恢复连通（最长等 5 秒，一旦检测到公网连通立刻放行）
+  const waitForInternetRestored = async (maxTimeoutMs = 5000) => {
+    const deadline = Date.now() + maxTimeoutMs;
+    // 先做一次 800ms 的基础让渡，供操作系统触发断开热点与重新关联原 Wi-Fi
+    await new Promise(resolve => setTimeout(resolve, 800));
+
+    while (Date.now() < deadline) {
+      try {
+        const isOnline = await window.electron.recordingCardWifi?.checkOnline?.();
+        if (isOnline) {
+          return true;
+        }
+      } catch {
+        // 忽略检查异常，继续轮询
+      }
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    return false;
+  };
+
   /**
    * 严格基于 cardFileId 唯一识别录音卡文件是否已转存本机
    * 即使用户重命名或智能纪要改写了标题，cardFileId 永不改变！
@@ -162,8 +185,12 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
         set.add(item.name.replace(/\.[^.]*$/, ''));
       }
     }
+    for (const name of optimisticSavedNames) {
+      set.add(name);
+      set.add(name.replace(/\.[^.]*$/, ''));
+    }
     return set;
-  }, [localRecordings]);
+  }, [localRecordings, optimisticSavedNames]);
 
   const isFileSavedLocally = (fileName: string) => {
     const base = fileName.replace(/\.[^.]*$/, '');
@@ -447,8 +474,8 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
       wifiClosed = true;
       await handleCloseWifi();
 
-      // 等待操作系统的外网 Wi-Fi 重新建立与 DHCP 稳定 (1.2s)，彻底杜绝转写立即发起时报 net::ERR_NETWORK_CHANGED
-      await new Promise(resolve => setTimeout(resolve, 1200));
+      // 动态探活等待操作系统的外网 Wi-Fi 重新建立与 DNS 连通稳定，彻底杜绝转写立即发起时报 net::ERR_NETWORK_CHANGED
+      await waitForInternetRestored();
 
       // 4. 调用主进程原子化保存到本机磁盘目录 (userData/recordings)
       const base = file.name.replace(/\.[^.]*$/, '');
@@ -481,6 +508,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
 
       await window.electron.localRecordings?.upsertRecord?.(newItem);
       setSyncProgress(prev => ({ ...prev, [file.name]: 100 }));
+      setOptimisticSavedNames(prev => new Set(prev).add(file.name));
       onShowToast('success', i18nService.t('recordingCardSaveSingleSuccessToast', { name: base }));
       await onLocalRecordingsChanged();
     } catch (err: any) {
@@ -495,6 +523,11 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
       setSyncingFileNames(prev => {
         const next = new Set(prev);
         next.delete(file.name);
+        return next;
+      });
+      setSyncProgress(prev => {
+        const next = { ...prev };
+        delete next[file.name];
         return next;
       });
     }
@@ -545,8 +578,8 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
       wifiClosed = true;
       await handleCloseWifi();
 
-      // 等待操作系统的外网 Wi-Fi 重新建立与 DHCP 稳定 (1.2s)，彻底杜绝转写立即发起时报 net::ERR_NETWORK_CHANGED
-      await new Promise(resolve => setTimeout(resolve, 1200));
+      // 动态探活等待操作系统的外网 Wi-Fi 重新建立与 DNS 连通稳定，彻底杜绝转写立即发起时报 net::ERR_NETWORK_CHANGED
+      await waitForInternetRestored();
 
       // 将下载好的文件批量保存到本地磁盘并落库
       let successCount = 0;
@@ -573,6 +606,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
             };
             await window.electron.localRecordings?.upsertRecord?.(newItem);
             setSyncProgress(prev => ({ ...prev, [item.file.name]: 100 }));
+            setOptimisticSavedNames(prev => new Set(prev).add(item.file.name));
             successCount++;
           }
         } catch (saveErr) {
@@ -592,6 +626,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
         removeProgressListener();
       }
       setSyncingFileNames(new Set());
+      setSyncProgress({});
     }
   };
 
@@ -601,6 +636,12 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
     isWifiFlowRunningRef.current = true;
     pendingSyncActionRef.current = action;
 
+    // 独立保存 Wi-Fi 连接凭证快照，使 Wi-Fi 弹窗与底层蓝牙连接状态彻底解耦
+    const targetWifi = {
+      ssid: bleDevice.wifiSsid,
+      password: bleDevice.wifiPassword,
+    };
+    setWifiModalTarget(targetWifi);
     setShowWifiSyncModal(true);
     setAutoConnectFailed(false);
 
@@ -751,6 +792,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
 
   const handleCancelWifiSync = () => {
     setShowWifiSyncModal(false);
+    setWifiModalTarget(null);
     setAutoConnectingWifi(false);
     setAutoConnectFailed(false);
     setWifiConnecting(false);
@@ -758,6 +800,11 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
     isWifiFlowRunningRef.current = false;
     pendingSyncActionRef.current = null;
     recordingCardBle.abortBleOperations();
+
+    // 闭环兜底：若录音卡当前已唤醒了 Wi-Fi AP 模式，退出弹窗时必须主动关闭 Wi-Fi 并唤醒蓝牙
+    if (bleDevice?.wifiApOpened || wifiModalTarget) {
+      void handleCloseWifi();
+    }
   };
 
   /** 从录音卡硬件删除文件（物理删除卡内文件，绝对不触碰电脑本地数据库与本地音频） */
@@ -1080,8 +1127,8 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
         </Modal>
       )}
 
-      {/* Wi-Fi 极速同步转存引导模态框 */}
-      {showWifiSyncModal && bleDevice && (
+      {/* Wi-Fi 极速同步转存引导模态框（与 bleDevice 解耦，防止开启热点时蓝牙断开导致弹窗闪退） */}
+      {showWifiSyncModal && wifiModalTarget && (
         <Modal
           isOpen={true}
           onClose={handleCancelWifiSync}
@@ -1118,7 +1165,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
                   {i18nService.t('recordingCardWifiModalConnecting')}
                 </div>
                 <div className="text-[11px] text-[#FF6B35] font-mono font-bold">
-                  {bleDevice.wifiSsid}
+                  {wifiModalTarget.ssid}
                 </div>
               </div>
               <div className="text-[11px] text-[#8b8b90] leading-relaxed px-4">
@@ -1139,7 +1186,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
                   <span>{i18nService.t('recordingCardWifiModalManualConnectTitle')}</span>
                   <button
                     type="button"
-                    onClick={() => void runAutoConnectWifi(bleDevice.wifiSsid, bleDevice.wifiPassword)}
+                    onClick={() => void runAutoConnectWifi(wifiModalTarget.ssid, wifiModalTarget.password)}
                     className="text-[#FF6B35] underline font-semibold cursor-pointer shrink-0"
                   >
                     {i18nService.t('retry')}
@@ -1153,16 +1200,16 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
                 <div className="space-y-2">
                   <div className="flex items-center justify-between p-2 rounded-[7px] bg-white border border-[#ebebee]">
                     <span className="text-[#8b8b90] text-[11px]">Wi-Fi SSID</span>
-                    <span className="font-mono font-bold text-[#1c1c1e] select-all">{bleDevice.wifiSsid}</span>
+                    <span className="font-mono font-bold text-[#1c1c1e] select-all">{wifiModalTarget.ssid}</span>
                   </div>
                   <div className="flex items-center justify-between p-2 rounded-[7px] bg-white border border-[#ebebee]">
                     <span className="text-[#8b8b90] text-[11px]">Wi-Fi Password</span>
                     <div className="flex items-center gap-2">
-                      <span className="font-mono font-bold text-[#1c1c1e] select-all">{bleDevice.wifiPassword || '12345678'}</span>
+                      <span className="font-mono font-bold text-[#1c1c1e] select-all">{wifiModalTarget.password || '12345678'}</span>
                       <button
                         type="button"
                         onClick={async () => {
-                          const ok = await copyTextToClipboard(bleDevice.wifiPassword || '12345678');
+                          const ok = await copyTextToClipboard(wifiModalTarget.password || '12345678');
                           if (ok) {
                             setWifiGuideCopied(true);
                             setTimeout(() => setWifiGuideCopied(false), 2000);

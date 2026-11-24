@@ -354,6 +354,37 @@ export const RecordingCardWorkspace: React.FC<RecordingCardWorkspaceProps> = ({
     let tosKey = currentItem.tosKey;
 
     try {
+      // 步骤 0: 外网就绪自愈保护。若刚刚完成录音卡 Wi-Fi 转存且外网处于重连过渡态，自动轮询等待（最多 5 秒）
+      if (!tosUrl || !tosKey) {
+        let isOnline = false;
+        try {
+          isOnline = (await window.electron.recordingCardWifi?.checkOnline?.()) ?? true;
+        } catch {
+          isOnline = true;
+        }
+
+        if (!isOnline) {
+          setTranscribeProgressMap(prev => ({
+            ...prev,
+            [currentItem.id]: '正在等待外网连接恢复...',
+          }));
+          const onlineDeadline = Date.now() + 5000;
+          while (Date.now() < onlineDeadline && !isCancelled) {
+            await new Promise(resolve => setTimeout(resolve, 600));
+            try {
+              if (await window.electron.recordingCardWifi?.checkOnline?.()) {
+                isOnline = true;
+                break;
+              }
+            } catch {
+              // 忽略检查异常，继续轮询
+            }
+          }
+        }
+      }
+
+      if (isCancelled) return;
+
       // 步骤 A: 准备音频传输通道；若已就绪则直接复用
       if (!tosUrl || !tosKey) {
         toast('info', i18nService.t('recordingCardPreparingAudioToast', { title: currentItem.title || currentItem.name }));
@@ -364,8 +395,32 @@ export const RecordingCardWorkspace: React.FC<RecordingCardWorkspaceProps> = ({
           throw new Error(i18nService.t('recordingCardAudioPathNotFound'));
         }
 
-        // 获取云端预签名上传地址
-        const presign = await fetchAudioUploadPresignedUrl();
+        // 获取云端预签名上传地址（兼容切网瞬间 Chromium 路由抖动导致的 ERR_NETWORK_CHANGED）
+        let presign: Awaited<ReturnType<typeof fetchAudioUploadPresignedUrl>> | null = null;
+        let lastPresignErr: unknown = null;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            presign = await fetchAudioUploadPresignedUrl();
+            break;
+          } catch (err: any) {
+            lastPresignErr = err;
+            const errMsg = String(err?.message || err);
+            const isTransientNetErr =
+              errMsg.includes('ERR_NETWORK_CHANGED') ||
+              errMsg.includes('ERR_INTERNET_DISCONNECTED') ||
+              errMsg.includes('Failed to fetch') ||
+              errMsg.includes('fetch failed') ||
+              errMsg.includes('NetworkError');
+            if (isTransientNetErr && attempt < 2 && !isCancelled) {
+              await new Promise(resolve => setTimeout(resolve, 1500));
+              continue;
+            }
+            throw err;
+          }
+        }
+        if (!presign) {
+          throw lastPresignErr || new Error('获取音频上传签名失败');
+        }
 
         // 通过主进程原生 fs 读取音频 ArrayBuffer (彻底避免渲染层 CSP 限制)
         const readRes = await window.electron.localRecordings?.readAudioFile?.(fileData.data.localPath);
