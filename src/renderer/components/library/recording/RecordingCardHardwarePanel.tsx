@@ -746,12 +746,19 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
 
   // 手动确认连入 Wi-Fi
   const handleConfirmWifiManual = async () => {
-    if (!bleDevice || wifiConnecting) return;
+    if (!wifiModalTarget || wifiConnecting) return;
     setWifiConnecting(true);
     isWifiFlowRunningRef.current = true;
 
     try {
-      const socketDeadline = Date.now() + 12000;
+      // 1. 前置探测电脑当前实际连入的 Wi-Fi：若尚未连上录音卡热点，直接快速拦截提示，避免干等超时
+      const currentWifi = await window.electron.recordingCardWifi.getCurrentWifi().catch(() => null);
+      if (currentWifi !== null && currentWifi !== wifiModalTarget.ssid) {
+        throw new Error(`请先在系统 Wi-Fi 列表中连入「${wifiModalTarget.ssid}」后再试`);
+      }
+
+      // 2. 已连入目标热点时，给足 20 秒供 Windows/macOS DHCP 分配 192.168.1.x 局域网 IP 并建立 Socket
+      const socketDeadline = Date.now() + 20000;
       let socketConnected = false;
       let lastSocketErr = '';
 
@@ -776,6 +783,7 @@ export const RecordingCardHardwarePanel: React.FC<RecordingCardHardwarePanelProp
       isWifiFlowRunningRef.current = false;
       setBleDevice(prev => (prev ? { ...prev, wifiConnected: true } : null));
       setShowWifiSyncModal(false);
+      setWifiModalTarget(null);
 
       const act = pendingSyncActionRef.current;
       if (act) {
